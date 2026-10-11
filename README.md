@@ -6,6 +6,8 @@
 
 **A self-hosted coding assistant that routes every request to the cheapest model that can handle it, and shows you exactly what it costs.**
 
+It isn't limited to code: you can ask it anything you would ask a chat AI, and it can work on any files in a project folder (notes, documents, data).
+
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Vue 3](https://img.shields.io/badge/Vue_3-frontend-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org/)

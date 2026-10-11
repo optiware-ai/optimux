@@ -1,7 +1,7 @@
 # Optimux Manifest
 
 ## Purpose
-Optimux is a self-hosted coding assistant that spends as little as possible on language models. Every request goes to the cheapest model that can handle it, every call is measured, and the user decides the balance between **cost, speed and reliability**.
+Optimux is a self-hosted coding assistant that spends as little as possible on language models. Every request goes to the cheapest model that can handle it, every call is measured, and the user decides the balance between **cost, speed and reliability**. It is built for coding, but not limited to it: it answers anything a chat AI can, and works on any files in a project folder (notes, documents, data).
 
 ## Principles
 - **Cost is a feature.** Every token sent must earn its place; features cost nothing until they are used.
