@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2034
+# The optimux command: start, stop, update and manage an installed Optimux.
+# It uses the installer's own functions (install.sh), so both behave the same.
+set -Eeuo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OPTIMUX_LIB_ONLY=1 source "$HERE/../install.sh"
+
+help() {
+  cat <<TXT
+
+  ${CB}optimux${C0} <command>
+
+    ${CB}start${C0} | ${CB}stop${C0} | ${CB}restart${C0}   run Optimux, or stop it
+    ${CB}status${C0}                  is it running, where, which version
+    ${CB}logs${C0}                    follow the server's log (Ctrl+C to leave)
+    ${CB}open${C0}                    the address (and open it in the browser)
+    ${CB}update${C0}                  download the latest version and restart
+    ${CB}password${C0}                choose a new sign-in password
+    ${CB}reset-password${C0}          forget the password and two-step codes
+    ${CB}token${C0}                   the access token (first sign-in, scripts)
+    ${CB}github${C0}                  install the GitHub CLI and add a GitHub token
+    ${CB}uninstall${C0}               remove Optimux (asks before deleting data)
+    ${CB}version${C0}                 the installed version
+
+  Everything else is in the web interface: Dashboard → Guide.
+
+TXT
+}
+
+main_cli() {
+  export PATH="$PATH:/usr/local/sbin:/usr/sbin:/sbin"
+  tui_init
+  trap on_exit EXIT
+  detect_system
+  CM_YES=""
+  find_install || die "Optimux isn't installed here (no install.env found). Install it with install.sh."
+  # Server installs are managed with sudo; a local install never needs it
+  if [[ "${M[MODE]}" == server && $EUID -ne 0 ]]; then CM_SUDO="sudo"; else CM_SUDO=""; fi
+  upgrade_old_install      # an install from before the rename to Optimux
+  case "${1:-help}" in
+    start) cli_start; ok "Started: ${M[URL]}" ;;
+    stop) cli_stop ;;
+    restart) cli_restart ;;
+    status) cli_status ;;
+    logs) cli_logs ;;
+    open|url) cli_open ;;
+    update) cli_update ;;
+    password) cli_password ;;
+    reset-password) admin reset-password ;;
+    token) cli_token ;;
+    github) cli_github ;;
+    uninstall) cli_uninstall ;;
+    version) git -C "${M[APP_DIR]}" describe --always --tags 2>/dev/null || echo unknown ;;
+    help|-h|--help) help ;;
+    *) err "Unknown command: $1"; help; exit 2 ;;
+  esac
+}
+
+main_cli "$@"

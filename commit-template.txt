@@ -1,0 +1,125 @@
+[ TYPE ] Scope: Describe the change
+
+FILES MODIFIED:
+- path/to/file1
+- path/to/file2
+
+DETAILED DESCRIPTION:
+
+# FORMAT AND USAGE
+#
+# Subject: [ TYPE ] Scope: Short, concrete description
+# Example: [ FEAT ] Router: Add support for fallback models when Ollama is down
+#
+# 1. Replace TYPE with one uppercase category from the catalog below.
+# 2. Replace Scope with the affected feature, component, or subsystem.
+# 3. Start the description with an imperative verb: Add, Fix, Enforce, Remove.
+# 4. Leave a blank line before the FILES MODIFIED section and body.
+#
+# Parentheses in the catalog list suggested scopes, not literal subject syntax.
+# Choose one scope; do not copy the parentheses or the entire list into a subject.
+# Suggestions are not exhaustive. Reuse established names and add a precise
+# scope when necessary. Use Title Case for scopes.
+# Aim for a subject around 72 characters, but do not sacrifice clarity to fit.
+#
+# CHOOSING A TYPE
+#
+# Prefer the purpose of the change over the language or directory it touches:
+# - PATCHSEC for vulnerability fixes and preventive security hardening.
+# - FIX for ordinary corrections to existing behavior, including UI bugs.
+# - FEAT for new capabilities, especially those spanning multiple layers.
+# - PERF for performance improvements; REFACTOR for behavior-preserving changes.
+# - TEST or DOCS when tests or documentation are the primary deliverable.
+# - Otherwise choose the most specific layer, feature, or maintenance category.
+#
+# TYPE CATALOG: PURPOSE
+#
+# [ FEAT ] (Frontend, Backend, Router, LLM, Memory, Config)
+#   New application capabilities or substantial additions to existing features.
+# [ FIX ] (Frontend, Backend, UI, Executor, Config)
+#   Correct existing behavior. Use PATCHSEC when correcting a security flaw.
+# [ PATCHSEC ] (Executor, Auth, Config)
+#   Mitigate vulnerabilities, especially around local bash execution or API key leaks.
+# [ PERF ] (Router, LLM, Memory)
+#   Improve efficiency, latency (e.g., token streaming speed, prompt sizing).
+# [ REFACTOR ] (Frontend, Backend, Core)
+#   Restructure implementation without changing externally observable behavior.
+#
+# TYPE CATALOG: BACKEND (FastAPI, Python)
+#
+# [ ROUTER ] (main.py, WebSocket, Endpoints)
+#   Changes to FastAPI routing, WebSocket loops, and request handling.
+# [ LLM ] (Ollama, LiteLLM, Context, Tool Calling)
+#   LLM integration, system prompts, tool schema adjustments, and routing logic.
+# [ EXECUTOR ] (Bash, Asyncio, Subprocess)
+#   Local shell execution boundaries, timeouts, and result parsing.
+# [ MEMORY ] (Context, Session, ~/.optimux)
+#   Centralized developer preferences and active session logging.
+# [ CONFIG ] (Env, Models, API Keys)
+#   Environment variable loading and supported models dictionary.
+#
+# TYPE CATALOG: FRONTEND (Vue 3, Tailwind)
+#
+# [ UI ] (Layout, Modals, Terminal, Notifications)
+#   Templates, styling (Tailwind), interactions, and visual accessibility.
+# [ STATE ] (Vue Reactivity, Chat History)
+#   Managing reactive state like the messages array and model selection.
+# [ WS ] (WebSocket Client, Event Handlers)
+#   Client-side websocket message processing (tokens, commands, system msgs).
+#
+# TYPE CATALOG: TOOLING AND MAINTENANCE
+#
+# [ INIT ] (Repository, Venv)
+#   Initial project setup.
+# [ GITIGNORE ] (Artifacts, Local Data, Environment)
+#   Ignore rules and corresponding removal of generated files from tracking.
+# [ CI ] (GitHub Actions, Tests, Checks)
+#   Automated repository workflows.
+# [ CHORE ] (Repository, Tooling, Scripts, Release)
+#   Maintenance with no application behavior change; avoid using as a catch-all.
+# [ TEST ] (Executor, LLM, Router, Memory)
+#   Test-only coverage, regression cases, and test tooling.
+# [ DOCS ] (README, Architecture, SETUP, Commit Template)
+#   Documentation, planning, onboarding, and developer instructions.
+#
+# EXAMPLES
+#
+# [ FEAT ] LLM: Introduce prompt compression for large memory states
+# [ FIX ] UI: Render markdown properly during token streaming
+# [ PATCHSEC ] Executor: Sanitize user input before subprocess call
+# [ REFACTOR ] Memory: Extract context merging into separate utility
+# [ DOCS ] Commit Template: Localize conventions to Optimux stack
+#
+# COMMIT BODY: SCALE DETAIL TO THE CHANGE
+#
+# A small change may need only a subject or a short paragraph. For substantial
+# changes, use the following sections as needed; omit irrelevant sections:
+#
+# MOTIVATION
+#   Describe the problem, affected users, and a concrete trigger or example.
+# CHANGES
+#   Explain resulting behavior and implementation choices needed for review.
+# FILES MODIFIED
+#   Provide a bulleted list of modified files, as defined above.
+# VALIDATION
+#   Record tests/checks actually run, their results, and coverage limitations.
+# COMPATIBILITY AND DEPLOYMENT
+#   Describe reloads, `.env` config changes, or environment constraints.
+#
+# For PATCHSEC, also explain the root cause, attacker prerequisites, demonstrated
+# impact, mitigation boundary, and remaining limitations.
+#
+# GENERAL RULES
+#
+# - One logical change per commit; include its supporting tests and documentation.
+# - Do not commit secrets, local `.optimux` user data, or `.env` files.
+# - Write for a reviewer who has not read the development conversation.
+# - Describe the final change and its purpose; prefer clarity over cleverness.
+# - Instructions here are comments. Put the actual commit body on uncommented
+#   lines after the subject's blank separator.
+#   Git normally removes these comments when saving an editor-written message.
+#
+# GIT CONFIGURATION
+#
+# From this repository's root, enable this template for this repository:
+#   git config --local commit.template commit-template.txt

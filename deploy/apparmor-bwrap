@@ -1,0 +1,14 @@
+# /etc/apparmor.d/bwrap: lets bubblewrap create its sandbox on Ubuntu 23.10+,
+# where unprivileged user namespaces are restricted by AppArmor.
+# Only needed if Dashboard > Execution says bubblewrap "can't create a sandbox here".
+# Note: this lets every local user run bubblewrap with user namespaces, which relaxes
+# Ubuntu's restriction for the whole machine (fine on a server that runs only Optimux).
+# Load it with: sudo apparmor_parser -r /etc/apparmor.d/bwrap
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+
+  include if exists <local/bwrap>
+}

@@ -1,0 +1,47 @@
+/* Chat scroll area: thin scrollbar with its own gutter, so it never sits on the prompts */
+#chat-container { scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #374151 transparent; }
+#chat-container::-webkit-scrollbar { width: 8px; }
+#chat-container::-webkit-scrollbar-track { background: transparent; }
+#chat-container::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+#chat-container::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+/* Code blocks in replies: a View button in the corner */
+.cm-pre { position: relative; }
+.cm-pre .cm-view-btn { position: absolute; top: 6px; right: 6px; font: 11px ui-monospace, monospace; color: #9ca3af;
+    background: rgba(17,24,39,.85); border: 1px solid #374151; border-radius: 4px; padding: 1px 8px; opacity: .55; transition: opacity .15s; }
+.cm-pre:hover .cm-view-btn, .cm-pre .cm-view-btn:focus { opacity: 1; }
+.cm-pre .cm-view-btn:hover { color: #e5e7eb; border-color: #6b7280; }
+/* Code viewer: line numbers + optional wrapping */
+.cm-code { font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.cm-code .hljs { background: transparent; padding: 0; }
+.cm-line { display: flex; width: max-content; min-width: 100%; }
+.cm-line:hover { background: rgba(255,255,255,.03); }
+.cm-ln { flex-shrink: 0; width: 3.5em; padding-right: 1em; text-align: right; color: #4b5563; user-select: none; }
+.cm-lc { white-space: pre; padding-right: 1em; }
+.cm-wrap .cm-line { width: auto; }
+.cm-wrap .cm-lc { white-space: pre-wrap; word-break: break-all; min-width: 0; flex: 1; }
+/* Guide: headings stay clear of the top edge when jumped to */
+.cm-guide h2 { scroll-margin-top: 8px; padding-top: 12px; border-top: 1px solid #1f2937; }
+.cm-guide h2:first-of-type { border-top: 0; }
+.cm-guide h3 { scroll-margin-top: 8px; }
+/* Inline code without the typography plugin's literal backticks (chat and guide) */
+.prose code::before, .prose code::after { content: none !important; }
+.prose :where(code):not(:where(pre *)) { background: rgba(55,65,81,.6); padding: 1px 5px; border-radius: 4px; font-weight: 500; }
+.cm-guide table { font-size: 13px; }
+.cm-guide blockquote { border-left-color: #2563eb; background: rgba(30,58,138,.15); padding: 6px 14px; border-radius: 0 8px 8px 0; font-style: normal; }
+.cm-guide blockquote p:first-of-type::before, .cm-guide blockquote p:last-of-type::after { content: none; }
+/* Help tips: a small "?" with a floating explanation */
+.cm-help { display: inline-flex; vertical-align: middle; margin-left: 6px; }
+.cm-help-btn { width: 16px; height: 16px; border-radius: 9999px; border: 1px solid #4b5563; color: #9ca3af; font: 600 10px/14px ui-sans-serif, system-ui, sans-serif; text-align: center; flex-shrink: 0; transition: all .15s; }
+.cm-help-btn:hover, .cm-help-on { border-color: #60a5fa; color: #bfdbfe; background: rgba(37,99,235,.25); }
+.cm-help-box { position: fixed; z-index: 70; background: #111827; border: 1px solid #374151; border-radius: 10px; padding: 10px 12px; box-shadow: 0 12px 32px rgba(0,0,0,.55);
+    font: 400 13px/1.55 ui-sans-serif, system-ui, sans-serif; color: #d1d5db; text-align: left; white-space: normal; text-transform: none; letter-spacing: normal; }
+.cm-help-box b { color: #f3f4f6; }
+.cm-help-box code, .cm-help-box .mono { font-family: ui-monospace, monospace; color: #e5e7eb; }
+.cm-help-box p + p, .cm-help-box ul { margin-top: 6px; }
+.cm-help-box ul { list-style: disc; padding-left: 16px; }
+/* Feature 25: toasts slide in from the right; dialogs pop in */
+.cm-toast-enter-active, .cm-toast-leave-active { transition: transform .3s cubic-bezier(.2,.8,.2,1), opacity .3s; }
+.cm-toast-enter-from, .cm-toast-leave-to { transform: translateX(120%); opacity: 0; }
+.cm-toast-move { transition: transform .3s; }
+@keyframes cm-pop { from { transform: scale(.96) translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.cm-pop { animation: cm-pop .18s ease-out; }

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Optimux</title>
+  <!-- Two lanes: one request, a light lane to a small model and a heavy lane to a big one -->
+  <g fill="none" stroke="#3b82f6" stroke-linecap="round">
+    <path d="M6 32 H22" stroke-width="6"/>
+    <path d="M22 32 C32 32 32 17 42 17" stroke-width="4"/>
+    <path d="M22 32 C32 32 32 46 40 46" stroke-width="7"/>
+  </g>
+  <circle cx="47" cy="17" r="5" fill="#3b82f6"/>
+  <circle cx="50" cy="46" r="9.5" fill="#3b82f6"/>
+</svg>

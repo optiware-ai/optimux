@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in · Optimux</title>
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="/static/login.js" defer></script>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen flex items-center justify-center p-4">
+    <main class="w-full max-w-sm">
+        <div class="text-center mb-6">
+            <img src="/static/logo.svg" alt="" class="w-14 h-14 mx-auto mb-2">
+            <div class="text-2xl font-bold tracking-tight text-gray-100">Opti<span class="text-blue-400">mux</span></div>
+            <p id="subtitle" class="text-sm text-gray-400 mt-1">Checking…</p>
+        </div>
+
+        <form id="setup-form" class="hidden bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4" autocomplete="off">
+            <p class="text-[13px] text-gray-400 leading-relaxed">First run: choose the password for this Optimux. To prove you own the server, paste the <b class="text-gray-200">access token</b>. It was printed when the server first started and is in <code class="text-gray-300">~/.optimux/secrets.env</code> as <code class="text-gray-300">OPTIMUX_TOKEN</code>.</p>
+            <label class="block">
+                <span class="text-xs text-gray-400">Access token</span>
+                <input id="setup-token" type="password" required class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:border-blue-500">
+            </label>
+            <label class="block">
+                <span class="text-xs text-gray-400">New password (12 characters or more)</span>
+                <input id="setup-password" type="password" required minlength="12" autocomplete="new-password" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            </label>
+            <label class="block">
+                <span class="text-xs text-gray-400">Repeat the password</span>
+                <input id="setup-password2" type="password" required minlength="12" autocomplete="new-password" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            </label>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg py-2 text-sm">Set password and sign in</button>
+        </form>
+
+        <form id="login-form" class="hidden bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+            <label class="block">
+                <span class="text-xs text-gray-400">Password</span>
+                <input id="login-password" type="password" required autocomplete="current-password" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            </label>
+            <label id="code-row" class="hidden block">
+                <span class="text-xs text-gray-400">Code from your authenticator app</span>
+                <input id="login-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-sm tracking-widest focus:outline-none focus:border-blue-500">
+            </label>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg py-2 text-sm">Sign in</button>
+            <p class="text-[12px] text-gray-500 leading-relaxed">Forgot the password? On the server, delete <code>~/.optimux/auth.json</code> and reload this page: you can set a new one with the access token.</p>
+        </form>
+
+        <p id="error" class="hidden mt-4 text-sm text-red-300 bg-red-950/50 border border-red-900 rounded-lg px-3 py-2"></p>
+        <p id="http-warning" class="hidden mt-4 text-[12px] text-yellow-300 bg-yellow-950/40 border border-yellow-900 rounded-lg px-3 py-2">This page is not using HTTPS. Anyone on the network path can read the password. Use HTTPS (see the Guide, "Running on a server") unless this is your own computer.</p>
+    </main>
+</body>
+</html>

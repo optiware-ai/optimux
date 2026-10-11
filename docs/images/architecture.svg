@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="500" viewBox="0 0 960 500" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+  <rect width="960" height="500" rx="16" fill="#0b1120"/>
+
+  <!-- Browser -->
+  <rect x="30" y="200" width="150" height="100" rx="12" fill="#111827" stroke="#334155"/>
+  <text x="105" y="238" text-anchor="middle" fill="#e5e7eb" font-size="15" font-weight="600">Browser</text>
+  <text x="105" y="260" text-anchor="middle" fill="#94a3b8" font-size="12">Chat, Dashboard,</text>
+  <text x="105" y="276" text-anchor="middle" fill="#94a3b8" font-size="12">Guide (Vue 3)</text>
+  <line x1="182" y1="250" x2="236" y2="250" stroke="#94a3b8" stroke-width="1.6" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="209" y="236" text-anchor="middle" fill="#64748b" font-size="10">WebSocket</text>
+  <text x="209" y="268" text-anchor="middle" fill="#64748b" font-size="10">+ token</text>
+
+  <!-- Server frame -->
+  <rect x="240" y="30" width="470" height="440" rx="14" fill="none" stroke="#1e3a8a" stroke-dasharray="5 4"/>
+  <text x="256" y="54" fill="#93c5fd" font-size="13" font-weight="600">Optimux server (FastAPI)</text>
+
+  <!-- Conductor -->
+  <rect x="265" y="72" width="420" height="58" rx="10" fill="#0f2547" stroke="#2563eb"/>
+  <text x="283" y="97" fill="#bfdbfe" font-size="14" font-weight="600">Conductor</text>
+  <text x="283" y="116" fill="#93c5fd" font-size="12">one cheap call per message: simple or complex? (and an Auto skill)</text>
+
+  <!-- Tiers -->
+  <rect x="265" y="160" width="195" height="76" rx="10" fill="#0d2a1d" stroke="#16a34a"/>
+  <text x="283" y="186" fill="#bbf7d0" font-size="14" font-weight="600">Simple executor</text>
+  <text x="283" y="205" fill="#86efac" font-size="12">fast, cheap model</text>
+  <text x="283" y="222" fill="#86efac" font-size="12">most requests</text>
+  <rect x="490" y="160" width="195" height="76" rx="10" fill="#2a1414" stroke="#dc2626"/>
+  <text x="508" y="186" fill="#fecaca" font-size="14" font-weight="600">Complex executor</text>
+  <text x="508" y="205" fill="#fca5a5" font-size="12">strong model</text>
+  <text x="508" y="222" fill="#fca5a5" font-size="12">hard, multi-step tasks</text>
+  <line x1="362" y1="132" x2="362" y2="156" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="587" y1="132" x2="587" y2="156" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="462" y1="198" x2="486" y2="198" stroke="#f59e0b" stroke-width="1.8" marker-end="url(#arrowAmber)"/>
+  <text x="474" y="252" text-anchor="middle" fill="#fbbf24" font-size="11">escalate when stuck</text>
+
+  <!-- Context -->
+  <rect x="265" y="270" width="420" height="52" rx="10" fill="#111827" stroke="#334155"/>
+  <text x="283" y="292" fill="#e5e7eb" font-size="13" font-weight="600">Context sent with every call</text>
+  <text x="283" y="310" fill="#94a3b8" font-size="12">memory (personal · professional · project) · listed skills · recent chat</text>
+
+  <!-- Metering -->
+  <rect x="265" y="342" width="200" height="104" rx="10" fill="#111827" stroke="#334155"/>
+  <text x="283" y="366" fill="#e5e7eb" font-size="13" font-weight="600">Metering &amp; storage</text>
+  <text x="283" y="386" fill="#94a3b8" font-size="12">tokens, cost, time per call</text>
+  <text x="283" y="404" fill="#94a3b8" font-size="12">budgets · chat history</text>
+  <text x="283" y="422" fill="#94a3b8" font-size="12">memory versions (SQLite,</text>
+  <text x="283" y="438" fill="#94a3b8" font-size="12">daily backups)</text>
+
+  <!-- Tools -->
+  <rect x="485" y="342" width="200" height="104" rx="10" fill="#111827" stroke="#334155"/>
+  <text x="503" y="366" fill="#e5e7eb" font-size="13" font-weight="600">Tools</text>
+  <text x="503" y="386" fill="#94a3b8" font-size="12">execute_bash (you approve)</text>
+  <text x="503" y="404" fill="#94a3b8" font-size="12">update memory · load skill</text>
+  <text x="503" y="422" fill="#94a3b8" font-size="12">workspace: create, switch,</text>
+  <text x="503" y="438" fill="#94a3b8" font-size="12">archive projects</text>
+
+  <!-- Providers -->
+  <rect x="760" y="72" width="170" height="164" rx="12" fill="#111827" stroke="#334155"/>
+  <text x="845" y="100" text-anchor="middle" fill="#e5e7eb" font-size="14" font-weight="600">Model providers</text>
+  <text x="845" y="122" text-anchor="middle" fill="#64748b" font-size="11">via LiteLLM</text>
+  <text x="845" y="150" text-anchor="middle" fill="#94a3b8" font-size="12">Gemini</text>
+  <text x="845" y="170" text-anchor="middle" fill="#94a3b8" font-size="12">Claude</text>
+  <text x="845" y="190" text-anchor="middle" fill="#94a3b8" font-size="12">OpenAI</text>
+  <text x="845" y="210" text-anchor="middle" fill="#94a3b8" font-size="12">Ollama (local)</text>
+  <line x1="687" y1="101" x2="756" y2="120" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="687" y1="198" x2="756" y2="170" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- Sandbox + project -->
+  <rect x="760" y="300" width="170" height="146" rx="12" fill="#0d2a1d" stroke="#16a34a"/>
+  <text x="845" y="326" text-anchor="middle" fill="#bbf7d0" font-size="14" font-weight="600">Sandbox</text>
+  <text x="845" y="344" text-anchor="middle" fill="#86efac" font-size="11">bubblewrap</text>
+  <rect x="780" y="358" width="130" height="72" rx="8" fill="#0b1120" stroke="#22c55e" stroke-dasharray="4 3"/>
+  <text x="845" y="384" text-anchor="middle" fill="#e5e7eb" font-size="12" font-weight="600">Active project</text>
+  <text x="845" y="402" text-anchor="middle" fill="#94a3b8" font-size="11">the only writable</text>
+  <text x="845" y="418" text-anchor="middle" fill="#94a3b8" font-size="11">folder</text>
+  <line x1="687" y1="394" x2="756" y2="394" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arrow)"/>
+</svg>

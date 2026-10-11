@@ -1,0 +1,107 @@
+# ==============================================================================
+# Django & Python Project .gitignore
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# ignored folder
+# ------------------------------------------------------------------------------
+ignored/
+
+# ------------------------------------------------------------------------------
+# Python & Bytecode
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.coverage
+scratch_*.py
+
+# ------------------------------------------------------------------------------
+# Django Specific
+# ------------------------------------------------------------------------------
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# ------------------------------------------------------------------------------
+# Media & Static Files
+# ------------------------------------------------------------------------------
+# Ignore user-uploaded media files in development
+media/
+# Ignore static files collected during deployment (but keep the raw static/ folder)
+staticfiles/
+static-collected/
+# Ignore all the screenshots
+screenshots/
+security-assessment/first-draft-20260917/images/
+
+# ------------------------------------------------------------------------------
+# Virtual Environments & Packaging
+# ------------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ------------------------------------------------------------------------------
+# Environment Variables & Secrets
+# ------------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+.optimux/
+.codemux/
+
+# ------------------------------------------------------------------------------
+# IDEs, Editors & OS Files
+# ------------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+
+# Extension Builds
+extension/dist/
+extension/*.zip
+extension/dist-bkp
+.aider*
+
+commit-msg-*.txt
+
+# Feature notes (kept locally by the maintainer, not published)
+todos/

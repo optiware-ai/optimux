@@ -1,0 +1,19 @@
+# /etc/caddy/Caddyfile: HTTPS in front of Optimux.
+# Caddy gets and renews the certificate by itself once the DNS name points at
+# this server and ports 80 and 443 are open. WebSockets are proxied as-is.
+# Caddy must be in the optimux group to open the socket: sudo usermod -aG optimux caddy
+optimux.example.com {
+	encode zstd gzip
+	request_body {
+		max_size 20MB
+	}
+	# Caddy replaces any X-Forwarded-For the client sends with the client's real
+	# address (no trusted_proxies here), so Optimux can rely on it.
+	reverse_proxy unix//run/optimux/optimux.sock
+	log {
+		output file /var/log/caddy/optimux-access.log {
+			roll_size 20MiB
+			roll_keep 10
+		}
+	}
+}

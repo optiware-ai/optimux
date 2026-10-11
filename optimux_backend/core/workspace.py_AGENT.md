@@ -1,0 +1,56 @@
+# workspace.py Agent Details
+
+## File Overview
+`workspace.py` implements the project actions the model can take as tools: list, create, switch and archive projects under the projects root. It replaces the old create-repo keyword intercept in `main.py` and the rule in professional memory that ran `create-repo-github.sh`.
+
+## Core Functionality
+- **`list_projects()`:** each project's name, whether it's active, whether it has git, its `origin` remote, and when it last changed; plus archived folders. Hidden folders are skipped.
+- **`check_create(...)` / `create_project(name, template="basic"|"python", git_init=True, github=None|"private"|"public", description="")`:**
+  - **Validation:** a name check (`NAME_RE`: letters, digits, `.` `_` `-`, up to 100 characters, no leading dot or dash), the folder must not already exist, the template and visibility must be valid, and GitHub requires git. This runs before asking for approval.
+  - **Files:** `README.md` (with the description), `.gitignore` (per template), and for `python`, `src/` and `tests/`.
+  - **git:** `commit-template.txt` as in the user's script, `git init`, `commit.template`, the first commit, then branch `main`.
+  - **GitHub (Feature 25):** after `github_status()` says it's ready, `gh repo create <name> --<visibility> --description ... --source=. --remote=origin`, then `git -c credential.helper= -c "credential.helper=!gh auth git-credential" push -u origin main`, so the token is never written to a git config or put on a command line (and older gh versions, without their own credential handling, work too).
+  - **No commit identity:** a failed commit with git's "who you are" message gets a hint pointing to Dashboard → GitHub.
+  - **Reporting:** each step's result is returned, labeled with the shell-quoted command (`shlex.join`). The folder is kept if a later step fails.
+  - **Environment (`_env(github)`):** `scrubbed_env` (no LLM keys, no Optimux or GitHub token variable), plus `git_identity_env` (GIT_AUTHOR_*/GIT_COMMITTER_* from the settings, when set), `GH_PROMPT_DISABLED`, `GIT_TERMINAL_PROMPT=0`. GitHub credentials only with `github=True` (`gh repo create`, the push, the `gh auth status` check): `GH_TOKEN` from `OPTIMUX_GITHUB_TOKEN` when saved; other calls also lose any `GH_TOKEN`/`GITHUB_TOKEN` the server process has. Model-run commands use `config_manager.command_env` instead.
+  - **`GIT_SAFE`:** `_run` prefixes Optimux's own git calls with `-c core.hooksPath=/dev/null -c core.fsmonitor=false` (projects are writable by model-run commands, so their hooks and config never run here). Step labels show the command without it.
+  - **Push:** over HTTPS even when gh's config set an SSH remote (`url.https://github.com/.pushInsteadOf`).
+  - **Races:** a folder created between the check and `makedirs` raises `WorkspaceError`.
+- **`check_switch(name)`:** validates a switch; `''` means the projects root.
+- **`check_archive` / `archive_project(name)`:** moves the folder to `<root>/.archive/<name>-<timestamp>`. Chats, usage and memory are kept. Nothing here deletes a project.
+- **`WORKSPACE_TOOLS` / `tools_for(active_project)`:** tool definitions. At the root, all four tools are offered; inside a project, `list_projects`, `create_project` and `switch_project`. `create_project` has no required argument and tells the model to call it right away with what the user said: the user completes the rest in the form.
+- **`describe_create(...)`:** the one-line label for the command block.
+- **`form_values(form)` / `normalize_create(form)` (Feature 25):** the create form (tool arguments of any type, the chat form, or `POST /api/projects`) as plain values: name stripped, template, `git_init` (forced on with GitHub), `github` (`None`, private or public), the description on one line, `switch` (default true). `form_values` never judges, so a refused form is shown again as typed; `normalize_create` also raises `WorkspaceError` for a description over 350 (GitHub's limit). `check_create` judges the rest.
+- **GitHub (Feature 25):**
+  - `github_status(fresh=False)`: `gh` installed (and its version), a token saved (`OPTIMUX_GITHUB_TOKEN`) or else `gh auth status --hostname github.com` succeeds (gh's own sign-in; works with old gh such as Ubuntu 22.04's 2.4), the last checked `github_login`; `ready` and a `reason` for the UI. Cached for `STATUS_TTL` (30 s), cleared on connect/disconnect.
+  - `check_github_token(token)`: format check (`TOKEN_RE`), then `GET https://api.github.com/user` (urllib, honours HTTPS_PROXY). Returns login, name, id, classic `scopes` (from `X-OAuth-Scopes`; `None` for fine-grained), a `warning` (classic token without `repo`) and a `hint` (fine-grained: permissions can't be checked from here). Raises `GitHubError` (refused, unreachable).
+  - `connect_github(token)`: checks, works out the settings changes (when neither the settings nor `git config user.email` give a commit identity: the account's name, or its login if git can't use the name, and its `id+login@users.noreply.github.com` address), then saves the token through `save_api_key_to_env` and the fields through `config_manager.set_github_fields` (which validates only those fields). `disconnect_github()` removes the token (gh's own sign-in is untouched).
+
+## Links & Dependencies
+- Called by `main.py` (`run_workspace_tool`, `ask_create_form`, `POST /api/projects`, `/api/github`) and `admin.py` (`set-github`, `github-status`, `remove-github`). Create and archive always wait for the user (`always_ask`), so auto-approve doesn't apply.
+- Uses `config_manager.get_settings`, `security.resolve_scope_root` and `scrubbed_env`.
+
+## fix24b
+- `IN_PROJECT_TOOLS` includes `create_project`: inside a project the model creates projects with the tool (always approved by the user), not with shell commands. The result's `note` asks the model to offer `switch_project`; the active project doesn't change by itself. `archive_project` stays Workspace-only.
+
+## fix25a: archived projects
+- `_archive_dir(create=False)`: `<root>/.archive`, refused (`WorkspaceError`) when it is a symlink or resolves anywhere else; used by archive, list, restore and delete.
+- `archive_project` never moves into an existing folder (same second: the timestamp moves on).
+- `list_archived()`: folders in `<root>/.archive/` named `<name>-YYYYmmdd-HHMMSS` (`ARCHIVED_RE`; symlinks, other names and impossible dates skipped), newest first.
+- `_archived_path(folder)`: refuses anything but such a folder, symlinks, and paths whose real parent isn't the real `.archive`.
+- `restore_archived(folder)`: moves it back as `<root>/<name>` (refused if that exists) and unmarks the name as deleted.
+- `delete_archived(folder, confirm, keep_records)`: `phrase_matches(confirm, name)` (`DELETE_PHRASE` "yes I want to delete {name}": the words case- and space-insensitive, the name exact), then `_rmtree_at(fd, folder)` on `.archive` opened with `O_NOFOLLOW`: a recursive delete through directory file descriptors (every folder opened with `O_NOFOLLOW`, symlinks unlinked, never followed), so swapping `.archive` or anything inside after the checks can't redirect it. (`shutil.rmtree(dir_fd=…)` would do the same but needs Python 3.11; Optimux supports 3.10.) File-system errors become `WorkspaceError`; records change only after the folder is gone. Restore is one `os.rename`. keep_records: `project_records.mark_deleted` and the budget removed, unless another archived folder or a live project shares the name. Otherwise `project_records.forget(name)`, refused when another copy shares the name. Never touches GitHub; returns the remote. `github_settings_url(remote)` for the dialog's link.
+- `github_repo_state(remote)` (fix25c): does the remote's GitHub repository exist? With the saved token: `GET /repos/{owner}/{repo}` with it (exists / missing). With gh's own sign-in: `gh api repos/… --silent` (`github=True`). Anonymous: the same API call without auth; a 404 is `deleted_or_private` (GitHub hides private repos). 403 with `X-RateLimit-Remaining: 0` or 429 → the hourly-limit reason; network errors → `unknown`.
+- `create_project` unmarks a deleted name (its records belong to the new project).
+- There is no model tool for restore or delete (a test checks the tool set).
+
+## Feature 26: import from GitHub, watch the Workspace
+- `_github_get(req, timeout)`: every GitHub API request (token check, repo state, repo list) goes through an opener whose redirect handler (`_GitHubOnlyRedirects`) refuses redirects outside `https://api.github.com/` (urllib would carry the Authorization header to any host). Tests patch `_github_get`.
+- `list_github_repos()`: needs `github_status()["ready"]`. With the saved token: `GET /user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member`, following `Link: rel="next"` only to `https://api.github.com/` (up to `MAX_REPOS` = 1000). With gh's own sign-in: `gh api --paginate … --jq '.[] | {fields}'` (one JSON object per line; `_run(..., keep=None)` keeps the whole output, which `_run` otherwise cuts to the last 2000 characters). `truncated` only when there really was more than `MAX_REPOS`. Names must match `REPO_RE` (GitHub's rules; never `.`/`..`). Each repo gets `local` from `local_github_repos()` (projects whose origin is that repo, compared in lower case). Returns `{repos, login, truncated, fine_grained}`.
+- `clone_command(full_name, name, job_id)` → `(argv, staging, final)`: checks the repo name, the folder name (`check_create`) and readiness, and creates the hidden staging folder `<root>/.clone-<job_id>` (`os.mkdir`, so it's this job's alone); argv `git GIT_SAFE -c credential.helper= -c credential.helper=!gh auth git-credential clone --progress --no-recurse-submodules -- https://github.com/<repo>.git <staging>`. A clone in progress is therefore invisible to project lists (hidden folder), and can't be archived or opened half-done.
+- `finish_clone(staging, final)`: `os.rename` into place only if `final` doesn't exist (a folder made meanwhile wins; the clone is discarded). `remove_staging(staging)` removes only `<parent>/.clone-<32 hex>` (through the parent's fd, `_rmtree_at`); nothing else can be deleted by a failed clone. `remove_stale_staging(keep)` clears staging folders no running job owns (left by a server stopped mid-clone). `clone_env()` = `_env(github=True)` + `GIT_LFS_SKIP_SMUDGE=1`.
+- `workspace_snapshot()`: (root, project folder names, `.archive` names), compared by main.py's watcher.
+
+## Feature 25
+- Creating a project is a form (see main.py_AGENT.md); `switch` in the form replaces the fix24b note that asked the model to offer `switch_project`.
+- Tests: `tests/test_workspace.py` (gh calls and their environment, token checks with a fake `urlopen`, the form flow over the WebSocket, the REST endpoints).

@@ -1,0 +1,128 @@
+# main.py Agent Details
+
+## File Overview
+`main.py` is the FastAPI entry point for Optimux. It serves `index.html`, exposes the REST configuration API, and runs the WebSocket chat: routing, the agent loop, tools, escalation and usage metering.
+
+## Core Functionality
+- **Startup:** First `paths.prepare_home()` puts files in the `~/.optimux` layout (moving the repo's old `.codemux/` and `.env`, and `~/.codemux` from before the rename, and printing each move) before any other module reads config or secrets. Then it calls `init_memory()` and `get_or_create_token()`, which loads `OPTIMUX_TOKEN` from `secrets.env` or generates and prints one. Then `usage_meter.ensure_ready()` creates the schema and imports the legacy usage log, and only after that `store.backup()` makes the day's database backup, so the backup includes the imported usage. A failure is logged and doesn't stop the server.
+- **Auth:** Middleware requires `Authorization: Bearer <OPTIMUX_TOKEN>` on every `/api/*` route. `/` stays public. There is no CORS middleware (same-origin UI). `ScopeError` and `ValidationError` become HTTP 400.
+- **REST endpoints:** `/api/config`, `/api/routing`, `/api/keys`, `/api/models`, `/api/settings`, `/api/projects`, `/api/memory` (personal and professional only), `/api/usage` (optional `?project=<name>` filter), `/api/storage` (database location, size, latest backup), `/api/cooldowns`.
+- **`POST /api/keys`** returns `{"status", "cooldowns_cleared"}`. Saving a key clears the cooldowns of every model that uses that env key, since a new key may fix the quota, billing or auth problem behind them.
+- **`POST /api/cooldowns/clear` `{model?}`:** Clears one model's cooldown, or all of them when `model` is omitted. Returns `{"cleared": [...]}`.
+- **Stored sessions (`sessions.py`):**
+  - **Creating:** a chat's session is created on its first real prompt (`ensure_chat`), which announces it with `session_started`.
+  - **Recording:** `send()` records every message through the connection's `Recorder` (`websocket.optimux_recorder`). `run_job` adds `prompt` and `escalate` markers, and after each request `save_chat` stores the events and the model state. Usage rows use the stored session id, so History can show cost per chat.
+  - **Opening:** `{"type":"open_session","id":<id>|"latest"}` loads a session into the connection (history, tier, pin) and sends `session_loaded` with its events for replay. If the session belongs to another project, the active project is switched first, so commands run in the right folder. With nothing to open, the chat is reset.
+  - **Deleted while open:** if the open session is deleted from History, the next prompt starts a new one.
+  - **REST:** `GET /api/sessions` (`project`, `all_projects`, `archived`, `q`), `POST /api/sessions/{id}/rename` `{title}`, `POST /api/sessions/{id}/archive` `{archived}`, and `POST /api/sessions/{id}/delete` `{confirm}`. Delete requires the session's title (or its id when untitled) and keeps the usage rows.
+- **Dashboard endpoints:**
+  - `GET /api/usage/daily?days=30&project=`: per day and model.
+  - `GET`/`POST /api/memory/project/{name}`: project memory; the name is validated like any project name, so `..` and hidden names are rejected.
+  - `GET /api/projects/overview`: folders under the projects root plus any project with usage or chats, each with this month's and all-time cost, calls, chats, last activity, budget, and whether its folder still exists.
+  - `GET /api/system`: `git describe` version, LiteLLM and Python versions, storage, the file layout (`paths`) and the latest file moves (`migrations`).
+  - `POST /api/system/rotate-token` `{current}`: requires the current token and returns the new one once.
+- **Memory curator (`curator.py`):**
+  - **`GET /api/sandbox`:** `sandbox.status()` (installed, path, version, works, error, required) plus `enabled`; `?refresh=true` checks again.
+  - **`GET /api/guide` (Feature 20):** returns `docs/GUIDE.md` (`GUIDE_PATH`, relative to the repository, not the working directory) as `{content}`; 404 when the file is missing. Token-protected like every `/api/` route.
+  - **`GET /api/costs/estimates` (Feature 18):** what extra paid actions usually cost: `memory_update` (role `curator`), `skill_draft` and `complex_call`, each `{avg, n, model}` from the last 5 priced calls or null, plus `memory_this_month` (calls and cost, all projects). Shown before Update memory now, Save as skill and Escalate, and next to the memory switch.
+  - **`curate_session(sid, websocket=None, force=False, full=False)`:** updates the chat's project memory from its new turns (`full` re-reads the whole chat). It skips (without a model call), returning a readable `reason`:
+    - chats at the projects root, and chats with nothing new or under 200 characters of new content;
+    - when the project's budget blocks or the Simple model is unavailable;
+    - when the curator is turned off (`curator_enabled()`), unless `force`.
+  - **The call:** uses the Simple model at its own thinking level and is metered as role `curator`. It marks the turns as curated, writes accepted results as a `curator` version with the call's cost, and tells the open page what happens through `notify()` (sent directly, not recorded in the chat's event log): `memory_updating` (project) just before the model call, then `memory_updated` (project, summary, version id, cost) or `memory_unchanged` (project, reason, cost), including when the call fails, so the page's status pill always ends. Skips send nothing. Results include `cost`. It never raises.
+  - **Triggers** (`schedule_curation`, background tasks kept in `BACKGROUND_TASKS`, with `CURATING` preventing duplicate runs):
+    - the chat being left when `new_chat` or `open_session` arrives;
+    - an idle timer reset after every request (`curator_idle_seconds()` from `curator_idle_minutes`);
+    - the WebSocket closing.
+  - **Endpoints:**
+    - `GET /api/memory/project/{name}/versions`.
+    - `POST /api/memory/versions/{id}/undo`.
+    - `POST /api/memory/project/{name}/curate` runs the curator now on the project's latest chat, even when it's off, re-reading the whole chat (`force` and `full`), so it works after an undo; the result adds `chat_title`.
+    - Dashboard edits (`POST /api/memory/project/{name}`) are saved as `user` versions.
+- **Skills (`skills.py`):**
+  - **Per request:** each request discovers the skills (global, plus the active project's). Only the listed ones (`listed_skills()`: auto skills when `skills_mode()` is auto) go into `session["skills"]`, the Conductor's catalog, the executor prompt and `offered_tools` (so `load_skill` is offered only when something is listed).
+  - **`/name` (Feature 19):** `skills_lib.parse_command` runs any existing skill on request, whatever its mode: it becomes the active skill (with its tier, steps and thinking, even with a model override), the rest of the message is the request ("Run the <name> skill." when empty), and a "Skill: <name> (you asked for it)" note is sent. With `skills_mode` off it is refused with an error.
+  - **Conductor pick:** the Conductor sees the catalog and may pick one (`route_model_with_usage(msg, skills)` returns it as a fifth value). A picked skill is loaded into `session["skill"]` and announced ("Skill: name").
+  - **Overrides:** the skill's `tier` replaces the Conductor's tier for that request, unless the chat is pinned or a model override is used. While a skill is active, its `max_steps` replaces the step limit and its `thinking` replaces the model's thinking level.
+  - **Prompt:** the executor prompt lists the catalog and, for an active skill, its instructions (`build_messages(..., skills, active_skill)`).
+  - **`load_skill` tool:** offered when skills exist (`offered_tools`). It loads instructions mid-turn and sets the active skill from the next call. Asking for the skill that is already active returns a short error instead of its instructions again.
+  - **Usage:** rows record the active skill.
+  - **Scripts:** scripts in skill folders aren't flagged as outside the project (`in_skill_folder`).
+  - **Endpoints:**
+    - `GET /api/skills` lists both scopes with usage, the override state and whether each skill is usable.
+    - `GET /api/skills/template`.
+    - `GET`/`POST /api/skills/{scope}/{name}` read and save `SKILL.md`.
+    - `POST /api/skills/{scope}/{name}/remove` moves the folder to legacy.
+    - `POST /api/skills/{scope}/{name}/mode` `{mode}` sets manual or auto.
+    - `GET /api/skills` also returns each skill's `mode`, plus `skills_mode`, `listed` and `catalog_tokens`.
+    - `POST /api/skills/draft` `{session_id, name}` asks the Simple model, at its own thinking level, to draft a `SKILL.md` from a stored chat. Nothing is saved; usage is recorded as role `skill_draft` with the skill's name.
+    - `GET /api/skills` also returns each skill's `drafting` cost, separate from its usage.
+  - **Startup:** seeds the starter skills.
+- **Workspace tools (`workspace.py`):**
+  - **Offered tools:** every executor call offers `TOOLS` plus `workspace.tools_for(active_project())`: all four project tools at the projects root, and `list_projects` and `switch_project` inside a project.
+  - **Dispatch:** `run_workspace_tool` handles them.
+    - `list_projects` runs directly.
+    - `switch_project` changes the active project (`set_active_project`, which sends `project_switched`).
+    - `create_project` (Feature 25) goes through `ask_create_form`: the model's arguments are normalized (`workspace.normalize_create`) and sent as `approval_request` with `action="create_project"`, `always_ask`, `form`, `error` (from `create_problem`: `check_create` plus GitHub readiness; empty while the name is empty), `github` (`github_status()`) and `active_project`. The answer may carry a `form` with the user's values; they are normalized and checked again, and on a problem the form is sent again with the `error` until it passes or the user cancels. An answer without `form` keeps the model's values. Then it creates, sends the command block, `projects_changed` and `project_created` (`project`, `ok`, `github_url`; a toast, not recorded), and, when `switch` is set, `set_active_project` (the page moves the chat after `done`). The result includes the final `form` and a `note` (switched: "finish with one short sentence"; stayed: "don't offer to switch").
+    - `archive_project` is validated first, then needs approval through `ask_approval(..., action=..., always_ask=True)`. Auto-approve never applies to either.
+    - `wait_for_answer` returns the whole answer (`ask_approval` wraps it as a bool).
+    - Their progress shows as a command block, followed by `projects_changed`.
+    - Archiving the active project returns to the root.
+  - **Errors** (`WorkspaceError`) go back to the model as `{"ok": false, "error": ...}` without asking for approval (archive, switch); create shows them in the form instead.
+- **fix25a REST (buttons only):** `GET /api/projects/deleted` ({name: deleted_at}), `GET /api/projects/archived` (each with `records` counts, the confirmation `phrase`, `remote`, `github_settings`), `POST /api/projects/{name}/archive` (refused while `BUSY_PROJECTS` counts a request started in that project, in any tab; clears the active project if it was this one: `was_active`; `_broadcast`s `project_archived` to every open page), `POST /api/projects/archived/{folder}/restore`, `POST /api/projects/archived/{folder}/delete` `{confirm, keep_records}`. `GET /api/projects/archived/{folder}/github` (fix25c): `github_repo_state` of its remote plus the settings link, asked when the delete dialog opens. Errors are 422. `/api/projects/overview` adds `archived` and `deleted` per project.
+- **Feature 26:** `GET /api/github/repos` (`list_github_repos`; 422 on errors). `POST /api/github/clone` `{full_name, name}` registers the job in `CLONE_JOBS` before awaiting anything (a second request for the same name is refused while one runs), clears stale staging folders, then runs `clone_command`'s argv (cloning into the staging folder) as an asyncio subprocess in its own session, reading `--progress` from stderr (`\r`/`\n` lines → `progress`; last lines kept for `error`), with a `CLONE_TIMEOUT` (30 min). `GET /api/github/clone/{id}` polls it; `DELETE` cancels (`_kill_group`: kills the process group unless it already ended). Success moves the clone into place (`finish_clone`; refused if that name appeared meanwhile) and unmarks a deleted name; anything else removes only the staging folder. A server stopping mid-clone kills git (`atexit`, and on task cancellation); the next clone removes leftover staging folders. Every end `_broadcast`s `projects_changed`. Jobs live in memory (the last ten finished are kept).
+- **Workspace watcher (Feature 26):** `ensure_workspace_watcher()` starts with the first signed-in page (`LIVE_SOCKETS`); `_watch_workspace` compares `workspace.workspace_snapshot()` every `WATCH_INTERVAL` (3 s; an error in one look is logged, the loop goes on) and `_broadcast`s `projects_changed` on a change; it stops when no page is open.
+- **Feature 25 REST:** `POST /api/projects` (the New project dialog: `CreateProjectPayload`, normalized and checked like the chat form; the click is the approval; returns the steps and `report`; switching is left to the page). `GET /api/github[?fresh=1]` (`github_status()` + `git_name`/`git_email` + `sandbox`, never the token), `POST /api/github` `{token}` (`connect_github`; returns login, warning, hint, identity_set), `POST /api/github/identity` `{git_name, git_email}` (`set_github_fields`), `POST /api/github/check` (checks the saved token with GitHub), `DELETE /api/github`. `POST /api/settings` keeps the stored GitHub fields. A create that fails after its checks (`WorkspaceError`, e.g. the folder appeared meanwhile) gets a failed command block in the chat and a 422 over REST. Their errors are **422**, so the forms show them inline (boot.js alerts on 400).
+  - **Approvals:** `ask_approval` is shared with `execute_bash`.
+  - **No intercept:** the old create-repo keyword intercept is gone.
+- **Budgets:** `GET /api/budgets` returns this month's status for every budgeted project (an archived project's has `paused: true`, fix25e: kept for a restore, shown apart); `POST /api/budgets` `{project, monthly_usd, on_limit}` sets one (`monthly_usd: null` removes it). Before each request (a prompt or escalate), `check_budget_before_request` refuses it with `{"type":"budget","state":"blocked"}` when the active project's budget is used up and set to block. Otherwise it sends a one-time `budget` note per level (80%, and 100% in warn mode) per project and month; `BUDGET_NOTES_SHOWN` is kept per server run, so reloading the page doesn't repeat a note. `call_model` checks before every model call and raises `BudgetExceeded`; the turn then pauses with `state: "paused"`, keeping its history. `active_project()` reads the setting.
+- **`POST /api/models/test` `{id}`:** One tiny real call (`max_tokens=5`, 20s timeout) to check a model ID and its key. Returns `{ok, kind, message}`. An unroutable ID returns `kind: "config"` without making a call. The call is metered with role `test` and never starts a cooldown; a successful test clears the model's cooldown (`cooldown_cleared`).
+- **WebSocket handshake (`/ws`):** Checks Origin before `accept()`. The first message must be `{"type":"auth","token":...}` within 10s, or the socket closes with 4401. On success it replies `auth_ok`.
+- **Session (one per connection):** `new_session()` holds the chat `history`, the sticky `tier`, usage totals, the pending `approval` future and the `current_stream`.
+- **Reader loop and jobs:** The WebSocket loop only reads. Each request (a prompt, `new_chat` or `escalate`) runs as an asyncio task (`run_job`), so the loop stays free to handle:
+  - `{"type":"stop"}`: cancels the running task. If nothing is running, it just answers `done`.
+  - `approval_response`: resolves `session["approval"]`; late clicks are ignored.
+  - A new request while busy gets a "Still working" note.
+  Every job ends with `done`. A disconnect cancels the running job.
+- **Stop:** Cancellation interrupts the model stream, the approval wait or a running shell command (`executor.py` kills its process group). The cancelled call is metered as an estimate. `close_stopped_turn()` keeps the history valid: unanswered tool calls get a "Cancelled" tool result, and the turn ends with an assistant message holding the partial text plus `[Stopped by the user.]`. The client receives `stopped`, a "Stopped." note, then `done`.
+- **Routing (`handle_prompt`):**
+  - `/new` resets the chat.
+  - `/simple` or `/complex` (as a prefix) sets the tier for the chat. The prefix is stripped from the prompt.
+  - An explicit model from the dropdown is used as-is (role `override`).
+  - Otherwise `resolve_tier` routes **between tasks, never within one**. The Conductor checks every message (unless pinned with `/simple` or `/complex`, or set to Off). It can move the chat up to complex at any time, with a note. It moves the chat back down to simple only when `session["last_turn_ok"]` is true, meaning the previous turn finished normally rather than being stopped, failing or pausing at the step limit; this is also announced with a note. With the Conductor Off, only escalation changes the tier. `/new` resets the tier, the pin and `last_turn_ok`. The tier maps to `simple_model` or `complex_model` in the routing config.
+- **Messages (`build_messages`):** `[system, *history, user]`. The system prompt is `get_executor_prompt(memory, workdir)`. For Anthropic models it is marked `cache_control: ephemeral`.
+- **Prompt caching (`with_cache_breakpoint`):** For Anthropic models, each call also marks the newest user or tool message as a cache breakpoint (on a copy; stored history is unchanged). In an agent loop every call resends everything before it, so the next call reads almost the whole prompt from cache. Other providers cache automatically.
+- **API keys:** Every executor call and model test passes `litellm_key_kwargs(model)`, so the key comes from that model's own env key variable.
+- **Thinking:** Executor calls also pass `thinking_kwargs(model)` (`reasoning_effort` unless the model's level is `default`); the Conductor and Test never think.
+  - `stream_once` sends `delta.reasoning_content` to the UI as `{"type":"thinking"}` chunks. It never goes into the reply text or the history content.
+  - Anthropic's signed `thinking_blocks` (complete blocks with a signature, or redacted ones) are collected and kept on the assistant message by `with_thinking()`, because Claude requires them on the next call of a tool loop.
+  - `prepare_messages()` removes them for other providers, and `compact_history()` removes them once the turn ends.
+- **`POST /api/models/thinking` `{id, thinking}`:** sets a model's thinking level.
+- **Agent loop (`run_turn`):** Up to `max_steps_for(role)` model calls (Settings: 8 for simple, 25 for complex; overrides use the complex limit). Both tiers get `TOOLS`. Streams through `stream_once`, holding back output that looks like a JSON tool call (some models print calls as text, which `parse_text_tool_call` recovers). Includes an anti-loop check. Returns `ok`, `aborted` (same tool call repeated) or `loop_limit`. No stop sequences are sent.
+- **Step limit:** On simple, reaching the limit escalates to complex. Where there's nowhere to escalate (complex, an override, or the escalated turn itself), `notify_step_limit` sends `{"type":"step_limit", steps}`, and the UI offers Continue (a normal follow-up prompt; history ending in tool results stays valid).
+- **Working directory:** `current_workdir()` (the active project, or `""` if scope isn't configured) goes into the system prompt through `build_messages(..., workdir)`.
+- **Tools:** `execute_bash` sends `approval_request` with `outside_paths` (from `security.paths_outside_scope`), `workdir` and `sandboxed` (whether the command will run in the sandbox; sent by `ask_approval` for every approval), and awaits a future that the reader loop resolves with the `approval_response`, before `run_shell_command`. `update_markdown_memory` calls `update_memory`.
+- **Provider errors:** `call_model` does not call a model in cooldown (it raises `ModelUnavailable`). Errors are classified by `providers.py`. A transient error is retried once after `RETRY_DELAY`, only if nothing has been streamed yet. Quota errors are never retried. Failures put the model in cooldown and raise `ProviderFailure`. Fatal errors propagate and are shown as one line.
+- **Escalation and fallback (`run_with_fallback`):**
+  - Simple escalates to complex on a step limit, a repeated tool call or a provider error. The turn continues from the same messages, so work already done is kept. Only the difficulty signals (step limit, repeated tool call) keep the chat on complex; a provider outage does not.
+  - When the chosen tier's model is in cooldown, `handle_prompt` switches to the other tier's model before calling (with a "Skipping ..." note, not sticky).
+  - When both models are down, one concise error names both reasons.
+  - Complex falls back to simple only on provider errors.
+  - Explicit overrides never switch models. Non-transient errors are reported without fallback.
+  - `{"type":"escalate"}` re-runs the last user request on complex. It keeps the commands already run and their output (assistant tool calls and tool results), and drops only the weaker model's written answer, so the stronger model doesn't repeat them (`run_with_fallback(..., prior=...)`, `build_messages(..., user_message=None)`). The note says how many command results were reused.
+- **History:** After each turn the messages are compacted (mid-conversation system nudges dropped, tool output cut to `TOOL_OUTPUT_HISTORY_CHARS` = 4000) and trimmed to `HISTORY_CAP` (40), always starting at a user message.
+- **Metering (`meter`):** Records each Conductor and executor call (tokens, cost, `duration_ms`, and the active project) through `usage.py` and sends a `usage` message with session totals. Streamed calls request `include_usage`; if none arrives, tokens are estimated.
+
+## Data Relations
+- WS client → server: `auth`, `{prompt, model}`, `approval_response`, `new_chat`, `escalate`, `open_session`, `stop`.
+- Server → client: `auth_ok`, `memory_updating`, `memory_updated`, `memory_unchanged`, `project_switched`, `projects_changed`, `session_started`, `session_loaded`, `usage`, `thinking`, `step_limit`, `budget`, `system` (the "Routed to" message also carries `tier` and `model`), `token`, `approval_request`, `command_start`, `command_output`, `chat_reset`, `stopped`, `error`, `done`.
+
+## Links & Dependencies
+- `core/config_manager.py` (routing, models, keys, settings), `core/executor.py` (`run_shell_command`), `core/llm_client.py` (`route_model_with_usage`, `TOOLS`), `core/agents.py` (`get_executor_prompt`), `config_manager.model_id_problem`, `core/memory_manager.py` (memory), `core/usage.py` (metering), `core/providers.py` (error classification, cooldowns), `core/budgets.py` (budgets), `core/security.py` (auth, origin, error types). Calls `litellm.acompletion` directly.
+- Serves `index.html`.
+
+## Feature 23: access and headers
+- `FastAPI(docs_url=None, redoc_url=None, openapi_url=None)`: no interactive docs. `/static` serves `web/`; `/` serves `index.html` from the repo (redirects to `/login` when signed out); `/login` serves `web/login.html`.
+- `guard` middleware replaces `require_token`: cookie session or Bearer token on everything but `PUBLIC_PATHS` and `/static/`; same-origin check (`same_origin`) for cookie-authenticated changes and for `/auth/*` POSTs; `security_headers` on every response (CSP with `script-src 'self' 'unsafe-eval'` and ws/wss of the Host in `connect-src`, nosniff, DENY framing, no-referrer, Permissions-Policy, COOP/CORP, HSTS over HTTPS, `no-store` outside `/static`).
+- Sign-in endpoints and `LIVE_SOCKETS`: see `core/auth.py_AGENT.md`. `_announce(event, request)` sends `{type: auth_event, event: signin|signout, ip, agent, time}` straight to every signed-in socket (not recorded in chats) after a sign-in, sign-out or "sign out the others". `client_ip`/`is_https` rely on uvicorn's proxy headers (trusted from 127.0.0.1 only).
+- `/api/security`: the checklist for Dashboard → System (HTTPS, two-step codes, sandbox, network, approval, server mode, other sign-ins). `/api/sandbox` also returns `server_mode`.

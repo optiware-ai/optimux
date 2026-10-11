@@ -1,0 +1,59 @@
+# Optimux as a hardened systemd service (Feature 23).
+# Install: see docs/GUIDE.md, "Running on a server". Paths assume:
+#   code in /opt/optimux (virtualenv in /opt/optimux/.venv), an `optimux` system user
+#   whose home is /var/lib/optimux, and the Workspace in /var/lib/optimux/workspace.
+[Unit]
+Description=Optimux
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=optimux
+Group=optimux
+WorkingDirectory=/opt/optimux
+EnvironmentFile=/etc/optimux/optimux.env
+# Optimux listens on a Unix socket, not a TCP port. Only members of the optimux group
+# (Caddy: `usermod -aG optimux caddy`) can open /run/optimux, and model-run commands
+# can't see it (the sandbox gives them an empty /run). So nothing but Caddy can
+# connect, and the X-Forwarded-For/-Proto headers it sets can be trusted.
+RuntimeDirectory=optimux
+RuntimeDirectoryMode=0750
+ExecStart=/opt/optimux/.venv/bin/uvicorn optimux_backend.main:app --uds /run/optimux/optimux.sock --proxy-headers --forwarded-allow-ips * --no-server-header
+Restart=on-failure
+RestartSec=3
+
+# --- Limits for Optimux and every command it runs together (adjust to the VPS) ---
+MemoryMax=3G
+TasksMax=512
+CPUQuota=200%
+LimitNOFILE=8192
+
+# --- Hardening ---
+# The whole file system is read-only except Optimux's home (data + Workspace).
+ProtectSystem=strict
+ReadWritePaths=/var/lib/optimux
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+UMask=0077
+# Not set on purpose:
+# - ProtectKernelTunables, ProtectKernelLogs, ProtectProc, ProcSubset: they over-mount
+#   parts of /proc, and the kernel then refuses the fresh /proc that bubblewrap mounts
+#   for each command ("Can't mount proc"), so every command would be refused.
+# - RestrictNamespaces, CapabilityBoundingSet, SystemCallFilter: bubblewrap needs user,
+#   mount, pid, ipc, uts and net namespaces.
+# - MemoryDenyWriteExecute: commands may run JIT runtimes (Node, Java).
+
+[Install]
+WantedBy=multi-user.target

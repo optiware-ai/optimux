@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimux</title>
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+    <!-- Everything is served by Optimux itself (pinned copies in web/vendor), so no CDN can change the code. -->
+    <link rel="stylesheet" href="/static/app.css">
+    <link rel="stylesheet" href="/static/vendor/highlight-11.9.0-github-dark.min.css">
+    <link rel="stylesheet" href="/static/optimux.css">
+    <script src="/static/vendor/vue-3.5.13.global.prod.js"></script>
+    <script src="/static/vendor/marked-15.0.12.umd.js"></script>
+    <script src="/static/vendor/purify-3.2.6.min.js"></script>
+    <script src="/static/vendor/highlight-11.9.0.min.js"></script>
+    <script src="/static/vendor/qrcode-generator-1.4.4.js"></script>
+    <script src="/static/boot.js"></script>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex flex-col">
+    <div id="app" class="flex flex-col h-full max-w-6xl mx-auto w-full p-4 relative">
+        
+        <!-- Interactive Setup Modal -->
+        <div v-if="showSetupModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+            <div class="bg-gray-900 border border-gray-700 p-6 rounded-xl max-w-md w-full shadow-2xl">
+                <h2 class="text-xl font-bold mb-4 text-blue-400 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    Configuration Required
+                </h2>
+                <p class="mb-4 text-gray-300 text-sm leading-relaxed">{{ modalInstructions }}</p>
+                <form @submit.prevent="saveKey" class="flex flex-col gap-3">
+                    <input v-model="keyInput" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true" data-bwignore placeholder="Paste your API key here..." class="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-gray-100 focus:outline-none focus:border-blue-500 transition w-full" required>
+                    <div class="flex justify-end gap-3 mt-2">
+                        <button type="button" @click="closeModal" class="px-5 py-2 text-gray-400 hover:text-white transition font-semibold">Cancel</button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg font-bold transition flex items-center gap-2" :disabled="isSavingKey">
+                            <span v-if="!isSavingKey">Save Key</span>
+                            <span v-else>Saving...</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <header class="py-3 border-b border-gray-800 flex justify-between items-center bg-gray-950 sticky top-0 z-10 gap-4">
+            <div class="flex items-center gap-4 min-w-0">
+                <h1 class="text-xl font-bold tracking-wider text-gray-100 flex items-center gap-2">
+                    <span :class="['w-2.5 h-2.5 rounded-full', wsState === 'connected' ? 'bg-green-500' : (wsState === 'connecting' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500')]"
+                          :title="wsState === 'connected' ? 'Connected to the Optimux server' : (wsState === 'connecting' ? 'Connecting to the Optimux server…' : 'Disconnected from the Optimux server; retrying')"></span>
+                    <img src="/static/logo.svg" alt="" class="w-6 h-6">
+                    <span>Opti<span class="text-blue-500">mux</span></span>
+                </h1>
+                <template v-if="appSettings.projects_root">
+                    <select v-model="appSettings.active_project" @change="changeProject" :title="appSettings.active_project ? 'Active project: ' + projectPath(appSettings.active_project) + '\nCommands run in this folder.' : 'Workspace: ' + workspacePath + '\nNo project selected. Talk to Optimux here to list, create, switch or archive projects; commands run in the Workspace folder.'" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-gray-200 focus:outline-none focus:border-blue-500 max-w-[200px] truncate">
+                        <option value="">Workspace</option>
+                        <option v-for="p in projectsList" :key="p" :value="p">{{ p }}</option>
+                    </select>
+                    <button @click="openNewProject" title="New project (no model involved)" aria-label="New project"
+                            class="-ml-2 w-7 h-7 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-blue-500 hover:bg-blue-950/40 transition flex items-center justify-center">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-width="2" d="M12 5v14M5 12h14"></path></svg>
+                    </button>
+                </template>
+                <button v-else @click="openSettings('scope')" class="bg-yellow-900/30 border border-yellow-700 text-yellow-400 rounded-lg px-2 py-1 text-xs font-bold hover:bg-yellow-800/50 transition">Set Workspace folder</button>
+                <button v-if="projectUsage" @click="openSettings(budgetStatus ? 'budgets' : 'overview')"
+                        :class="['text-xs font-mono px-2 py-1 rounded-lg hidden md:inline-block transition', budgetStatus && budgetStatus.state === 'over' ? 'text-red-300 bg-red-900/30' : (budgetStatus && budgetStatus.state === 'warning' ? 'text-yellow-300 bg-yellow-900/20' : 'text-gray-400 hover:text-gray-200')]"
+                        :title="headerCostTitle">
+                    {{ budgetStatus ? fmtCost(budgetStatus.spent) + ' / ' + fmtCost(budgetStatus.monthly_usd) : fmtCost(projectUsage.month.cost) }} this month{{ (budgetStatus ? budgetStatus.calls_without_cost : projectUsage.month.calls_without_cost) ? '+' : '' }}
+                </button>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <span v-if="memoryStatus" :class="['text-xs font-mono px-2 py-1 rounded-lg flex items-center gap-1.5 transition', memoryStatus.state === 'running' ? 'text-purple-300 bg-purple-950/50' : (memoryStatus.state === 'updated' ? 'text-green-300 bg-green-950/40' : 'text-gray-400 bg-gray-900')]" :title="memoryStatus.title">
+                    <span v-if="memoryStatus.state === 'running'" class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+                    {{ memoryStatus.text }}
+                </span>
+                <span v-if="wsState !== 'connected'" class="text-xs text-red-400 hidden sm:inline">{{ wsState === 'connecting' ? 'Connecting…' : 'Offline, retrying…' }}</span>
+                <button @click="toggleHistory" :class="['text-sm px-3 py-1.5 rounded-lg transition flex items-center gap-1.5', historyOpen ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white hover:bg-gray-800']" title="Past chats">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    History
+                </button>
+                <button @click="openSettings('guide')" class="text-sm w-8 h-8 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition flex items-center justify-center" title="Guide: how Optimux works, costs, and how to spend less">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </button>
+                <button @click="openSettings()" class="text-sm px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition flex items-center gap-1.5" title="Dashboard: usage, budgets, models and settings">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-3a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z"></path></svg>
+                    Dashboard
+                </button>
+            </div>
+        </header>
+
+        <!-- Dashboard: full page over the chat (the chat stays mounted underneath) -->
+        <div v-if="showSettingsModal" class="fixed inset-0 z-50 bg-gray-950 flex text-gray-200">
+            <aside class="w-60 flex-shrink-0 border-r border-gray-800 bg-gray-900/60 flex flex-col">
+                <div class="px-5 py-5 border-b border-gray-800">
+                    <div class="text-lg font-bold tracking-wide flex items-center gap-2"><img src="/static/logo.svg" alt="" class="w-6 h-6"><span><span class="text-gray-100">Opti</span><span class="text-blue-400">mux</span></span></div>
+                    <div class="text-xs text-gray-500 font-mono mt-0.5">Dashboard</div>
+                </div>
+                <nav class="flex-1 overflow-y-auto py-3">
+                    <template v-for="group in dashboardGroups" :key="group">
+                        <div class="px-5 pt-3 pb-1 text-[11px] uppercase tracking-wider text-gray-600">{{ group }}</div>
+                        <button v-for="sec in dashboardSections.filter(x => x.group === group)" :key="sec.id" @click="openSettings(sec.id)"
+                                :class="['w-full text-left px-5 py-2 text-[15px] flex items-center gap-3 border-l-2 transition', settingsTab === sec.id ? 'border-blue-500 bg-blue-950/40 text-blue-300' : 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-800/50']">
+                            <span class="w-4 text-center">{{ sec.icon }}</span>{{ sec.label }}
+                        </button>
+                    </template>
+                </nav>
+                <button @click="closeSettings" class="m-4 px-3 py-2 rounded-lg border border-gray-700 text-[15px] text-gray-300 hover:text-white hover:border-gray-500 flex items-center justify-center gap-2" title="Back to the chat (Esc)">
+                    ← Back to chat
+                </button>
+            </aside>
+            <main class="flex-1 flex flex-col min-w-0">
+                <div class="px-8 py-5 border-b border-gray-800 flex items-center justify-between">
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-100 flex items-center">{{ (dashboardSections.find(x => x.id === settingsTab) || {}).label }}<help-tip :text="(dashboardSections.find(x => x.id === settingsTab) || {}).hint"></help-tip></h1>
+                    </div>
+                    <span class="text-[13px] font-mono text-gray-500">{{ projectLabel(appSettings.active_project) }}</span>
+                </div>
+                <div class="flex-1 overflow-y-auto px-8 py-6" id="dash-scroll" @scroll="onDashScroll">
+                <div :class="settingsTab === 'guide' ? 'max-w-7xl' : 'max-w-6xl'">
+
+                <!-- Section: Guide (Feature 20) -->
+                <div v-if="settingsTab === 'guide'" class="flex gap-8 items-start">
+                    <aside class="w-80 flex-shrink-0 sticky top-0 hidden lg:block max-h-[calc(100vh-9rem)] overflow-y-auto pt-1 pr-2">
+                        <input v-model="guideQuery" type="search" placeholder="Search the guide" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[15px] text-gray-200 outline-none focus:border-blue-500 mb-3">
+                        <!-- While searching, the results replace the contents list -->
+                        <div v-if="guideQuery.trim()">
+                            <div class="text-xs uppercase tracking-wider text-gray-500 mb-2 px-2">{{ guideResults.length }} result{{ guideResults.length === 1 ? '' : 's' }}</div>
+                            <button v-for="r in guideResults" :key="r.id" @click="goGuide(r.id)" :class="['block w-full text-left rounded-lg px-2 py-1.5 hover:bg-gray-800', guideActive === r.id ? 'bg-blue-900/40' : '']">
+                                <div class="text-[15px] text-gray-100">{{ r.path }}</div>
+                                <div class="text-[13px] text-gray-400 line-clamp-2" v-html="r.snippet"></div>
+                            </button>
+                            <div v-if="!guideResults.length" class="text-[15px] text-gray-500 italic px-2">Nothing found. Try another word.</div>
+                        </div>
+                        <nav v-else class="space-y-0.5 text-[15px]">
+                            <a v-for="h in guide.toc" :key="h.id" href="#" @click.prevent="goGuide(h.id)"
+                               :class="['block rounded px-2 py-1 truncate', h.level === 3 ? 'pl-5 text-[13px]' : 'font-medium', guideActive === h.id ? 'bg-blue-900/40 text-blue-300' : (h.level === 3 ? 'text-gray-500 hover:text-gray-300' : 'text-gray-300 hover:text-white')]">{{ h.title }}</a>
+                        </nav>
+                    </aside>
+                    <div class="flex-1 min-w-0">
+                        <input v-model="guideQuery" type="search" placeholder="Search the guide" class="lg:hidden w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[15px] text-gray-200 outline-none focus:border-blue-500 mb-4">
+                        <div v-if="guideQuery.trim()" class="lg:hidden mb-6 bg-gray-900 border border-gray-800 rounded-xl p-3">
+                            <div class="text-xs uppercase tracking-wider text-gray-500 mb-2">{{ guideResults.length }} result{{ guideResults.length === 1 ? '' : 's' }} for “{{ guideQuery.trim() }}”</div>
+                            <button v-for="r in guideResults" :key="r.id" @click="goGuide(r.id)" class="block w-full text-left rounded-lg px-2 py-1.5 hover:bg-gray-800">
+                                <div class="text-[15px] text-gray-100">{{ r.path }}</div>
+                                <div class="text-[13px] text-gray-400 truncate" v-html="r.snippet"></div>
+                            </button>
+                            <div v-if="!guideResults.length" class="text-[15px] text-gray-500 italic px-2">Nothing found. Try another word.</div>
+                        </div>
+                        <div v-if="guide.error" class="text-[15px] text-red-400">{{ guide.error }}</div>
+                        <div v-else-if="!guide.html" class="text-[15px] text-gray-500 italic">Loading the guide…</div>
+                        <article v-else class="cm-guide prose prose-invert prose-blue max-w-5xl" v-html="guide.html"></article>
+                    </div>
+                </div>
+
+                <!-- Section: Overview -->
+                <div v-if="settingsTab === 'overview'" class="space-y-6">
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div v-for="k in overviewKpis" :key="k.label" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <div class="text-xs uppercase tracking-wider text-gray-500">{{ k.label }}</div>
+                            <div class="text-2xl font-mono text-gray-100 mt-1">{{ k.value }}</div>
+                            <div class="text-xs text-gray-500 mt-1">{{ k.sub }}</div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-[15px] font-bold text-gray-200">Cost per day · last 30 days</h3>
+                            <div class="flex flex-wrap gap-3 text-xs text-gray-400">
+                                <span v-for="m in costChart.models" :key="m.id" class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm" :style="{ background: m.color }"></span>{{ modelName(m.id) }}</span>
+                            </div>
+                        </div>
+                        <div v-html="costChart.svg"></div>
+                    </div>
+                    <div class="grid lg:grid-cols-2 gap-4">
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <div class="flex items-center justify-between mb-3"><h3 class="text-[15px] font-bold text-gray-200">Budgets this month</h3><button @click="openSettings('budgets')" class="text-[13px] text-blue-400 hover:text-blue-300">Manage</button></div>
+                            <div v-if="Object.keys(activeBudgets).length === 0" class="text-[15px] text-gray-500 italic">No budgets set.</div>
+                            <div v-for="(b, name) in activeBudgets" :key="name" class="mb-3">
+                                <div class="flex justify-between text-[13px] font-mono mb-1"><span class="text-gray-300">{{ name }}</span><span :class="b.state === 'over' ? 'text-red-400' : (b.state === 'warning' ? 'text-yellow-400' : 'text-gray-400')">{{ fmtCost(b.spent) }} / {{ fmtCost(b.monthly_usd) }}</span></div>
+                                <div class="h-2 bg-gray-800 rounded-full overflow-hidden"><div class="h-full rounded-full" :class="b.state === 'over' ? 'bg-red-500' : (b.state === 'warning' ? 'bg-yellow-500' : 'bg-blue-500')" :style="{ width: Math.min(100, b.ratio * 100) + '%' }"></div></div>
+                            </div>
+                        </div>
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <div class="flex items-center justify-between mb-3"><h3 class="text-[15px] font-bold text-gray-200">Models</h3><button @click="openSettings('models')" class="text-[13px] text-blue-400 hover:text-blue-300">Manage</button></div>
+                            <div v-for="m in [...availableModels, ...setupModels]" :key="m.id" class="flex items-center justify-between py-1.5 text-[15px] border-b border-gray-800/60 last:border-0">
+                                <span class="text-gray-300 truncate">{{ m.name }} <span class="text-xs font-mono text-gray-600">{{ routingRole(m.id) }}</span></span>
+                                <span class="text-xs font-mono">
+                                    <span v-if="cooldowns[m.id]" class="text-yellow-400" :title="cooldowns[m.id].reason">cooldown</span>
+                                    <span v-else-if="setupModels.some(x => x.id === m.id)" class="text-gray-500">needs key</span>
+                                    <span v-else-if="modelNotices[m.id] && !modelNotices[m.id].ok" class="text-red-400">test failed</span>
+                                    <span v-else class="text-green-400">ready</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                        <div class="flex items-center justify-between mb-3"><h3 class="text-[15px] font-bold text-gray-200">Recent chats</h3><button @click="openSettings('history')" class="text-[13px] text-blue-400 hover:text-blue-300">All chats</button></div>
+                        <div v-if="recentChats.length === 0" class="text-[15px] text-gray-500 italic">No chats yet.</div>
+                        <button v-for="c in recentChats" :key="c.id" @click="openChatFromDashboard(c.id)" class="w-full flex items-center justify-between py-2 text-[15px] border-b border-gray-800/60 last:border-0 hover:bg-gray-800/40 px-2 rounded">
+                            <span class="truncate text-gray-200 text-left">{{ c.title || 'Untitled chat' }} <span class="text-xs font-mono text-gray-500">· {{ projectLabel(c.project) }}</span><deleted-tag :at="deletedProjects[c.project] || 0"></deleted-tag></span>
+                            <span class="text-xs font-mono text-gray-500 flex-shrink-0 ml-3">{{ fmtAgo(c.updated) }} · {{ fmtCost(c.cost) }}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Section: Projects -->
+                <div v-if="settingsTab === 'projects'" class="grid md:grid-cols-2 gap-4">
+                    <div v-if="workspacePath" class="md:col-span-2 flex flex-wrap items-center gap-x-3 gap-y-1 bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-[13px]">
+                        <span class="text-gray-500">Workspace folder</span>
+                        <span class="font-mono text-gray-200 break-all">{{ workspacePath }}</span>
+                        <button @click="copyPath(workspacePath)" class="text-gray-500 hover:text-gray-200" title="Copy the path">⧉ copy</button>
+                        <button @click="openSettings('scope')" class="ml-auto text-blue-400 hover:text-blue-300">Change in Scope</button>
+                    </div>
+                    <div v-if="appSettings.projects_root" class="border-2 border-dashed border-gray-800 rounded-xl min-h-[120px] grid grid-rows-2 overflow-hidden">
+                        <button @click="openNewProject('new')" class="text-gray-400 hover:text-blue-300 hover:bg-blue-950/20 transition flex items-center justify-center gap-2">
+                            <span class="text-2xl leading-none">+</span><span class="font-bold">New project</span>
+                        </button>
+                        <button @click="openNewProject('github')" class="border-t border-dashed border-gray-800 text-gray-500 hover:text-blue-300 hover:bg-blue-950/20 transition flex items-center justify-center gap-2 text-sm">
+                            <span>⑂</span><span>Clone from GitHub</span>
+                        </button>
+                    </div>
+                    <div v-if="projectsOverview.length === 0" class="text-[15px] text-gray-500 italic">No projects found. Set the Workspace folder in Scope.</div>
+                    <div v-for="p in projectsOverview.filter(x => x.exists || !(x.archived || x.deleted))" :key="p.project" :class="['bg-gray-900 border rounded-xl p-4', p.active ? 'border-blue-700' : 'border-gray-800']">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-bold text-gray-100 truncate">{{ p.project }}</h3>
+                            <span v-if="p.active" class="text-[11px] uppercase tracking-wider text-blue-300 bg-blue-950/60 px-2 py-0.5 rounded">active</span>
+                            <deleted-tag v-else-if="p.deleted && !p.exists" :at="p.deleted"></deleted-tag>
+                            <span v-else-if="!p.exists && p.archived" class="text-[11px] uppercase tracking-wider text-yellow-300/90 bg-yellow-950/40 px-2 py-0.5 rounded" title="In the Workspace's .archive folder; restore or delete it under Archived projects">archived</span>
+                            <span v-else-if="!p.exists" class="text-[11px] uppercase tracking-wider text-gray-500 bg-gray-800 px-2 py-0.5 rounded" title="Its folder isn't in the Workspace folder anymore; history is kept">folder missing</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mt-3 text-center">
+                            <div><div class="text-[11px] uppercase text-gray-500">This month</div><div class="font-mono text-gray-200">{{ fmtCost(p.month_cost) }}</div></div>
+                            <div><div class="text-[11px] uppercase text-gray-500">All time</div><div class="font-mono text-gray-200">{{ fmtCost(p.all_time_cost) }}</div></div>
+                            <div><div class="text-[11px] uppercase text-gray-500">Chats</div><div class="font-mono text-gray-200">{{ p.chats }}</div></div>
+                        </div>
+                        <div v-if="p.budget" class="mt-3">
+                            <div class="flex justify-between text-xs font-mono text-gray-400 mb-1"><span>Budget ({{ p.budget.on_limit }})</span><span>{{ Math.round(p.budget.ratio * 100) }}% of {{ fmtCost(p.budget.monthly_usd) }}</span></div>
+                            <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden"><div class="h-full" :class="p.budget.state === 'over' ? 'bg-red-500' : (p.budget.state === 'warning' ? 'bg-yellow-500' : 'bg-blue-500')" :style="{ width: Math.min(100, p.budget.ratio * 100) + '%' }"></div></div>
+                        </div>
+                        <div class="text-xs text-gray-500 mt-3">{{ p.last_activity ? 'Last activity ' + fmtAgo(p.last_activity) : 'No activity yet' }}</div>
+                        <div class="flex flex-wrap gap-2 mt-3 text-[13px]">
+                            <button v-if="!p.active && p.exists" @click="switchProject(p.project)" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Make active</button>
+                            <button @click="historyPage.project = p.project; openSettings('history')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Chats</button>
+                            <button @click="memoryTab = 'project'; memoryProject = p.project; openSettings('memory'); fetchMemory()" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Memory</button>
+                            <button v-if="!p.deleted || p.exists" @click="openSettings('budgets')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Budget</button>
+                            <button v-if="p.exists" @click="archiveFromDashboard(p.project)" :disabled="p.active && (isGenerating || pendingApproval)" class="px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-yellow-700 hover:text-yellow-300 disabled:opacity-40 ml-auto" title="Move its folder to .archive/ (chats and costs are kept)">Archive</button>
+                        </div>
+                    </div>
+                    <!-- fix25a: archived projects: restore, or delete permanently -->
+                    <div v-if="archivedProjects.length" class="md:col-span-2 mt-4">
+                        <h3 class="font-bold text-gray-200 mb-1 flex items-center">Archived projects<help-tip wide>
+                            <p>Archived folders are in the Workspace's <code>.archive</code> folder. <b>Restore</b> moves one back. <b>Delete permanently</b> removes the folder from disk; you choose whether its chats, costs and memory go too.</p>
+                            <p>Optimux never deletes GitHub repositories. The model can archive projects, but it can't restore or delete them.</p>
+                        </help-tip></h3>
+                        <p class="text-sm text-gray-500 mb-3">In <span class="font-mono text-gray-300 break-all">{{ archivePath }}</span> <button @click="copyPath(archivePath)" class="text-gray-500 hover:text-gray-200" title="Copy the path">⧉</button>. Deleting is only possible from here, and only for archived projects.</p>
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
+                            <div v-for="a in archivedProjects" :key="a.folder" class="flex flex-wrap items-center gap-3 px-4 py-3">
+                                <div class="min-w-0 flex-1">
+                                    <div class="text-gray-100 font-bold truncate">{{ a.name }}</div>
+                                    <div class="text-xs text-gray-500 font-mono truncate" :title="archivePath + '/' + a.folder">.archive/{{ a.folder }} <button @click="copyPath(archivePath + '/' + a.folder)" class="hover:text-gray-200" title="Copy the full path">⧉</button></div>
+                                    <div class="text-xs text-gray-500 font-mono truncate">archived {{ new Date(a.archived * 1000).toLocaleString() }} · {{ a.records.chats }} chat{{ a.records.chats === 1 ? '' : 's' }} · {{ fmtCost(a.records.cost) }}{{ a.remote ? ' · ' + a.remote : '' }}</div>
+                                </div>
+                                <button @click="historyPage.project = a.name; openSettings('history')" class="px-3 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">Chats</button>
+                                <button @click="restoreArchived(a)" class="px-3 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500 text-[13px]">Restore</button>
+                                <button @click="openDelete(a)" class="px-3 py-1 rounded border border-red-900/70 text-red-400 hover:border-red-700 hover:bg-red-950/30 text-[13px]">Delete permanently…</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- fix25e: deleted projects whose records were kept, closed by default -->
+                    <div v-if="projectsOverview.some(x => x.deleted && !x.exists)" class="md:col-span-2 mt-2">
+                        <button @click="toggleGroup('projects-deleted')" class="font-bold text-gray-300 hover:text-gray-100 flex items-center gap-2">
+                            <span class="w-3 text-gray-500">{{ openGroups['projects-deleted'] ? '▾' : '▸' }}</span>Deleted projects ({{ projectsOverview.filter(x => x.deleted && !x.exists).length }})
+                            <span class="font-normal text-sm text-gray-500">· folders gone, chats and costs kept</span>
+                        </button>
+                        <div v-if="openGroups['projects-deleted']" class="mt-3 bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
+                            <div v-for="p in projectsOverview.filter(x => x.deleted && !x.exists)" :key="'del-' + p.project" class="flex flex-wrap items-center gap-3 px-4 py-2.5">
+                                <div class="min-w-0 flex-1">
+                                    <span class="text-gray-400 font-bold line-through decoration-gray-600">{{ p.project }}</span><deleted-tag :at="p.deleted"></deleted-tag>
+                                    <div class="text-xs text-gray-500 font-mono">{{ p.chats }} chat{{ p.chats === 1 ? '' : 's' }} · {{ fmtCost(p.all_time_cost) }} all time{{ p.last_activity ? ' · last used ' + fmtAgo(p.last_activity) : '' }}</div>
+                                </div>
+                                <button @click="historyPage.project = p.project; openSettings('history')" class="px-3 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">Chats</button>
+                                <button @click="memoryTab = 'project'; memoryProject = p.project; openSettings('memory'); fetchMemory()" class="px-3 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">Memory</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: History (full page) -->
+                <div v-if="settingsTab === 'history'" class="space-y-4">
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-wrap items-end gap-4">
+                        <div>
+                            <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">Project</label>
+                            <select v-model="historyPage.project" @change="fetchHistoryPage" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[15px] text-gray-200 min-w-[150px]">
+                                <option value="" class="bg-gray-900">All projects</option>
+                                <option v-for="p in projectsList" :key="p" :value="p" class="bg-gray-900">{{ p }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">Updated</label>
+                            <div class="flex rounded-lg border border-gray-700 overflow-hidden text-[15px]">
+                                <button v-for="o in [['all','Any time'],['1','Today'],['7','7 days'],['30','30 days']]" :key="o[0]" @click="historyPage.period = o[0]" :class="['px-3 py-1.5', historyPage.period === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">Status</label>
+                            <div class="flex rounded-lg border border-gray-700 overflow-hidden text-[15px]">
+                                <button v-for="o in [[false,'Active'],[true,'Archived']]" :key="String(o[0])" @click="historyPage.archived = o[0]; fetchHistoryPage()" :class="['px-3 py-1.5', historyPage.archived === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                            </div>
+                        </div>
+                        <div class="flex-1 min-w-[180px]">
+                            <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">Search</label>
+                            <input v-model="historyPage.q" @input="fetchHistoryPage" type="text" placeholder="Words in the title" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[15px] text-gray-200 outline-none focus:border-blue-500">
+                        </div>
+                        <button v-if="historyFiltered" @click="resetHistoryFilters" class="text-[13px] text-gray-400 hover:text-gray-200 pb-2">Clear filters</button>
+                    </div>
+                    <div class="text-[13px] text-gray-500">{{ historySorted.length }} chat{{ historySorted.length === 1 ? '' : 's' }} · {{ fmtCost(historySorted.reduce((a, s) => a + (s.cost || 0), 0)) }} total · click a column to sort</div>
+                    <div class="overflow-x-auto bg-gray-900 border border-gray-800 rounded-xl">
+                        <table class="w-full text-[15px]">
+                            <thead><tr class="text-left text-xs uppercase tracking-wider text-gray-500 border-b border-gray-800">
+                                <th v-for="col in [['title','Title'],['project','Project'],['updated','Updated'],['turns','Turns'],['cost','Cost']]" :key="col[0]" class="px-4 py-2 font-normal cursor-pointer select-none hover:text-gray-300" @click="sortHistory(col[0])">{{ col[1] }}{{ historyPage.sort === col[0] ? (historyPage.desc ? ' ▾' : ' ▴') : '' }}</th>
+                                <th class="px-4 py-2"></th>
+                            </tr></thead>
+                            <tbody>
+                                <tr v-for="c in historySorted" :key="c.id" :class="['border-b border-gray-800/60 hover:bg-gray-800/30', currentSession && currentSession.id === c.id ? 'bg-blue-950/20' : '']">
+                                    <td class="px-4 py-2 max-w-[280px]"><button @click="openChatFromDashboard(c.id)" class="text-gray-100 hover:text-blue-300 truncate block max-w-full text-left" :title="c.title">{{ c.title || 'Untitled chat' }}</button></td>
+                                    <td class="px-4 py-2 font-mono text-[13px] text-gray-400">{{ projectLabel(c.project) }}<deleted-tag :at="deletedProjects[c.project] || 0"></deleted-tag></td>
+                                    <td class="px-4 py-2 font-mono text-[13px] text-gray-400" :title="new Date(c.updated * 1000).toLocaleString()">{{ fmtAgo(c.updated) }}</td>
+                                    <td class="px-4 py-2 font-mono text-[13px] text-gray-400">{{ c.turns }}</td>
+                                    <td class="px-4 py-2 font-mono text-[13px] text-gray-300">{{ fmtCost(c.cost) }}{{ c.calls_without_cost ? '+' : '' }}</td>
+                                    <td class="px-4 py-2 text-[13px] whitespace-nowrap text-right">
+                                        <button @click="renameSession(c)" class="text-gray-500 hover:text-gray-200 mr-3">Rename</button>
+                                        <button v-if="!c.archived" @click="archiveSession(c, true)" class="text-gray-500 hover:text-gray-200 mr-3">Archive</button>
+                                        <button v-else @click="archiveSession(c, false)" class="text-gray-500 hover:text-gray-200 mr-3">Unarchive</button>
+                                        <button @click="deleteSession(c)" class="text-red-500/70 hover:text-red-400">Delete</button>
+                                    </td>
+                                </tr>
+                                <tr v-if="historySorted.length === 0"><td colspan="6" class="px-4 py-6 text-center text-gray-500 italic">No chats match.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Section: Skills -->
+                <div v-if="settingsTab === 'skills'" class="space-y-4">
+                    <div v-if="skillEditor" class="bg-gray-900 border border-blue-800 rounded-xl p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="font-bold text-gray-100">{{ skillEditor.isNew ? 'New skill' : 'Edit skill' }}: <span class="font-mono">{{ skillEditor.name }}</span> <span class="text-[13px] text-gray-500">({{ skillEditor.scope }})</span></h3>
+                            <span v-if="skillEditor.draft" class="text-xs text-yellow-400">Draft from a chat: review before saving</span>
+                        </div>
+                        <textarea v-model="skillEditor.content" spellcheck="false" class="w-full h-80 bg-gray-950 border border-gray-700 rounded-lg p-3 font-mono text-[13px] text-gray-200 outline-none focus:border-blue-500"></textarea>
+                        <div class="flex items-center gap-3 mt-2">
+                            <button @click="saveSkill" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg text-[15px] font-bold">Save</button>
+                            <button @click="skillEditor = null" class="text-[15px] text-gray-400 hover:text-gray-200">Cancel</button>
+                            <span v-if="skillEditor.error" class="text-[13px] text-red-400">{{ skillEditor.error }}</span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                        <div class="flex flex-wrap items-center gap-4">
+                            <span class="text-[15px] font-bold text-gray-200 flex items-center">When skills run<help-tip wide>
+                                <p><b>Off:</b> no skill is used, and /name commands are refused.</p>
+                                <p><b>Manual only:</b> a skill runs only when you type <code>/name</code> (or <code>/skill name</code>) in the chat, e.g. <code>/run-tests only the unit tests</code>. Nothing is added to your prompts, so idle skills cost nothing.</p>
+                                <p><b>Auto allowed:</b> skills set to Auto are also listed in every request (name and description, about 30 tokens each, on every model call), so the Conductor or the model can pick them by themselves. Manual skills still run only on /name.</p>
+                            </help-tip></span>
+                            <div class="flex rounded-lg border border-gray-700 overflow-hidden text-[15px]">
+                                <button v-for="o in [['off','Off'],['manual','Manual only'],['auto','Auto allowed']]" :key="o[0]" @click="setSkillsMode(o[0])" :class="['px-3 py-1.5', (appSettings.skills_mode || 'auto') === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                            </div>
+                            <span :class="['text-xs font-mono', skillsInfo.catalog_tokens ? 'text-purple-300' : 'text-green-400']">{{ skillsInfo.catalog_tokens ? `${(skillsInfo.listed || []).length} skill${(skillsInfo.listed || []).length === 1 ? '' : 's'} listed in every request: ≈ ${skillsInfo.catalog_tokens} tokens per model call` : 'Nothing listed: skills cost nothing until you call one' }}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-[15px] text-gray-400 flex items-center">{{ skillsInfo.skills.length }} skill{{ skillsInfo.skills.length === 1 ? '' : 's' }}<help-tip wide>
+                            <p>Skills are reusable instructions (and optional scripts). The full instructions load only when a skill runs. New skills start as Manual.</p>
+                            <p><b>Global skills</b> (every project): <code>{{ skillsInfo.global_dir }}</code></p>
+                            <p><b>Project skills</b> (one project): the <code>{{ skillsInfo.project_dir_name || '.optimux-skills' }}</code> folder inside that project<span v-if="skillsInfo.project_dir">; this project's are in <code>{{ skillsInfo.project_dir }}</code></span><span v-else>, e.g. <code>{{ (workspacePath || '&lt;Workspace&gt;') + '/&lt;project&gt;/' + (skillsInfo.project_dir_name || '.optimux-skills') }}</code>. Select a project to see and edit its skills here</span>. A project skill overrides a global one with the same name.</p>
+                        </help-tip></span>
+                        <button @click="newSkill" class="flex-shrink-0 bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-[15px] font-bold">New skill</button>
+                    </div>
+                    <div v-if="!skillsInfo.skills.length" class="text-[15px] text-gray-500 italic">No skills yet.</div>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div v-for="sk in skillsInfo.skills" :key="sk.scope + sk.name" :class="['bg-gray-900 border rounded-xl p-4', sk.usable ? 'border-gray-800' : 'border-yellow-800']">
+                            <div class="flex items-center justify-between gap-2">
+                                <h3 class="font-mono font-bold text-gray-100 truncate" :title="'Run it with /' + sk.name">/{{ sk.name }}</h3>
+                                <div class="flex gap-1 text-[11px] uppercase tracking-wider">
+                                    <span :class="['px-2 py-0.5 rounded', sk.scope === 'project' ? 'bg-purple-950 text-purple-300' : 'bg-gray-800 text-gray-400']">{{ sk.scope }}</span>
+                                    <span v-if="sk.usable && !sk.active" class="px-2 py-0.5 rounded bg-gray-800 text-gray-500" title="A project skill with the same name is used instead">overridden</span>
+                                </div>
+                            </div>
+                            <p class="text-[15px] text-gray-400 mt-1">{{ sk.description || 'No description: the model can\'t use this skill until it has one.' }}</p>
+                            <div class="flex flex-wrap gap-2 mt-2 text-xs font-mono text-gray-500">
+                                <span v-if="sk.tier">tier: {{ sk.tier }}</span><span v-if="sk.max_steps">steps: {{ sk.max_steps }}</span><span v-if="sk.thinking">thinking: {{ sk.thinking }}</span>
+                                <span>· used: {{ (sk.all_time && sk.all_time.calls) || 0 }} calls · {{ fmtCost((sk.month && sk.month.cost) || 0) }} this month · {{ fmtCost((sk.all_time && sk.all_time.cost) || 0) }} all time</span>
+                                <span v-if="sk.drafting && sk.drafting.calls">· drafting: {{ fmtCost(sk.drafting.cost || 0) }} ({{ sk.drafting.calls }} draft{{ sk.drafting.calls === 1 ? '' : 's' }})</span>
+                            </div>
+                            <div class="flex items-center gap-3 mt-3 text-[13px]">
+                                <div v-if="sk.usable" class="flex rounded border border-gray-700 overflow-hidden" :title="sk.mode === 'auto' ? 'Listed in every request so it can be picked automatically (costs tokens on every call)' : 'Runs only when you type /' + sk.name + ' (no cost while idle)'">
+                                    <button @click="setSkillMode(sk, 'manual')" :class="['px-2 py-0.5', sk.mode !== 'auto' ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">Manual</button>
+                                    <button @click="setSkillMode(sk, 'auto')" :class="['px-2 py-0.5', sk.mode === 'auto' ? 'bg-purple-700 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">Auto</button>
+                                </div>
+                                <span v-if="sk.mode === 'auto' && (appSettings.skills_mode || 'auto') !== 'auto'" class="text-xs text-gray-500">(not listed: skills are {{ appSettings.skills_mode === 'off' ? 'off' : 'manual only' }})</span>
+                                <button @click="editSkill(sk)" class="text-gray-300 hover:text-white">Edit</button>
+                                <button @click="removeSkill(sk)" class="text-red-500/70 hover:text-red-400">Remove</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Routing -->
+                <div v-if="settingsTab === 'routing'" class="overflow-y-auto flex-1 pr-2">
+                    <div class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6">
+                        <h3 class="font-bold text-gray-200 mb-4 flex items-center">Routing Configuration<help-tip wide>Two tiers, both with the same tools. Each chat starts on the Simple Executor. The Conductor checks every new message: it can move the chat up to Complex at any time, and back down to Simple once a task has finished normally (never in the middle of one). It can also pick a skill that is set to Auto. A failing Simple turn escalates to Complex. Type <code>/simple</code> or <code>/complex</code> to pin a tier, and <code>/new</code> to start over.</help-tip></h3>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <div class="text-[15px] font-bold mb-2 text-blue-400 flex items-center">Conductor<help-tip text="Decides which tier each new message needs (and which skill fits, if any). One short call per message; a fast, cheap model is enough. Off: no call, only escalation changes the tier."></help-tip></div>
+                                <select v-model="routingConfig.conductor_model" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500">
+                                    <option value="">-- No Model Selected --</option>
+                                    <option value="off">Off: always start on Simple, escalate only on failure</option>
+                                    <option v-for="m in availableModels" :key="m.id" :value="m.id">{{ m.name }}</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <div class="text-[15px] font-bold mb-2 text-green-400 flex items-center">Simple Executor<help-tip text="Handles most requests: questions, explanations, commands and small edits. Pick a cheap, capable model."></help-tip></div>
+                                <select v-model="routingConfig.simple_model" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500">
+                                    <option value="">-- No Model Selected --</option>
+                                    <option v-for="m in availableModels" :key="m.id" :value="m.id">{{ m.name }}</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <div class="text-[15px] font-bold mb-2 text-red-400 flex items-center">Complex Executor<help-tip text="For multi-step work, refactoring and design, and the fallback when Simple fails or its provider is down."></help-tip></div>
+                                <select v-model="routingConfig.complex_model" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500">
+                                    <option value="">-- No Model Selected --</option>
+                                    <option v-for="m in availableModels" :key="m.id" :value="m.id">{{ m.name }}</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 pt-4 border-t border-gray-700 flex items-center justify-end gap-4">
+                            <span v-if="showRoutingSaved" class="text-green-400 font-bold text-[15px] flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                Saved!
+                            </span>
+                            <button @click="saveRouting" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold transition flex items-center gap-2">
+                                Save Routing
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Models -->
+                <div v-if="settingsTab === 'models'" class="overflow-y-auto flex-1 pr-2">
+                    <div class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6">
+                        <h3 class="font-bold text-gray-200 mb-4">Add Model</h3>
+                        <form @submit.prevent="addCustomModel" class="flex flex-col gap-4">
+                            <div class="flex gap-3">
+                                <div class="flex-1">
+                                    <label class="text-[13px] text-gray-400 block mb-1">Model ID (e.g. ollama/phi3)</label>
+                                    <input v-model="newModelId" type="text" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none" required>
+                                </div>
+                                <div class="flex-1">
+                                    <label class="text-[13px] text-gray-400 block mb-1">Display Name</label>
+                                    <input v-model="newModelName" type="text" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none" required>
+                                </div>
+                            </div>
+                            <div class="flex gap-3">
+                                <div class="flex-1">
+                                    <label class="text-[13px] text-gray-400 block mb-1">Environment Key Variable (Optional)</label>
+                                    <input v-model="newModelEnvKey" type="text" placeholder="e.g. GROQ_API_KEY" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none font-mono uppercase">
+                                </div>
+                                <div class="flex-1" :class="{'opacity-50 pointer-events-none': !newModelEnvKey}">
+                                    <label class="text-[13px] text-gray-400 block mb-1">API Key for Provider (Optional)</label>
+                                    <input v-model="newModelApiKey" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true" data-bwignore placeholder="sk-..." class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[13px] text-gray-400 block mb-1">Prices in USD per million tokens (optional; overrides LiteLLM's price list)</label>
+                                <div class="flex gap-3">
+                                    <input v-model="newModelPrices.input_cost_per_mtok" type="number" min="0" step="any" placeholder="Input" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
+                                    <input v-model="newModelPrices.output_cost_per_mtok" type="number" min="0" step="any" placeholder="Output" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
+                                    <input v-model="newModelPrices.cached_input_cost_per_mtok" type="number" min="0" step="any" placeholder="Cached input" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
+                                </div>
+                            </div>
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-[15px] font-bold transition self-end">Add Model</button>
+                        </form>
+                    </div>
+
+                    <div>
+                        <h3 class="font-bold text-gray-200 mb-3">Configured Models</h3>
+                        <div v-if="availableModels.length === 0 && setupModels.length === 0" class="text-gray-500 text-[15px] italic">No models configured.</div>
+                        <div class="space-y-3">
+                            <div v-for="model in [...availableModels, ...setupModels]" :key="model.id" class="bg-gray-800 p-4 rounded-lg border border-gray-700 shadow-sm flex flex-col">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <div class="font-bold text-gray-200 flex items-center gap-2">
+                                            {{ model.name }}
+                                            <span v-if="model.env_key && !availableModels.find(m => m.id === model.id)" class="text-[11px] bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded border border-yellow-800 uppercase tracking-wider font-bold">Key Missing</span>
+                                            <span v-else-if="model.env_key" class="text-[11px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded border border-green-800 uppercase tracking-wider font-bold">Key Configured</span>
+                                        </div>
+                                        <div class="text-[13px] text-gray-400 font-mono mt-1">{{ model.id }}</div>
+                                        <div v-if="model.env_key" class="text-[13px] text-gray-500 font-mono mt-1 flex items-center gap-1">
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                                            {{ model.env_key }}
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <button @click="testModel(model.id)" :disabled="!!testingModels[model.id] || !!model.problem" class="text-gray-400 hover:text-green-400 transition text-[15px] bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-600 disabled:opacity-50" title="Make one tiny real call to check the model ID and key">
+                                            {{ testingModels[model.id] ? 'Testing...' : 'Test' }}
+                                        </button>
+                                        <button v-if="model.env_key" @click="editingKeys[model.id] = !editingKeys[model.id]" class="text-gray-400 hover:text-blue-400 transition text-[15px] flex items-center gap-1 bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-600">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                                            <span v-if="!availableModels.find(m => m.id === model.id)">Add Key</span>
+                                            <span v-else>Update Key</span>
+                                        </button>
+                                        <button @click="deleteCustomModel(model.id)" class="text-gray-400 hover:text-red-400 transition p-2 bg-gray-900 rounded-lg border border-gray-700 hover:border-gray-600" title="Delete Model">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div v-if="model.problem" class="mt-3 text-[13px] text-red-400">⚠ {{ model.problem }}</div>
+                                <div v-if="modelNotices[model.id]" :class="['mt-2 text-[13px]', modelNotices[model.id].ok ? 'text-green-400' : (modelNotices[model.id].warn ? 'text-yellow-400' : 'text-red-400')]">
+                                    {{ modelNotices[model.id].ok ? '✓' : '⚠' }} {{ modelNotices[model.id].text }}
+                                </div>
+                                <div v-if="model.price_source !== 'local'" class="mt-2 text-[13px] text-gray-500 flex items-center gap-2 flex-wrap">
+                                    <label class="font-mono">Thinking</label>
+                                    <select :value="model.thinking || 'default'" @change="setThinking(model, $event.target.value)" class="bg-gray-900 border border-gray-700 rounded px-1 py-0.5 text-gray-200 text-[13px]">
+                                        <option value="default" class="bg-gray-900">Default (provider decides)</option>
+                                        <option value="minimal" class="bg-gray-900">Minimal</option>
+                                        <option value="low" class="bg-gray-900">Low</option>
+                                        <option value="medium" class="bg-gray-900">Medium</option>
+                                        <option value="high" class="bg-gray-900">High</option>
+                                    </select>
+                                    <span v-if="model.supports_thinking === false" class="text-yellow-400">LiteLLM lists this model without thinking support</span>
+                                    <span v-else-if="model.supports_thinking == null" class="text-gray-600">support unknown</span>
+                                    <help-tip>How much the model reasons before answering. More thinking = more output tokens, cost and time, usually better on hard tasks. Default lets the provider decide. If support is unknown, use Test after changing it.</help-tip>
+                                </div>
+                                <div class="mt-2 text-[13px] text-gray-500 font-mono flex items-center gap-2 flex-wrap">
+                                    <span v-if="model.input_cost_per_mtok != null">${{ model.input_cost_per_mtok }} in / ${{ model.output_cost_per_mtok }} out<span v-if="model.cached_input_cost_per_mtok != null"> / ${{ model.cached_input_cost_per_mtok }} cached</span> per M tokens</span>
+                                    <span v-else-if="model.price_source === 'litellm'">Prices: known (LiteLLM)</span>
+                                    <span v-else-if="model.price_source === 'local'">Local model: no per-token cost</span>
+                                    <span v-else class="text-yellow-400">⚠ Price unknown: set it to track cost</span>
+                                    <button @click="togglePriceEdit(model)" class="text-blue-400 hover:text-blue-300">{{ editingPrices[model.id] ? 'cancel' : 'edit' }}</button>
+                                </div>
+                                <div v-if="editingPrices[model.id]" class="mt-2 flex gap-2">
+                                    <input v-model="editingPrices[model.id].input_cost_per_mtok" type="number" min="0" step="any" placeholder="Input" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-[13px] text-gray-100 outline-none focus:border-blue-500">
+                                    <input v-model="editingPrices[model.id].output_cost_per_mtok" type="number" min="0" step="any" placeholder="Output" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-[13px] text-gray-100 outline-none focus:border-blue-500">
+                                    <input v-model="editingPrices[model.id].cached_input_cost_per_mtok" type="number" min="0" step="any" placeholder="Cached" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-[13px] text-gray-100 outline-none focus:border-blue-500">
+                                    <button @click="savePrices(model)" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-[13px] font-bold">Save</button>
+                                </div>
+
+                                <!-- Inline Key Edit Form -->
+                                <div v-if="model.env_key && (editingKeys[model.id] || !availableModels.find(m => m.id === model.id))" class="mt-4 border-t border-gray-700/50 pt-4">
+                                    <form @submit.prevent="saveKeyDirect(model.env_key, model.id, $event)" class="flex gap-2">
+                                        <input :name="'key_' + model.id" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true" data-bwignore :placeholder="'Enter ' + model.env_key + '...'" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none" required>
+                                        <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-[15px] font-bold transition">Save Key</button>
+                                    </form>
+                                    <p v-if="model.instructions && !availableModels.find(m => m.id === model.id)" class="text-[13px] text-gray-500 mt-2">{{ model.instructions }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Scope -->
+                <div v-if="settingsTab === 'scope'" class="overflow-y-auto flex-1 pr-2">
+                    <div class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6">
+                        <h3 class="font-bold text-gray-200 mb-4 flex items-center">Filesystem Scope<help-tip wide>
+                            <p>The Workspace folder holds your projects. Commands start in the active project (or in the Workspace folder when no project is selected), and commands that refer to paths outside it are flagged before you approve them.</p>
+                            <p>To really confine commands to that folder, turn on the Sandbox in Execution.</p>
+                        </help-tip></h3>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <div class="text-[15px] font-bold mb-2 text-gray-300 flex items-center">Workspace folder<help-tip>The folder that holds your projects (absolute path, e.g. <code>/home/user/git</code>). Each folder inside it is a project; with no project selected you are in the Workspace itself.</help-tip></div>
+                                <div class="flex gap-2">
+                                    <input v-model="appSettings.projects_root" type="text" placeholder="/path/to/projects" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500 font-mono">
+                                    <button @click="saveSettings" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold transition">Save</button>
+                                </div>
+                                <span v-if="showSettingsSaved" class="text-green-400 font-bold text-[13px] mt-2 inline-block">Saved successfully!</span>
+                            </div>
+                            
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: GitHub (Feature 25) -->
+                <div v-if="settingsTab === 'github'" class="space-y-6 max-w-3xl">
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                        <h3 class="font-bold text-gray-200 mb-1 flex items-center">Status<help-tip wide>
+                            <p>When you create a project with <b>Also on GitHub</b>, Optimux runs <code>gh repo create</code> and pushes the first commit, on the machine Optimux runs on.</p>
+                            <p>That needs the GitHub CLI (<code>gh</code>) and a sign-in: the token you save here, or <code>gh auth login</code> done by the user Optimux runs as.</p>
+                        </help-tip></h3>
+                        <p class="text-sm text-gray-400 mb-4">What Optimux needs to create GitHub repositories for new projects.</p>
+                        <div class="space-y-3 text-[15px]">
+                            <div class="flex items-start gap-3">
+                                <span :class="['w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5', githubInfo.gh ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300']">{{ githubInfo.gh ? '✓' : '✗' }}</span>
+                                <div><div class="text-gray-200">GitHub CLI</div>
+                                    <div class="text-sm text-gray-500 font-mono" v-if="githubInfo.gh">{{ githubInfo.gh_version || 'gh' }}</div>
+                                    <div class="text-sm text-gray-400" v-else-if="githubInfo.reason !== undefined">Not installed on the Optimux machine. Install it (<code class="text-gray-300">sudo apt install gh</code>, <code class="text-gray-300">sudo dnf install gh</code>, or see <a href="https://cli.github.com" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">cli.github.com</a>), or re-run the installer, then open this page again.</div></div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span :class="['w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5', githubInfo.source ? 'bg-green-900/60 text-green-300' : 'bg-gray-800 text-gray-400']">{{ githubInfo.source ? '✓' : '–' }}</span>
+                                <div class="flex-1"><div class="text-gray-200">Sign-in</div>
+                                    <div class="text-sm text-gray-400" v-if="githubInfo.source === 'optimux'">Token saved in Optimux{{ githubInfo.login ? ' · @' + githubInfo.login : '' }}</div>
+                                    <div class="text-sm text-gray-400" v-else-if="githubInfo.source === 'gh'">Using the GitHub CLI's own sign-in (<code>gh auth login</code>). A token saved here would take its place.</div>
+                                    <div class="text-sm text-gray-400" v-else>Not set up yet: add a token below.</div>
+                                    <div v-if="githubInfo.token_saved" class="flex gap-2 mt-2">
+                                        <button @click="checkGithub" :disabled="githubBusy" class="px-3 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500 text-sm disabled:opacity-50">Check it</button>
+                                        <button @click="removeGithub" class="px-3 py-1 rounded border border-red-900/60 text-red-400 hover:border-red-700 text-sm">Remove token</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                        <h3 class="font-bold text-gray-200 mb-1">{{ githubInfo.token_saved ? 'Replace the token' : 'Add a token' }}</h3>
+                        <ol class="text-sm text-gray-400 list-decimal pl-5 space-y-1 mb-4">
+                            <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">GitHub → new fine-grained token</a>, name it <i>Optimux</i> and pick an expiration.</li>
+                            <li><b class="text-gray-300">Repository access:</b> All repositories.</li>
+                            <li><b class="text-gray-300">Permissions → Repository:</b> Administration <i>Read and write</i> (creates repositories) and Contents <i>Read and write</i> (pushes the first commit).</li>
+                            <li>Generate, copy and paste it here. A <a href="https://github.com/settings/tokens/new?scopes=repo&amp;description=Optimux" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">classic token with the <code>repo</code> scope</a> works too.</li>
+                        </ol>
+                        <form @submit.prevent="saveGithubToken" class="flex gap-2">
+                            <input v-model="githubToken" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_… or ghp_…" class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-[15px] text-gray-200 outline-none focus:border-blue-500">
+                            <button type="submit" :disabled="!githubToken.trim() || githubBusy" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold transition disabled:opacity-40 flex items-center gap-2">
+                                <span v-if="githubBusy" class="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin"></span>Check and save</button>
+                        </form>
+                        <div v-if="githubMsg" :class="['mt-3 rounded-lg border px-3 py-2 text-sm', !githubMsg.ok ? 'border-red-800 bg-red-950/40 text-red-300' : (githubMsg.warn ? 'border-yellow-800 bg-yellow-950/30 text-yellow-300' : 'border-green-800 bg-green-950/30 text-green-300')]">{{ githubMsg.text }}</div>
+                        <p class="text-xs text-gray-500 mt-3">Optimux asks GitHub who the token belongs to before saving it. It's kept in <code>secrets.env</code> (readable only by Optimux) and used only by the New project step: commands the model runs don't get it in their environment{{ githubInfo.sandbox ? ", and the sandbox hides the file from them, so they can't push for you" : '' }}.</p>
+                        <div v-if="githubInfo.sandbox === false" class="mt-3 rounded-lg border border-yellow-800 bg-yellow-950/30 px-3 py-2 text-sm text-yellow-300">
+                            The sandbox is off: an approved command runs with Optimux's permissions, so it could read <code>secrets.env</code>{{ githubInfo.source === 'gh' ? " or use gh's own sign-in" : '' }} and act on your GitHub account. Review commands before approving them, or turn the sandbox on in <button type="button" class="underline" @click="openSettings('execution')">Execution</button>.
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                        <h3 class="font-bold text-gray-200 mb-1 flex items-center">Who commits<help-tip wide>
+                            <p>The name and email on the first commit of new projects, and on commits the model makes (when you approve them).</p>
+                            <p>Leave both empty to use git's own settings (<code>git config --global user.name</code>). On a server the Optimux user usually has none, so set them here.</p>
+                            <p>GitHub's private address looks like <code>12345+login@users.noreply.github.com</code> (see github.com → Settings → Emails). Saving a token fills these in when git has none.</p>
+                        </help-tip></h3>
+                        <p class="text-sm text-gray-400 mb-4">Empty means git's own settings.</p>
+                        <form @submit.prevent="saveGitIdentity">
+                            <div class="grid sm:grid-cols-2 gap-3">
+                                <input v-model="gitIdentity.git_name" placeholder="Name" maxlength="100" class="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500">
+                                <input v-model="gitIdentity.git_email" placeholder="Email" maxlength="200" class="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-[15px] font-mono text-gray-200 outline-none focus:border-blue-500">
+                            </div>
+                            <div class="flex items-center gap-3 mt-3">
+                                <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold transition">Save</button>
+                                <span v-if="gitIdentity.msg" :class="['text-[13px]', gitIdentity.msg.ok ? 'text-green-400' : 'text-red-400']">{{ gitIdentity.msg.text }}</span>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Section: Execution (how the agent runs: approvals, step limits) -->
+                <div v-if="settingsTab === 'execution'" class="space-y-6">
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                        <h3 class="font-bold text-gray-200 mb-1">Command approval</h3>
+                        <label class="flex items-center gap-3 mt-3" :class="sandboxInfo.server_mode ? 'opacity-60' : 'cursor-pointer'">
+                            <input type="checkbox" v-model="appSettings.auto_approve" @change="saveSettings" :disabled="sandboxInfo.server_mode" class="w-4 h-4 text-blue-600 bg-gray-900 border-gray-700 rounded focus:ring-blue-500 focus:ring-2">
+                            <span class="text-[15px] font-bold text-gray-300">Auto-approve terminal commands</span>
+                            <help-tip>If enabled, Optimux runs commands without asking, except commands flagged as reaching outside the project and creating or archiving a project. Without a sandbox, an approved command can still change anything your user account can, so use this with care.</help-tip>
+                        </label>
+                        <p v-if="sandboxInfo.server_mode" class="text-xs text-gray-500 mt-2 ml-7">Off on servers (OPTIMUX_SERVER=1): every command needs your approval.</p>
+                    </div>
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                        <h3 class="font-bold text-gray-200 mb-3 flex items-center">Sandbox<help-tip wide>
+                            <p>With the sandbox on, every command the model runs goes through <b>bubblewrap</b> (Linux):</p>
+                            <ul><li>only the working folder (the active project, or the Workspace folder) can be changed;</li>
+                            <li>the rest of the system is read-only (tools and compilers still work);</li>
+                            <li>your home folder and Optimux's own folder (keys, token, chats) are hidden; <code>~/.gitconfig</code> and your global skills stay readable;</li>
+                            <li>/tmp is private and empty, other processes are invisible, and the network can be cut.</li></ul>
+                            <p>If bubblewrap is missing or broken while the sandbox is on, commands are <b>refused</b>, never run unprotected.</p>
+                            <p>On a server others can reach, start Optimux with <code>OPTIMUX_SERVER=1</code> (or just <code>OPTIMUX_REQUIRE_SANDBOX=1</code>): the sandbox is then always on and can't be turned off here.</p>
+                        </help-tip></h3>
+                        <label class="flex items-center gap-3" :class="sandboxInfo.required ? 'opacity-70' : 'cursor-pointer'">
+                            <input type="checkbox" :checked="appSettings.sandbox || sandboxInfo.required" :disabled="sandboxInfo.required || (!appSettings.sandbox && !sandboxInfo.works)" @change="toggleSandbox($event.target.checked)" class="w-4 h-4">
+                            <span class="text-[15px] font-bold text-gray-300">Run commands in the sandbox</span>
+                            <span v-if="sandboxInfo.required" class="text-xs font-mono text-green-400">forced on by {{ sandboxInfo.server_mode ? 'OPTIMUX_SERVER' : 'OPTIMUX_REQUIRE_SANDBOX' }}</span>
+                        </label>
+                        <div class="text-xs font-mono mt-2 ml-7" :class="sandboxInfo.works ? 'text-green-400' : 'text-yellow-400'">
+                            <template v-if="sandboxInfo.works">✓ {{ sandboxInfo.version || 'bubblewrap' }} works here</template>
+                            <template v-else>✗ {{ sandboxInfo.error || 'Checking…' }}</template>
+                            <button @click="fetchSandbox(true)" class="ml-2 text-gray-500 hover:text-gray-300 underline">check again</button>
+                        </div>
+                        <div v-if="appSettings.sandbox || sandboxInfo.required" class="mt-4 ml-7 space-y-3">
+                            <label class="flex items-center gap-2 text-[15px] text-gray-300 cursor-pointer">
+                                <input type="checkbox" v-model="appSettings.sandbox_network" @change="saveSettings" class="w-4 h-4">
+                                Allow network access
+                                <help-tip>On: commands can download packages (pip, npm) and use git over HTTPS. Off: no network at all inside the sandbox, the safest choice when you don't need it. Off by default on servers (OPTIMUX_SERVER=1). SSH keys are never visible in the sandbox, so git over SSH needs to be run by you.</help-tip>
+                            </label>
+                            <div>
+                                <div class="text-[15px] text-gray-300 mb-1 flex items-center">Extra read-only folders<help-tip>One absolute path per line, for things a project needs outside its folder (a shared virtualenv, another repository it imports). They are visible but can't be changed. Optimux's own folder and whole home folders are refused.</help-tip></div>
+                                <textarea v-model="sandboxPathsText" rows="2" spellcheck="false" placeholder="/home/me/git/shared-lib" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-[13px] font-mono text-gray-200 outline-none focus:border-blue-500"></textarea>
+                                <button @click="saveSandboxPaths" class="mt-1 text-[13px] px-3 py-1 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Save folders</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                        <h3 class="font-bold text-gray-200 mb-3 flex items-center">Command environment and limits<help-tip wide>
+                            <p>Commands get only a few basic variables (<code>PATH</code>, <code>HOME</code>, <code>LANG</code>, <code>TERM</code>…). Everything else in the server's environment, including every key and token, is left out.</p>
+                            <p>List extra variable names a project needs (one per line). Keys Optimux keeps in <code>secrets.env</code> can't be added.</p>
+                            <p><b>Limits</b> apply to each command (0 = none). Memory caps address space, which some tools (Node, Go, Java) reserve generously, so leave it at 0 unless you need it. The process limit counts all processes of the server's user, so set it well above what Optimux itself runs. On a server, the systemd unit in <code>deploy/</code> also limits Optimux as a whole.</p>
+                        </help-tip></h3>
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <div>
+                                <div class="text-[13px] text-gray-400 mb-1">Extra variables for commands</div>
+                                <textarea v-model="commandEnvText" rows="3" spellcheck="false" placeholder="VIRTUAL_ENV&#10;JAVA_HOME" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-[13px] font-mono text-gray-200 outline-none focus:border-blue-500"></textarea>
+                            </div>
+                            <div class="space-y-2 text-[13px] text-gray-300">
+                                <label class="flex items-center gap-2"><span class="w-32 shrink-0">Memory (MB)</span><input v-model.number="appSettings.limit_memory_mb" type="number" min="0" class="w-28 bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500"></label>
+                                <label class="flex items-center gap-2"><span class="w-32 shrink-0">File size (MB)</span><input v-model.number="appSettings.limit_file_mb" type="number" min="0" class="w-28 bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500"></label>
+                                <label class="flex items-center gap-2"><span class="w-32 shrink-0">Processes</span><input v-model.number="appSettings.limit_processes" type="number" min="0" class="w-28 bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500"></label>
+                            </div>
+                        </div>
+                        <button @click="saveCommandSettings" class="mt-3 bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg font-bold transition text-[13px]">Save</button>
+                    </div>
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                        <h3 class="font-bold text-gray-200 mb-3 flex items-center">Steps per turn<help-tip>How many model calls one request may use before Optimux pauses and offers Continue. On Simple, reaching the limit escalates to Complex instead. Higher limits let big tasks finish; each step costs tokens.</help-tip></h3>
+                        <div class="flex items-center gap-3 text-[15px]">
+                            <label class="text-green-400">Simple</label>
+                            <input v-model.number="appSettings.max_steps_simple" type="number" min="1" max="100" class="w-20 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-gray-200 outline-none focus:border-blue-500">
+                            <label class="text-red-400 ml-3">Complex</label>
+                            <input v-model.number="appSettings.max_steps_complex" type="number" min="1" max="100" class="w-20 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-gray-200 outline-none focus:border-blue-500">
+                            <button @click="saveSettings" class="ml-auto bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg font-bold transition text-[15px]">Save</button>
+                        </div>
+                        <span v-if="showSettingsSaved" class="text-green-400 font-bold text-[13px] mt-2 inline-block">Saved!</span>
+                    </div>
+                </div>
+                <!-- Tab Content: Memory -->
+                <div v-if="settingsTab === 'memory'" class="overflow-y-auto flex-1 pr-2">
+                    <div class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6 h-full flex flex-col">
+                        <h3 class="font-bold text-gray-200 mb-4 flex items-center">Memory Configuration<help-tip wide>
+                            <p>Markdown files given to every model with every request, so Optimux knows you and your work.</p>
+                            <ul><li><b>Personal</b> and <b>Professional</b>: about you; only you (or the model, when you ask) change them.</li><li><b>Project</b>: the active project's facts; can be kept up to date automatically.</li></ul>
+                            <p>Everything here costs tokens on every call, so keep it short.</p>
+                        </help-tip></h3>
+                        
+                        <div class="flex gap-2 mb-4 border-b border-gray-700 pb-2">
+                            <button @click="memoryTab = 'personal'; fetchMemory()" :class="['px-3 py-1 text-[15px] rounded-lg transition', memoryTab === 'personal' ? 'bg-blue-900/50 text-blue-400' : 'text-gray-400 hover:bg-gray-800']">Personal</button>
+                            <button @click="memoryTab = 'professional'; fetchMemory()" :class="['px-3 py-1 text-[15px] rounded-lg transition', memoryTab === 'professional' ? 'bg-blue-900/50 text-blue-400' : 'text-gray-400 hover:bg-gray-800']">Professional</button>
+                            <button @click="memoryTab = 'project'; fetchMemory()" :class="['px-3 py-1 text-[15px] rounded-lg transition', memoryTab === 'project' ? 'bg-blue-900/50 text-blue-400' : 'text-gray-400 hover:bg-gray-800']">Project</button>
+                            <select v-if="memoryTab === 'project'" v-model="memoryProject" @change="fetchMemory" class="ml-2 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[15px] text-gray-200">
+                                <option v-for="p in projectsList" :key="p" :value="p" class="bg-gray-900">{{ p }}</option>
+                            </select>
+                        </div>
+                        <p v-if="memoryTab === 'project'" class="text-[13px] text-gray-500 mb-2 flex items-center"><span class="font-mono">~/.optimux/memory/projects/{{ memoryProject }}.md</span><span v-if="!memoryProjectExists" class="ml-2 text-yellow-500">not created yet</span><help-tip>Given to every model while <code>{{ memoryProject || '—' }}</code> is the active project.{{ memoryProjectExists ? '' : ' The file doesn\'t exist yet; saving creates it.' }}</help-tip></p>
+                        
+                        <div class="flex-1 flex flex-col min-h-[300px]">
+                            <textarea v-model="memoryContent" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-4 text-[15px] font-mono text-gray-300 focus:outline-none focus:border-blue-500 resize-y" rows="12"></textarea>
+                            
+                            <div class="mt-4 flex justify-between items-center">
+                                <span v-if="showMemorySaved" class="text-green-400 font-bold text-[15px] flex items-center gap-1">Saved!</span>
+                                <span v-else></span>
+                                <button @click="saveMemory" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold transition">Save Memory</button>
+                            </div>
+                        </div>
+
+                        <!-- Project memory: automatic updates and history (Feature 17) -->
+                        <div v-if="memoryTab === 'project' && memoryProject" class="mt-6 space-y-4">
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                                <div class="flex flex-wrap items-center gap-4">
+                                    <label class="flex items-center gap-2 cursor-pointer text-[15px] text-gray-200">
+                                        <input type="checkbox" v-model="appSettings.memory_curator" @change="saveSettings" class="w-4 h-4">
+                                        Update project memory automatically
+                                    </label>
+                                    <help-tip wide>
+                                        <p>When a chat ends (New chat, opening another chat, switching project, closing the page, or after the idle time), the Simple model reads what's new in it and keeps only durable facts here: commands, stack, conventions, decisions, known issues.</p>
+                                        <p>Personal and professional memory are never changed automatically. Each update is listed in History with its cost and can be undone.</p>
+                                        <p>"Update now" re-reads the whole latest chat, so it also works after an undo. Costs also appear in Usage (Memory updates, and the curator role).</p>
+                                    </help-tip>
+                                    <label class="flex items-center gap-2 text-[15px] text-gray-400">after
+                                        <input v-model.number="appSettings.curator_idle_minutes" @change="saveSettings" type="number" min="1" max="240" class="w-16 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-200">
+                                        idle minutes</label>
+                                    <button @click="curateNow" :disabled="curating" class="ml-auto text-[13px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-50">{{ curating ? 'Updating…' : 'Update now from the latest chat' }}</button>
+                                </div>
+                                <p class="text-xs font-mono mt-2" :class="costEstimates.memory_update ? 'text-purple-300' : 'text-gray-500'">
+                                    <template v-if="costEstimates.memory_update">≈ {{ fmtCost(costEstimates.memory_update.avg) }} per update (average of your last {{ costEstimates.memory_update.n }}) · </template><template v-else>No priced update yet · </template>this month: {{ costEstimates.memory_this_month ? costEstimates.memory_this_month.calls : 0 }} update{{ costEstimates.memory_this_month && costEstimates.memory_this_month.calls === 1 ? '' : 's' }}, {{ fmtCost(costEstimates.memory_this_month ? costEstimates.memory_this_month.cost : 0) }} (all projects)</p>
+                                <p v-if="curateResult" class="text-xs mt-2" :class="curateResult.changed ? 'text-green-400' : 'text-gray-400'">
+                                    <span v-if="curateResult.chat_title" class="text-gray-500">Read “{{ curateResult.chat_title }}”. </span>{{ curateResult.changed ? 'Updated: ' + curateResult.summary : 'No update: ' + curateResult.reason }}<span v-if="curateResult.cost != null" class="text-gray-500 font-mono"> · {{ fmtCost(curateResult.cost) }}</span></p>
+                                <div class="mt-3">
+                                    <div class="flex justify-between text-xs font-mono text-gray-500 mb-1"><span class="flex items-center">Size<help-tip>Project memory is sent with every request, so its size is a cost on every model call. Automatic updates keep it under about 1,500 tokens.</help-tip></span><span>≈{{ Math.round(memoryContent.length / 4) }} of 1,500 tokens</span></div>
+                                    <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden"><div class="h-full" :class="memoryContent.length / 4 > 1500 ? 'bg-red-500' : (memoryContent.length / 4 > 1200 ? 'bg-yellow-500' : 'bg-blue-500')" :style="{ width: Math.min(100, memoryContent.length / 60) + '%' }"></div></div>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 class="text-[15px] font-bold text-gray-200 mb-2">History</h3>
+                                <div v-if="memoryVersions.length === 0" class="text-[15px] text-gray-500 italic">No changes recorded yet.</div>
+                                <div v-for="v in memoryVersions" :key="v.id" class="border-b border-gray-800 py-2">
+                                    <div class="flex items-center gap-3 text-[13px]">
+                                        <span :title="{ curator: 'Automatic update (the curator) from a chat', user: 'Edited in the dashboard', model: 'Saved by the assistant during a chat', undo: 'An undo' }[v.source] || ''" :class="['px-2 py-0.5 rounded font-mono', { curator: 'bg-purple-950 text-purple-300', user: 'bg-gray-800 text-gray-300', model: 'bg-blue-950 text-blue-300', undo: 'bg-yellow-950 text-yellow-300' }[v.source] || 'bg-gray-800 text-gray-300']">{{ { curator: 'auto', user: 'you', model: 'model', undo: 'undo' }[v.source] || v.source }}</span>
+                                        <span class="text-gray-300 flex-1 truncate" :title="v.summary">{{ v.summary }}</span>
+                                        <span v-if="v.cost != null" class="text-gray-500 font-mono" title="Cost of the model call that made this update">{{ fmtCost(v.cost) }}</span>
+                                        <span class="text-gray-500 font-mono" :title="new Date(v.ts * 1000).toLocaleString()">{{ fmtAgo(v.ts) }}</span>
+                                        <button @click="v.open = !v.open" class="text-gray-400 hover:text-gray-200">{{ v.open ? 'Hide' : 'Changes' }}</button>
+                                        <button @click="undoMemoryVersion(v)" class="text-yellow-500/80 hover:text-yellow-400">Undo</button>
+                                    </div>
+                                    <pre v-if="v.open" class="mt-2 text-xs font-mono bg-gray-950 border border-gray-800 rounded p-2 overflow-x-auto max-h-64"><span v-for="(line, i) in v.diff.split('\n')" :key="i" :class="line.startsWith('+') && !line.startsWith('+++') ? 'text-green-400' : (line.startsWith('-') && !line.startsWith('---') ? 'text-red-400' : 'text-gray-500')">{{ line }}
+</span></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Usage -->
+                <div v-if="['usage', 'budgets', 'system'].includes(settingsTab)" class="overflow-y-auto flex-1 pr-2">
+                    <div v-if="settingsTab === 'usage'" class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-[15px] font-bold text-gray-200">Cost per day · last 30 days</h3>
+                            <select v-model="chartProject" @change="fetchDaily" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[13px] text-gray-200">
+                                <option value="" class="bg-gray-900">All projects</option>
+                                <option v-for="p in projectsList" :key="p" :value="p" class="bg-gray-900">{{ p }}</option>
+                            </select>
+                        </div>
+                        <div v-html="costChart.svg"></div>
+                        <div class="flex flex-wrap gap-3 text-xs text-gray-400 mt-2">
+                            <span v-for="m in costChart.models" :key="m.id" class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm" :style="{ background: m.color }"></span>{{ modelName(m.id) }}</span>
+                        </div>
+                    </div>
+                    <div v-if="settingsTab === 'usage'" class="flex items-center justify-between mb-4">
+                        <div class="flex gap-2">
+                            <button v-for="p in [['today','Today'],['last_7_days','7 days'],['this_month','This month'],['all_time','All time']]" :key="p[0]" @click="usagePeriod = p[0]" :class="['text-[13px] px-3 py-1 rounded-lg border', usagePeriod === p[0] ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:text-gray-200']">{{ p[1] }}</button>
+                        </div>
+                        <button @click="fetchUsage" class="text-[13px] text-gray-400 hover:text-gray-200">Refresh</button>
+                    </div>
+                    <div v-if="usageData && usageData[usagePeriod]" class="space-y-6">
+                        <div v-if="settingsTab === 'usage'" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">Cost</div><div class="text-lg font-mono text-gray-100">{{ fmtCost(usageData[usagePeriod].total.cost) }}<span v-if="usageData[usagePeriod].total.calls_without_cost" class="text-[13px] text-yellow-400" :title="usageData[usagePeriod].total.calls_without_cost + ' calls without a known price'">+</span></div></div>
+                            <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">Calls</div><div class="text-lg font-mono text-gray-100">{{ usageData[usagePeriod].total.calls }}</div></div>
+                            <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">Input / cached</div><div class="text-lg font-mono text-gray-100">{{ fmtTokens(usageData[usagePeriod].total.prompt_tokens) }} <span class="text-[15px] text-gray-400">/ {{ fmtTokens(usageData[usagePeriod].total.cached_tokens) }}</span></div></div>
+                            <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">Output</div><div class="text-lg font-mono text-gray-100">{{ fmtTokens(usageData[usagePeriod].total.completion_tokens) }}</div></div>
+                        </div>
+                        <div v-for="group in [['by_project','By project'],['by_role','By role'],['by_model','By model'],['by_skill','By skill (using)'],['skill_drafts','Skill drafting (Save as skill)'],['memory_updates','Memory updates (automatic, per project)']]" v-show="settingsTab === 'usage'" :key="group[0]">
+                            <h3 class="font-bold text-gray-200 mb-2 text-[15px]">{{ group[1] }}</h3>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-[13px] font-mono">
+                                    <thead><tr class="text-gray-500 text-left border-b border-gray-700"><th class="py-1 pr-3 font-normal">Name</th><th class="py-1 pr-3 font-normal text-right">Calls</th><th class="py-1 pr-3 font-normal text-right">Input</th><th class="py-1 pr-3 font-normal text-right">Cached</th><th class="py-1 pr-3 font-normal text-right">Output</th><th class="py-1 pr-3 font-normal text-right" title="Share of output spent on thinking">Thinking</th><th class="py-1 pr-3 font-normal text-right">Cost</th><th class="py-1 font-normal text-right">Avg time</th></tr></thead>
+                                    <tbody>
+                                        <tr v-for="row in usageRows(group[0])" :key="row.kind + row.name" @click="row.kind === 'summary' && toggleGroup(row.key)"
+                                            :class="['border-b border-gray-800', row.kind === 'summary' ? 'text-gray-400 cursor-pointer hover:bg-gray-800/40' : (row.kind === 'gone' ? 'text-gray-500 bg-gray-900/40' : 'text-gray-300')]">
+                                            <td class="py-1 pr-3 truncate max-w-[240px]" :title="row.kind === 'summary' ? 'Click to show or hide them' : (group[0] === 'by_role' && ROLE_HELP[row.name] ? row.name + ': ' + ROLE_HELP[row.name] : row.name)">
+                                                <template v-if="row.kind === 'summary'"><span class="inline-block w-3 text-gray-500">{{ openGroups[row.key] ? '▾' : '▸' }}</span> <span class="font-sans italic">{{ row.name }}</span></template>
+                                                <template v-else><span v-if="row.kind === 'gone'" class="inline-block w-4"></span><span :class="[row.kind === 'gone' ? 'line-through decoration-gray-600' : '', group[0] === 'by_role' && ROLE_HELP[row.name] ? 'cursor-help underline decoration-dotted decoration-gray-600 underline-offset-4' : '']">{{ ['by_project', 'memory_updates'].includes(group[0]) ? projectLabel(row.name) : row.name }}</span><deleted-tag v-if="row.kind === 'gone'" :at="deletedProjects[row.name] || 0"></deleted-tag><span v-if="row.archived" class="ml-1.5 text-[10px] font-sans uppercase tracking-wider text-yellow-300/80" title="Archived: in the Workspace's .archive folder">archived</span></template>
+                                            </td>
+                                            <td class="py-1 pr-3 text-right">{{ row.b.calls }}</td>
+                                            <td class="py-1 pr-3 text-right">{{ fmtTokens(row.b.prompt_tokens) }}</td>
+                                            <td class="py-1 pr-3 text-right">{{ fmtTokens(row.b.cached_tokens) }}</td>
+                                            <td class="py-1 pr-3 text-right">{{ fmtTokens(row.b.completion_tokens) }}</td>
+                                            <td class="py-1 pr-3 text-right">{{ fmtTokens(row.b.reasoning_tokens || 0) }}</td>
+                                            <td class="py-1 pr-3 text-right">{{ fmtCost(row.b.cost) }}<span v-if="row.b.calls_without_cost" class="text-yellow-400">+</span></td>
+                                            <td class="py-1 text-right">{{ row.b.avg_duration_ms != null ? fmtMs(row.b.avg_duration_ms) : '–' }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div v-if="settingsTab === 'usage'" class="text-xs text-gray-500 flex items-center">About these numbers<help-tip wide>
+                            <p>"+" means some calls had no known price, so the real cost is higher. Set prices in Models.</p>
+                            <p><b>Cached</b> input is billed at a fraction of the normal price. <b>Thinking</b> is the part of the output spent on reasoning.</p>
+                            <p><b>Skill drafting</b> and <b>Memory updates</b> are the extra calls made by "Save as skill" and by automatic memory updates.</p>
+                        </help-tip></div>
+                        <div v-if="settingsTab === 'budgets'">
+                            <h3 class="font-bold text-gray-200 text-[15px] mb-2 flex items-center">Monthly budgets<help-tip wide>Per project, in USD, for the calendar month. <b>Block</b> refuses new requests and pauses a running one at 100%; <b>Warn</b> only shows notes. A note appears at 80%. Calls without a known price aren't counted. Leave the amount empty for no limit.</help-tip></h3>
+                            <table class="w-full text-[13px] font-mono">
+                                <thead><tr class="text-gray-500 text-left border-b border-gray-700"><th class="py-1 pr-3 font-normal">Project</th><th class="py-1 pr-3 font-normal text-right">This month</th><th class="py-1 pr-3 font-normal">Budget ($)</th><th class="py-1 pr-3 font-normal">At 100%</th><th class="py-1 font-normal"></th></tr></thead>
+                                <tbody>
+                                    <template v-for="row in budgetRows.live" :key="row.project">
+                                    <tr v-if="budgetEdits[row.project]" class="border-b border-gray-800 text-gray-300">
+                                        <td class="py-1 pr-3 truncate max-w-[160px]" :title="row.project">{{ projectLabel(row.project) }}</td>
+                                        <td :class="['py-1 pr-3 text-right', row.state === 'over' ? 'text-red-400' : (row.state === 'warning' ? 'text-yellow-400' : '')]">{{ fmtCost(row.spent) }}</td>
+                                        <td class="py-1 pr-3"><input v-model="budgetEdits[row.project].amount" type="number" min="0" step="any" placeholder="none" class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200 outline-none focus:border-blue-500"></td>
+                                        <td class="py-1 pr-3">
+                                            <select v-model="budgetEdits[row.project].on_limit" class="bg-gray-900 border border-gray-700 rounded px-1 py-1 text-gray-200">
+                                                <option value="block" class="bg-gray-900">Block</option>
+                                                <option value="warn" class="bg-gray-900">Warn</option>
+                                            </select>
+                                        </td>
+                                        <td class="py-1 text-right"><button @click="saveBudget(row.project)" class="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded">Save</button></td>
+                                    </tr>
+                                    </template>
+                                    <!-- fix25e: archived projects (budgets paused) and deleted projects, closed by default -->
+                                    <template v-if="budgetRows.archived.length">
+                                        <tr @click="toggleGroup('budgets-archived')" class="border-b border-gray-800 text-gray-400 cursor-pointer hover:bg-gray-800/40" title="Click to show or hide them">
+                                            <td class="py-1.5 pr-3"><span class="inline-block w-3 text-gray-500">{{ openGroups['budgets-archived'] ? '▾' : '▸' }}</span> <span class="font-sans italic">Archived projects ({{ budgetRows.archived.length }})</span></td>
+                                            <td class="py-1.5 pr-3 text-right"></td>
+                                            <td class="py-1.5 pr-3 font-sans text-gray-500" colspan="3">budgets paused while archived; restoring brings them back</td>
+                                        </tr>
+                                        <template v-if="openGroups['budgets-archived']">
+                                            <tr v-for="row in budgetRows.archived" :key="'a-' + row.project" class="border-b border-gray-800 text-gray-500 bg-gray-900/40">
+                                                <td class="py-1 pr-3 truncate max-w-[220px]" :title="row.project"><span class="inline-block w-4"></span>{{ row.project }}<span class="ml-1.5 text-[10px] font-sans uppercase tracking-wider text-yellow-300/80">archived</span></td>
+                                                <td class="py-1 pr-3 text-right">{{ fmtCost(row.spent) }}</td>
+                                                <td class="py-1 pr-3" colspan="3">{{ row.budget ? 'paused: ' + fmtCost(row.budget.monthly_usd) + ' (' + (row.budget.on_limit === 'warn' ? 'Warn' : 'Block') + ')' : 'no budget' }}</td>
+                                            </tr>
+                                        </template>
+                                    </template>
+                                    <template v-if="budgetRows.deleted.length">
+                                        <tr @click="toggleGroup('budgets-deleted')" class="border-b border-gray-800 text-gray-400 cursor-pointer hover:bg-gray-800/40" title="Click to show or hide them">
+                                            <td class="py-1.5 pr-3"><span class="inline-block w-3 text-gray-500">{{ openGroups['budgets-deleted'] ? '▾' : '▸' }}</span> <span class="font-sans italic">Deleted projects ({{ budgetRows.deleted.length }})</span></td>
+                                            <td class="py-1.5 pr-3 text-right">{{ fmtCost(budgetRows.deletedSpent) }}</td>
+                                            <td class="py-1.5 pr-3 font-sans text-gray-500" colspan="3">no budgets: nothing can spend there</td>
+                                        </tr>
+                                        <template v-if="openGroups['budgets-deleted']">
+                                            <tr v-for="row in budgetRows.deleted" :key="'d-' + row.project" class="border-b border-gray-800 text-gray-500 bg-gray-900/40">
+                                                <td class="py-1 pr-3 truncate max-w-[220px]" :title="row.project"><span class="inline-block w-4"></span><span class="line-through decoration-gray-600">{{ row.project }}</span><deleted-tag :at="row.deleted"></deleted-tag></td>
+                                                <td class="py-1 pr-3 text-right">{{ fmtCost(row.spent) }}</td>
+                                                <td class="py-1 pr-3" colspan="3"></td>
+                                            </tr>
+                                        </template>
+                                    </template>
+                                </tbody>
+                            </table>
+                            <div class="mt-6 bg-gray-900 border border-gray-800 rounded-xl p-4">
+                                <h3 class="font-bold text-gray-200 text-[15px] mb-3 flex items-center">Cost warnings<help-tip wide>
+                                    <p>These only decide whether a warning with the estimated cost appears before the button runs. They don't turn the features on or off.</p>
+                                    <p>"Save as skill" always shows its cost in its own dialog. Automatic memory updates are switched on or off in Dashboard → Memory.</p>
+                                </help-tip></h3>
+                                <label class="flex items-center gap-2 text-[15px] text-gray-200 mb-2 cursor-pointer"><input type="checkbox" v-model="appSettings.confirm_update_memory" @change="saveSettings" class="w-4 h-4">
+                                    Warn me before "Update memory now"<help-tip>Shows the estimated cost and asks for confirmation. Unchecked: the button in Dashboard → Memory runs immediately.</help-tip></label>
+                                <label class="flex items-center gap-2 text-[15px] text-gray-200 cursor-pointer"><input type="checkbox" v-model="appSettings.confirm_escalate" @change="saveSettings" class="w-4 h-4">
+                                    Warn me before "Escalate ↑"<help-tip>Shows the estimated cost of re-running the request on the Complex model and asks for confirmation. Unchecked: Escalate runs immediately.</help-tip></label>
+                            </div>
+                        </div>
+                        <div v-if="settingsTab === 'system' && securityChecks.length">
+                            <h3 class="font-bold text-gray-200 text-[15px] mb-2 flex items-center">Security checklist<help-tip wide><p>What protects this Optimux right now. Items marked <b>!</b> matter most when others can reach the server (a VPS, a shared network). The Guide's "Running on a server" chapter explains each one.</p></help-tip></h3>
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
+                                <div v-for="c in securityChecks" :key="c.id" class="flex items-start gap-3 px-3 py-2 text-[13px]">
+                                    <span :class="['font-mono font-bold w-4 text-center shrink-0', c.ok ? 'text-green-400' : (c.important ? 'text-yellow-400' : 'text-gray-500')]">{{ c.ok ? '✓' : (c.important ? '!' : '·') }}</span>
+                                    <span class="text-gray-200 w-44 shrink-0">{{ c.label }}</span>
+                                    <span class="text-gray-400">{{ c.detail }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-if="settingsTab === 'system' && systemInfo" class="grid sm:grid-cols-3 gap-3">
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl p-3"><div class="text-[11px] uppercase text-gray-500">Optimux</div><div class="font-mono text-[15px] text-gray-200 mt-1 truncate" :title="systemInfo.optimux">{{ systemInfo.optimux }}</div></div>
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl p-3"><div class="text-[11px] uppercase text-gray-500">LiteLLM</div><div class="font-mono text-[15px] text-gray-200 mt-1">{{ systemInfo.litellm }}</div></div>
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl p-3"><div class="text-[11px] uppercase text-gray-500">Python</div><div class="font-mono text-[15px] text-gray-200 mt-1">{{ systemInfo.python }}</div></div>
+                        </div>
+                        <div v-if="settingsTab === 'system' && systemInfo && systemInfo.paths">
+                            <h3 class="font-bold text-gray-200 text-[15px] mb-2 flex items-center">Files<help-tip>Everything Optimux keeps lives here (set <code>OPTIMUX_HOME</code> to move it). Keys and the token are in <code>secrets.env</code>, readable only by you.</help-tip></h3>
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-[13px] font-mono text-gray-400 grid sm:grid-cols-2 gap-x-6 gap-y-1">
+                                <div v-for="(path, name) in systemInfo.paths" :key="name" class="truncate" :title="path"><span class="text-gray-500 inline-block w-16">{{ name }}</span> {{ path }}</div>
+                                <div v-if="workspacePath" class="truncate" :title="workspacePath + ' (your projects; archived ones in .archive/)'"><span class="text-gray-500 inline-block w-16">projects</span> {{ workspacePath }}</div>
+                            </div>
+                            <details v-if="systemInfo.migrations && systemInfo.migrations.length" class="mt-2">
+                                <summary class="text-xs text-gray-500 cursor-pointer hover:text-gray-300">File moves ({{ systemInfo.migrations.length }}): what was moved into this layout, and from where</summary>
+                                <pre class="mt-1 text-xs text-gray-500 whitespace-pre-wrap max-h-48 overflow-y-auto">{{ systemInfo.migrations.join('\n') }}</pre>
+                            </details>
+                        </div>
+                        <div v-if="settingsTab === 'system'" class="space-y-4">
+                            <h3 class="font-bold text-gray-200 text-[15px] flex items-center">Sign-in<help-tip wide><p>Browsers sign in with your password and stay signed in for up to 30 days (14 without use). The sign-in is kept in a cookie that page scripts can't read.</p><p>After 5 wrong attempts from one address, that address waits 15 minutes.</p></help-tip>
+                                <button @click="signOut" class="ml-auto text-[13px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Sign out</button></h3>
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="text-[13px] text-gray-300 font-semibold">Signed-in browsers ({{ authInfo.sessions.length }})</div>
+                                    <button v-if="authInfo.sessions.length > 1" @click="signOutOthers" class="text-[13px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Sign out the others</button>
+                                </div>
+                                <div v-for="(x, i) in authInfo.sessions" :key="i" class="text-xs font-mono text-gray-400 flex gap-3 py-0.5">
+                                    <span class="w-28 shrink-0 truncate">{{ x.ip || '?' }}</span>
+                                    <span class="w-28 shrink-0">{{ fmtAgo(x.last_seen) }}</span>
+                                    <span class="w-40 shrink-0 text-gray-300">{{ browserLabel(x.agent) }}</span>
+                                    <span class="truncate flex-1 text-gray-600" :title="x.agent">{{ x.agent }}</span>
+                                    <span v-if="x.current" class="text-green-400 shrink-0">this browser</span>
+                                </div>
+                            </div>
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <form @submit.prevent="changePassword" class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-2">
+                                    <div class="text-[13px] text-gray-300 font-semibold flex items-center">Change password<help-tip>At least 12 characters. Every other browser is signed out.</help-tip></div>
+                                    <input v-model="pwForm.current" type="password" autocomplete="current-password" placeholder="Current password" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500">
+                                    <input v-model="pwForm.next" type="password" autocomplete="new-password" minlength="12" placeholder="New password" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500">
+                                    <input v-model="pwForm.again" type="password" autocomplete="new-password" minlength="12" placeholder="New password again" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500">
+                                    <div class="flex items-center gap-3"><button type="submit" :disabled="!pwForm.current || !pwForm.next" class="text-[13px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-40">Change</button>
+                                        <span v-if="pwForm.msg" :class="['text-xs', pwForm.ok ? 'text-green-400' : 'text-red-300']">{{ pwForm.msg }}</span></div>
+                                </form>
+                                <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-2">
+                                    <div class="text-[13px] text-gray-300 font-semibold flex items-center">Two-step codes
+                                        <span :class="['ml-2 text-[11px] font-mono', authInfo.totp ? 'text-green-400' : 'text-gray-500']">{{ authInfo.totp ? 'on' : 'off' }}</span>
+                                        <help-tip>Signing in also asks for a 6-digit code from an authenticator app on your phone (Aegis, Google Authenticator, 1Password…). A stolen password alone is then not enough. Recommended on a server.</help-tip></div>
+                                    <template v-if="!authInfo.totp && totpSetup.step !== 'scan'">
+                                        <form @submit.prevent="totpStart" class="flex gap-2"><input v-model="totpSetup.password" type="password" autocomplete="current-password" placeholder="Your password" class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500"><button type="submit" :disabled="!totpSetup.password" class="text-[13px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-40">Set up</button></form>
+                                    </template>
+                                    <template v-if="totpSetup.step === 'scan'">
+                                        <p class="text-xs text-gray-400">Scan with your authenticator app, then type the code it shows.</p>
+                                        <img v-if="totpSetup.qr" :src="totpSetup.qr" alt="QR code for the authenticator app" class="rounded bg-white p-1">
+                                        <div class="text-[11px] text-gray-500">Or type this key: <code class="font-mono text-gray-300 break-all select-all">{{ totpSetup.secret }}</code></div>
+                                        <form @submit.prevent="totpConfirm" class="flex gap-2"><input v-model="totpSetup.code" inputmode="numeric" maxlength="7" placeholder="123456" class="w-28 font-mono bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500"><button type="submit" class="text-[13px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Turn on</button><button type="button" @click="totpSetup.step = 'idle'" class="text-xs text-gray-500 hover:text-gray-300">Cancel</button></form>
+                                    </template>
+                                    <template v-if="authInfo.totp">
+                                        <button v-if="!totpOff.open" @click="totpOff.open = true" class="text-[13px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Turn off…</button>
+                                        <form v-else @submit.prevent="totpDisable" class="flex flex-wrap gap-2"><input v-model="totpOff.password" type="password" placeholder="Password" class="flex-1 min-w-[8rem] bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500"><input v-model="totpOff.code" inputmode="numeric" maxlength="7" placeholder="Code" class="w-24 font-mono bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500"><button type="submit" class="text-[13px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Turn off</button></form>
+                                    </template>
+                                    <p v-if="totpSetup.msg || totpOff.msg" class="text-xs text-red-300">{{ totpSetup.msg || totpOff.msg }}</p>
+                                </div>
+                            </div>
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                                <div class="text-[13px] text-gray-300 font-semibold flex items-center">Access token (for scripts)<help-tip>Not needed in the browser. Scripts can call the API with <code>Authorization: Bearer &lt;token&gt;</code>, and the token is what sets the first password. It's in <code>secrets.env</code>. Rotate it if it may have leaked.</help-tip>
+                                    <button @click="rotateToken" class="ml-auto text-[13px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Rotate token…</button></div>
+                                <div v-if="newToken" class="mt-2 p-3 rounded-lg border border-green-800 bg-green-950/30 text-[13px]">
+                                    <div class="text-green-300 mb-1">New token (shown once; it's also in secrets.env):</div>
+                                    <div class="flex items-center gap-2"><code class="font-mono text-gray-100 break-all">{{ newToken }}</code><button @click="writeClipboard(newToken)" class="text-gray-400 hover:text-gray-200">Copy</button></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-if="settingsTab === 'system' && storageInfo && storageInfo.path">
+                            <h3 class="font-bold text-gray-200 text-[15px] mb-1">Storage</h3>
+                            <div class="text-xs text-gray-400 font-mono space-y-0.5">
+                                <div>Database: {{ storageInfo.path }} · {{ fmtBytes(storageInfo.size_bytes) }} · {{ (storageInfo.usage_rows || 0).toLocaleString() }} usage rows</div>
+                                <div v-if="storageInfo.latest_backup">Latest backup: {{ storageInfo.latest_backup }} ({{ new Date(storageInfo.latest_backup_time * 1000).toLocaleString() }}) · {{ storageInfo.backups }} kept</div>
+                                <div v-else class="text-yellow-400">No backup yet; one is made on every server start.</div>
+                            </div>
+                        </div>
+                        <div v-if="settingsTab === 'system'">
+                            <div class="flex items-center justify-between mb-2">
+                                <h3 class="font-bold text-gray-200 text-[15px] flex items-center">Models in cooldown<help-tip>Optimux skips a model in cooldown without calling it. Saving a new key or a successful Test clears it automatically; a server restart clears all.</help-tip></h3>
+                                <button v-if="Object.keys(cooldowns).length > 1" @click="clearCooldown(null)" class="text-[13px] text-gray-400 hover:text-gray-200">Clear all</button>
+                            </div>
+                            <div v-if="Object.keys(cooldowns).length === 0" class="text-[13px] text-gray-500 italic">None. All models are available.</div>
+                            <div v-for="(c, name) in cooldowns" :key="name" class="flex items-start justify-between gap-3 text-[13px] font-mono text-yellow-400 py-0.5">
+                                <span>{{ name }}: {{ c.reason }}</span>
+                                <button @click="clearCooldown(name)" class="text-gray-400 hover:text-gray-200 border border-gray-700 rounded px-2 flex-shrink-0" title="Make Optimux try this model again">Clear</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else class="text-[15px] text-gray-500 italic">Loading…</div>
+                </div>
+
+                </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- New skill / Save as skill: name and scope -->
+        <div v-if="skillDialog" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" @click.self="skillDialog = null">
+            <div class="w-full max-w-md bg-gray-900 border border-gray-700 rounded-xl p-5 shadow-2xl">
+                <h2 class="font-bold text-gray-100 mb-1">{{ skillDialog.mode === 'draft' ? 'Save this chat as a skill' : 'New skill' }}</h2>
+                <p class="text-xs text-gray-500 mb-4">{{ skillDialog.mode === 'draft' ? 'The Simple model drafts the skill from this chat; you review it before anything is saved.' : 'Starts from a template you can edit.' }}</p>
+                <label class="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">Name</label>
+                <input v-model="skillDialog.name" @keydown.enter="confirmSkillDialog" type="text" placeholder="e.g. release-notes" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-gray-200 outline-none focus:border-blue-500">
+                <p class="text-[11px] text-gray-500 mt-1">Lowercase letters, digits and dashes.</p>
+                <label class="block text-[11px] uppercase tracking-wider text-gray-500 mt-4 mb-1">Available in</label>
+                <div class="flex rounded-lg border border-gray-700 overflow-hidden text-sm">
+                    <button @click="skillDialog.scope = 'global'" :class="['flex-1 px-3 py-2', skillDialog.scope === 'global' ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">All projects</button>
+                    <button @click="skillDialog.scope = 'project'" :disabled="!appSettings.active_project" :class="['flex-1 px-3 py-2 disabled:opacity-40', skillDialog.scope === 'project' ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']" :title="appSettings.active_project ? '' : 'Select a project first'">This project{{ appSettings.active_project ? ' (' + appSettings.active_project + ')' : '' }}</button>
+                </div>
+                <p v-if="skillDialog.mode === 'draft'" class="text-xs text-purple-300 mt-3">💲 Drafting is one call to the Simple model: {{ costEstimates.skill_draft ? '≈ ' + fmtCost(costEstimates.skill_draft.avg) + ' (average of your last ' + costEstimates.skill_draft.n + ')' : 'no priced draft yet; usually a fraction of a cent' }}. Each click drafts again and is charged again.</p>
+                <p v-if="skillDialog.error" class="text-xs text-red-400 mt-3">{{ skillDialog.error }}</p>
+                <div class="flex justify-end gap-3 mt-5">
+                    <button @click="skillDialog = null" class="text-sm text-gray-400 hover:text-gray-200">Cancel</button>
+                    <button @click="confirmSkillDialog" :disabled="skillDialog.busy" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm font-bold">{{ skillDialog.busy ? 'Drafting…' : (skillDialog.mode === 'draft' ? 'Draft skill' : 'Create') }}</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- fix25a: delete an archived project permanently -->
+        <div v-if="deleteBox" class="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 overflow-y-auto" @click.self="deleteBox = null">
+            <form @submit.prevent="confirmDelete" class="w-full max-w-lg bg-gray-900 border border-red-900/70 rounded-2xl shadow-2xl p-6 cm-pop space-y-4 text-sm">
+                <div class="flex items-start gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-red-950/60 text-red-400 flex items-center justify-center flex-shrink-0 font-bold text-lg">!</div>
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-100">Delete {{ deleteBox.item.name }} permanently?</h2>
+                        <p class="text-gray-400">Its folder is removed from disk. This can't be undone.</p>
+                    </div>
+                </div>
+                <!-- Only for a project with a GitHub remote (fix25d) -->
+                <div v-if="deleteBox.item.github_settings" class="rounded-lg border border-gray-800 bg-gray-950/60 px-3 py-2 text-gray-400">
+                    <template v-if="!deleteBox.gh || deleteBox.gh.state === 'checking'">Checking its GitHub repository…</template>
+                    <template v-else-if="deleteBox.gh.state === 'missing'">Its GitHub repository <span class="font-mono text-gray-300">{{ deleteBox.gh.repo }}</span> <span class="text-green-400">doesn't exist any more</span>: nothing to do there.</template>
+                    <template v-else><span class="text-gray-200">Its GitHub repository <span class="font-mono">{{ deleteBox.gh.repo }}</span> isn't touched.</span>
+                        <template v-if="deleteBox.gh.state === 'exists'"> It still exists; to delete it too, use <a :href="deleteBox.item.github_settings" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">its settings page ↗</a> (Danger Zone).</template>
+                        <template v-else-if="deleteBox.gh.state === 'deleted_or_private'"> GitHub doesn't show it without signing in: it was deleted, or it's private. <a :href="deleteBox.item.github_settings" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">Check on GitHub ↗</a> (set up GitHub in the Dashboard for an exact answer).</template>
+                        <template v-else> Couldn't check whether it still exists ({{ deleteBox.gh.reason }}) <a :href="deleteBox.item.github_settings" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">Check on GitHub ↗</a></template>
+                    </template>
+                </div>
+                <div class="space-y-2">
+                    <label :class="['flex gap-3 rounded-lg border px-3 py-2 cursor-pointer', deleteBox.keep ? 'border-blue-600 bg-blue-950/30' : 'border-gray-700']">
+                        <input type="radio" :value="true" v-model="deleteBox.keep" class="mt-1 accent-blue-600">
+                        <span><span class="text-gray-100">Keep its chats, costs and memory</span><span class="block text-xs text-gray-500">They stay in History, Usage and Budgets, marked as deleted.</span></span>
+                    </label>
+                    <label :class="['flex gap-3 rounded-lg border px-3 py-2 cursor-pointer', !deleteBox.keep ? 'border-red-700 bg-red-950/30' : 'border-gray-700']">
+                        <input type="radio" :value="false" v-model="deleteBox.keep" class="mt-1 accent-red-600">
+                        <span><span class="text-gray-100">Delete them too</span><span class="block text-xs text-gray-500">{{ deleteBox.item.records.chats }} chat{{ deleteBox.item.records.chats === 1 ? '' : 's' }}, {{ deleteBox.item.records.calls }} model call{{ deleteBox.item.records.calls === 1 ? '' : 's' }} ({{ fmtCost(deleteBox.item.records.cost) }}){{ deleteBox.item.records.memory_versions || deleteBox.item.records.memory_file ? ', its project memory and its history' : '' }}. Totals in Usage go down. Records are matched by name, so a project called {{ deleteBox.item.name }} in another Workspace folder loses them too; database backups (System) keep older copies.</span></span>
+                    </label>
+                </div>
+                <div>
+                    <label class="block text-gray-300 mb-1">To confirm, type <span class="font-mono text-red-300 select-none">{{ deleteBox.item.phrase }}</span></label>
+                    <input id="cm-delete-confirm" v-model="deleteBox.typed" autocomplete="off" spellcheck="false" :placeholder="deleteBox.item.phrase" @paste.prevent @drop.prevent
+                           class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-gray-100 focus:outline-none focus:border-red-600">
+                </div>
+                <div v-if="deleteBox.error" class="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-red-300">{{ deleteBox.error }}</div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" @click="deleteBox = null" class="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Cancel</button>
+                    <button type="submit" :disabled="!deletePhraseOk || deleteBox.busy" class="px-5 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white font-bold disabled:opacity-40">{{ deleteBox.busy ? 'Deleting…' : 'Delete permanently' }}</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Feature 25: New project dialog (no model involved) -->
+        <div v-if="newProject.open" class="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 overflow-y-auto" @click.self="newProject.open = false">
+            <div :class="['w-full bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 cm-pop', newProject.tab === 'github' ? 'max-w-2xl' : 'max-w-lg']">
+                <div class="flex items-start justify-between mb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-100">New project</h2>
+                        <p class="text-sm text-gray-400">{{ newProject.tab === 'github' ? 'Clone one of your GitHub repositories into the Workspace.' : 'A folder in your Workspace, optionally with git and GitHub.' }} No model is involved, so it costs nothing.</p>
+                    </div>
+                    <button @click="newProject.open = false" class="text-gray-500 hover:text-gray-200 text-xl leading-none ml-4" aria-label="Close">×</button>
+                </div>
+                <div class="flex gap-1 mb-5 border-b border-gray-800 text-sm">
+                    <button @click="newProject.tab = 'new'" :class="['px-3 py-2 -mb-px border-b-2 transition', newProject.tab === 'new' ? 'border-blue-500 text-blue-300' : 'border-transparent text-gray-400 hover:text-gray-200']">Start new</button>
+                    <button @click="showGithubTab" :class="['px-3 py-2 -mb-px border-b-2 transition flex items-center gap-1.5', newProject.tab === 'github' ? 'border-blue-500 text-blue-300' : 'border-transparent text-gray-400 hover:text-gray-200']">From GitHub<span v-if="ghImport.job && ghImport.job.state === 'running'" class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span></button>
+                </div>
+                <project-form v-if="newProject.tab === 'new'" :key="newProject.key" :error="newProject.error" :busy="newProject.busy" :github="githubInfo"
+                              :root="appSettings.projects_root" :active-project="appSettings.active_project" :existing="projectsList"
+                              @submit="createProjectFromForm" @cancel="newProject.open = false" @setup-github="setupGithubFromForm"></project-form>
+
+                <!-- Feature 26: from GitHub -->
+                <div v-else class="text-sm space-y-3">
+                    <div v-if="githubInfo.reason !== undefined && !githubInfo.ready" class="rounded-lg border border-yellow-800 bg-yellow-950/30 px-3 py-2 text-yellow-300">
+                        {{ githubInfo.reason }} <button type="button" class="underline text-blue-400 hover:text-blue-300" @click="setupGithubFromForm">Set up GitHub</button>
+                    </div>
+                    <template v-else>
+                        <div class="flex gap-2">
+                            <input v-model="ghImport.query" placeholder="Search your repositories" spellcheck="false" autocomplete="off"
+                                   class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 focus:outline-none focus:border-blue-500">
+                            <button @click="loadGithubRepos(true)" :disabled="ghImport.loading" class="px-3 rounded-lg border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-40" title="Load the list again">↻</button>
+                        </div>
+                        <div v-if="ghImport.error" class="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-red-300">{{ ghImport.error }}</div>
+                        <div class="border border-gray-800 rounded-lg max-h-72 overflow-y-auto divide-y divide-gray-800/70">
+                            <div v-if="ghImport.loading" class="px-3 py-6 text-center text-gray-500 flex items-center justify-center gap-2"><span class="w-3.5 h-3.5 rounded-full border-2 border-gray-600 border-t-blue-400 animate-spin"></span>Loading your repositories…</div>
+                            <div v-else-if="ghImport.repos && !filteredRepos.length" class="px-3 py-6 text-center text-gray-500">{{ ghImport.query ? 'No repository matches.' : 'No repositories found for this sign-in.' }}</div>
+                            <button v-for="r in shownRepos" :key="r.full_name" type="button" @click="pickRepo(r)" :disabled="!!r.local"
+                                    :class="['w-full text-left px-3 py-2 flex items-start gap-3 transition', ghImport.picked && ghImport.picked.full_name === r.full_name ? 'bg-blue-950/50' : (r.local ? 'opacity-50 cursor-default' : 'hover:bg-gray-800/50')]">
+                                <span class="min-w-0 flex-1">
+                                    <span class="font-mono"><span class="text-gray-500">{{ r.full_name.split('/')[0] }}/</span><span class="text-gray-100">{{ r.name }}</span></span>
+                                    <span :class="['ml-2 text-[10px] uppercase tracking-wider px-1 py-px rounded border', r.private ? 'text-yellow-300/90 border-yellow-900/70' : 'text-gray-400 border-gray-700']">{{ r.private ? 'private' : 'public' }}</span>
+                                    <span v-if="r.fork" class="ml-1 text-[10px] uppercase tracking-wider text-gray-500">fork</span>
+                                    <span v-if="r.archived" class="ml-1 text-[10px] uppercase tracking-wider text-gray-500">read-only</span>
+                                    <span v-if="r.description" class="block text-xs text-gray-500 truncate">{{ r.description }}</span>
+                                </span>
+                                <span class="text-xs text-gray-500 flex-shrink-0 text-right">{{ r.local ? 'in your Workspace as ' + r.local : (r.updated_at ? 'updated ' + fmtAgo(Date.parse(r.updated_at) / 1000) : '') }}</span>
+                            </button>
+                        </div>
+                        <p v-if="ghImport.repos" class="text-xs text-gray-500">{{ ghImport.repos.length }} repositor{{ ghImport.repos.length === 1 ? 'y' : 'ies' }}{{ ghImport.truncated ? ' (the first 1000)' : '' }}{{ filteredRepos.length > shownRepos.length ? '; showing ' + shownRepos.length + ' of ' + filteredRepos.length + ' matches, search to narrow' : '' }}.{{ ghImport.fine_grained ? ' A fine-grained token sees only the account or organization it was made for; missing some? Give the token access to them in GitHub.' : '' }}</p>
+
+                        <div v-if="ghImport.picked" class="rounded-lg border border-blue-800 bg-blue-950/20 p-3 space-y-3">
+                            <div class="text-gray-300">Clone <span class="font-mono text-gray-100">{{ ghImport.picked.full_name }}</span> into</div>
+                            <div class="flex items-center gap-2 font-mono">
+                                <span class="text-gray-500 truncate max-w-[45%]" :title="workspacePath">{{ workspacePath }}/</span>
+                                <input v-model="ghImport.name" :disabled="ghImport.job && ghImport.job.state === 'running'" maxlength="100" spellcheck="false" autocomplete="off"
+                                       class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-gray-100 focus:outline-none focus:border-blue-500 disabled:opacity-60">
+                            </div>
+                            <div v-if="importNameProblem && ghImport.name && !(ghImport.job && ghImport.job.state === 'running')" class="text-xs text-red-400">{{ importNameProblem }}</div>
+                            <label class="flex items-center gap-2 cursor-pointer text-gray-300"><input type="checkbox" v-model="ghImport.switch" class="w-4 h-4 accent-blue-600"> Open it when it's ready</label>
+                            <div v-if="ghImport.job && ghImport.job.state === 'running'" class="flex items-center gap-3">
+                                <span class="w-3.5 h-3.5 rounded-full border-2 border-gray-600 border-t-blue-400 animate-spin flex-shrink-0"></span>
+                                <span class="flex-1 font-mono text-xs text-gray-400 truncate">{{ ghImport.job.progress }}</span>
+                                <button @click="cancelClone" class="px-3 py-1 rounded border border-gray-700 text-gray-300 hover:border-red-700 hover:text-red-300">Cancel</button>
+                            </div>
+                            <div v-else-if="ghImport.job && ghImport.job.state === 'failed'" class="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-red-300 whitespace-pre-wrap font-mono text-xs">{{ ghImport.job.error }}</div>
+                            <div v-if="!(ghImport.job && ghImport.job.state === 'running')" class="flex justify-end gap-3">
+                                <button @click="ghImport.picked = null; ghImport.job = null" class="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Back</button>
+                                <button @click="startClone" :disabled="!!importNameProblem || ghImport.posting" class="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold disabled:opacity-40">Clone</button>
+                            </div>
+                            <p class="text-xs text-gray-500">Submodules and Git LFS files aren't downloaded; fetch them yourself if the project needs them. The clone keeps going if you close this window.</p>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feature 25: toasts -->
+        <div class="fixed top-20 right-6 z-[65] flex flex-col gap-2 items-end pointer-events-none">
+            <transition-group name="cm-toast">
+                <div v-for="t in toasts" :key="t.id" role="status"
+                     :class="['pointer-events-auto w-80 max-w-[calc(100vw-3rem)] rounded-xl border p-4 shadow-2xl flex gap-3 text-sm bg-gray-900', t.kind === 'warn' ? 'border-yellow-700' : (t.kind === 'info' ? 'border-blue-800' : 'border-green-700')]">
+                    <span :class="['w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 font-bold', t.kind === 'warn' ? 'bg-yellow-900/60 text-yellow-300' : (t.kind === 'info' ? 'bg-blue-900/60 text-blue-300' : 'bg-green-900/60 text-green-300')]">{{ t.kind === 'warn' ? '!' : (t.kind === 'info' ? '→' : '✓') }}</span>
+                    <div class="min-w-0 flex-1">
+                        <div class="font-bold text-gray-100 break-words">{{ t.title }}</div>
+                        <div v-if="t.text" class="text-gray-400 mt-0.5 whitespace-pre-wrap break-words">{{ t.text }}</div>
+                        <a v-if="t.link" :href="t.link" target="_blank" rel="noopener noreferrer" class="inline-block mt-1 text-blue-400 hover:text-blue-300">{{ t.linkLabel || 'Open' }} ↗</a>
+                    </div>
+                    <button @click="dismissToast(t.id)" class="text-gray-500 hover:text-gray-200 self-start leading-none" aria-label="Dismiss">×</button>
+                </div>
+            </transition-group>
+        </div>
+
+        <!-- Memory updated toast -->
+        <!-- Code viewer: command / output / code block with syntax highlighting -->
+        <div v-if="viewer.open" class="fixed inset-y-0 right-0 z-[45] w-full md:w-[58%] max-w-[1000px] bg-gray-950 border-l border-gray-700 shadow-2xl flex flex-col">
+            <div class="px-4 py-3 border-b border-gray-800 flex items-center gap-3">
+                <div class="min-w-0 flex-1">
+                    <div class="text-sm font-bold text-gray-100 truncate">{{ viewer.title }}</div>
+                    <div class="text-[11px] font-mono text-gray-500 truncate">{{ viewer.subtitle }}</div>
+                </div>
+                <label class="text-[11px] text-gray-500 flex items-center gap-1">Language
+                    <select v-model="viewer.lang" @change="rehighlightViewer" class="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-xs text-gray-200">
+                        <option v-for="l in viewerLanguages" :key="l[0]" :value="l[0]" class="bg-gray-900">{{ l[1] }}</option>
+                    </select>
+                </label>
+                <button @click="viewer.wrap = !viewer.wrap" :class="['text-xs border rounded px-2 py-0.5', viewer.wrap ? 'text-blue-300 border-blue-800' : 'text-gray-400 border-gray-700 hover:text-gray-200']" title="Wrap long lines">Wrap</button>
+                <button @click="closeViewer" class="text-gray-500 hover:text-gray-200 text-lg leading-none px-1" title="Close (Esc)">✕</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                <section v-for="(sec, sIdx) in viewer.sections" :key="sIdx">
+                    <div class="flex items-center justify-between mb-1.5 text-[11px] font-mono text-gray-500">
+                        <span class="uppercase tracking-wider">{{ sec.label }} · {{ sec.lines.toLocaleString() }} line{{ sec.lines === 1 ? '' : 's' }}</span>
+                        <button @click="copyViewerSection(sec)" class="hover:text-gray-200 border border-gray-700 hover:border-gray-500 rounded px-2 py-0.5">{{ sec.copied ? 'Copied!' : 'Copy' }}</button>
+                    </div>
+                    <div v-if="!sec.text" class="text-xs text-gray-600 italic">(empty)</div>
+                    <div v-else :class="['cm-code rounded-lg border border-gray-800 bg-black/60 py-2 overflow-x-auto text-gray-200', viewer.wrap ? 'cm-wrap' : '']"><code class="hljs block" v-html="sec.html"></code></div>
+                </section>
+            </div>
+        </div>
+
+        <!-- In-app confirmation (replaces the browser's native confirm boxes) -->
+        <div v-if="confirmBox" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="answerConfirm(false)">
+            <div class="w-full max-w-md bg-gray-900 border border-gray-700 rounded-xl p-5 shadow-2xl">
+                <h3 class="text-gray-100 font-bold mb-2">{{ confirmBox.title }}</h3>
+                <p v-if="confirmBox.detail" class="text-sm text-gray-200 mb-2 break-words">{{ confirmBox.detail }}</p>
+                <p class="text-xs text-gray-400">{{ confirmBox.text }}</p>
+                <p v-if="confirmBox.cost" class="text-sm text-purple-300 font-mono mt-3">{{ confirmBox.cost }}</p>
+                <label v-if="confirmBox.skipLabel" class="flex items-center gap-2 text-xs text-gray-400 mt-3 cursor-pointer"><input type="checkbox" v-model="confirmBox.skip" class="w-3.5 h-3.5"> {{ confirmBox.skipLabel }}</label>
+                <div class="flex justify-end gap-3 mt-5">
+                    <button @click="answerConfirm(false)" class="px-4 py-1.5 text-sm rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Cancel</button>
+                    <button @click="answerConfirm(true)" ref="confirmOkRef" :class="['px-4 py-1.5 text-sm rounded-lg font-bold text-white', confirmBox.danger ? 'bg-red-700 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-500']">{{ confirmBox.ok }}</button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="signinNotice" role="alert" class="fixed top-16 left-1/2 -translate-x-1/2 z-[60] w-[min(28rem,calc(100vw-2rem))] bg-gray-900 border border-yellow-700 rounded-xl p-4 shadow-2xl text-sm">
+            <div class="text-yellow-300 font-bold mb-1">New sign-in to Optimux</div>
+            <div class="text-gray-200">{{ browserLabel(signinNotice.agent) }} · {{ signinNotice.ip }}</div>
+            <div class="text-[11px] font-mono text-gray-500 mt-0.5">{{ new Date(signinNotice.time * 1000).toLocaleString() }}</div>
+            <div class="text-gray-400 text-xs mt-2">If this wasn't you, sign out the other browsers and change your password in Dashboard → System.</div>
+            <div class="flex gap-3 mt-3 text-xs">
+                <button @click="signOutOthersFromNotice" class="text-red-300 hover:text-red-200">Not me: sign out the others</button>
+                <button @click="signinNotice = null" class="ml-auto text-gray-500 hover:text-gray-300">It was me</button>
+            </div>
+        </div>
+
+        <div v-if="memoryToast" class="fixed top-16 right-6 z-[55] max-w-sm bg-gray-900 border border-purple-800 rounded-xl p-4 shadow-2xl text-sm">
+            <div class="text-purple-300 font-bold mb-1">Project memory updated · {{ projectLabel(memoryToast.project) }}</div>
+            <div class="text-gray-300">{{ memoryToast.summary }}</div>
+            <div v-if="memoryToast.cost != null" class="text-[11px] font-mono text-gray-500 mt-1">Cost {{ fmtCost(memoryToast.cost) }}</div>
+            <div class="flex gap-3 mt-3 text-xs">
+                <button @click="viewMemoryFromToast" class="text-blue-400 hover:text-blue-300">View changes</button>
+                <button @click="undoFromToast" class="text-yellow-500/80 hover:text-yellow-400">Undo</button>
+                <button @click="memoryToast = null" class="ml-auto text-gray-500 hover:text-gray-300">Dismiss</button>
+            </div>
+        </div>
+
+        <!-- History drawer: stored chats -->
+        <div v-if="historyOpen" class="fixed inset-0 z-40 flex justify-end bg-black/50" @click.self="historyOpen = false">
+            <div class="w-full max-w-md h-full bg-gray-900 border-l border-gray-700 flex flex-col shadow-2xl">
+                <div class="p-4 border-b border-gray-800 flex items-center justify-between">
+                    <h2 class="font-bold text-gray-100 flex items-center">History<help-tip>Chats are saved as you go and survive restarts. Archive hides a chat; Delete removes it permanently (its cost records are kept).</help-tip></h2>
+                    <button @click="historyOpen = false" class="text-gray-400 hover:text-white" title="Close">✕</button>
+                </div>
+                <div class="p-4 space-y-3 border-b border-gray-800">
+                    <div class="flex gap-2 text-xs">
+                        <button v-for="o in [['project','This project'],['all','All projects'],['archived','Archived']]" :key="o[0]" @click="historyScope = o[0]; fetchSessions()" :class="['px-3 py-1 rounded-lg border', historyScope === o[0] ? 'bg-blue-600 border-blue-500 text-white' : 'border-gray-700 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                    </div>
+                    <input v-model="historyQuery" @input="fetchSessions" type="text" placeholder="Search titles" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500">
+                </div>
+                <div class="flex-1 overflow-y-auto p-2 space-y-1">
+                    <div v-if="historyList.length === 0" class="text-sm text-gray-500 italic p-3">No chats here yet.</div>
+                    <div v-for="s in historyList" :key="s.id" :class="['rounded-lg p-3 border', currentSession && currentSession.id === s.id ? 'border-blue-700 bg-blue-950/30' : 'border-transparent hover:bg-gray-800/60']">
+                        <button @click="openSession(s.id)" class="w-full text-left" :disabled="isGenerating || pendingApproval">
+                            <div class="text-sm text-gray-100 truncate">{{ s.title || 'Untitled chat' }}</div>
+                            <div class="text-[11px] font-mono text-gray-500 mt-0.5">
+                                {{ projectLabel(s.project) }}<deleted-tag :at="deletedProjects[s.project] || 0"></deleted-tag> · {{ new Date(s.updated * 1000).toLocaleString() }} · {{ s.turns }} turn{{ s.turns === 1 ? '' : 's' }} · {{ fmtCost(s.cost) }}{{ s.calls_without_cost ? '+' : '' }}
+                            </div>
+                        </button>
+                        <div class="flex gap-3 mt-1 text-[11px]">
+                            <button @click="renameSession(s)" class="text-gray-500 hover:text-gray-200">Rename</button>
+                            <button v-if="!s.archived" @click="archiveSession(s, true)" class="text-gray-500 hover:text-gray-200">Archive</button>
+                            <button v-else @click="archiveSession(s, false)" class="text-gray-500 hover:text-gray-200">Unarchive</button>
+                            <button @click="deleteSession(s)" class="text-red-500/70 hover:text-red-400">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current chat title -->
+        <div v-if="currentSession" class="pt-3 -mb-3 flex items-center gap-2 text-xs text-gray-500 font-mono">
+            <span class="truncate" :title="currentSession.title">{{ currentSession.title || 'Untitled chat' }}</span>
+            <button @click="renameSession(currentSession)" class="text-gray-600 hover:text-gray-300" title="Rename this chat">✎</button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto py-6 pl-1 pr-4 space-y-6 scroll-smooth" id="chat-container" @click="onChatClick">
+            <div v-for="(msg, index) in messages" :key="index" :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
+                <div :class="['max-w-[90%] rounded-xl p-5 shadow-sm', msg.role === 'user' ? 'bg-blue-900/40 border border-blue-800/50 text-gray-100' : 'bg-gray-900 border border-gray-800 text-gray-300 w-full']">
+                    
+                    <div v-if="msg.role === 'agent' && msg.events && msg.events.length" class="text-xs font-mono mb-3 pb-2 border-b border-gray-800 space-y-1">
+                        <div v-for="(ev, eIdx) in msg.events" :key="eIdx" :class="['flex items-start gap-2', ev.kind === 'route' ? 'text-blue-400' : (ev.kind === 'switch' ? 'text-amber-400' : 'text-gray-500')]">
+                            <span class="select-none">{{ ev.kind === 'switch' ? '↪' : (ev.kind === 'route' ? '⇄' : '·') }}</span>
+                            <span>{{ ev.text }}</span>
+                        </div>
+                    </div>
+                    <div v-else-if="msg.role === 'agent' && msg.system_note" class="text-xs text-blue-400 font-mono mb-3 pb-2 border-b border-gray-800 flex items-center gap-2">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                        {{ msg.system_note }}
+                    </div>
+
+                    <!-- Replies with blocks: text, commands and notes in the order they happened -->
+                    <div v-if="msg.blocks && msg.blocks.length" class="space-y-3">
+                        <template v-for="(blk, bIdx) in msg.blocks" :key="bIdx">
+                            <div v-if="blk.kind === 'text'" class="prose prose-invert prose-blue max-w-none leading-relaxed" v-html="renderMarkdown(blk.text)"></div>
+                            <div v-else-if="blk.kind === 'cmd'" class="bg-black/80 rounded-lg border border-gray-700/80 overflow-hidden font-mono text-xs">
+                                <div class="bg-gray-800/80 px-3 py-2 flex items-start justify-between gap-3 text-gray-300 border-b border-gray-700/60">
+                                    <div class="flex items-start gap-2 min-w-0 flex-1"><span class="text-green-400 font-bold flex-shrink-0">$</span><span class="whitespace-pre-wrap break-all max-h-40 overflow-y-auto min-w-0">{{ blk.command }}</span></div>
+                                    <span v-if="blk.exit_code !== undefined" :class="['flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border', blk.exit_code === 0 ? 'text-green-400 border-green-900/60 bg-green-950/40' : 'text-red-400 border-red-900/60 bg-red-950/40']">exit {{ blk.exit_code }}</span>
+                                    <span v-else class="flex-shrink-0 whitespace-nowrap text-yellow-400 animate-pulse">running...</span>
+                                </div>
+                                <pre class="p-3 text-gray-300 overflow-x-auto whitespace-pre-wrap max-h-60">{{ blk.output }}</pre>
+                                <div class="px-3 py-1 border-t border-gray-800 flex justify-end">
+                                    <button @click="openCmdViewer(blk)" class="text-[11px] text-gray-500 hover:text-gray-200 flex items-center gap-1" title="Open the command and its output in a side panel with syntax highlighting">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"></path></svg>
+                                        View
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-else-if="blk.kind === 'note'" class="text-xs font-mono text-amber-400 border-t border-amber-900/40 pt-2">↪ {{ blk.text }}</div>
+                            <div v-else-if="blk.kind === 'thinking' && !blk.text" class="text-xs font-mono text-gray-600 px-1" title="The provider reported thinking tokens but didn't return the thinking text. Gemini returns summaries only, and often none for short thinking.">
+                                ▹ Thinking: {{ fmtTokens(blk.tokens) }} tokens (the model didn't share the text)
+                            </div>
+                            <div v-else-if="blk.kind === 'thinking'" class="border border-gray-800 rounded-lg bg-gray-950/50">
+                                <div class="flex items-center justify-between px-3 py-1.5 text-xs font-mono text-gray-500">
+                                    <button @click="blk.open = !blk.open" class="flex items-center gap-2 hover:text-gray-300" :title="blk.open ? 'Hide the model\'s thinking' : 'Show the model\'s thinking'">
+                                        <span>{{ blk.open ? '▾' : '▸' }}</span>
+                                        <span>{{ isGenerating && index === messages.length - 1 && bIdx === msg.blocks.length - 1 ? 'Thinking…' : 'Thinking' }}</span>
+                                        <span class="text-gray-600">({{ blk.text.length.toLocaleString() }} chars)</span>
+                                    </button>
+                                    <button @click="copyThinking(blk)" class="hover:text-gray-300" title="Copy the thinking">{{ blk.copied ? 'Copied!' : 'Copy' }}</button>
+                                </div>
+                                <div v-if="blk.open" class="px-3 pb-3 text-xs text-gray-400 whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">{{ blk.text }}</div>
+                            </div>
+                        </template>
+                    </div>
+                    <template v-else>
+                        <div v-if="msg.commands && msg.commands.length > 0" class="space-y-3 mb-4">
+                            <div v-for="(cmdItem, cIdx) in msg.commands" :key="cIdx">
+                            <div class="bg-black/80 rounded-lg border border-gray-700/80 overflow-hidden font-mono text-xs">
+                                <div class="bg-gray-800/80 px-3 py-2 flex items-start justify-between gap-3 text-gray-300 border-b border-gray-700/60">
+                                    <div class="flex items-start gap-2 min-w-0 flex-1"><span class="text-green-400 font-bold flex-shrink-0">$</span><span class="whitespace-pre-wrap break-all max-h-40 overflow-y-auto min-w-0">{{ cmdItem.command }}</span></div>
+                                    <span v-if="cmdItem.exit_code !== undefined" :class="['flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border', cmdItem.exit_code === 0 ? 'text-green-400 border-green-900/60 bg-green-950/40' : 'text-red-400 border-red-900/60 bg-red-950/40']">exit {{ cmdItem.exit_code }}</span>
+                                    <span v-else class="flex-shrink-0 whitespace-nowrap text-yellow-400 animate-pulse">running...</span>
+                                </div>
+                                <pre class="p-3 text-gray-300 overflow-x-auto whitespace-pre-wrap max-h-60">{{ cmdItem.output }}</pre>
+                                <div class="px-3 py-1 border-t border-gray-800 flex justify-end">
+                                    <button @click="openCmdViewer(cmdItem)" class="text-[11px] text-gray-500 hover:text-gray-200 flex items-center gap-1" title="Open the command and its output in a side panel with syntax highlighting">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"></path></svg>
+                                        View
+                                    </button>
+                                </div>
+                            </div>
+                            </div>
+                        </div>
+                        <div v-if="msg.content" class="prose prose-invert prose-blue max-w-none leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
+                    </template>
+
+                    <!-- After an interruption (stop, step limit, budget, error): pick up again -->
+                    <div v-if="msg.interrupted && index === messages.length - 1 && !isGenerating && !pendingApproval" class="mt-3 flex flex-wrap items-center gap-2">
+                        <span class="text-[11px] font-mono text-gray-500 mr-1">{{ interruptionLabel(msg.interrupted) }}</span>
+                        <button v-if="['stopped', 'step_limit', 'paused', 'aborted'].includes(msg.interrupted)" @click="continueTurn" class="text-xs font-mono text-blue-300 hover:text-blue-200 border border-blue-800/60 hover:border-blue-600 rounded px-3 py-1" title="Let the model keep working from where it stopped">Continue ↻</button>
+                        <button v-if="lastPromptBefore(index)" @click="retryFrom(index)" class="text-xs font-mono text-gray-300 hover:text-white border border-gray-700 hover:border-gray-500 rounded px-3 py-1" :title="'Send again: ' + lastPromptBefore(index)">Retry ⟳</button>
+                        <button v-if="['blocked', 'paused'].includes(msg.interrupted)" @click="openBudgets" class="text-xs font-mono text-red-300 hover:text-red-200 border border-red-800/60 hover:border-red-600 rounded px-3 py-1" title="Open the project's budget">Raise budget</button>
+                    </div>
+                    
+                    <div v-if="msg.role === 'agent' && !(index === 0 && msg.system_note === 'System') && !(isGenerating && index === messages.length - 1)" class="mt-3 pt-2 border-t border-gray-800 flex items-center justify-between gap-3 text-[11px] font-mono text-gray-500">
+                        <span v-if="msg.usage" :title="msg.usage.estimated ? 'Some token counts are estimates' : ''">
+                            {{ callsLabel(msg.usage) }} · {{ msg.usage.estimated ? '≈' : '' }}{{ fmtTokens(msg.usage.tokens) }} tok{{ msg.usage.reasoning ? ' (' + fmtTokens(msg.usage.reasoning) + ' thinking)' : '' }} · {{ msg.usage.costKnown ? fmtCost(msg.usage.cost) : (msg.usage.cost > 0 ? fmtCost(msg.usage.cost) + '+' : 'cost ?') }} · {{ fmtMs(msg.usage.ms) }}
+                        </span>
+                        <span v-else></span>
+                        <span class="flex items-center gap-2">
+                            <button @click="copyExchange(index)" class="text-gray-500 hover:text-gray-200 border border-gray-700 hover:border-gray-500 rounded px-2 py-0.5 flex items-center gap-1" title="Copy this question and answer as Markdown">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                {{ copiedIndex === index ? 'Copied!' : (copiedIndex === -1 ? 'Copy failed' : 'Copy') }}
+                            </button>
+                            <button v-if="currentSession && msg.usage" @click="saveAsSkill(index)" :disabled="skillDrafting" class="text-gray-500 hover:text-gray-200 border border-gray-700 hover:border-gray-500 rounded px-2 py-0.5" title="Draft a reusable skill from this chat (you review it before saving)">{{ skillDrafting ? 'Drafting…' : 'Save as skill' }}</button>
+                            <button v-if="canEscalate(msg, index)" @click="escalate" class="text-amber-400 hover:text-amber-300 border border-amber-800/60 hover:border-amber-600 rounded px-2 py-0.5" title="Re-run your last request on the Complex Executor">Escalate ↑</button>
+                        </span>
+                    </div>
+                    
+                    <!-- Feature 18: running total while the reply is still working -->
+                    <div v-if="msg.role === 'agent' && msg.usage && isGenerating && index === messages.length - 1" class="mt-3 pt-2 border-t border-gray-800 flex items-center gap-2 text-[11px] font-mono text-gray-500" title="Updated after every model call; commands themselves are free">
+                        <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                        <span>So far: {{ callsLabel(msg.usage) }} · {{ fmtTokens(msg.usage.tokens) }} tok · {{ msg.usage.costKnown ? fmtCost(msg.usage.cost) : (msg.usage.cost > 0 ? fmtCost(msg.usage.cost) + '+' : 'cost ?') }}</span>
+                    </div>
+                    <div v-if="msg.role === 'agent' && isGenerating && index === messages.length - 1 && !msg.content && (!msg.commands || msg.commands.length === 0)" class="flex gap-1 mt-2">
+                        <div class="w-2 h-2 bg-gray-600 rounded-full animate-bounce"></div>
+                        <div class="w-2 h-2 bg-gray-600 rounded-full animate-bounce [animation-delay:0.1s]"></div>
+                        <div class="w-2 h-2 bg-gray-600 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Copy whole session as Markdown -->
+            <div v-if="messages.length > 1 && !isGenerating" class="flex justify-center pt-2">
+                <button @click="copySession" class="text-xs font-mono text-gray-400 hover:text-gray-100 bg-gray-900 hover:bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 transition flex items-center gap-2" title="Copy the whole session as Markdown">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    {{ copyLabel }}
+                </button>
+            </div>
+        </div>
+
+        <div class="pt-4 pb-2 pl-1 pr-6 border-t border-gray-800 mt-auto bg-gray-950">
+            <!-- Feature 25: create_project asks with a form filled in by the model -->
+            <div v-if="pendingApproval && pendingForm" class="mb-4 bg-gray-900 border border-blue-800/70 rounded-xl p-5 shadow-xl shadow-blue-950/30 max-h-[75vh] overflow-y-auto">
+                <div class="flex items-start gap-3 mb-4">
+                    <div class="w-9 h-9 rounded-lg bg-blue-600/20 text-blue-300 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7zM12 11v4m-2-2h4"></path></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-blue-300 font-bold">New project</h3>
+                        <p class="text-sm text-gray-400">Filled in from your message. Change anything, then create; nothing happens until you do.</p>
+                    </div>
+                </div>
+                <project-form compact :key="pendingForm.key" :initial="pendingForm.form" :error="pendingForm.error"
+                              :github="githubInfo.ready ? githubInfo : pendingForm.github" :root="appSettings.projects_root"
+                              :active-project="pendingForm.active_project" :existing="projectsList"
+                              @submit="sendProjectForm" @cancel="sendApprovalResponse(false)" @setup-github="openSettings('github')"></project-form>
+            </div>
+
+            <!-- Approval Widget -->
+            <div v-if="pendingApproval && !pendingForm" class="mb-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 flex flex-col gap-3">
+                <div class="flex items-start gap-3">
+                    <svg class="w-6 h-6 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    <div>
+                        <h3 class="text-yellow-400 font-bold mb-1 flex items-center gap-2">Approval Required
+                            <span v-if="!pendingAction" :class="['text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border', pendingSandboxed ? 'text-green-300 border-green-800 bg-green-950/40' : 'text-gray-400 border-gray-700']" :title="pendingSandboxed ? 'Runs in the sandbox: it can only change the working folder' : 'The sandbox is off: the command runs with all your permissions'">{{ pendingSandboxed ? '🔒 sandboxed' : 'not sandboxed' }}</span></h3>
+                        <p class="text-sm text-gray-300 mb-2">{{ pendingAction ? 'The assistant wants to do this (always asked, even with auto-approve on):' : 'The assistant wants to run this command on your machine:' }}</p>
+                        <div class="bg-black/60 p-3 rounded font-mono text-sm text-yellow-200 whitespace-pre-wrap break-all max-h-96 overflow-y-auto">{{ pendingCommand }}</div>
+                        <div v-if="pendingOutside.length" class="mt-3 p-3 rounded border border-red-700 bg-red-900/30 text-sm text-red-300">
+                            <div class="font-bold">⚠ Outside the project</div>
+                            <div class="text-xs mt-1">This command refers to paths outside <span class="font-mono">{{ pendingWorkdir }}</span>:
+                                <span class="font-mono text-red-200">{{ pendingOutside.join(', ') }}</span>. {{ pendingSandboxed ? 'The sandbox stops it from changing them (and hides your home folder), but it can read system files.' : 'The sandbox is off, so it can read or change them.' }} Auto-approve never applies to these.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-3 mt-2">
+                    <button @click="sendApprovalResponse(false)" class="px-5 py-2 bg-gray-800 hover:bg-gray-700 text-red-400 font-bold rounded transition border border-red-900/50 text-sm">Reject</button>
+                    <button v-if="!pendingOutside.length && !pendingAction && !sandboxInfo.server_mode" @click="sendApprovalResponse(true, true)" class="px-5 py-2 bg-green-900/30 hover:bg-green-800/50 text-green-400 font-bold rounded transition border border-green-800 text-sm">Always Approve</button>
+                    <button @click="sendApprovalResponse(true)" class="px-5 py-2 bg-green-700 hover:bg-green-600 text-white font-bold rounded transition shadow-lg shadow-green-900/20 text-sm">Approve</button>
+                </div>
+            </div>
+
+            <form @submit.prevent="sendMessage" class="relative">
+                <!-- Slash commands and skills (Feature 19) -->
+                <div v-if="slashSuggestions.length" class="absolute bottom-full left-0 mb-2 w-full max-w-md bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-20">
+                    <button v-for="(c, i) in slashSuggestions" :key="c.cmd" type="button" @mousedown.prevent="pickSlash(c)" :class="['w-full text-left px-3 py-2 flex items-baseline gap-3 text-sm', i === slashIndex ? 'bg-gray-800' : 'hover:bg-gray-800']">
+                        <span class="font-mono text-blue-300 flex-shrink-0">{{ c.cmd }}</span>
+                        <span class="text-xs text-gray-400 truncate">{{ c.hint }}</span>
+                        <span v-if="c.mode" :class="['ml-auto text-[10px] uppercase tracking-wider flex-shrink-0', c.mode === 'auto' ? 'text-purple-300' : 'text-gray-500']">{{ c.mode }}</span>
+                    </button>
+                </div>
+                <div class="bg-gray-900 border border-gray-700 focus-within:border-blue-500 focus-within:shadow-md transition rounded-xl flex flex-col w-full shadow-inner">
+                    <textarea v-model="userInput" ref="chatInputRef" @keydown="handleEnter" class="w-full bg-transparent px-5 pt-5 pb-3 focus:outline-none font-mono text-sm disabled:opacity-50 resize-none overflow-y-auto max-h-60 leading-tight min-h-[52px]" :disabled="isGenerating || pendingApproval" rows="1"></textarea>
+                    
+                    <div class="flex items-center justify-between px-3 pb-3">
+                        <div class="relative flex items-center">
+                            <span class="relative flex items-center">
+                            <select v-model="selectedModel" @change="handleModelChange" class="appearance-none bg-transparent border-0 rounded-lg pl-3 pr-8 py-2 focus:outline-none transition text-xs max-w-[200px] truncate cursor-pointer text-gray-400 hover:text-gray-200 focus:text-gray-200" :disabled="isGenerating">
+                                <option value="auto" class="bg-gray-900 text-gray-200">⚡ Auto-Router</option>
+                                <optgroup v-if="availableModels.length > 0" label="Available Models" class="bg-gray-900 text-gray-400">
+                                    <option v-for="m in availableModels" :key="m.id" :value="m.id" class="bg-gray-900 text-gray-200">{{ m.name }}</option>
+                                </optgroup>
+                                <optgroup v-if="setupModels.length > 0" label="Requires Setup" class="bg-gray-900 text-gray-400">
+                                    <option v-for="m in setupModels" :key="m.id" :value="m.id" class="bg-gray-900 text-gray-200">🔒 {{ m.name }}</option>
+                                </optgroup>
+                            </select>
+                            <svg class="w-3 h-3 text-gray-400 absolute right-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </span>
+                            <button type="button" @click="newChat" :disabled="isGenerating || pendingApproval" class="ml-1 text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 px-2 py-2 flex items-center gap-1" title="Start a new chat (clears the conversation history the model sees)">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                New chat
+                            </button>
+                        </div>
+                        
+                        <button v-if="isGenerating || pendingApproval" type="button" @click="stopGeneration" :disabled="isStopping" title="Stop (Esc)" aria-label="Stop" class="bg-red-600 hover:bg-red-500 text-white px-3 py-2 rounded-lg font-bold transition disabled:opacity-50 flex items-center text-sm shadow-sm">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+                        </button>
+                        <button v-else type="submit" title="Send" aria-label="Send" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg font-bold transition disabled:opacity-50 flex items-center text-sm shadow-sm" :disabled="!userInput.trim() || isGenerating || pendingApproval">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

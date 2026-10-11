@@ -1,0 +1,18 @@
+# security.py Agent Details
+
+## File Overview
+`security.py` holds Optimux's security primitives. It has no FastAPI imports so it can be unit-tested in isolation and reused by any module.
+
+## Core Functionality
+- **Token file:** `get_or_create_token` and `rotate_token` write `secrets.env` through `paths.write_private` (mode 600).
+- **Token auth:** `get_or_create_token()` reads `OPTIMUX_TOKEN` from the environment, or generates one, appends it to `~/.optimux/secrets.env` and prints it. `check_token()` uses a constant-time compare. `bearer_from_header()` parses `Authorization: Bearer`.
+- **Token rotation:** `rotate_token()` writes a new `OPTIMUX_TOKEN` to `secrets.env` (replacing the old line) and to the running process. WebSocket connections that are already authenticated stay open.
+- **Origin check:** `origin_allowed()` accepts same-host origins, origins listed in `OPTIMUX_ALLOWED_ORIGINS`, and requests without an Origin header (non-browser clients, which still need the token).
+- **Scope:** `validate_project_name()` allows only a single non-hidden path segment. `resolve_scope_root()` requires an absolute, existing directory. `resolve_project_dir()` resolves symlinks and requires the result to sit directly under the root. All three raise `ScopeError`.
+- **Env keys:** `validate_env_key()` requires UPPER_SNAKE names ending in `_API_KEY`, `_KEY`, `_TOKEN` or `_API_BASE`, and refuses `OPTIMUX_TOKEN`. `validate_env_value()` rejects newlines and NUL. Both raise `ValidationError`.
+- **Subprocess env:** `scrubbed_env()` copies the environment without the given secret names, any `*_API_KEY`, `OPTIMUX_TOKEN` or `OPTIMUX_GITHUB_TOKEN` (`GITHUB_TOKEN_ENV`, Feature 25: the GitHub token in secrets.env, which only workspace.py hands to its own gh calls), and every `CODEMUX_*` variable (the names before the rename to Optimux).
+
+- **Command paths (`paths_outside_scope(command, workdir)`):** A heuristic that lists path-like arguments pointing outside the active project: absolute paths, `~` paths, `..` paths that leave it, `$HOME`/`$OLDPWD`, and `--opt=/path`. It ignores common system locations (`/usr`, `/bin`, `/sbin`, `/lib`, `/tmp`, `/dev/null`, ...), regex-like arguments containing spaces, and URLs. Here-document bodies are skipped (`strip_heredocs`), since they are file contents, not paths. `cd` is followed through the command (`_tokens` keeps `;`, `&&`, `||`, `|` and newlines as separators), so relative paths resolve from where the command actually is: `cd sub && ... && cd ..` stays inside, while a `cd` that leaves the project, a bare `cd`, `cd ~` or `cd $HOME` is flagged. It is not a security boundary (variables, command substitution or encoded paths can evade it); the sandbox phase replaces it.
+
+## Links & Dependencies
+- Used by `main.py` (auth middleware, WS handshake, 400 handlers, outside-path flags on approval requests), `executor.py` (cwd and env), `config_manager.py` (save-time validation) and `memory_manager.py` (project names).
