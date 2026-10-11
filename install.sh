@@ -841,25 +841,33 @@ install_local() {
 
 # ~/.local/bin must be in PATH for `optimux` to work in new terminals
 path_hint() {
+  CM_PATH_LATER=""
   case ":$PATH:" in *":$HOME/.local/bin:"*) return 0 ;; esac
-  if grep -qs '\.local/bin' "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.zprofile" 2>/dev/null; then
-    note "Your login profile adds ~/.local/bin, so optimux works after you log in again. Until then: ~/.local/bin/optimux"
-    return 0
-  fi
+  # This terminal can't find optimux by name yet: an installer started from it (curl | bash)
+  # can't change its PATH. finish_local says so in the final card.
+  CM_PATH_LATER=1
   local rc="$HOME/.bashrc"
   [[ "${SHELL:-}" == */zsh ]] && rc="$HOME/.zshrc"
-  local def=Y; if [[ -n "$CM_YES" ]]; then def=N; fi     # unattended: don't edit shell files unasked
-  note "~/.local/bin isn't in your PATH, so 'optimux' won't be found by name."
-  if confirm "Add it to $(basename "$rc")?" "$def"; then
+  if grep -qsF 'export PATH="$HOME/.local/bin:$PATH"' "$rc"; then return 0; fi    # added by an earlier install
+  # ~/.profile (Ubuntu, Debian) adds ~/.local/bin only at login, and only if the folder existed
+  # then: new terminals need the line in the shell's rc file to find optimux before a new login.
+  local def=Y; if [[ -n "${CM_YES:-}" ]]; then def=N; fi     # unattended: don't edit shell files unasked
+  note "New terminals find 'optimux' only after you log in again, unless ~/.local/bin is added to $(basename "$rc")."
+  if confirm "Add ~/.local/bin to $(basename "$rc")?" "$def"; then
     printf '\n# Added by the Optimux installer\nexport PATH="$HOME/.local/bin:$PATH"\n' >>"$rc"
-    ok "Added to $rc (new terminals). In this one: ~/.local/bin/optimux"
+    ok "Added to $rc: new terminals find optimux"
   else
-    note "Run it as ~/.local/bin/optimux, or add ~/.local/bin to your PATH."
+    note "Then run it as ~/.local/bin/optimux until you log in again."
   fi
 }
 
 finish_local() {
-  local signin
+  local signin commands_note=()
+  if [[ -n "${CM_PATH_LATER:-}" ]]; then
+    # shellcheck disable=SC2016  # shown literally, for the user to paste
+    commands_note=("           ${CY}This terminal doesn't know the command yet. Run first:${C0}"
+                   '           export PATH="$HOME/.local/bin:$PATH"')
+  fi
   if [[ -n "${CM_PW_SET:-}" ]]; then signin="Sign in with the password you just chose."
   elif password_is_set; then signin="Sign in with your password."
   else signin="First visit: paste the access token ($(admin token 2>/dev/null)), then choose a password."; fi
@@ -869,6 +877,7 @@ finish_local() {
     "" \
     "${CB}Commands${C0}   optimux start | stop | status | logs | open" \
     "           optimux update | password | uninstall" \
+    "${commands_note[@]}" \
     "" \
     "${CB}Files${C0}      program  ${M[APP_DIR]}" \
     "           data     ${M[DATA_DIR]}  ${CM}(keys, chats, memory)${C0}" \

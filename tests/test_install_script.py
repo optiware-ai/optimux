@@ -442,3 +442,38 @@ def test_data_already_moved_by_the_server_is_used(tmp_path):
     (home / ".codemux").rename(home / ".optimux")
     run_upgrade(home)
     assert f"DATA_DIR={home}/.optimux" in (home / ".config/optimux/install.env").read_text()
+
+
+# ---------- The optimux command right after a local install (~/.local/bin not in PATH yet)
+
+def path_hint_in(home, path, **extra):
+    return lib(f'confirm() {{ echo "ASKED $1"; return 0; }}; path_hint; echo "LATER=${{CM_PATH_LATER:-}}"',
+               HOME=str(home), PATH=path, SHELL="/bin/bash", **extra)
+
+
+def test_new_terminals_find_the_command_even_with_ubuntus_profile(tmp_path):
+    """Ubuntu's ~/.profile mentions ~/.local/bin but only adds it at the next login."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".profile").write_text('if [ -d "$HOME/.local/bin" ] ; then PATH="$HOME/.local/bin:$PATH"; fi\n')
+    r = path_hint_in(home, "/usr/bin:/bin")
+    assert "ASKED Add ~/.local/bin to .bashrc?" in r.stdout and "LATER=1" in r.stdout, r.stdout + r.stderr
+    assert 'export PATH="$HOME/.local/bin:$PATH"' in (home / ".bashrc").read_text()
+    path_hint_in(home, "/usr/bin:/bin")                      # a second install doesn't add it twice
+    assert (home / ".bashrc").read_text().count("Added by the Optimux installer") == 1
+
+
+def test_nothing_to_do_when_the_command_is_already_found(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    r = path_hint_in(home, f"{home}/.local/bin:/usr/bin:/bin")
+    assert "ASKED" not in r.stdout and "LATER=" in r.stdout and "LATER=1" not in r.stdout
+    assert not (home / ".bashrc").exists()
+
+
+@pytest.mark.parametrize("later", ["1", ""])
+def test_final_card_says_how_to_use_the_command_in_this_terminal(tmp_path, later):
+    r = lib(f'''CM_PATH_LATER="{later}"; CM_PW_SET=1; CM_YES=1; CM_NO_START=1; CM_LOG=/dev/null; CM_OS=Linux
+              declare -gA M=([URL]=http://127.0.0.1:8000 [APP_DIR]=/a [DATA_DIR]=/d); finish_local''')
+    assert r.returncode == 0, r.stderr
+    assert ('export PATH="$HOME/.local/bin:$PATH"' in r.stdout) == bool(later), r.stdout

@@ -53,6 +53,8 @@ On your own computer, the program goes to `~/.local/share/optimux`, your data to
 
 The installer adds an `optimux` command (on a server, run it with `sudo`):
 
+> **"optimux: command not found" right after installing?** On your own computer the command is in `~/.local/bin`, which a fresh account doesn't have in its PATH until the next login. The installer adds it for new terminals (after asking); in the terminal you installed from, run `export PATH="$HOME/.local/bin:$PATH"` once, or open a new terminal. The final summary of the installer says so when it applies.
+
 | Command | What it does |
 |---|---|
 | `optimux start`, `stop`, `restart` | Run Optimux, or stop it |
