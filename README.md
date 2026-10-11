@@ -18,7 +18,9 @@
 
 <br>
 
-<img src="docs/images/chat.png" alt="Optimux chat: a request routed to the Simple model, commands with exit codes, the answer and its cost" width="900">
+<img src="docs/images/demo.gif" alt="Optimux in action: a request is routed to the cheap Simple model, two sandboxed commands wait for approval, the failing test is fixed, then the Dashboard shows usage per project, role and model, and the routing settings" width="900">
+
+<sub>The cheap model takes the request, every command waits for your approval, and every call is metered.</sub>
 
 </div>
 
@@ -147,6 +149,11 @@ Memory costs tokens on every model call, so short and precise memory is cheaper 
 A detailed walkthrough of each part is in the [Guide](docs/GUIDE.md#how-routing-works).
 
 ## Screenshots
+
+<p align="center">
+  <img src="docs/images/chat.png" alt="Optimux chat: a request routed to the Simple model, commands with exit codes, the answer and its cost" width="900">
+  <br><sub><b>Chat</b>: the route, each command with its exit code, the answer and its cost</sub>
+</p>
 
 <table>
   <tr>
