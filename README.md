@@ -107,6 +107,19 @@ Server mode is set by the installer; you only set `OPTIMUX_SERVER=1` yourself wh
 - **Automatic project memory**: after a chat, the cheap model keeps the project's facts up to date, under a size cap, with a full history, diffs and undo.
 - **Skills**: reusable instructions you run with `/name`. Manual skills cost nothing while idle; Auto skills can be picked by the model.
 
+| | Personal | Professional | Project |
+|---|---|---|---|
+| What goes in it | your name, language, how you like answers | coding style, commit habits, general rules | build and test commands, stack, structure, conventions, decisions, known issues |
+| Used in | every chat, in every project | every chat, in every project | chats in that project only |
+| Sent to the model | with every request | with every request | with every request in that project |
+| Changed by | you, or the model when you ask it to remember | you, or the model when you ask it to remember | you, the model when asked, and **automatic updates** |
+| Automatic updates | never | never | when a chat ends (or after 10 idle minutes): the cheap model keeps durable facts only, under about 1,500 tokens; can be turned off |
+| History and undo | no | no | every change, with a diff, its cost and **Undo** |
+| Where it is kept | `~/.optimux/memory/personal.md` | `~/.optimux/memory/professional.md` | `~/.optimux/memory/projects/<project>.md` |
+| Settings | Dashboard → Memory | Dashboard → Memory | Dashboard → Memory → Project: on/off, idle minutes, **Update now**; Budgets: a warning before **Update now** |
+
+Memory costs tokens on every model call, so short and precise memory is cheaper **and** works better. A Workspace chat (no project selected) uses personal and professional memory only.
+
 **Costs and data**
 - Live cost while a reply runs, and a cost line under every reply.
 - **Dashboard**: overview, usage by project, role, model and skill, a 30-day cost chart, budgets, history with filters.
