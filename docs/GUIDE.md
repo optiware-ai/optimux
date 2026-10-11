@@ -60,7 +60,7 @@ The installer adds an `optimux` command (on a server, run it with `sudo`):
 | `optimux start`, `stop`, `restart` | Run Optimux, or stop it |
 | `optimux status` | Whether it runs and answers, its address, version and folders |
 | `optimux logs` | Follow the server's log (Ctrl+C to leave) |
-| `optimux open` | The address, opened in your browser when there is one |
+| `optimux open` | The address, opened in your browser when there is one (on a server without a domain: the SSH tunnel command to run on your computer) |
 | `optimux update` | Download the latest version, update its packages, restart |
 | `optimux password` | Choose a new password (signs every browser out) |
 | `optimux reset-password` | Forget the password and two-step codes |
@@ -766,6 +766,21 @@ Choose **A server (VPS)**. The installer then:
 7. starts everything and waits for the HTTPS certificate.
 
 Unattended: `... | sudo bash -s -- --server --domain optimux.example.com --yes` (then set the password with `sudo optimux password`).
+
+#### Without a domain: the SSH tunnel
+
+With **SSH tunnel only**, Optimux listens only inside the server (`127.0.0.1:8000`); nothing on the internet can reach it, not even you directly. You reach it through your normal SSH login, with a tunnel that **you run on your own computer**, not on the server:
+
+```bash
+ssh -N -L 8000:127.0.0.1:8000 you@your-server-address
+```
+
+Then open **http://localhost:8000** in your browser. Keep that terminal open: the tunnel lasts as long as the SSH connection.
+
+- Use the login and address you normally use for SSH (`root@203.0.113.7`, for example). The installer's final summary prints the exact command, and `sudo optimux open` or `sudo optimux status` on the server prints it again.
+- `-L 8000:127.0.0.1:8000` means "port 8000 on my computer → port 8000 inside the server". If 8000 is taken on your computer, change the first number (`-L 8080:127.0.0.1:8000`, then open http://localhost:8080). If the installer chose another port on the server, change the second one.
+- `-N` opens only the tunnel, without a shell. Add `-p 2222` if your SSH server listens on another port.
+- On Windows, the same command works in PowerShell (OpenSSH is built in).
 
 Uninstalling (`sudo optimux uninstall`) removes the program, the service, Optimux's Caddy file and its import line (other sites stay), and asks separately before deleting `/var/lib/optimux` and the optimux user. Firewall rules for 80/443 are left in place.
 

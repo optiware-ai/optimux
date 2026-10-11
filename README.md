@@ -102,6 +102,8 @@ Optimux runs on your own machine, works on your own repositories, and treats **c
 
 Server mode is set by the installer; you only set `OPTIMUX_SERVER=1` yourself when you install on a server by hand.
 
+**A server without a domain** is reached through an SSH tunnel that you run **on your own computer**: `ssh -N -L 8000:127.0.0.1:8000 you@your-server`, then open http://localhost:8000. The installer prints the exact command, and `sudo optimux open` shows it again ([details](docs/GUIDE.md#without-a-domain-the-ssh-tunnel)).
+
 **Memory and skills**
 - Personal, professional and per-project **memory**, sent with every request.
 - **Automatic project memory**: after a chat, the cheap model keeps the project's facts up to date, under a size cap, with a full history, diffs and undo.

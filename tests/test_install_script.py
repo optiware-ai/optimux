@@ -477,3 +477,25 @@ def test_final_card_says_how_to_use_the_command_in_this_terminal(tmp_path, later
               declare -gA M=([URL]=http://127.0.0.1:8000 [APP_DIR]=/a [DATA_DIR]=/d); finish_local''')
     assert r.returncode == 0, r.stderr
     assert ('export PATH="$HOME/.local/bin:$PATH"' in r.stdout) == bool(later), r.stdout
+
+
+# ---------- Reaching a server without a domain (SSH tunnel)
+
+@pytest.mark.parametrize("sudo_user,ssh,expected", [
+    ("bob", "22", "ssh -N -L 8000:127.0.0.1:8000 bob@203.0.113.7"),
+    ("", "2222", "ssh -N -p 2222 -L 8000:127.0.0.1:8000 root@203.0.113.7"),
+])
+def test_tunnel_command_uses_the_real_login_address_and_ssh_port(sudo_user, ssh, expected):
+    r = lib(f'''public_ip() {{ echo 203.0.113.7; }}; ssh_ports() {{ CM_SSH_PORTS="{ssh} "; CM_SSH_SURE=1; }}
+              id() {{ echo root; }}; declare -gA M=([PORT]=8000); tunnel_command''', SUDO_USER=sudo_user)
+    assert r.stdout.strip() == expected, r.stdout + r.stderr
+
+
+def test_server_card_and_open_say_where_to_run_the_tunnel():
+    common = '''public_ip() { echo 203.0.113.7; }; ssh_ports() { CM_SSH_PORTS="22 "; CM_SSH_SURE=1; }
+                declare -gA M=([MODE]=server [PORT]=8000 [URL]=http://127.0.0.1:8000); CM_PW_SET=1; CM_LOG=/dev/null; '''
+    card = lib(common + 'finish_server', SUDO_USER="bob").stdout
+    assert "On your own computer" in card and "ssh -N -L 8000:127.0.0.1:8000 bob@203.0.113.7" in card
+    assert "http://localhost:8000" in card
+    opened = lib(common + 'cli_open', SUDO_USER="bob").stdout
+    assert "ssh -N -L 8000:127.0.0.1:8000 bob@203.0.113.7" in opened and "http://localhost:8000" in opened

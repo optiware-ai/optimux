@@ -910,6 +910,20 @@ server_socket() { echo "/run/$(nm)/$(nm).sock"; }
 
 public_ip() { curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true; }
 
+# The command that reaches an SSH-tunnel-only server from the user's own computer:
+# their login on this server (the one behind sudo) and its public address and SSH port.
+tunnel_command() {
+  local user="${SUDO_USER:-}" host port=""
+  [[ -n "$user" ]] || user="$(id -un 2>/dev/null || echo root)"
+  host="$(public_ip)"
+  [[ -n "$host" ]] || host="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  [[ -n "$host" ]] || host="<server-address>"
+  ssh_ports
+  if [[ -n "${CM_SSH_SURE:-}" ]]; then port="${CM_SSH_PORTS%% *}"; fi
+  if [[ -n "$port" && "$port" != 22 ]]; then port=" -p $port"; else port=""; fi
+  echo "ssh -N${port} -L ${M[PORT]}:127.0.0.1:${M[PORT]} ${user}@${host}"
+}
+
 # SSH port(s) to keep open -> CM_SSH_PORTS; CM_SSH_SURE=1 when really found (not a guess)
 ssh_ports() {
   local p=""
@@ -1156,14 +1170,18 @@ configure_auto_updates() {
 }
 
 finish_server() {
-  local open signin
-  if [[ -n "${M[DOMAIN]:-}" ]]; then open="${CA}${M[URL]}${C0}"
-  else open="ssh -L ${M[PORT]}:127.0.0.1:${M[PORT]} you@this-server   then ${CA}http://localhost:${M[PORT]}${C0}"; fi
+  local open=() signin
+  if [[ -n "${M[DOMAIN]:-}" ]]; then open=("${CB}Open${C0}       ${CA}${M[URL]}${C0}")
+  else
+    open=("${CB}Open${C0}       ${CY}On your own computer${C0} (not on this server), run and keep it open:"
+          "           $(tunnel_command)"
+          "           then open ${CA}http://localhost:${M[PORT]}${C0} in your browser.")
+  fi
   if [[ -n "${CM_PW_SET:-}" ]]; then signin="Sign in with the password you just chose."
   elif password_is_set; then signin="Sign in with your password."
   else signin="First visit: paste the access token (sudo optimux token), then choose a password."; fi
   card "Optimux is installed on this server" \
-    "${CB}Open${C0}       $open" \
+    "${open[@]}" \
     "           $signin" \
     "" \
     "${CB}Protected${C0}  server mode ${S_DOT} sandbox required ${S_DOT} every command needs approval" \
@@ -1237,7 +1255,9 @@ cli_status() {
   else
     wait_http "http://127.0.0.1:${M[PORT]}/auth/status" "" 1 && ok "Answers on 127.0.0.1:${M[PORT]}" || warn "Doesn't answer on 127.0.0.1:${M[PORT]}"
   fi
-  info "Open:    ${M[URL]}"
+  if [[ "${M[MODE]}" == server && -z "${M[DOMAIN]:-}" ]]; then
+    info "Open:    on your own computer: $(tunnel_command), then http://localhost:${M[PORT]}"
+  else info "Open:    ${M[URL]}"; fi
   info "Program: ${M[APP_DIR]}  ($(git -C "${M[APP_DIR]}" describe --always 2>/dev/null || echo '?'))"
   info "Data:    ${M[DATA_DIR]}"
 }
@@ -1251,6 +1271,12 @@ cli_logs() {
 }
 
 cli_open() {
+  if [[ "${M[MODE]}" == server && -z "${M[DOMAIN]:-}" ]]; then
+    say "Optimux on this server is reachable only through an SSH tunnel. On your own computer, run:"
+    say "  $(tunnel_command)"
+    say "then open http://localhost:${M[PORT]}"
+    return 0
+  fi
   say "${M[URL]}"
   if command -v xdg-open >/dev/null 2>&1 && [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then xdg-open "${M[URL]}" >/dev/null 2>&1 &
   elif [[ "$(uname -s)" == Darwin ]]; then open "${M[URL]}"; fi
