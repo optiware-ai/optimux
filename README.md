@@ -1,8 +1,10 @@
+<p align="center">
+  <img src="docs/images/banner.svg" alt="Optimux" width="100%">
+</p>
+
 <div align="center">
 
-<img src="docs/images/logo.svg" alt="Optimux logo: one lane splitting into a light lane and a heavy lane" width="96">
-
-# Optimux
+# <img src="docs/images/logo.svg" alt="Optimux logo: one lane splitting into a light lane and a heavy lane" width="44" align="absmiddle"> Optimux
 
 **A self-hosted coding assistant that routes every request to the cheapest model that can handle it, and shows you exactly what it costs.**
 
