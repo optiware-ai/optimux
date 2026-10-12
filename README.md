@@ -6,7 +6,7 @@
 
 # <img src="docs/images/logo.svg" alt="Optimux logo: one lane splitting into a light lane and a heavy lane" width="44" align="absmiddle"> Optimux
 
-**A self-hosted coding assistant that routes every request to the cheapest model that can handle it, and shows you exactly what it costs.**
+**A self-hosted AI coding workspace that routes each task to the cheapest capable model, tracks every token and what it costs, and asks before running commands.**
 
 It isn't limited to code: you can ask it anything you would ask a chat AI, and it can work on any files in a project folder (notes, documents, data).
 
@@ -18,7 +18,7 @@ It isn't limited to code: you can ask it anything you would ask a chat AI, and i
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL_v3-blue.svg)](LICENSE)
 [![Status: beta](https://img.shields.io/badge/status-beta_v0.1-orange.svg)](#project-status)
 
-[Features](#features) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Documentation](docs/GUIDE.md) · [Security](#security) · [Contributing](CONTRIBUTING.md)
+[Website](https://optimux.si) · [Features](#features) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Documentation](docs/GUIDE.md) · [Security](#security) · [Contributing](CONTRIBUTING.md)
 
 <br>
 
@@ -75,6 +75,8 @@ It sends simple requests to cheap models, hands hard work to stronger models, tr
 - [Acknowledgements](#acknowledgements)
 
 ## Why Optimux
+
+**Built for** technical founders, solo developers and power users who use AI coding assistants every day and want control over what each request costs, which model answers it, and what runs on their machine.
 
 Coding assistants are billed per token, and the price gap between models is huge. Most requests (a question, a lookup, a small edit) don't need the most expensive model, but most tools send everything to one model and give you a bill at the end of the month.
 

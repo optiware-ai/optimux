@@ -1,7 +1,7 @@
 # Optimux Manifest
 
 ## Purpose
-Optimux is a self-hosted coding assistant that spends as little as possible on language models. Every request goes to the cheapest model that can handle it, every call is measured, and the user decides the balance between **cost, speed and reliability**. It is built for coding, but not limited to it: it answers anything a chat AI can, and works on any files in a project folder (notes, documents, data).
+Optimux is a self-hosted AI coding workspace that routes each task to the cheapest capable model, tracks every token and what it costs, and asks before running commands. Every call is measured, and the user decides the balance between **cost, speed and reliability**. It is built for coding, but not limited to it: it answers anything a chat AI can, and works on any files in a project folder (notes, documents, data).
 
 ## Principles
 - **Cost is a feature.** Every token sent must earn its place; features cost nothing until they are used.
@@ -26,7 +26,11 @@ Optimux is a self-hosted coding assistant that spends as little as possible on l
 - **Installer:** one line for a computer or a VPS (HTTPS with Caddy, a hardened systemd service), plus the `optimux` command.
 - **Data:** everything Optimux keeps lives in `~/.optimux` (`OPTIMUX_HOME`), outside the projects.
 
+## Who it is for
+Technical founders, solo developers and power users who use AI coding assistants every day and want control over model cost, routing and command execution.
+
 ## Where to read more
+- [optimux.si](https://optimux.si): the website.
 - [README.md](README.md): features, install, architecture, roadmap.
 - [docs/GUIDE.md](docs/GUIDE.md): the user guide.
 - [PIPELINE.md](PIPELINE.md): file tree, coding rules and workflow.
