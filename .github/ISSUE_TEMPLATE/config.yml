@@ -1,0 +1,16 @@
+# Issues must use a form; questions and early ideas go to Discussions,
+# security problems to private reporting.
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/optiware-ai/optimux/security/advisories/new
+    about: Sandbox escapes, leaked keys or tokens, sign-in bypasses… Please report them privately, never in a public issue.
+  - name: ❓ Ask a question
+    url: https://github.com/optiware-ai/optimux/discussions/categories/q-a
+    about: '"How do I…?" questions go to Discussions → Q&A, where answers help the next person too.'
+  - name: 💡 Share an early idea
+    url: https://github.com/optiware-ai/optimux/discussions/categories/ideas
+    about: Not sure yet what it should look like? Start in Discussions → Ideas, where others can vote.
+  - name: 📖 Read the Guide
+    url: https://github.com/optiware-ai/optimux/blob/main/docs/GUIDE.md
+    about: Install, routing, memory, skills, budgets, the sandbox and how to spend less.

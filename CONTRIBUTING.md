@@ -21,8 +21,9 @@ To try your changes, start the server with `uvicorn optimux_backend.main:app --h
 
 ## Reporting bugs and asking for features
 
-- **Bugs**: open an issue with what you did, what you expected, what happened, and the relevant server output. Never paste API keys or your access token.
-- **Features**: describe the problem first, then the change you have in mind. Larger features are discussed in an issue before any code is written.
+- **Bugs**: [open an issue](https://github.com/optiware-ai/optimux/issues/new/choose) with the **Bug report** form. It asks for what you did, what you expected, what happened, how Optimux is installed and its version. Never paste API keys, tokens, passwords or your server's address.
+- **Features**: use the **Feature request** form. Describe the problem first, then the change you have in mind. Larger features are discussed before any code is written.
+- **Questions and early ideas**: use [Discussions](https://github.com/optiware-ai/optimux/discussions) (**Q&A** and **Ideas**), so answers and votes help everyone.
 - **Security issues**: please don't open a public issue; see [SECURITY.md](SECURITY.md).
 
 ## Making a change

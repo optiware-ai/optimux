@@ -1,0 +1,146 @@
+name: 🐞 Bug report
+description: Something in Optimux doesn't work as it should.
+title: "[Bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+
+        > [!CAUTION]
+        > **Security problem?** (a command escaping the sandbox, a key or token that leaks, a way around sign-in or approval…) **Don't report it here.** Use [private reporting](https://github.com/optiware-ai/optimux/security/advisories/new) instead.
+
+        > [!WARNING]
+        > Issues are **public**. Before you paste anything, remove **API keys, the access token, passwords, GitHub tokens, and your server's IP address or domain**. `optimux status` and the installer print your server address and SSH user: replace them with `<server>` and `<user>`.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, and what went wrong? Include any error message shown in the chat or the Dashboard.
+      placeholder: I asked "run the tests", approved the command, and the chat stopped with "…".
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest way to make it happen again.
+      placeholder: |
+        1. Open Dashboard → …
+        2. Click …
+        3. See …
+    validations:
+      required: false
+
+  - type: dropdown
+    id: install-type
+    attributes:
+      label: How is Optimux installed?
+      options:
+        - On my computer (installer)
+        - On a server, with a domain (HTTPS through Caddy)
+        - On a server, through an SSH tunnel (no domain)
+        - By hand (git clone + uvicorn)
+        - I don't know
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Optimux version
+      description: The value in parentheses on the "Program" line of `optimux status` (or `sudo optimux status` on a server), for example `v0.1.0-12-gabc1234`. If you installed by hand, run `git describe --always` in the Optimux folder.
+      placeholder: v0.1.0-12-gabc1234
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04, Debian 12, Fedora 41, macOS 15…
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sandbox
+    attributes:
+      label: Sandbox
+      description: Dashboard → Execution shows whether the sandbox is on and whether bubblewrap works.
+      options:
+        - "On, and it says bubblewrap works"
+        - "On, but it says bubblewrap doesn't work"
+        - "Off"
+        - "I don't know"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of Optimux?
+      multiple: true
+      options:
+        - Chat and answers
+        - Routing (Conductor, Simple, Complex, escalation)
+        - Running commands, approvals, sandbox
+        - Usage, costs and budgets
+        - Memory
+        - Skills
+        - Projects and Workspace
+        - GitHub (create, clone)
+        - Sign-in and security settings
+        - Installer and the optimux command
+        - Dashboard and interface
+        - Documentation
+    validations:
+      required: false
+
+  - type: input
+    id: models
+    attributes:
+      label: Models involved (names only)
+      description: The model IDs from Dashboard → Routing, if the bug is about a model call. **Never** paste keys.
+      placeholder: "Conductor: gemini/…, Simple: gemini/…, Complex: anthropic/…"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server output
+      description: |
+        The lines around the error from `optimux logs` (on a server: `sudo optimux logs`; press Ctrl+C to stop). **Check them for keys, tokens and addresses before you paste.**
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots (check them for private data too), browser, how often it happens, what you already tried.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I removed API keys, access tokens, passwords, GitHub tokens, and my server's IP address or domain from everything above.
+          required: true
+        - label: This is not a security vulnerability (those go to private reporting).
+          required: true
+        - label: I searched the existing issues and this hasn't been reported yet.
+          required: true

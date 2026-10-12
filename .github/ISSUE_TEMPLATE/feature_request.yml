@@ -1,0 +1,79 @@
+name: ✨ Feature request
+description: A concrete change or new feature for Optimux.
+title: "[Feature] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping shape Optimux!
+
+        Just an idea, or not sure yet? Start in [Discussions → Ideas](https://github.com/optiware-ai/optimux/discussions/categories/ideas), where others can vote. Bigger features are always discussed before any code is written.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem do you have?
+      description: Start with the problem, not the solution. What are you trying to do, and what gets in the way?
+      placeholder: When a long task finishes I don't notice, because…
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like?
+      description: How you imagine it working. Screens, commands or settings are welcome.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of Optimux?
+      multiple: true
+      options:
+        - Chat and answers
+        - Routing (Conductor, Simple, Complex, escalation)
+        - Running commands, approvals, sandbox
+        - Usage, costs and budgets
+        - Memory
+        - Skills
+        - Projects and Workspace
+        - GitHub (create, clone)
+        - Sign-in and security settings
+        - Installer and the optimux command
+        - Dashboard and interface
+        - Documentation
+        - Something new
+    validations:
+      required: true
+
+  - type: dropdown
+    id: cost
+    attributes:
+      label: Does it change what Optimux spends on models?
+      description: '"Cost is a feature": every token sent must earn its place.'
+      options:
+        - No, it doesn't call any model
+        - Yes, but only when the user turns it on or uses it
+        - Yes, it would add calls or tokens for everyone
+        - I don't know
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do today instead?
+      description: Workarounds or other tools you use for this.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched the existing issues and Discussions → Ideas, and this hasn't been requested yet.
+          required: true
