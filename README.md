@@ -28,11 +28,32 @@ It isn't limited to code: you can ask it anything you would ask a chat AI, and i
 
 ---
 
+## In one minute
+
+Optimux helps you use AI models without wasting money.
+
+It sends simple requests to cheap models, hands hard work to stronger models, tracks every token and every cent, and asks for your approval before it runs any command on your machine.
+
+## How to start
+
+1. **Install** Optimux with one command ([Quick start](#quick-start)).
+2. **Add your API keys** in *Dashboard → Models*, and pick which model does what in *Dashboard → Routing*.
+3. **Choose your workspace** folder in *Dashboard → Scope*.
+
+   The installer can do steps 2 and 3 for you; you can change them later.
+4. **Create your first project** in it with the **+** button next to the project name, or **clone one from your GitHub account** (add a GitHub token in *Dashboard → GitHub* first).
+5. **Set the project's monthly budget** in *Dashboard → Budgets*.
+6. **Start working** in the chat.
+
+---
+
 > ### Project status
 > **Optimux is in beta (v0.1).** It is used every day on Linux and has a large test suite, but some paths have had little real-world use yet: server installs, macOS, and creating GitHub repositories from the app. Expect rough edges, and please [open an issue](https://github.com/optiware-ai/optimux/issues) when something breaks.
 
 ## Table of contents
 
+- [In one minute](#in-one-minute)
+- [How to start](#how-to-start)
 - [Why Optimux](#why-optimux)
 - [Features](#features)
 - [How it works](#how-it-works)
