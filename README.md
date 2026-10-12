@@ -12,7 +12,7 @@ It isn't limited to code: you can ask it anything you would ask a chat AI, and i
 [![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Vue 3](https://img.shields.io/badge/Vue_3-frontend-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org/)
 [![LiteLLM](https://img.shields.io/badge/LiteLLM-100%2B_providers-6E56CF)](https://github.com/BerriAI/litellm)
-[![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)](#running-the-tests)
+[![Tests](https://github.com/optiware-ai/optimux/actions/workflows/tests.yml/badge.svg)](https://github.com/optiware-ai/optimux/actions/workflows/tests.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL_v3-blue.svg)](LICENSE)
 [![Status: beta](https://img.shields.io/badge/status-beta_v0.1-orange.svg)](#project-status)
 
@@ -318,6 +318,8 @@ pytest -q
 ```
 
 The suite runs without network access or API keys: model calls are mocked, and a temporary `OPTIMUX_HOME` is used. Sandbox tests run for real where bubblewrap works and are skipped otherwise.
+
+The same tests and `shellcheck` run on GitHub Actions for every push and pull request to `main` (Python 3.10 and 3.13): see [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
 
 ### Conventions
 

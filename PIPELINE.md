@@ -16,6 +16,7 @@ Optimux relies heavily on decentralized context to feed different LLMs.
 ### Application Layer (Code & Agent Sidecars)
 Optimux pairs every core file with an `_AGENT.md` file containing its context.
 ```text
+├── .github/workflows/tests.yml  (GitHub Actions: pytest on Python 3.10 and 3.13, shellcheck)
 ├── index.html                   (Vue 3 SPA page and templates)
 ├── index.html_AGENT.md
 ├── web/                         (app.js, boot.js, login page, styles, logo.svg, pinned libraries in vendor/)
