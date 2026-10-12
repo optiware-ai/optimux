@@ -195,6 +195,8 @@ If a reply was stopped, hit a limit or failed, the last reply shows why, with bu
 
 **History** in the header opens a drawer with your chats: this project, all projects, or archived ones, with a title search. Each chat shows its project, date, number of turns and cost, and can be **opened** (to continue it), **renamed**, **archived** or **deleted** (you type the title to confirm; its cost records are kept). **Dashboard → History** is the full-page version, with filters and sorting.
 
+A chat whose project was **archived** or **deleted** opens **read only**: you can read it, but not continue it, because its folder is gone and commands couldn't run there. A bar above the input says why, with a button back to your current project. To continue the chat, restore the project first (**Dashboard → Projects → Archived projects**). The project selector is locked while a reply is running or waiting for your approval, so the chat on screen always belongs to the project shown.
+
 Chats are saved as you go and **survive server restarts**. Opening a chat restores both what you see and what the model remembers of it.
 
 ## The Workspace and projects

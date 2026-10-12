@@ -1623,6 +1623,7 @@ createApp({
         const newChat = () => {
             if (isGenerating.value || pendingApproval.value) return;
             currentSession.value = null;
+            readOnlyChat.value = null;
             isGenerating.value = true;
             ws.value.send(JSON.stringify({ type: 'new_chat' }));
         };
@@ -1657,6 +1658,8 @@ createApp({
 
         // ---- Session history
         const currentSession = ref(null);
+        // A chat whose project was archived or deleted: shown to read, not to continue (fix38)
+        const readOnlyChat = ref(null);
         const historyOpen = ref(false);
         const historyScope = ref('project');   // project | all | archived
         const historyQuery = ref('');
@@ -1681,6 +1684,11 @@ createApp({
             historyOpen.value = false;
             isGenerating.value = true;
             ws.value.send(JSON.stringify({ type: 'open_session', id: sid }));
+        };
+        // Leave a read-only chat: back to the active project's latest chat
+        const leaveReadOnly = () => {
+            readOnlyChat.value = null;
+            openSession('latest');
         };
         const renameSession = async (s) => {
             const title = window.prompt('New title for this chat:', s.title || '');
@@ -1964,6 +1972,8 @@ createApp({
 
             // Rebuild a stored session by replaying its events through handleMessage
             loadSession = (data) => {
+                readOnlyChat.value = data.read_only && data.session
+                    ? { project: data.session.project, reason: data.reason || 'missing' } : null;
                 if (!data.session) {
                     currentSession.value = null;
                     if (messages.value.length > 1) {
@@ -1972,7 +1982,10 @@ createApp({
                     return;
                 }
                 currentSession.value = data.session;
-                const rebuilt = [welcomeMessage(`Reopened "${data.session.title || 'Untitled chat'}" from ${new Date(data.session.updated * 1000).toLocaleString()}.`)];
+                const when = new Date(data.session.updated * 1000).toLocaleString();
+                const rebuilt = [welcomeMessage(readOnlyChat.value
+                    ? `Viewing "${data.session.title || 'Untitled chat'}" from ${when}, read only: its project ${data.session.project} is ${readOnlyChat.value.reason === 'archived' ? 'archived' : 'no longer in the Workspace'}.`
+                    : `Reopened "${data.session.title || 'Untitled chat'}" from ${when}.`)];
                 messages.value = rebuilt;
                 for (const ev of data.events) {
                     const last = messages.value[messages.value.length - 1];
@@ -1985,7 +1998,7 @@ createApp({
                     }
                 }
                 finalizeReply(messages.value[messages.value.length - 1]);
-                if (data.session.project && data.session.project !== appSettings.value.active_project) {
+                if (!readOnlyChat.value && data.session.project && data.session.project !== appSettings.value.active_project) {
                     fetchConfig();  // the server switched to the session's project
                 }
                 nextTick(scrollToBottom);
@@ -2035,7 +2048,7 @@ createApp({
         };
 
         const sendMessage = () => {
-            if (!userInput.value.trim()) return;
+            if (!userInput.value.trim() || readOnlyChat.value) return;
 
             messages.value.push({ role: 'user', content: userInput.value });
             messages.value.push({ role: 'agent', content: '', events: [], commands: [], blocks: [] });
@@ -2198,7 +2211,7 @@ createApp({
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
             setThinking, copyThinking, storageInfo, fmtBytes,
-            currentSession, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
+            currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,

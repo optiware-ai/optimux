@@ -91,14 +91,52 @@ def test_escalate_is_recorded(mocker, client):
     assert [e["type"] for e in data["events"]].count("escalate") == 1 and data["turns"] == 2
 
 
-def test_opening_a_session_of_another_project_switches_project(mocker, client):
+def test_opening_a_session_of_another_project_switches_project(mocker, client, tmp_path):
+    (tmp_path / "ws" / "beta").mkdir(parents=True)
     sid = sessions.create("beta", "old chat")
     saved = mocker.patch.object(main, "save_settings")
-    mocker.patch.object(main, "get_settings", return_value={"projects_root": "/p", "active_project": "alpha"})
+    mocker.patch.object(main, "get_settings", return_value={"projects_root": str(tmp_path / "ws"), "active_project": "alpha"})
     chat = Conversation(client)
-    chat.send({"type": "open_session", "id": sid})
+    loaded = next(m for m in chat.send({"type": "open_session", "id": sid}) if m["type"] == "session_loaded")
     chat.close()
     assert saved.call_args.args[0].active_project == "beta"
+    assert not loaded.get("read_only")
+
+
+@pytest.mark.parametrize("archived, reason", [(True, "archived"), (False, "missing")])
+def test_chat_of_a_removed_project_opens_read_only(mocker, client, tmp_path, archived, reason):
+    """fix38: the project's folder is gone, so the chat is shown but not continued,
+    and the active project doesn't change to a folder that doesn't exist."""
+    (tmp_path / "ws" / "alpha").mkdir(parents=True)
+    sid = sessions.create("beta", "chat of a removed project")
+    mocker.patch.object(main.workspace, "list_archived",
+                        return_value=[{"folder": "beta-20261001-120000", "name": "beta", "archived": 0}] if archived else [])
+    saved = mocker.patch.object(main, "save_settings")
+    mocker.patch.object(main, "get_settings", return_value={"projects_root": str(tmp_path / "ws"), "active_project": "alpha"})
+    mocker.patch("litellm.acompletion", side_effect=Recorder(reply("fresh answer")))
+    chat = Conversation(client)
+    loaded = next(m for m in chat.send({"type": "open_session", "id": sid}) if m["type"] == "session_loaded")
+    assert loaded["read_only"] is True and loaded["reason"] == reason
+    assert loaded["session"]["id"] == sid and loaded["session"]["project"] == "beta"
+    saved.assert_not_called()                                  # still in alpha
+    chat.prompt("next question")                               # starts a new chat in alpha
+    chat.close()
+    assert sessions.get(sid)["turns"] == 0                     # the old chat wasn't continued
+    assert [s["title"] for s in sessions.list_sessions("alpha")] == ["next question"]
+
+
+def test_frontend_locks_the_project_selector_and_read_only_chats():
+    """fix38: no project switch while a reply runs; a read-only chat can't be continued."""
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    html = open(os.path.join(root, "index.html")).read()
+    js = open(os.path.join(root, "web", "app.js")).read()
+    select = html[html.index('<select v-model="appSettings.active_project"'):]
+    select = select[:select.index(">")]
+    assert ':disabled="isGenerating || pendingApproval"' in select
+    assert '|| !!readOnlyChat" rows="1"></textarea>' in html
+    assert 'v-if="readOnlyChat"' in html and '@click="leaveReadOnly"' in html
+    assert "if (!userInput.value.trim() || readOnlyChat.value) return;" in js
 
 
 def test_rename_archive_delete(mocker, client):

@@ -49,7 +49,7 @@
                     <span>Opti<span class="text-blue-500">mux</span></span>
                 </h1>
                 <template v-if="appSettings.projects_root">
-                    <select v-model="appSettings.active_project" @change="changeProject" :title="appSettings.active_project ? 'Active project: ' + projectPath(appSettings.active_project) + '\nCommands run in this folder.' : 'Workspace: ' + workspacePath + '\nNo project selected. Talk to Optimux here to list, create, switch or archive projects; commands run in the Workspace folder.'" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-gray-200 focus:outline-none focus:border-blue-500 max-w-[200px] truncate">
+                    <select v-model="appSettings.active_project" @change="changeProject" :disabled="isGenerating || pendingApproval" :title="(isGenerating || pendingApproval) ? 'Wait for the reply to finish (or stop it) before switching project.' : appSettings.active_project ? 'Active project: ' + projectPath(appSettings.active_project) + '\nCommands run in this folder.' : 'Workspace: ' + workspacePath + '\nNo project selected. Talk to Optimux here to list, create, switch or archive projects; commands run in the Workspace folder.'" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-gray-200 focus:outline-none focus:border-blue-500 max-w-[200px] truncate disabled:opacity-50 disabled:cursor-not-allowed">
                         <option value="">Workspace</option>
                         <option v-for="p in projectsList" :key="p" :value="p">{{ p }}</option>
                     </select>
@@ -1452,8 +1452,12 @@
                         <span v-if="c.mode" :class="['ml-auto text-[10px] uppercase tracking-wider flex-shrink-0', c.mode === 'auto' ? 'text-purple-300' : 'text-gray-500']">{{ c.mode }}</span>
                     </button>
                 </div>
+                <div v-if="readOnlyChat" class="mb-2 flex flex-wrap items-center gap-3 rounded-xl border border-amber-800/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+                    <span class="flex-1 min-w-[16rem]">Read only: this chat belongs to <span class="font-mono">{{ readOnlyChat.project }}</span>, which is {{ readOnlyChat.reason === 'archived' ? 'archived (restore it in Dashboard → Projects to continue the chat)' : 'no longer in the Workspace' }}.</span>
+                    <button type="button" @click="leaveReadOnly" class="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs">Back to {{ appSettings.active_project || 'the Workspace' }}</button>
+                </div>
                 <div class="bg-gray-900 border border-gray-700 focus-within:border-blue-500 focus-within:shadow-md transition rounded-xl flex flex-col w-full shadow-inner">
-                    <textarea v-model="userInput" ref="chatInputRef" @keydown="handleEnter" class="w-full bg-transparent px-5 pt-5 pb-3 focus:outline-none font-mono text-sm disabled:opacity-50 resize-none overflow-y-auto max-h-60 leading-tight min-h-[52px]" :disabled="isGenerating || pendingApproval" rows="1"></textarea>
+                    <textarea v-model="userInput" ref="chatInputRef" @keydown="handleEnter" class="w-full bg-transparent px-5 pt-5 pb-3 focus:outline-none font-mono text-sm disabled:opacity-50 resize-none overflow-y-auto max-h-60 leading-tight min-h-[52px]" :disabled="isGenerating || pendingApproval || !!readOnlyChat" rows="1"></textarea>
                     
                     <div class="flex items-center justify-between px-3 pb-3">
                         <div class="relative flex items-center">

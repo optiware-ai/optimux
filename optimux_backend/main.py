@@ -41,7 +41,7 @@ from optimux_backend.core.memory_manager import init_memory, log_command_to_sess
 from optimux_backend.core.agents import get_executor_prompt
 from optimux_backend.core.security import (
     GITHUB_TOKEN_ENV, ScopeError, ValidationError, bearer_from_header, check_token,
-    get_or_create_token, origin_allowed, paths_outside_scope, rotate_token, validate_project_name,
+    get_or_create_token, origin_allowed, paths_outside_scope, resolve_project_dir, rotate_token, validate_project_name,
 )
 
 # No interactive API docs: they would load scripts from a CDN and list every endpoint
@@ -2345,6 +2345,24 @@ def save_chat(session: dict, turns_added: int) -> None:
                               session["last_turn_ok"], turns_added)
 
 
+def missing_project_reason(name: str) -> str | None:
+    """None when the project's folder is in the Workspace; otherwise why it isn't
+    ("archived" or "missing": deleted, renamed or moved outside Optimux)."""
+    if not name:
+        return None
+    try:
+        resolve_project_dir(get_settings().get("projects_root", ""), name)
+        return None
+    except (ScopeError, ValidationError):
+        pass
+    try:
+        if any(a.get("name") == name for a in workspace.list_archived()):
+            return "archived"
+    except Exception:
+        pass
+    return "missing"
+
+
 async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> None:
     """Load a stored session into this connection and send its events for replay.
     sid "latest" opens the active project's most recent session, if any."""
@@ -2354,6 +2372,16 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
     if data is None:
         reset_chat(session)  # nothing to open: start clean, as the UI does
         await send(websocket, "session_loaded", session=None, events=[])
+        return
+    summary = {k: data[k] for k in ("id", "project", "title", "created", "updated", "turns", "tier", "cost",
+                                    "calls_without_cost", "archived")}
+    reason = missing_project_reason(data["project"]) if data["project"] != active_project() else None
+    if reason:
+        # Its project folder is gone (archived or deleted): show the chat to read, but
+        # don't switch to that project or continue the chat, since commands couldn't run there.
+        reset_chat(session)
+        await send(websocket, "session_loaded", session=summary, events=data["events"],
+                   read_only=True, reason=reason)
         return
     if data["project"] and data["project"] != active_project():
         # Commands must run in the session's own project
@@ -2368,8 +2396,6 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
         "tier_pinned": data["tier_pinned"], "last_turn_ok": data["last_turn_ok"],
     })
     session["budget_notes"] = set()
-    summary = {k: data[k] for k in ("id", "project", "title", "created", "updated", "turns", "tier", "cost",
-                                    "calls_without_cost", "archived")}
     await send(websocket, "session_loaded", session=summary, events=data["events"])
 
 
