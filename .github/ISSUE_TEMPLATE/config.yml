@@ -1,10 +1,8 @@
-# Issues must use a form; questions and early ideas go to Discussions,
-# security problems to private reporting.
+# Issues must use a form; questions and early ideas go to Discussions.
+# GitHub adds the "Report a security vulnerability" link by itself, because
+# private vulnerability reporting is on (see SECURITY.md).
 blank_issues_enabled: false
 contact_links:
-  - name: 🔒 Report a security vulnerability
-    url: https://github.com/optiware-ai/optimux/security/advisories/new
-    about: Sandbox escapes, leaked keys or tokens, sign-in bypasses… Please report them privately, never in a public issue.
   - name: ❓ Ask a question
     url: https://github.com/optiware-ai/optimux/discussions/categories/q-a
     about: '"How do I…?" questions go to Discussions → Q&A, where answers help the next person too.'
