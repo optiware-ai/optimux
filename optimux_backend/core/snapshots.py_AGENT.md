@@ -29,10 +29,11 @@
 - **`create(kind, note, projects, skip_rebuildable, auto, sid)`:** takes the snapshot now (blocking) and returns its description. Raises `SnapshotError`.
 - **`start(...)`:** checks, writes the `running` description at once, and runs `create` in a daemon thread. Only one snapshot at a time (`_running`, `_lock`). A failure before writing begins (the plan changed since the check) is recorded with its reason, not shown as interrupted.
 - **`list_snapshots()`:** newest first, with `size_bytes`. A `running` snapshot this process isn't taking (the server stopped) and a `ready` one whose archive is gone are shown as `failed`.
+- **`read_head_member(sid, name)`:** `manifest.json` or `BACKUP-README.txt` (only these, at most 1 MB) read by streaming the start of the archive (they are its first two members). `list_snapshots` uses it once for a snapshot whose description lacks `items` (`_backfill`, written back so the archive isn't opened again).
 - **`get(sid)`**, **`delete(sid)`** (refuses while it is being taken; also removes a left-over `.partial`), **`summary()`** (list, used, limit, free disk, folder, running).
 - **`optimux_version()`:** `git describe` of the install, or `unknown`.
 
 ## Links & Dependencies
 - `paths.py` (folders and the database path), `workspace.py` (`projects_root`, `project_names`), `config_manager.py` (`snapshot_limit_gb`).
-- Used by `main.py`: `GET /api/snapshots`, `POST /api/snapshots/preview`, `POST /api/snapshots`, `POST /api/snapshots/limit`, `POST /api/snapshots/{id}/delete`. A `SnapshotError` becomes a 422 with its message.
+- Used by `main.py`: `GET /api/snapshots`, `POST /api/snapshots/preview`, `POST /api/snapshots`, `POST /api/snapshots/limit`, `GET /api/snapshots/{id}/readme`, `POST /api/snapshots/{id}/delete`. A `SnapshotError` becomes a 422 with its message.
 - Tests: `tests/test_snapshots.py`.

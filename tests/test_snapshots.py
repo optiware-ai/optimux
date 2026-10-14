@@ -415,3 +415,35 @@ def test_the_list_says_what_is_inside_without_opening_the_archive(home):
     assert [i["path"] for i in s["items"]] == ["workspace/alpha", "memory/projects/alpha.md"]
     assert all("source" not in i and "private" not in i and "project" in i or i["path"].startswith("memory") for i in s["items"])
     assert s["skip_rebuildable"] is True
+
+
+def test_older_snapshots_get_their_parts_from_the_manifest_once(home):
+    meta = snapshots.create("workspace", projects=["alpha"])
+    sid = meta["id"]
+    with open(snapshots._meta_path(sid)) as f:
+        stored = json.load(f)
+    for k in ("items", "left_out", "skip_rebuildable"):
+        stored.pop(k)                                   # as written before the list kept them
+    snapshots._write_meta(sid, stored)
+    [s] = snapshots.list_snapshots()
+    assert [i["path"] for i in s["items"]] == ["workspace/alpha", "memory/projects/alpha.md"]
+    with open(snapshots._meta_path(sid)) as f:
+        assert "items" in json.load(f)                  # saved: the archive is opened only once
+    assert "size_bytes" not in json.load(open(snapshots._meta_path(sid)))
+
+
+def test_the_readme_can_be_read_without_unpacking(home):
+    sid = snapshots.create("data")["id"]
+    assert "OPTIMUX SNAPSHOT" in snapshots.read_head_member(sid, "BACKUP-README.txt")
+    with pytest.raises(snapshots.SnapshotError, match="Only manifest"):
+        snapshots.read_head_member(sid, "secrets.env")
+    with pytest.raises(snapshots.SnapshotError):
+        snapshots.read_head_member("../../etc/passwd", "BACKUP-README.txt")
+
+
+def test_api_readme(client):
+    sid = snapshots.create("data")["id"]
+    r = client.get(f"/api/snapshots/{sid}/readme", headers=H)
+    assert r.status_code == 200 and "RESTORE" in r.json()["text"]
+    assert client.get("/api/snapshots/2026-01-01_000000-data/readme", headers=H).status_code == 422
+    assert client.get(f"/api/snapshots/{sid}/readme").status_code == 401

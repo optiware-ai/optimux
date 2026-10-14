@@ -701,7 +701,12 @@
                                 <span v-else-if="s.status === 'failed'" class="text-red-400 shrink-0 truncate max-w-[16rem]" :title="s.error">failed: {{ s.error }}</span>
                                 <span v-else class="text-gray-400 w-20 text-right shrink-0">{{ fmtBytes(s.size_bytes) }}</span>
                                 <button @click="snapOpen[s.id] = !snapOpen[s.id]" :aria-expanded="!!snapOpen[s.id]" class="text-xs px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 shrink-0">{{ snapOpen[s.id] ? 'Hide' : 'Details' }}</button>
-                                <button @click="deleteSnapshot(s)" :disabled="s.status === 'running'" class="text-xs px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-red-500 hover:text-red-400 disabled:opacity-40 shrink-0">Delete</button>
+                                <button v-if="snapDeleting !== s.id" @click="snapDeleting = s.id" :disabled="s.status === 'running'" class="text-xs px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-red-500 hover:text-red-400 disabled:opacity-40 shrink-0">Delete</button>
+                            </div>
+                            <div v-if="snapDeleting === s.id" role="alertdialog" :aria-label="'Delete this snapshot'" class="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2">
+                                <span class="flex-1 min-w-0 text-red-200">Delete this {{ snapKindLabel(s.kind) }} snapshot{{ s.note ? ' (' + s.note + ')' : '' }}? The file is removed from the server; this can't be undone.</span>
+                                <button @click="deleteSnapshot(s)" class="text-xs px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-white font-semibold">Delete</button>
+                                <button @click="snapDeleting = ''" class="text-xs px-3 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Cancel</button>
                             </div>
                             <div v-if="snapOpen[s.id]" class="mt-2 bg-gray-950 border border-gray-800 rounded-lg p-3 space-y-1.5">
                                 <div v-if="s.kind !== 'data'" class="text-gray-300"><span class="text-gray-500">Projects:</span> {{ s.projects && s.projects.length ? s.projects.join(', ') : 'none' }}</div>
@@ -714,11 +719,24 @@
                                         <span class="text-gray-400 w-16 text-right shrink-0">{{ fmtBytes(i.bytes) }}</span>
                                     </div>
                                 </div>
-                                <div v-else-if="s.status === 'ready'" class="text-xs text-gray-500 italic">The parts are listed in BACKUP-README.txt inside the file (this snapshot was taken before the list was kept).</div>
+                                <div v-else-if="s.status === 'ready'" class="text-xs text-gray-500 italic">The list of parts couldn't be read from this snapshot; use Read BACKUP-README.txt below.</div>
                                 <div v-if="s.kind !== 'data' && s.skip_rebuildable" class="text-xs text-gray-500">Rebuildable folders (node_modules, .venv, …) were skipped.</div>
                                 <div v-if="s.left_out && s.left_out.length" class="text-xs text-gray-500">Not included: {{ s.left_out.join('; ') }}.</div>
                                 <div v-if="snapProblems(s)" class="text-xs text-orange-400 whitespace-pre-line">{{ snapProblems(s) }}</div>
-                                <div class="text-xs text-gray-500">File: <code class="text-gray-400 break-all">{{ snapshotsInfo.dir }}/{{ s.id }}.tar.gz</code><span v-if="s.optimux_version"> · Optimux {{ s.optimux_version }}</span><span v-if="s.total_bytes"> · {{ fmtBytes(s.total_bytes) }} before compression</span></div>
+                                <div class="text-xs text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-1">File: <code class="text-gray-400 break-all">{{ snapshotsInfo.dir }}/{{ s.id }}.tar.gz</code>
+                                    <button @click="copyPath(snapshotsInfo.dir + '/' + s.id + '.tar.gz')" class="text-blue-400 hover:underline">Copy</button>
+                                    <span v-if="s.total_bytes">· {{ fmtBytes(s.total_bytes) }} before compression</span></div>
+                                <div v-if="s.optimux_version" class="text-xs text-gray-500 flex items-center">Taken by Optimux version <code class="text-gray-400 mx-1">{{ s.optimux_version }}</code><help-tip>
+                                    <p>The version of Optimux that took this snapshot. A release looks like <code>v0.3.0</code>; between releases it is the git commit of your Optimux code (for example <code>36b7058</code>, as in <code>git log</code>). An ending of <code>-dirty</code> means the code had changes that were not committed yet.</p>
+                                    <p>Restore uses it to tell you when a snapshot comes from a different version.</p>
+                                </help-tip></div>
+                                <div v-if="s.status === 'ready'">
+                                    <button @click="loadSnapReadme(s)" class="text-xs text-blue-400 hover:underline">{{ snapReadme[s.id] ? 'Hide BACKUP-README.txt' : 'Read BACKUP-README.txt' }}</button>
+                                    <span class="text-xs text-gray-500"> (inside the file: contents and how to restore by hand)</span>
+                                    <div v-if="snapReadme[s.id] && snapReadme[s.id].loading" class="text-xs text-gray-500 mt-1">Reading…</div>
+                                    <div v-else-if="snapReadme[s.id] && snapReadme[s.id].error" class="text-xs text-red-400 mt-1">{{ snapReadme[s.id].error }}</div>
+                                    <pre v-else-if="snapReadme[s.id]" class="mt-2 max-h-96 overflow-auto text-xs text-gray-300 bg-gray-900 border border-gray-800 rounded p-3 whitespace-pre">{{ snapReadme[s.id].text }}</pre>
+                                </div>
                             </div>
                             </div>
                         </div>

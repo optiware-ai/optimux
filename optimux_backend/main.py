@@ -636,6 +636,15 @@ async def snapshot_limit_api(payload: SnapshotLimitPayload):
     return {"snapshot_limit_gb": payload.gb}
 
 
+@app.get("/api/snapshots/{sid}/readme")
+async def snapshot_readme_api(sid: str):
+    """The BACKUP-README.txt inside a snapshot, to read it in the page."""
+    try:
+        return {"text": await asyncio.to_thread(snapshots.read_head_member, sid, "BACKUP-README.txt")}
+    except snapshots.SnapshotError as e:
+        raise HTTPException(422, str(e))
+
+
 @app.post("/api/snapshots/{sid}/delete")
 async def delete_snapshot_api(sid: str):
     try:

@@ -684,8 +684,53 @@ def list_snapshots() -> list[dict]:
         if meta.get("status") == "ready" and not os.path.exists(arc):
             meta["status"] = "failed"
             meta["error"] = "The archive file is missing."
+        if meta.get("status") == "ready" and "items" not in meta:
+            _backfill(sid, meta)
         out.append(meta)
     return sorted(out, key=lambda m: m.get("created", 0), reverse=True)
+
+
+# The first members of every archive: read without unpacking the rest
+_HEAD_MEMBERS = ("manifest.json", "BACKUP-README.txt")
+_HEAD_MAX = 1024 * 1024
+
+
+def read_head_member(sid: str, name: str) -> str:
+    """manifest.json or BACKUP-README.txt from a snapshot, as text. They are the
+    first two members, so only the start of the archive is read."""
+    if name not in _HEAD_MEMBERS:
+        raise SnapshotError("Only manifest.json and BACKUP-README.txt can be read.")
+    path = archive_path(sid)
+    if sid in _running or not os.path.exists(path):
+        raise SnapshotError("This snapshot is not ready.")
+    try:
+        with tarfile.open(path, mode="r|gz") as tar:      # stream: stops reading where it stops
+            for n, member in enumerate(tar):
+                if n >= len(_HEAD_MEMBERS):
+                    break
+                if member.name == name and member.isreg() and member.size <= _HEAD_MAX:
+                    return tar.extractfile(member).read().decode("utf-8", "replace")
+    except (OSError, tarfile.TarError, EOFError) as e:
+        raise SnapshotError(f"The snapshot file can't be read: {e}")
+    raise SnapshotError(f"{name} is not in this snapshot.")
+
+
+def _backfill(sid: str, meta: dict) -> None:
+    """Snapshots taken before the description kept their parts: copy them once
+    from the archive's manifest, so the list can show them."""
+    try:
+        manifest = json.loads(read_head_member(sid, "manifest.json"))
+    except (SnapshotError, ValueError):
+        return
+    for key in ("items", "left_out", "skip_rebuildable"):
+        if key in manifest:
+            meta[key] = manifest[key]
+    meta.setdefault("projects", [p.get("name") for p in manifest.get("projects", []) if isinstance(p, dict)])
+    stored = {k: v for k, v in meta.items() if k not in ("size_bytes",)}
+    try:
+        _write_meta(sid, stored)
+    except OSError:
+        pass
 
 
 def get(sid: str) -> dict:

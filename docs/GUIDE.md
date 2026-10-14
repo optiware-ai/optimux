@@ -740,7 +740,7 @@ Choosing Data only or Workspace only shows a yellow note saying what will **not*
 
 **Show what goes in** lists every part with its size, what is skipped and what is left out, and says whether it fits. **Take snapshot** runs in the background; the list shows *taking…* until it is ready. Add a note (for example "before trying the new routing") so you know later why you took it.
 
-Each row names its projects (or counts them when there are more than three); **Details** shows the projects, every part with its size, what was skipped or left out, and the file's full path. The folder is shown above the list, with **Copy** and a **?** explaining the files.
+Each row names its projects (or counts them when there are more than three); **Details** shows the projects, every part with its size, what was skipped or left out, the file's full path (with **Copy**), the Optimux version that took it, and **Read BACKUP-README.txt**, which shows the README from inside the file without unpacking it. The version is a release such as `v0.3.0`, or between releases the git commit of your Optimux code (`-dirty` means it had uncommitted changes). **Delete** asks inside the row before removing the file. The folder is shown above the list, with **Copy** and a **?** explaining the files.
 
 Each snapshot is one `.tar.gz` file in `~/.optimux/snapshots/`, readable only by you (on a server installed with the installer, that is the `optimux` user, so use `sudo`). Inside, `BACKUP-README.txt` explains the contents and how to restore by hand, `manifest.json` describes it for Optimux, and `SHA256SUMS` holds a checksum of every file (after unpacking, `sha256sum -c SHA256SUMS` checks them).
 

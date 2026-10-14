@@ -822,9 +822,20 @@ createApp({
             } catch (error) { snapError.value = 'The snapshot could not be started.'; }
             finally { snapBusy.value = false; }
         };
+        // Delete asks inside the row (snapDeleting = the id waiting for an answer)
+        const snapDeleting = ref('');
+        const snapReadme = ref({});          // id -> README text (or an error), shown in Details
+        const loadSnapReadme = async (s) => {
+            if (snapReadme.value[s.id]) { delete snapReadme.value[s.id]; return; }   // second click hides it
+            snapReadme.value[s.id] = { loading: true };
+            try {
+                const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/readme`);
+                const d = await readJson(r);
+                snapReadme.value[s.id] = r.ok ? { text: d.text } : { error: detailText(d.detail, 'It could not be read.') };
+            } catch (error) { snapReadme.value[s.id] = { error: 'It could not be read.' }; }
+        };
         const deleteSnapshot = async (s) => {
-            const label = `${snapKindLabel(s.kind)} snapshot of ${new Date(s.created * 1000).toLocaleString()}${s.note ? ' (' + s.note + ')' : ''}`;
-            if (!window.confirm(`Delete the ${label}? This can't be undone.`)) return;
+            snapDeleting.value = '';
             try {
                 const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/delete`, { method: 'POST' });
                 if (!r.ok) pushToast({ kind: 'warn', title: 'Not deleted', text: detailText((await readJson(r)).detail, '') });
@@ -2337,7 +2348,7 @@ createApp({
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
-            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
+            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
