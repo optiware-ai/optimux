@@ -742,12 +742,22 @@ createApp({
             { id: 'workspace', label: 'Workspace only', hint: 'Project folders (all or some) and their memory' },
         ];
         const snapKindLabel = (k) => ({ full: 'Everything', data: 'Data', workspace: 'Workspace' })[k] || k;
-        // After a Data-only or Workspace-only snapshot: a warning that stays until dismissed
-        const snapPartialNotice = ref('');
+        // Data only / Workspace only: Take first asks (Everything instead, or proceed)
+        const snapConfirm = ref(false);
+        const snapOpen = ref({});            // snapshot rows with their details open
+        const snapLeftOutProjects = Vue.computed(() =>
+            (projectsList.value || []).filter(p => !snapForm.value.projects.includes(p)));
+        const snapProceedLabel = Vue.computed(() => {
+            if (snapForm.value.kind === 'data') return 'Proceed with only my data';
+            const n = snapForm.value.projects.length;
+            if (!snapLeftOutProjects.value.length) return 'Proceed with only the projects';
+            return `Proceed with only the selected project${n === 1 ? '' : 's'}`;
+        });
         // Workspace only: every project starts ticked; All and None change the ticks
         let snapProjectsTouched = false;
         const snapSyncProjects = () => {
             const names = projectsList.value || [];
+            snapConfirm.value = false;
             snapForm.value.projects = snapProjectsTouched
                 ? snapForm.value.projects.filter(p => names.includes(p))   // drop removed projects
                 : [...names];
@@ -755,9 +765,9 @@ createApp({
         const snapSetProjects = (all) => {
             snapProjectsTouched = true;
             snapForm.value.projects = all ? [...projectsList.value] : [];
-            snapPreview.value = null;
+            snapPreview.value = null; snapConfirm.value = false;
         };
-        const snapTouchProjects = () => { snapProjectsTouched = true; snapPreview.value = null; };
+        const snapTouchProjects = () => { snapProjectsTouched = true; snapPreview.value = null; snapConfirm.value = false; };
         const snapNothingChosen = Vue.computed(() => snapForm.value.kind === 'workspace' && !snapForm.value.projects.length);
         const snapPreview = ref(null);
         const snapBusy = ref(false);
@@ -797,7 +807,9 @@ createApp({
             } catch (error) { snapError.value = 'Preview failed.'; }
             finally { snapBusy.value = false; }
         };
-        const takeSnapshot = async () => {
+        const takeSnapshot = async (confirmed = false) => {
+            if (snapForm.value.kind !== 'full' && confirmed !== true) { snapConfirm.value = true; return; }
+            snapConfirm.value = false;
             snapBusy.value = true; snapError.value = '';
             try {
                 const r = await fetch('/api/snapshots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snapPayload()) });
@@ -805,7 +817,6 @@ createApp({
                 if (!r.ok) { snapError.value = detailText(d.detail, 'The snapshot could not be started.'); return; }
                 const kind = snapForm.value.kind;
                 snapForm.value.note = ''; snapPreview.value = null;
-                snapPartialNotice.value = kind === 'full' ? '' : kind;
                 pushToast({ title: `Taking a snapshot: ${snapKindLabel(kind)}`, text: 'It appears in the list below; you can keep working meanwhile.' });
                 await fetchSnapshots();
             } catch (error) { snapError.value = 'The snapshot could not be started.'; }
@@ -2326,7 +2337,7 @@ createApp({
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
-            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapPartialNotice, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
+            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,

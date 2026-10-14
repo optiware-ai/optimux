@@ -736,11 +736,13 @@ A **snapshot** is a copy kept on this machine, so you can try something and go b
 - **Data only** holds your settings, models and routing, memory, skills, the database (chats, usage and costs, memory history, sign-ins) and your keys (`secrets.env`, `auth.json`). It leaves out the daily backups, the snapshots themselves, logs and `legacy/`.
 - **Workspace only** holds your projects (all of them, or the ones you tick), each with its project memory file. Folders that can be rebuilt (`node_modules`, `.venv`, `venv`, `__pycache__` and tool caches) are skipped unless you untick the box. Archived projects are not included, and a project folder that is a link to another folder is not followed.
 
-Choosing Data only or Workspace only shows a yellow note saying what will **not** be saved, and after taking one a warning stays on the page until you click **I know** or **Take Everything now**.
+Choosing Data only or Workspace only shows a yellow note saying what will **not** be saved. **Take snapshot** then asks first, naming what is left out (including projects you didn't tick): **Take Everything instead**, **Proceed with only my data** / **only the selected projects**, or **Cancel**.
 
 **Show what goes in** lists every part with its size, what is skipped and what is left out, and says whether it fits. **Take snapshot** runs in the background; the list shows *taking…* until it is ready. Add a note (for example "before trying the new routing") so you know later why you took it.
 
-Each snapshot is one `.tar.gz` file in `~/.optimux/snapshots/`, readable only by you. Inside, `BACKUP-README.txt` explains the contents and how to restore by hand, `manifest.json` describes it for Optimux, and `SHA256SUMS` holds a checksum of every file (after unpacking, `sha256sum -c SHA256SUMS` checks them).
+Each row names its projects (or counts them when there are more than three); **Details** shows the projects, every part with its size, what was skipped or left out, and the file's full path. The folder is shown above the list, with **Copy** and a **?** explaining the files.
+
+Each snapshot is one `.tar.gz` file in `~/.optimux/snapshots/`, readable only by you (on a server installed with the installer, that is the `optimux` user, so use `sudo`). Inside, `BACKUP-README.txt` explains the contents and how to restore by hand, `manifest.json` describes it for Optimux, and `SHA256SUMS` holds a checksum of every file (after unpacking, `sha256sum -c SHA256SUMS` checks them).
 
 A file that changes while it is copied (a log, a database in use) is stored as it was when the copy began, and a file that can't be read is left out; the list shows a **warning** badge for both (hover it for the files). Databases inside your projects are copied as plain files: if one was in use, check it after a restore.
 

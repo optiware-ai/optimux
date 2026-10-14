@@ -406,3 +406,12 @@ def test_api_takes_everything(client):
             break
         time.sleep(0.05)
     assert s["status"] == "ready" and s["kind"] == "full"
+
+
+def test_the_list_says_what_is_inside_without_opening_the_archive(home):
+    snapshots.create("workspace", projects=["alpha"])
+    [s] = snapshots.list_snapshots()
+    assert s["projects"] == ["alpha"]
+    assert [i["path"] for i in s["items"]] == ["workspace/alpha", "memory/projects/alpha.md"]
+    assert all("source" not in i and "private" not in i and "project" in i or i["path"].startswith("memory") for i in s["items"])
+    assert s["skip_rebuildable"] is True

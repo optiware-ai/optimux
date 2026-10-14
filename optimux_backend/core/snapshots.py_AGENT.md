@@ -9,7 +9,7 @@
 - **workspace:** the project folders (all, or the ones chosen; a project folder that is a link to another folder is never followed: it is listed in `left_out`, and choosing it is refused), stored as `workspace/<project>/...`, each with its memory file as `memory/projects/<name>.md`. `.archive/` is never included. Rebuildable folders (`REBUILDABLE`: `node_modules`, `.venv`, `venv`, `__pycache__`, tool caches) are skipped unless `skip_rebuildable=False`.
 
 ## Files
-- `<id>.tar.gz` (mode 600) and `<id>.json` (the description used for listing, so archives are never opened to list them).
+- `<id>.tar.gz` (mode 600) and `<id>.json` (the description used for listing, so archives are never opened to list them: id, kind, created, note, auto, keys, version, sizes, projects, `items` (path, label, files, bytes), `left_out`, `skip_rebuildable`, status, warnings).
 - Ids: `YYYY-MM-DD_HHMMSS-<kind>` (`full`, `data` or `workspace`) with `-N` added when the second is taken (`ID_RE`). Every function that takes an id validates it first (`archive_path`), so a path can never be passed in.
 - Ids are checked with `ID_RE.fullmatch` (a trailing newline is refused).
 - The archive is written to `<id>.tar.gz.partial` and renamed when complete. On failure the partial file is removed and the `.json` says `failed` with the error.

@@ -553,8 +553,9 @@ def _create(kind: str, note: str, p: dict, skip_rebuildable: bool, auto: bool, s
         "items": [{k: v for k, v in i.items() if k not in ("source", "private")} for i in p["items"]],
         "projects": p["projects"], "total_bytes": p["total_bytes"],
     }
+    # The list shows what is inside from this file, without opening the archive
     meta = {k: manifest[k] for k in ("id", "kind", "created", "note", "auto", "includes_secrets",
-                                      "optimux_version", "total_bytes")}
+                                      "optimux_version", "total_bytes", "items", "left_out", "skip_rebuildable")}
     meta["projects"] = [x["name"] for x in p["projects"]]
     meta["status"] = "running"
     _write_meta(sid, meta)
