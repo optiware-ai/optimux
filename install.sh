@@ -394,14 +394,9 @@ port_free() { ! (exec 9<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 # ============================================================================
 
 CM_ETC="${OPTIMUX_ETC:-/etc/optimux}"
-# Optimux was called CodeMux until Feature 27. Installs from before keep working: a
-# server keeps its names (folders, user, service), a local install moves to the new ones.
-CM_OLD_NAME=codemux
-CM_OLD_ETC="${OPTIMUX_OLD_ETC:-/etc/codemux}"
 manifest_path() {   # manifest_path server|local [name]
   local name="${2:-optimux}"
-  if [[ "${1:-}" == server ]]; then
-    if [[ "$name" == "$CM_OLD_NAME" ]]; then echo "$CM_OLD_ETC/install.env"; else echo "$CM_ETC/install.env"; fi
+  if [[ "${1:-}" == server ]]; then echo "$CM_ETC/install.env"
   else echo "${XDG_CONFIG_HOME:-$HOME/.config}/$name/install.env"; fi
 }
 # The name this install's service, user and server folders use
@@ -426,8 +421,7 @@ manifest_write() {
   rm -f "$tmp"
 }
 
-# Parse KEY=value lines without running them. NAME is missing in manifests written
-# before the rename: $2 says which name such a file belongs to.
+# Parse KEY=value lines without running them.
 manifest_read() {
   local f="$1" line k
   declare -gA M=()
@@ -438,11 +432,11 @@ manifest_read() {
     [[ "$k" =~ ^[A-Z_]+$ ]] || continue
     M[$k]="${line#*=}"
   done <"$f"
-  M[NAME]="${M[NAME]:-${2:-optimux}}"
+  M[NAME]="${M[NAME]:-optimux}"
   # A damaged manifest is treated as no install (with a note), never trusted
   if [[ "${M[MODE]:-}" != local && "${M[MODE]:-}" != server ]] || [[ "${M[APP_DIR]:-}" != /* || "${M[DATA_DIR]:-}" != /* ]] \
      || [[ "${M[SERVICE]:-}" != systemd && "${M[SERVICE]:-}" != systemd-user && "${M[SERVICE]:-}" != process ]] \
-     || [[ "${M[NAME]}" != optimux && "${M[NAME]}" != "$CM_OLD_NAME" ]]; then
+     || [[ "${M[NAME]}" != optimux ]]; then
     warn "Ignoring $f: it is incomplete or damaged."
     declare -gA M=()
     return 1
@@ -452,10 +446,7 @@ manifest_read() {
 
 find_install() {
   if manifest_read "$(manifest_path server)"; then return 0; fi
-  if manifest_read "$(manifest_path local)"; then return 0; fi
-  # Installed before the rename (as CodeMux)
-  if manifest_read "$(manifest_path server "$CM_OLD_NAME")" "$CM_OLD_NAME"; then return 0; fi
-  manifest_read "$(manifest_path local "$CM_OLD_NAME")" "$CM_OLD_NAME"
+  manifest_read "$(manifest_path local)"
 }
 
 # ============================================================================
@@ -695,14 +686,6 @@ make_venv() {
   run "Installing Python packages (about a minute)" $s "$dir/.venv/bin/pip" install --quiet --disable-pip-version-check -r "$dir/requirements.txt"
 }
 
-# A virtual environment in an empty folder, with the packages of the program in the current
-# folder ($M[APP_DIR]): the new home of a program that is about to move there.
-make_venv_only() {
-  local dir="$1"
-  run "Creating a Python environment in $dir" "$CM_PY" -m venv "$dir/.venv" || return 1
-  run "Installing Python packages (about a minute)" "$dir/.venv/bin/pip" install --quiet --disable-pip-version-check -r "${M[APP_DIR]}/requirements.txt"
-}
-
 install_cli() {
   local target="$1" wrapper
   wrapper="$(mktemp)"
@@ -898,7 +881,6 @@ finish_local() {
 # ============================================================================
 
 # deploy/optimux.service with this install's name in its paths, user and socket
-# (the file as it is for a new install; "codemux" ones for a server from before the rename)
 server_unit() {
   local n="$1"
   sed -e "s#/optimux#/$n#g" -e "s#optimux\.env#$n.env#g" -e "s#optimux\.sock#$n.sock#g" \
@@ -937,8 +919,7 @@ ssh_ports() {
 
 install_server() {
   CM_STEPS=7
-  # A reinstall of a server installed as CodeMux keeps its names (its data is there)
-  local N="${CM_KEEP_NAME:-optimux}"
+  local N=optimux
   declare -gA M=([MODE]=server [NAME]="$N" [REPO]="$CM_REPO" [REF]="$CM_REF" [RUN_USER]="$N")
   M[APP_DIR]="/opt/$N"
   M[DATA_DIR]="/var/lib/$N/.$N"
@@ -1113,10 +1094,10 @@ caddy_remove() {
   CADDY_SITE="$(caddy_site)"; CADDY_BAK="$(caddy_bak)"
   [[ -f "$CADDY_SITE" ]] || return 0
   $CM_SUDO rm -f "$CADDY_SITE"
-  if [[ -f "$CADDY_BAK" ]] && grep -qE "^# Written by the (Optimux|CodeMux) installer" /etc/caddy/Caddyfile 2>/dev/null; then
+  if [[ -f "$CADDY_BAK" ]] && grep -q "^# Written by the Optimux installer" /etc/caddy/Caddyfile 2>/dev/null; then
     $CM_SUDO mv "$CADDY_BAK" /etc/caddy/Caddyfile
   else
-    $CM_SUDO sed -i -E -e "\#^import $CADDY_SITE\$#d" -e '/^# Added by the (Optimux|CodeMux) installer$/d' /etc/caddy/Caddyfile 2>/dev/null || true
+    $CM_SUDO sed -i -E -e "\#^import $CADDY_SITE\$#d" -e '/^# Added by the Optimux installer$/d' /etc/caddy/Caddyfile 2>/dev/null || true
     $CM_SUDO rm -f "$CADDY_BAK"
   fi
   $CM_SUDO systemctl reload caddy >/dev/null 2>&1 || $CM_SUDO systemctl restart caddy >/dev/null 2>&1 || true
@@ -1216,7 +1197,7 @@ pidfile() { echo "${M[DATA_DIR]}/logs/server.pid"; }
 server_pids() {
   local app
   app="$(printf '%s' "${M[APP_DIR]}" | sed 's/[][\.*^$+?(){}|/]/\\&/g' || true)"
-  pgrep -u "$(id -u)" -f "^[^ ]*python[0-9.]* ${app}/\.venv/bin/uvicorn (optimux|codemux)_backend\.main:app --host 127\.0\.0\.1 --port ${M[PORT]} " 2>/dev/null || true
+  pgrep -u "$(id -u)" -f "^[^ ]*python[0-9.]* ${app}/\.venv/bin/uvicorn optimux_backend\.main:app --host 127\.0\.0\.1 --port ${M[PORT]} " 2>/dev/null || true
 }
 
 process_ctl() {
@@ -1293,91 +1274,8 @@ cli_update() {
   else
     fetch_code "${M[APP_DIR]}"; make_venv "${M[APP_DIR]}"
   fi
-  upgrade_old_install
   run "Restarting" svc restart
   ok "Updated to $(git -C "${M[APP_DIR]}" describe --always 2>/dev/null)"
-}
-
-# ---- Installs from before the rename (CodeMux) ------------------------------
-# Runs once the new code is in place (the old `codemux update` downloads it; the
-# codemux_backend package keeps the old service starting until then).
-upgrade_old_install() {
-  [[ "${M[NAME]:-}" == "$CM_OLD_NAME" && -d "${M[APP_DIR]}/optimux_backend" ]] || return 0
-  if [[ "${M[MODE]}" == server ]]; then upgrade_old_server; else upgrade_old_local; fi
-}
-
-# A server keeps its folders, user and service (renaming them under a running service
-# isn't worth the risk); it gets the new command, and its service starts the new module.
-upgrade_old_server() {
-  local unit="${CM_UNIT_DIR:-/etc/systemd/system}/$CM_OLD_NAME.service"
-  if [[ -f "$unit" ]] && grep -q 'codemux_backend\.main:app' "$unit"; then
-    $CM_SUDO sed -i 's/codemux_backend\.main:app/optimux_backend.main:app/' "$unit" && $CM_SUDO systemctl daemon-reload || true
-  fi
-  if [[ ! -e /usr/local/bin/optimux ]]; then
-    install_cli /usr/local/bin/optimux && $CM_SUDO rm -f "/usr/local/bin/$CM_OLD_NAME"
-    ok "CodeMux is now Optimux: the command is ${CB}optimux${C0} (sudo optimux status, ...)"
-    note "This server keeps its folders, user and service names ($CM_OLD_NAME)."
-  fi
-}
-
-# A local install moves to the new names: program, data, service, command, manifest.
-upgrade_old_local() {
-  local old_app="${M[APP_DIR]}" old_data="${M[DATA_DIR]}" running="" moved_app=""
-  local new_app="$HOME/.local/share/optimux" new_data="$HOME/.optimux"
-  CM_LOG="${CM_LOG:-$(new_log)}"
-  section "CodeMux is now Optimux"
-  note "Moving this install to the new names. Your keys, chats, projects and settings stay as they are."
-  # The program. A virtual environment can't be moved, so the new folder gets a new one
-  # first; until that works, the install is left exactly as it was.
-  if [[ "$old_app" == "$HOME/.local/share/$CM_OLD_NAME" && ! -e "$new_app" ]]; then
-    if find_python && mkdir -p "$new_app" && CM_SOFT=1 make_venv_only "$new_app"; then moved_app=1
-    else
-      rm -rf "$new_app"
-      warn "Kept the program in $old_app: a new Python environment couldn't be built (see $CM_LOG)."
-    fi
-  fi
-  svc is-active >/dev/null 2>&1 && running=1
-  svc stop >/dev/null 2>&1 || true
-  if svc is-active >/dev/null 2>&1; then     # never move files under a running server
-    [[ -n "$moved_app" ]] && rm -rf "$new_app"
-    warn "It didn't stop, so nothing was moved. Stop it (optimux stop), then run any optimux command again."
-    return 0
-  fi
-  if [[ -n "$moved_app" ]]; then
-    local f
-    for f in "$old_app"/* "$old_app"/.[!.]* "$old_app"/..?*; do
-      [[ -e "$f" || -L "$f" ]] || continue
-      [[ "$(basename "$f")" == .venv ]] && continue
-      mv "$f" "$new_app/"
-    done
-    rm -rf "$old_app/.venv"; rmdir "$old_app" 2>/dev/null || true
-    M[APP_DIR]="$new_app"; ok "Program: $new_app"
-  fi
-  if [[ "${M[SERVICE]}" == systemd-user ]]; then
-    systemctl --user disable "$CM_OLD_NAME.service" >/dev/null 2>&1 || true
-    rm -f "$(user_unit_path "$CM_OLD_NAME")"
-  fi
-  # The data (keys, chats, memory); the Workspace folder stays where it is
-  if [[ "$old_data" == "$HOME/.$CM_OLD_NAME" ]]; then
-    if [[ ! -e "$new_data" ]] && mv "$old_data" "$new_data"; then
-      M[DATA_DIR]="$new_data"; ok "Data: $new_data"
-    elif [[ -d "$new_data" && ! -e "$old_data" ]]; then
-      M[DATA_DIR]="$new_data"        # already moved (Optimux started from a clone moves it too)
-    fi
-  fi
-  M[NAME]=optimux
-  if [[ "${M[SERVICE]}" == systemd-user ]]; then
-    write_user_unit
-    systemctl --user daemon-reload >/dev/null 2>&1 || true
-    systemctl --user enable optimux.service >/dev/null 2>&1 || true
-  fi
-  manifest_write "$(manifest_path local)"
-  rm -f "$(manifest_path local "$CM_OLD_NAME")"
-  rmdir "$(dirname "$(manifest_path local "$CM_OLD_NAME")")" 2>/dev/null || true
-  install_cli "$HOME/.local/bin/optimux"
-  rm -f "$HOME/.local/bin/$CM_OLD_NAME"
-  ok "The command is now ${CB}optimux${C0} (optimux status, optimux update, ...)"
-  if [[ -n "$running" ]]; then svc start >/dev/null 2>&1 || warn "It didn't start again: optimux start"; fi
 }
 
 cli_password() {
@@ -1396,7 +1294,7 @@ safe_rm() {
   case "$real" in
     ""|/|/home|/root|/opt|/var|/var/lib|/etc|/usr|"$HOME"|"$HOME/") err "Refusing to delete $path"; return 1 ;;
   esac
-  if [[ "$(basename "$real")" != *optimux* && "$(basename "$real")" != *codemux* ]]; then err "Refusing to delete $path (not an Optimux folder)"; return 1; fi
+  if [[ "$(basename "$real")" != *optimux* ]]; then err "Refusing to delete $path (not an Optimux folder)"; return 1; fi
   local mode=""
   declare -p M >/dev/null 2>&1 && mode="${M[MODE]:-}"
   if [[ "$mode" == server ]]; then $CM_SUDO rm -rf -- "$real"; else rm -rf -- "$real"; fi
@@ -1412,7 +1310,7 @@ cli_uninstall() {
   if [[ "${M[MODE]}" == server ]]; then
     local n; n="$(nm)"
     $CM_SUDO systemctl disable "$n.service" >/dev/null 2>&1 || true
-    $CM_SUDO rm -f "/etc/systemd/system/$n.service" /usr/local/bin/optimux /usr/local/bin/codemux
+    $CM_SUDO rm -f "/etc/systemd/system/$n.service" /usr/local/bin/optimux
     $CM_SUDO systemctl daemon-reload || true
     safe_rm "${M[APP_DIR]}" || true
     caddy_remove
@@ -1438,12 +1336,12 @@ cli_uninstall() {
       systemctl --user daemon-reload >/dev/null 2>&1 || true
     fi
     safe_rm "${M[APP_DIR]}" || true
-    rm -f "$HOME/.local/bin/optimux" "$HOME/.local/bin/codemux" "$(manifest_path local "$(nm)")"
+    rm -f "$HOME/.local/bin/optimux" "$(manifest_path local "$(nm)")"
     rmdir "$(dirname "$(manifest_path local "$(nm)")")" 2>/dev/null || true
     local rc
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do      # the PATH line the installer added, if any
-      [[ -f "$rc" ]] && grep -qE '^# Added by the (Optimux|CodeMux) installer$' "$rc" && \
-        sed -i -E '/^# Added by the (Optimux|CodeMux) installer$/{N;/\n(export PATH=)/d;}' "$rc"
+      [[ -f "$rc" ]] && grep -q '^# Added by the Optimux installer$' "$rc" && \
+        sed -i -E '/^# Added by the Optimux installer$/{N;/\n(export PATH=)/d;}' "$rc"
     done
     if [[ "${M[APPARMOR]:-}" == 1 ]]; then note "The AppArmor rule for bubblewrap stays (other programs may use it): sudo rm /etc/apparmor.d/bwrap"; fi
     if [[ -d "${M[APP_DIR]}" ]]; then warn "Couldn't remove ${M[APP_DIR]} completely."; else ok "Program removed"; fi
@@ -1562,7 +1460,6 @@ main() {
 
   # Already installed: update, reconfigure, or uninstall
   if find_install; then
-    upgrade_old_install
     local current="${M[MODE]}"
     info "Optimux is already installed here ${CM}(${current}, ${M[APP_DIR]})${C0}"
     local action="$CM_ACTION"
@@ -1578,7 +1475,6 @@ main() {
       reinstall)
         CM_MODE="$current"
         CM_OLD_PORT="${M[PORT]:-}"
-        [[ "$current" == server ]] && CM_KEEP_NAME="$(nm)"
         [[ "$current" == local ]] && CM_SUDO=""
         svc stop >/dev/null 2>&1 || true        # the new setup may change the port or service
         detect_system ;;

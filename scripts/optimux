@@ -37,7 +37,6 @@ main_cli() {
   find_install || die "Optimux isn't installed here (no install.env found). Install it with install.sh."
   # Server installs are managed with sudo; a local install never needs it
   if [[ "${M[MODE]}" == server && $EUID -ne 0 ]]; then CM_SUDO="sudo"; else CM_SUDO=""; fi
-  upgrade_old_install      # an install from before the rename to Optimux
   case "${1:-help}" in
     start) cli_start; ok "Started: ${M[URL]}" ;;
     stop) cli_stop ;;

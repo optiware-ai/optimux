@@ -346,7 +346,6 @@ def connect_github(token: str) -> dict:
 def disconnect_github() -> None:
     """Forget the saved token (gh's own sign-in, if any, is left alone)."""
     delete_api_key_from_env(GITHUB_TOKEN_ENV)
-    os.environ.pop("CODEMUX_GITHUB_TOKEN", None)  # its name before the rename, if still around
     set_github_fields(github_login="")
     _STATUS_CACHE["value"] = None
 

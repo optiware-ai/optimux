@@ -23,10 +23,7 @@ def paths(monkeypatch, tmp_path):
 
 def make_repo(tmp_path, env="GEMINI_API_KEY=g\nOPTIMUX_TOKEN=t\n"):
     repo = tmp_path / "repo"
-    (repo / ".codemux").mkdir(parents=True)
-    for name in ("settings.json", "models.json", "routing.json", "budgets.json"):
-        (repo / ".codemux" / name).write_text(f'{{"from": "{name}"}}')
-    (repo / ".codemux" / "context.json").write_text("{}")   # old memory manager leftovers
+    repo.mkdir(parents=True)
     (repo / ".env").write_text(env)
     return repo
 
@@ -37,15 +34,12 @@ def test_fresh_layout_is_created(paths):
         assert os.path.isdir(os.path.join(paths.HOME, d))
 
 
-def test_repo_config_and_env_move_out_of_the_repo(paths, tmp_path):
+def test_repo_env_moves_out_of_the_repo(paths, tmp_path):
     repo = make_repo(tmp_path)
     moves = paths.prepare_home(repo_dir=str(repo))
-    assert open(paths.MODELS_FILE).read() == '{"from": "models.json"}'
-    assert os.path.exists(paths.BUDGETS_FILE) and os.path.exists(paths.SETTINGS_FILE)
     assert open(paths.SECRETS_FILE).read() == "GEMINI_API_KEY=g\nOPTIMUX_TOKEN=t\n"
     assert stat.S_IMODE(os.stat(paths.SECRETS_FILE).st_mode) == 0o600
-    assert not (repo / ".env").exists() and not (repo / ".codemux").exists()
-    assert os.path.exists(os.path.join(paths.LEGACY_DIR, "repo-codemux-context.json"))
+    assert not (repo / ".env").exists()
     assert any("secrets.env" in m for m in moves)
     assert len(paths.migration_log()) == len(moves)
     assert paths.prepare_home(repo_dir=str(repo)) == []          # second start: nothing to do
@@ -53,12 +47,9 @@ def test_repo_config_and_env_move_out_of_the_repo(paths, tmp_path):
 
 def test_existing_destination_wins_and_nothing_is_lost(paths, tmp_path):
     os.makedirs(paths.CONFIG_DIR)
-    open(paths.MODELS_FILE, "w").write('{"kept": true}')
     open(paths.SECRETS_FILE, "w").write("GEMINI_API_KEY=new\n")
     repo = make_repo(tmp_path, env="GEMINI_API_KEY=old\nANTHROPIC_API_KEY=a")
     paths.prepare_home(repo_dir=str(repo))
-    assert open(paths.MODELS_FILE).read() == '{"kept": true}'
-    assert os.path.exists(os.path.join(paths.LEGACY_DIR, "repo-models.json"))
     assert open(paths.SECRETS_FILE).read() == "GEMINI_API_KEY=new\nANTHROPIC_API_KEY=a\n"   # merged, home wins
     legacy_env = os.path.join(paths.LEGACY_DIR, "repo.env")
     assert open(legacy_env).read().startswith("GEMINI_API_KEY=old")
@@ -67,14 +58,23 @@ def test_existing_destination_wins_and_nothing_is_lost(paths, tmp_path):
 
 def test_home_root_leftovers_move(paths, tmp_path):
     os.makedirs(paths.HOME, exist_ok=True)
-    open(os.path.join(paths.HOME, "codemux.db"), "w").write("db")
-    open(os.path.join(paths.HOME, "codemux.db-wal"), "w").write("wal")
     open(os.path.join(paths.HOME, "usage.jsonl.migrated"), "w").write("{}")
     os.makedirs(os.path.join(paths.HOME, "projects", "Optimux_964801ae"))
     paths.prepare_home(repo_dir=str(tmp_path))
-    assert open(paths.DB_PATH).read() == "db" and open(paths.DB_PATH + "-wal").read() == "wal"
     assert os.path.exists(os.path.join(paths.LEGACY_DIR, "usage.jsonl.migrated"))
     assert os.path.isdir(os.path.join(paths.LEGACY_DIR, "projects", "Optimux_964801ae"))
+
+
+def test_codemux_files_are_left_alone(paths, tmp_path):
+    """v0.2 removed the CodeMux upgrade: its files are never moved, read or deleted."""
+    repo = tmp_path / "repo"
+    (repo / ".codemux").mkdir(parents=True)
+    (repo / ".codemux" / "models.json").write_text("{}")
+    os.makedirs(paths.HOME, exist_ok=True)
+    open(os.path.join(paths.HOME, "codemux.db"), "w").write("db")
+    assert paths.prepare_home(repo_dir=str(repo)) == []
+    assert (repo / ".codemux" / "models.json").exists()
+    assert os.path.exists(os.path.join(paths.HOME, "codemux.db")) and not os.path.exists(paths.DB_PATH)
 
 
 def test_no_migrate_switch(paths, tmp_path, monkeypatch):

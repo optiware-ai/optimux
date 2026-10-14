@@ -38,8 +38,7 @@ def test_get_or_create_token_persists(mocker, tmp_path):
 
 @pytest.mark.parametrize("content,expected", [
     ("OPTIMUX_TOKEN=first\nOPTIMUX_TOKEN=last\n", "last"),     # the one dotenv (the server) uses
-    ("CODEMUX_TOKEN=old\n", "old"),                            # a secrets.env from before the rename
-    ("CODEMUX_TOKEN=old\nOPTIMUX_TOKEN=new\n", "new"),
+    ("CODEMUX_TOKEN=old\nOPTIMUX_TOKEN=new\n", "new"),       # the old name is not read
 ])
 def test_a_process_without_the_environment_finds_the_saved_token(mocker, tmp_path, content, expected):
     """The admin command doesn't load secrets.env: `optimux token` used to add a second

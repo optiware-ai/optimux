@@ -300,148 +300,30 @@ def test_tests_cannot_reach_the_real_sudo(no_gh_path):
     assert open(os.path.join(no_gh_path, "sudo")).read().startswith("#!/bin/sh")
 
 
-# ---------- Feature 27: installs from before the rename (CodeMux)
+# ---------- One name: Optimux (the CodeMux upgrade path was removed in v0.2)
 
-def old_local_install(tmp_path, service="process"):
-    """A local install made as CodeMux, with the new code already downloaded into it."""
+def test_server_unit_uses_the_install_name():
+    r = lib(f'declare -gA M=([APP_DIR]="{ROOT}"); server_unit optimux')
+    assert r.stdout == open(os.path.join(ROOT, "deploy", "optimux.service")).read()
+
+
+def test_a_manifest_with_another_name_is_ignored(tmp_path):
     home = tmp_path / "home"
-    app = home / ".local/share/codemux"
-    (app / "optimux_backend").mkdir(parents=True)
-    (app / "scripts").mkdir()
-    (app / ".git").mkdir()
-    (app / ".venv/bin").mkdir(parents=True)
-    (app / ".venv/bin/python").write_text("old venv")
-    (home / ".codemux/config").mkdir(parents=True)
-    (home / ".local/bin").mkdir(parents=True)
-    (home / ".local/bin/codemux").write_text("old command")
-    cfg = home / ".config/codemux"
+    cfg = home / ".config/optimux"
     cfg.mkdir(parents=True)
-    (cfg / "install.env").write_text(f"MODE=local\nAPP_DIR={app}\nDATA_DIR={home}/.codemux\nWORKSPACE={home}/codemux-projects\n"
-                                     f"PORT=8000\nURL=http://127.0.0.1:8000\nSERVICE={service}\nREF=main\n")
-    return home
-
-
-def run_upgrade(home, venv_ok=True, **env):
-    make_venv = 'find_python() { CM_PY=python3; }; make_venv_only() { mkdir -p "$1/.venv/bin"; echo new >"$1/.venv/bin/python"; }' \
-        if venv_ok else 'find_python() { CM_PY=python3; }; make_venv_only() { mkdir -p "$1/.venv"; return 1; }'
-    return lib(f'''CM_SUDO=""; CM_LOG=/dev/null; svc() {{ echo "SVC $1 $(nm)" >>"$HOME/calls"; [[ "$1" != is-active ]]; }}
-                 systemctl() {{ echo "SYSTEMCTL $*" >>"$HOME/calls"; }}; {make_venv}
-                 find_install && echo "FOUND ${{M[NAME]}}"; upgrade_old_install; echo "NOW ${{M[NAME]}} ${{M[APP_DIR]}} ${{M[DATA_DIR]}}"''',
-               HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"), OPTIMUX_ETC=str(home / "etc"),
-               OPTIMUX_OLD_ETC=str(home / "oldetc"), **env)
-
-
-def test_old_manifest_is_found_as_codemux(tmp_path):
-    home = old_local_install(tmp_path)
-    r = lib('find_install && echo "NAME=${M[NAME]}"', HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
-            OPTIMUX_ETC=str(home / "etc"), OPTIMUX_OLD_ETC=str(home / "oldetc"))
-    assert "NAME=codemux" in r.stdout, r.stdout + r.stderr
-
-
-def test_old_local_install_moves_to_the_new_names(tmp_path):
-    home = old_local_install(tmp_path)
-    r = run_upgrade(home)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "FOUND codemux" in r.stdout
-    assert f"NOW optimux {home}/.local/share/optimux {home}/.optimux" in r.stdout
-    assert "SVC stop codemux" in (home / "calls").read_text()  # the old service was stopped by its old name
-    assert (home / ".local/share/optimux/.venv/bin/python").read_text().strip() == "new"
-    assert (home / ".local/share/optimux/.git").is_dir() and (home / ".local/share/optimux/optimux_backend").is_dir()
-    assert not (home / ".local/share/codemux").exists() and not (home / ".codemux").exists()
-    assert (home / ".optimux/config").is_dir()
-    assert not (home / ".local/bin/codemux").exists()
-    assert "scripts/optimux" in (home / ".local/bin/optimux").read_text()
-    assert not (home / ".config/codemux").exists()
-    manifest = (home / ".config/optimux/install.env").read_text()
-    assert "NAME=optimux" in manifest and f"APP_DIR={home}/.local/share/optimux" in manifest
-    assert f"WORKSPACE={home}/codemux-projects" in manifest    # the projects folder never moves
-    r = run_upgrade(home)                                      # next time: nothing to do
-    assert "FOUND optimux" in r.stdout and "CodeMux is now Optimux" not in r.stdout
-
-
-def test_failed_environment_puts_the_program_back(tmp_path):
-    home = old_local_install(tmp_path)
-    r = run_upgrade(home, venv_ok=False)
-    assert r.returncode == 0, r.stdout + r.stderr
-    app = home / ".local/share/codemux"
-    assert (app / ".venv/bin/python").read_text() == "old venv"   # the install is as it was
-    assert (app / "optimux_backend").is_dir() and (app / ".git").is_dir()
-    assert not (home / ".local/share/optimux").exists()
-    assert f"APP_DIR={app}" in (home / ".config/optimux/install.env").read_text()
-
-
-def test_nothing_moves_before_the_new_code_is_there(tmp_path):
-    home = old_local_install(tmp_path)
-    (home / ".local/share/codemux/optimux_backend").rmdir()   # still the old version
-    r = run_upgrade(home)
-    assert "NOW codemux" in r.stdout and (home / ".codemux").is_dir() and (home / ".local/bin/codemux").exists()
-
-
-def test_user_service_is_renamed(tmp_path):
-    home = old_local_install(tmp_path, service="systemd-user")
-    units = home / ".config/systemd/user"
-    units.mkdir(parents=True)
-    (units / "codemux.service").write_text("old")
-    run_upgrade(home)
-    calls = (home / "calls").read_text()
-    assert "SYSTEMCTL --user disable codemux.service" in calls and "SYSTEMCTL --user enable optimux.service" in calls
-    assert not (units / "codemux.service").exists()
-    unit = (units / "optimux.service").read_text()
-    assert f"OPTIMUX_HOME={home}/.optimux" in unit and "optimux_backend.main:app" in unit
-
-
-@pytest.mark.parametrize("name", ["optimux", "codemux"])
-def test_server_unit_uses_the_install_name(name):
-    r = lib(f'declare -gA M=([APP_DIR]="{ROOT}"); server_unit {name}')
-    unit = r.stdout
-    assert f"User={name}" in unit and f"Group={name}" in unit and f"RuntimeDirectory={name}" in unit
-    assert f"EnvironmentFile=/etc/{name}/{name}.env" in unit and f"ReadWritePaths=/var/lib/{name}" in unit
-    assert f"--uds /run/{name}/{name}.sock" in unit and f"/opt/{name}/.venv/bin/uvicorn optimux_backend.main:app" in unit
-    if name == "optimux":
-        assert unit == open(os.path.join(ROOT, "deploy", "optimux.service")).read()
-
-
-def test_old_server_keeps_its_names_and_starts_the_new_module(tmp_path):
-    units = tmp_path / "units"
-    units.mkdir()
-    (units / "codemux.service").write_text("ExecStart=/opt/codemux/.venv/bin/uvicorn codemux_backend.main:app --uds /run/codemux/codemux.sock\n")
-    app = tmp_path / "opt-codemux"
-    (app / "optimux_backend").mkdir(parents=True)
-    r = lib(f'''CM_SUDO=""; systemctl() {{ echo "SYSTEMCTL $*"; }}; install_cli() {{ echo "CLI $1"; }}
-              declare -gA M=([MODE]=server [NAME]=codemux [APP_DIR]="{app}")
-              CM_UNIT_DIR="{units}"; upgrade_old_install; echo "svc=$(nm).service sock=$(server_socket) site=$(caddy_site)"''')
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "optimux_backend.main:app --uds /run/codemux/codemux.sock" in (units / "codemux.service").read_text()
-    assert "SYSTEMCTL daemon-reload" in r.stdout
-    assert "svc=codemux.service sock=/run/codemux/codemux.sock site=/etc/caddy/codemux.caddyfile" in r.stdout
+    (cfg / "install.env").write_text(f"MODE=local\nNAME=codemux\nAPP_DIR={home}/app\nDATA_DIR={home}/data\n"
+                                     "PORT=8000\nSERVICE=process\n")
+    r = lib('find_install && echo FOUND || echo NONE', HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
+            OPTIMUX_ETC=str(home / "etc"))
+    assert "NONE" in r.stdout and "incomplete or damaged" in r.stdout, r.stdout + r.stderr
 
 
 @pytest.mark.parametrize("path", ["/tmp/x/codemux", "/tmp/x/.codemux"])
-def test_uninstall_may_delete_old_folders(tmp_path, path):
+def test_uninstall_refuses_folders_that_are_not_optimux(tmp_path, path):
     target = path.replace("/tmp/x", str(tmp_path))
     os.makedirs(target)
     r = lib(f'CM_SUDO=""; rm() {{ echo "RM $*"; }}; safe_rm "{target}"', HOME=str(tmp_path / "home"))
-    assert "RM -rf --" in r.stdout
-
-
-
-def test_nothing_moves_while_the_server_still_runs(tmp_path):
-    home = old_local_install(tmp_path)
-    r = lib('''CM_SUDO=""; CM_LOG=/dev/null; svc() { [[ "$1" == is-active ]]; }
-              find_python() { CM_PY=python3; }; make_venv_only() { mkdir -p "$1/.venv"; }
-              find_install; upgrade_old_install; echo "NOW ${M[NAME]}"''',
-            HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"), OPTIMUX_ETC=str(home / "etc"),
-            OPTIMUX_OLD_ETC=str(home / "oldetc"))
-    assert "NOW codemux" in r.stdout and "didn't stop" in r.stdout, r.stdout + r.stderr
-    assert (home / ".local/share/codemux/.venv/bin/python").exists() and (home / ".codemux").is_dir()
-    assert not (home / ".local/share/optimux").exists()
-
-
-def test_data_already_moved_by_the_server_is_used(tmp_path):
-    home = old_local_install(tmp_path)
-    (home / ".codemux").rename(home / ".optimux")
-    run_upgrade(home)
-    assert f"DATA_DIR={home}/.optimux" in (home / ".config/optimux/install.env").read_text()
+    assert "RM -rf" not in r.stdout and "not an Optimux folder" in r.stdout + r.stderr
 
 
 # ---------- The optimux command right after a local install (~/.local/bin not in PATH yet)

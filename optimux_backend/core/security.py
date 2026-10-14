@@ -39,18 +39,17 @@ def _secrets_file() -> str:
 
 
 def _saved_token(env_file: str) -> str:
-    """The token saved in secrets.env (the last one, as dotenv reads it), or ''.
-    Also accepts its name from before the rename (CODEMUX_TOKEN)."""
-    found = {}
+    """The token saved in secrets.env (the last one, as dotenv reads it), or ''."""
+    found = ""
     try:
         with open(env_file) as f:
             for line in f:
                 key, sep, value = line.strip().partition("=")
-                if sep and key in (TOKEN_ENV, "CODEMUX_TOKEN") and value.strip():
-                    found[key] = value.strip().strip("'\"")
+                if sep and key == TOKEN_ENV and value.strip():
+                    found = value.strip().strip("'\"")
     except FileNotFoundError:
         return ""
-    return found.get(TOKEN_ENV) or found.get("CODEMUX_TOKEN", "")
+    return found
 
 
 def get_or_create_token(env_file: str | None = None) -> str:
@@ -189,7 +188,7 @@ def scrubbed_env(secret_names: set[str] | None = None, base: dict | None = None)
     base = dict(os.environ if base is None else base)
     drop = set(secret_names or ()) | {TOKEN_ENV, GITHUB_TOKEN_ENV}
     return {k: v for k, v in base.items()
-            if k not in drop and not k.endswith("_API_KEY") and not k.startswith("CODEMUX_")}  # old names (before Optimux)
+            if k not in drop and not k.endswith("_API_KEY") and not k.startswith("CODEMUX_")}  # Optimux's old name: never pass its variables on
 
 
 # ---------------------------------------------------------------- command paths

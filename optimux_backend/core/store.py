@@ -167,7 +167,7 @@ def backup(now: float | None = None) -> str:
     finally:
         dst.close()
         src.close()
-    backups = paths.backup_files(BACKUP_DIR)       # oldest first, including codemux-* from before the rename
+    backups = paths.backup_files(BACKUP_DIR)       # oldest first
     for old in backups[:-KEEP_BACKUPS]:
         os.remove(os.path.join(BACKUP_DIR, old))
     return target

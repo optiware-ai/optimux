@@ -36,7 +36,7 @@
 - **Saving JSON:** uses Pydantic v2's `model_dump()`.
 
 ## Feature 23
-- New settings: `command_env` (extra variable names for commands, validated by `check_command_env`, which refuses `OPTIMUX_*` and the old `CODEMUX_*` names), `limit_memory_mb` (0, or ≥ 256), `limit_file_mb` (1024), `limit_processes` (0, or ≥ 32).
+- New settings: `command_env` (extra variable names for commands, validated by `check_command_env`, which refuses `OPTIMUX_*` and `CODEMUX_*` (Optimux's old name) variables, so they never reach a command), `limit_memory_mb` (0, or ≥ 256), `limit_file_mb` (1024), `limit_processes` (0, or ≥ 32).
 - `sandbox_network` is `None` by default = automatic: `get_settings()` resolves it to on locally and off in server mode (`OPTIMUX_SERVER=1`). In server mode `get_settings()` also forces `auto_approve` off and `save_settings` refuses to turn it on.
 - `command_env(settings, base)` builds the environment for model-run commands (see executor.py_AGENT.md), plus `git_identity_env(settings)`.
 - Feature 25: `git_name`/`git_email` (validated by `check_git_identity`: both or neither, no control characters or `<>`, a plausible email) and `github_login` (display only) in `SettingsPayload`; `git_identity_env` turns them into GIT_AUTHOR_*/GIT_COMMITTER_* (empty = git's own config). `update_settings(**changes)` changes some settings and keeps the rest (used by admin.py). `GITHUB_FIELDS` are written only by `set_github_fields(**fields)` (validates just those; an unrelated invalid setting doesn't block them); `POST /api/settings` keeps their stored values, so a page with stale values can't undo them. The email and name refuse control characters (a NUL would break every subprocess).

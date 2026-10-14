@@ -33,15 +33,11 @@ import time
 from optimux_backend.core import paths
 
 PROJECT_SKILLS_DIR = ".optimux-skills"
-OLD_PROJECT_SKILLS_DIR = ".codemux-skills"  # before the rename to Optimux; still read
 
 
 def project_skills_dir(project_dir: str) -> str:
-    """The project's skills folder: .optimux-skills, or .codemux-skills in a
-    project that has only the old one (it is used as it is, never renamed)."""
-    new = os.path.join(project_dir, PROJECT_SKILLS_DIR)
-    old = os.path.join(project_dir, OLD_PROJECT_SKILLS_DIR)
-    return old if not os.path.lexists(new) and os.path.isdir(old) else new
+    """The project's skills folder (.optimux-skills)."""
+    return os.path.join(project_dir, PROJECT_SKILLS_DIR)
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 TIERS = ("simple", "complex")
 MODES = ("manual", "auto")

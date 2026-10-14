@@ -15,12 +15,10 @@ from optimux_backend.core import paths
 # (A repo .env is only read if the move to secrets.env hasn't happened yet.)
 SECRETS_FILE = paths.SECRETS_FILE
 load_dotenv(SECRETS_FILE if os.path.exists(SECRETS_FILE) else ".env", override=True)
-paths.adopt_old_env()  # a secrets.env not yet migrated still holds CODEMUX_* names
 
 MODELS_FILE = paths.MODELS_FILE
 ROUTING_FILE = paths.ROUTING_FILE
 SETTINGS_FILE = paths.SETTINGS_FILE
-OLD_CUSTOM_MODELS_FILE = paths.os.path.join(paths.LEGACY_DIR, "repo-codemux-custom_models.json")  # named by an older version
 
 # Seeded into .optimux/models.json on first run only; existing installs keep their list.
 LEGACY_SUPPORTED_MODELS = {
@@ -321,22 +319,8 @@ def _init_models():
         models = {}
         for mid, details in LEGACY_SUPPORTED_MODELS.items():
             models[mid] = details
-        
-        if os.path.exists(OLD_CUSTOM_MODELS_FILE):
-            try:
-                with open(OLD_CUSTOM_MODELS_FILE, "r") as f:
-                    old_custom = json.load(f)
-                    for mid, details in old_custom.items():
-                        models[mid] = {"name": details.get("name", mid), "env_key": "", "instructions": ""}
-            except Exception:
-                pass
-                
         with open(MODELS_FILE, "w") as f:
             json.dump(models, f, indent=4)
-            
-        # Optional: remove old file
-        if os.path.exists(OLD_CUSTOM_MODELS_FILE):
-            os.remove(OLD_CUSTOM_MODELS_FILE)
 
 def get_all_models() -> dict:
     _init_models()

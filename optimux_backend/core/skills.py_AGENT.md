@@ -17,7 +17,7 @@ The markdown instructions follow the front matter, and any other files in the fo
 
 ## Locations
 - **Global:** `~/.optimux/skills/<name>/` (`paths.SKILLS_DIR`).
-- **Project:** `<project>/.optimux-skills/<name>/`. A project skill overrides a global one with the same name. `project_skills_dir(project)` picks the folder: a project that only has `.codemux-skills` (made before the rename to Optimux) keeps using it as it is; it is never renamed, since it may be tracked in the project's git.
+- **Project:** `<project>/.optimux-skills/<name>/`. A project skill overrides a global one with the same name. `project_skills_dir(project)` returns that folder (v0.2 dropped the old `.codemux-skills` name).
 - **Names:** lowercase letters, digits and `-` (`NAME_RE`).
 
 ## Core Functionality
