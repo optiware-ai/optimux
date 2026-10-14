@@ -1110,6 +1110,29 @@ add_caddy_repo() {
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | $CM_SUDO tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
 }
 
+# Services that listen on a public address (not 127.x, ::1 or link-local), one line per
+# port: "port/proto name". Returns 1 when they can't be listed. DHCP and mDNS clients
+# are left out: ufw lets their traffic in by itself (a DHCP client may also hold a
+# random UDP port, which changes after a reboot).
+public_listeners() {
+  local out
+  out="$($CM_SUDO ss -Hltunp 2>/dev/null)" || return 1
+  awk 'NF >= 5 {
+    proto = $1; addr = $5; port = addr
+    sub(/.*:/, "", port); sub(/:[^:]*$/, "", addr); gsub(/[][]/, "", addr); sub(/%.*/, "", addr)
+    a = tolower(addr)
+    if (port !~ /^[0-9]+$/) next
+    if (a ~ /^127\./ || a == "::1" || a ~ /^::ffff:127\./ || a ~ /^fe80:/) next
+    if (proto == "udp" && (port == "68" || port == "546" || port == "5353")) next
+    name = ""
+    if (match($0, /\("[^"]+"/)) name = substr($0, RSTART + 2, RLENGTH - 3)
+    if (proto == "udp" && (name == "dhclient" || name == "dhcpcd" || name == "systemd-network")) next
+    if (name == "systemd") name = ""          # socket activation: the real service is unknown here
+    key = port "/" proto
+    if (!(key in seen)) { seen[key] = 1; print key, name }
+  }' <<<"$out"
+}
+
 configure_firewall() {
   local domain="$1" ports
   if command -v firewall-cmd >/dev/null 2>&1 && $CM_SUDO firewall-cmd --state >/dev/null 2>&1; then
@@ -1126,19 +1149,55 @@ configure_firewall() {
     run "Opening the web ports in the firewall" bash -c "$cmd"
     return 0
   fi
+  # The command to turn it on by hand: the same rules the installer would add
+  local p later=""
+  for p in $ports; do later+="sudo ufw allow $p/tcp && "; done
+  [[ -n "$domain" ]] && later+="sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && "
+  later+="sudo ufw enable"
   if [[ -z "$CM_SSH_SURE" ]]; then
     warn "Couldn't find which port SSH uses (assuming 22)."
     if [[ -n "$CM_YES" ]]; then note "Firewall left off so you can't be locked out. Turn it on yourself: sudo ufw allow <ssh port>/tcp && sudo ufw enable"; return 0; fi
   fi
-  note "The firewall allows only SSH (port ${ports% })${domain:+ and the web (80, 443)}; everything else is closed."
-  if confirm "Turn on the firewall (ufw)?" Y; then
-    local cmd="" p
+  # Other services reachable from outside (another website, a VPN, ...) would be cut off
+  # without a word: list them first. Caddy's HTTP/3 (443/udp) falls back to 443/tcp.
+  local known="" listeners key name others="" decided="" allow_extra=""
+  local -a shown=()
+  for p in $ports; do known+=" $p/tcp"; done
+  [[ -n "$domain" ]] && known+=" 80/tcp 443/tcp 443/udp"
+  known+=" "
+  if listeners="$(public_listeners)"; then
+    while read -r key name; do
+      [[ -n "$key" && "$known" != *" $key "* ]] || continue
+      others+=" $key"; shown+=("$key${name:+  ($name)}")
+    done <<<"$listeners"
+  else
+    warn "Couldn't list the services running here, so the firewall might block one of them."
+    if [[ -n "$CM_YES" ]]; then note "Firewall left off so nothing is cut off. Turn it on yourself: $later"; return 0; fi
+  fi
+  if [[ -n "$others" ]]; then
+    warn "Other services here listen on public ports. Turning on the firewall would block them:"
+    for p in "${shown[@]}"; do info "$p"; done
+    local allow=""
+    for p in $others; do allow+="sudo ufw allow $p && "; done
+    later="$allow$later"
+    if [[ -n "$CM_YES" ]]; then note "Firewall left off so they keep working. Turn it on yourself: $later"; return 0; fi
+    choose "What should the firewall do with them?" "Keep them reachable (allow these ports too)" "Leave the firewall off" "Block them (only SSH${domain:+ and the web} stay open)"
+    case "$CHOICE" in
+      0) allow_extra=1 ;;
+      1) note "Firewall left off. Turn it on later: $later"; return 0 ;;
+    esac
+    decided=1
+  fi
+  note "The firewall allows only SSH (port ${ports% })${domain:+ and the web (80, 443)}${allow_extra:+ and${others}}; everything else is closed."
+  if [[ -n "$decided" ]] || confirm "Turn on the firewall (ufw)?" Y; then
+    local cmd=""
     for p in $ports; do cmd+="$CM_SUDO ufw allow $p/tcp && "; done
     [[ -n "$domain" ]] && cmd+="$CM_SUDO ufw allow 80/tcp && $CM_SUDO ufw allow 443/tcp && "
+    if [[ -n "$allow_extra" ]]; then for p in $others; do cmd+="$CM_SUDO ufw allow $p && "; done; fi
     cmd+="$CM_SUDO ufw --force enable"
     run "Turning on the firewall (SSH stays open)" bash -c "$cmd"
   else
-    note "Turn it on later: sudo ufw allow ${ports%% *}/tcp && sudo ufw enable"
+    note "Turn it on later: $later"
   fi
 }
 

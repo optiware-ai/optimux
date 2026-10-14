@@ -300,6 +300,123 @@ def test_tests_cannot_reach_the_real_sudo(no_gh_path):
     assert open(os.path.join(no_gh_path, "sudo")).read().startswith("#!/bin/sh")
 
 
+# ---------- Firewall: other public services are listed before ufw is turned on (v0.2)
+
+SS_OUT = """\
+tcp   LISTEN 0 4096        0.0.0.0:22       0.0.0.0:*  users:(("sshd",pid=1,fd=3))
+tcp   LISTEN 0 4096           [::]:22          [::]:*  users:(("sshd",pid=1,fd=4))
+tcp   LISTEN 0 511         0.0.0.0:8080     0.0.0.0:*  users:(("node",pid=2,fd=3))
+tcp   LISTEN 0 511               *:80             *:*  users:(("nginx",pid=6,fd=7))
+tcp   LISTEN 0 4096      127.0.0.1:8000     0.0.0.0:*  users:(("python3",pid=3,fd=3))
+tcp   LISTEN 0 4096          [::1]:631         [::]:*
+tcp   LISTEN 0 4096 [fe80::1%eth0]:9000        [::]:*
+udp   UNCONN 0 0     127.0.0.53%lo:53       0.0.0.0:*  users:(("systemd-resolve",pid=4,fd=13))
+udp   UNCONN 0 0           0.0.0.0:68       0.0.0.0:*  users:(("dhclient",pid=5,fd=6))
+udp   UNCONN 0 0           0.0.0.0:51820    0.0.0.0:*
+"""
+SS_SSH_ONLY = SS_OUT.splitlines()[0] + "\n" + SS_OUT.splitlines()[4] + "\n"
+
+
+def firewall(tmp_path, ss_out=SS_OUT, yes="", choice=0, domain="", ss_fails=False, ssh_ports=""):
+    """configure_firewall with ufw installed but off; ss, prompts and run are fakes."""
+    (tmp_path / "ss.txt").write_text(ss_out)
+    # ss -Hltunp has a Netid column; ssh_ports' ss -Htlnp (TCP only) doesn't
+    fail = "return 1" if ss_fails else ":"
+    ss = (f'ss() {{ if [[ "$1" == -Hltunp ]]; then {fail}; cat "{tmp_path}/ss.txt"; '
+          f'elif [[ "$1" == -Htlnp ]]; then awk \'$1 == "tcp" {{ $1 = ""; print }}\' "{tmp_path}/ss.txt"; '
+          f'else echo "UNEXPECTED ss $*"; return 1; fi; }}')
+    if ssh_ports:
+        ss += f'; ssh_ports() {{ CM_SSH_PORTS="{ssh_ports}"; CM_SSH_SURE=1; }}'
+    return lib(f'''CM_SUDO=""; CM_YES="{yes}"; CM_TTY=1; {ss}
+              ufw() {{ echo "Status: inactive"; }}; sshd() {{ return 1; }}
+              choose() {{ echo "CHOOSE $1"; CHOICE={choice}; }}; confirm() {{ echo "CONFIRM $1"; return 0; }}
+              run() {{ echo "RUN $4"; }}
+              configure_firewall "{domain}"''')
+
+
+def test_public_listeners_skip_loopback_link_local_and_dhcp(tmp_path):
+    extra = ("udp UNCONN 0 0 0.0.0.0:41234 0.0.0.0:* users:((\"dhclient\",pid=8,fd=7))\n"
+             "tcp LISTEN 0 4096 0.0.0.0:9090 0.0.0.0:* users:((\"systemd\",pid=1,fd=50))\n")
+    (tmp_path / "ss.txt").write_text(SS_OUT + extra)
+    r = lib(f'CM_SUDO=""; ss() {{ [[ "$1" == -Hltunp ]] || return 1; cat "{tmp_path}/ss.txt"; }}; public_listeners')
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.split("\n")[:-1] == ["22/tcp sshd", "8080/tcp node", "80/tcp nginx", "51820/udp ", "9090/tcp "]
+
+
+def test_other_services_can_stay_reachable(tmp_path):
+    r = firewall(tmp_path, choice=0)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "8080/tcp  (node)" in r.stdout and "51820/udp\n" in r.stdout and "80/tcp  (nginx)" in r.stdout
+    assert "CHOOSE" in r.stdout and "CONFIRM" not in r.stdout          # one question, not two
+    run = next(l for l in r.stdout.splitlines() if l.startswith("RUN"))
+    for rule in ("ufw allow 22/tcp", "ufw allow 8080/tcp", "ufw allow 80/tcp", "ufw allow 51820/udp"):
+        assert rule in run
+    assert run.endswith("ufw --force enable")
+
+
+def test_firewall_can_be_left_off_for_them(tmp_path):
+    r = firewall(tmp_path, choice=1)
+    out = " ".join(r.stdout.split())                      # messages wrap at the terminal width
+    assert "RUN" not in out and "Firewall left off" in out
+    assert ("sudo ufw allow 8080/tcp && sudo ufw allow 80/tcp && sudo ufw allow 51820/udp"
+            " && sudo ufw allow 22/tcp && sudo ufw enable") in out
+
+
+def test_they_can_be_blocked_on_purpose(tmp_path):
+    r = firewall(tmp_path, choice=2)
+    run = next(l for l in r.stdout.splitlines() if l.startswith("RUN"))
+    assert "ufw allow 22/tcp" in run and "8080" not in run and "51820" not in run
+
+
+def test_unattended_install_never_blocks_other_services(tmp_path):
+    r = firewall(tmp_path, yes="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "RUN" not in r.stdout and "CHOOSE" not in r.stdout
+    out = " ".join(r.stdout.split())
+    assert "Firewall left off so they keep working" in out and "sudo ufw allow 8080/tcp" in out
+
+
+def test_only_ssh_listening_keeps_the_old_question(tmp_path):
+    r = firewall(tmp_path, ss_out=SS_SSH_ONLY)
+    assert "CHOOSE" not in r.stdout and "CONFIRM Turn on the firewall (ufw)?" in r.stdout
+    run = next(l for l in r.stdout.splitlines() if l.startswith("RUN"))
+    assert "ufw allow 22/tcp" in run and run.endswith("ufw --force enable")
+
+
+def test_web_ports_are_expected_with_a_domain(tmp_path):
+    caddy = SS_SSH_ONLY + "tcp LISTEN 0 4096 *:443 *:* users:((\"caddy\",pid=7,fd=8))\n" \
+        + "udp UNCONN 0 0 *:443 *:* users:((\"caddy\",pid=7,fd=9))\n" + SS_OUT.splitlines()[3] + "\n"
+    r = firewall(tmp_path, ss_out=caddy, domain="example.com")
+    assert "CHOOSE" not in r.stdout, r.stdout
+    run = next(l for l in r.stdout.splitlines() if l.startswith("RUN"))
+    assert "ufw allow 80/tcp" in run and "ufw allow 443/tcp" in run
+
+
+def test_printed_command_has_every_rule_the_installer_would_add(tmp_path):
+    """Pasting it must never block SSH on a second port, or the site's own HTTPS."""
+    r = firewall(tmp_path, yes="1", domain="example.com", ssh_ports="22 2222 ")
+    out = " ".join(r.stdout.split())
+    assert ("sudo ufw allow 8080/tcp && sudo ufw allow 51820/udp && sudo ufw allow 22/tcp && sudo ufw allow 2222/tcp"
+            " && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && sudo ufw enable") in out, out
+
+
+def test_no_listeners_at_all_keeps_the_old_question(tmp_path):
+    r = firewall(tmp_path, ss_out="", ssh_ports="22 ")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "CHOOSE" not in r.stdout and "CONFIRM Turn on the firewall (ufw)?" in r.stdout
+
+
+@pytest.mark.parametrize("yes", ["1", ""])
+def test_services_that_cannot_be_listed(tmp_path, yes):
+    r = firewall(tmp_path, yes=yes, ss_fails=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Couldn't list the services" in r.stdout
+    if yes:
+        assert "RUN" not in r.stdout and "Firewall left off" in r.stdout
+    else:
+        assert "CONFIRM Turn on the firewall (ufw)?" in r.stdout
+
+
 # ---------- One name: Optimux (the CodeMux upgrade path was removed in v0.2)
 
 def test_server_unit_uses_the_install_name():

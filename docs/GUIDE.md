@@ -764,7 +764,7 @@ Choose **A server (VPS)**. The installer then:
 3. creates the **optimux** user, puts the program in `/opt/optimux` (owned by root, read-only for the service) and the data in `/var/lib/optimux`;
 4. writes `/etc/optimux/optimux.env` with **server mode** on, and asks for your **password**, a first **API key**, **GitHub** (installs `gh`, checks a token), and checks the **sandbox** (applying the AppArmor fix on Ubuntu 23.10+ if needed);
 5. installs the hardened **systemd service** and gives Caddy its own file, `/etc/caddy/optimux.caddyfile`, imported from the main Caddyfile, so **other sites on the server keep working** (if the Caddyfile is still the package's example, it is replaced and kept as `Caddyfile.before-optimux`); the configuration is validated before Caddy restarts, and put back if Caddy rejects it;
-6. offers the **firewall**: ufw (SSH stays open on the port it really uses; it won't turn the firewall on unattended if it can't tell which port that is), or opens 80/443 in **firewalld** on Fedora; and **automatic security updates** on Debian/Ubuntu;
+6. offers the **firewall**: ufw (SSH stays open on the port it really uses; it won't turn the firewall on unattended if it can't tell which port that is). Before that it lists the **other services listening on public ports** (another website, a VPN, ...), which the firewall would block, and asks: keep them reachable, leave the firewall off, or block them. Unattended (`--yes`), it leaves the firewall off when it finds any, and prints the command to turn it on. On Fedora it opens 80/443 in **firewalld** instead; and **automatic security updates** on Debian/Ubuntu;
 7. starts everything and waits for the HTTPS certificate.
 
 Unattended: `... | sudo bash -s -- --server --domain optimux.example.com --yes` (then set the password with `sudo optimux password`).
@@ -799,7 +799,7 @@ These steps assume a fresh server, a DNS name (here `optimux.example.com`) point
    sudo apt update && sudo apt install -y python3-venv git bubblewrap caddy ufw
    sudo ufw allow OpenSSH && sudo ufw allow 80,443/tcp && sudo ufw enable
    ```
-   (On older releases, install Caddy from caddyserver.com's apt repository.)
+   (On older releases, install Caddy from caddyserver.com's apt repository.) If the server already runs other services, check first with `sudo ss -tulpn` and add a `sudo ufw allow <port>/<tcp|udp>` rule for each one that must stay reachable, or the firewall will block it.
 2. **A user just for Optimux** (no login, no sudo):
    ```bash
    sudo useradd --system --create-home --home-dir /var/lib/optimux --shell /usr/sbin/nologin optimux
