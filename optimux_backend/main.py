@@ -115,7 +115,14 @@ def security_headers(request, response) -> None:
     if is_https(request):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
     path = request.url.path
-    if not path.startswith("/static/"):
+    if path.startswith("/static/vendor/"):
+        # Third-party files carry their version in the name, so a file never changes
+        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+    elif path.startswith("/static/"):
+        # Optimux's own files (app.js, app.css, ...): kept, but checked on every load
+        # (a 304 when unchanged), so after an update the page never runs an old script
+        response.headers.setdefault("Cache-Control", "no-cache")
+    else:
         response.headers.setdefault("Cache-Control", "no-store")
 
 
@@ -638,9 +645,9 @@ async def snapshot_limit_api(payload: SnapshotLimitPayload):
 
 @app.get("/api/snapshots/{sid}/readme")
 async def snapshot_readme_api(sid: str):
-    """The BACKUP-README.txt inside a snapshot, to read it in the page."""
+    """The README inside a snapshot, to read it in the page: {text, format: md|txt}."""
     try:
-        return {"text": await asyncio.to_thread(snapshots.read_head_member, sid, "BACKUP-README.txt")}
+        return await asyncio.to_thread(snapshots.read_readme, sid)
     except snapshots.SnapshotError as e:
         raise HTTPException(422, str(e))
 

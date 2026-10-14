@@ -2,7 +2,8 @@
 
 Pinned copies served by Optimux itself, so no CDN can change the code the page runs
 (the Content Security Policy only allows scripts from this server). The version is in
-each file name. To update one, download the new version from npm, replace the file,
+each file name, and must stay there: files here are cached by browsers for a year
+(`immutable`), so a changed file needs a new name. To update one, download the new version from npm, replace the file,
 update the `<script>`/`<link>` in `index.html`, and run the tests.
 
 | File | Library | License |

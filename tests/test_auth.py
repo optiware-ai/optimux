@@ -208,6 +208,16 @@ def test_security_headers(client):
     assert client.get("/api/settings").headers["content-security-policy"]   # also on refusals
 
 
+def test_own_static_files_are_checked_on_every_load(client):
+    """After an update the page must never run an old app.js from the browser's cache."""
+    r = client.get("/static/app.js")
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+    again = client.get("/static/app.js", headers={"If-None-Match": r.headers["etag"]})
+    assert again.status_code == 304                                     # unchanged: nothing re-sent
+    vendor = client.get("/static/vendor/vue-3.5.13.global.prod.js")
+    assert vendor.headers["cache-control"] == "public, max-age=31536000, immutable"   # versioned name
+
+
 def test_websocket_uses_cookie(client):
     setup_password(client)
     with client.websocket_connect("/ws") as ws:

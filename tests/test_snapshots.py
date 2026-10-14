@@ -66,7 +66,7 @@ def test_data_snapshot_holds_settings_memory_skills_keys_and_a_real_database(hom
     assert meta["status"] == "ready" and meta["includes_secrets"] is True
     path = snapshots.archive_path(meta["id"])
     names = members(path)
-    assert list(names)[:2] == ["manifest.json", "BACKUP-README.txt"]       # first, so they are quick to read
+    assert list(names)[:2] == ["manifest.json", "BACKUP-README.md"]       # first, so they are quick to read
     for n in ("config/settings.json", "memory/personal.md", "memory/projects/alpha.md",
               "skills/notes/SKILL.md", "secrets.env", "auth.json", "data/optimux.db"):
         assert n in names, n
@@ -89,8 +89,8 @@ def test_data_snapshot_holds_settings_memory_skills_keys_and_a_real_database(hom
 def test_readme_explains_contents_and_how_to_restore_by_hand(home):
     h, _ = home
     meta = snapshots.create("data")
-    text = read(snapshots.archive_path(meta["id"]), "BACKUP-README.txt")
-    assert "contains API keys" in text and "By hand" in text and "sha256sum -c" in text
+    text = read(snapshots.archive_path(meta["id"]), "BACKUP-README.md")
+    assert "contains your API keys" in text and "### By hand" in text and "sha256sum -c" in text
     assert f"mv {h} {h}.before-restore" in text
     assert f"cp -a restore/config restore/memory restore/skills restore/data restore/secrets.env restore/auth.json {h}/" in text
     assert "secrets.env" in text and "Not included" in text
@@ -111,8 +111,8 @@ def test_workspace_snapshot_holds_projects_with_their_memory(home):
     assert [p["name"] for p in manifest["projects"]] == ["alpha", "beta"]
     alpha = manifest["projects"][0]
     assert alpha["memory"] is True and alpha["git"] is True
-    text = read(path, "BACKUP-README.txt")
-    assert "Projects: alpha, beta" in text and "node_modules" in text and f"{ws}/" in text
+    text = read(path, "BACKUP-README.md")
+    assert "**Projects:** `alpha`, `beta`" in text and "node_modules" in text and f"{ws}/" in text
 
 
 def test_rebuildable_folders_can_be_kept_and_projects_chosen(home):
@@ -284,7 +284,7 @@ def test_checksums_cover_every_file(home, tmp_path):
     names = members(path)
     assert list(names)[-1] == "SHA256SUMS"
     sums = dict(reversed(l.split("  ", 1)) for l in read(path, "SHA256SUMS").splitlines())
-    files = [n for n, m in names.items() if m.isfile() and n not in ("manifest.json", "BACKUP-README.txt", "SHA256SUMS")]
+    files = [n for n, m in names.items() if m.isfile() and n not in ("manifest.json", "BACKUP-README.md", "SHA256SUMS")]
     assert sorted(sums) == sorted(files)
     with tarfile.open(path) as tar:
         for n in files:
@@ -376,8 +376,8 @@ def test_everything_holds_data_and_all_projects_once(home):
     m = members(path)
     assert m["config/settings.json"].mode & 0o077 == 0                         # data: private
     assert m["workspace/alpha/src/a.py"].mode & 0o044                         # projects: modes kept
-    text = read(path, "BACKUP-README.txt")
-    assert "Type:     Everything" in text and "Projects: alpha, beta" in text
+    text = read(path, "BACKUP-README.md")
+    assert "**Type:** Everything" in text and "**Projects:** `alpha`, `beta`" in text
     assert "restore/workspace" not in text.split("Put the snapshot's data")[1].split("\n")[1]   # data step skips workspace/
     assert f"cp -a restore/workspace/<project> {ws}/" in text
 
@@ -434,16 +434,34 @@ def test_older_snapshots_get_their_parts_from_the_manifest_once(home):
 
 def test_the_readme_can_be_read_without_unpacking(home):
     sid = snapshots.create("data")["id"]
-    assert "OPTIMUX SNAPSHOT" in snapshots.read_head_member(sid, "BACKUP-README.txt")
+    assert snapshots.read_head_member(sid, "BACKUP-README.md").startswith("# Optimux snapshot")
     with pytest.raises(snapshots.SnapshotError, match="Only manifest"):
         snapshots.read_head_member(sid, "secrets.env")
     with pytest.raises(snapshots.SnapshotError):
-        snapshots.read_head_member("../../etc/passwd", "BACKUP-README.txt")
+        snapshots.read_head_member("../../etc/passwd", "BACKUP-README.md")
 
 
 def test_api_readme(client):
     sid = snapshots.create("data")["id"]
     r = client.get(f"/api/snapshots/{sid}/readme", headers=H)
-    assert r.status_code == 200 and "RESTORE" in r.json()["text"]
+    assert r.status_code == 200 and r.json()["format"] == "md" and "## Restore" in r.json()["text"]
     assert client.get("/api/snapshots/2026-01-01_000000-data/readme", headers=H).status_code == 422
     assert client.get(f"/api/snapshots/{sid}/readme").status_code == 401
+
+
+def test_older_snapshots_with_a_text_readme_still_show_it(home):
+    """Snapshots taken before the Markdown README hold BACKUP-README.txt."""
+    snapshots._ensure_dir()
+    sid = "2026-10-14_120000-data"
+    path = snapshots.archive_path(sid)
+    with tarfile.open(path, "w:gz") as tar:
+        snapshots._add_bytes(tar, "manifest.json", b'{"items": []}')
+        snapshots._add_bytes(tar, "BACKUP-README.txt", b"OPTIMUX SNAPSHOT\n")
+    snapshots._write_meta(sid, {"id": sid, "kind": "data", "created": time.time(), "status": "ready", "items": []})
+    assert snapshots.read_readme(sid) == {"text": "OPTIMUX SNAPSHOT\n", "format": "txt"}
+
+
+def test_readme_escapes_the_note_in_markdown(home):
+    meta = snapshots.create("data", note="a | b `c`\nd")
+    text = read(snapshots.archive_path(meta["id"]), "BACKUP-README.md")
+    assert "- **Note:** a \\| b 'c' d" in text

@@ -831,7 +831,9 @@ createApp({
             try {
                 const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/readme`);
                 const d = await readJson(r);
-                snapReadme.value[s.id] = r.ok ? { text: d.text } : { error: detailText(d.detail, 'It could not be read.') };
+                // Markdown (new snapshots) is rendered like chat replies; older .txt READMEs stay plain text
+                snapReadme.value[s.id] = !r.ok ? { error: detailText(d.detail, 'It could not be read.') }
+                    : d.format === 'md' ? { html: renderMarkdown(d.text) } : { text: d.text };
             } catch (error) { snapReadme.value[s.id] = { error: 'It could not be read.' }; }
         };
         const deleteSnapshot = async (s) => {
@@ -839,6 +841,7 @@ createApp({
             try {
                 const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/delete`, { method: 'POST' });
                 if (!r.ok) pushToast({ kind: 'warn', title: 'Not deleted', text: detailText((await readJson(r)).detail, '') });
+                else pushToast({ title: 'Snapshot deleted', text: `${snapKindLabel(s.kind)} snapshot of ${new Date(s.created * 1000).toLocaleString()}${s.note ? ' (' + s.note + ')' : ''} was removed from the server.` });
             } catch (error) { console.error('Delete failed', error); }
             await fetchSnapshots();
         };

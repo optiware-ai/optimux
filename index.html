@@ -673,7 +673,7 @@
                             <help-tip wide>
                                 <p>Each snapshot is two files in this folder: <code>&lt;date&gt;-&lt;type&gt;.tar.gz</code> (the snapshot) and <code>&lt;date&gt;-&lt;type&gt;.json</code> (what is inside, for this list).</p>
                                 <p>Only Optimux's own user can open the folder and the files. On a server installed with the installer that user is <code>optimux</code>, so use <code>sudo</code> to reach them.</p>
-                                <p>Inside each <code>.tar.gz</code>: <code>BACKUP-README.txt</code> (contents and how to restore by hand), <code>manifest.json</code> and <code>SHA256SUMS</code>.</p>
+                                <p>Inside each <code>.tar.gz</code>: <code>BACKUP-README.md</code> (contents and how to restore by hand; Markdown, readable in a terminal too), <code>manifest.json</code> and <code>SHA256SUMS</code>.</p>
                                 <p>They live on the same disk as your data. To keep a copy elsewhere, copy a file to another machine, for example <code>scp</code> from your computer. A snapshot with the <b>keys</b> badge contains your API keys: keep the copy private.</p>
                             </help-tip>
                         </div>
@@ -719,7 +719,7 @@
                                         <span class="text-gray-400 w-16 text-right shrink-0">{{ fmtBytes(i.bytes) }}</span>
                                     </div>
                                 </div>
-                                <div v-else-if="s.status === 'ready'" class="text-xs text-gray-500 italic">The list of parts couldn't be read from this snapshot; use Read BACKUP-README.txt below.</div>
+                                <div v-else-if="s.status === 'ready'" class="text-xs text-gray-500 italic">The list of parts couldn't be read from this snapshot; use Read the README below.</div>
                                 <div v-if="s.kind !== 'data' && s.skip_rebuildable" class="text-xs text-gray-500">Rebuildable folders (node_modules, .venv, …) were skipped.</div>
                                 <div v-if="s.left_out && s.left_out.length" class="text-xs text-gray-500">Not included: {{ s.left_out.join('; ') }}.</div>
                                 <div v-if="snapProblems(s)" class="text-xs text-orange-400 whitespace-pre-line">{{ snapProblems(s) }}</div>
@@ -731,10 +731,11 @@
                                     <p>Restore uses it to tell you when a snapshot comes from a different version.</p>
                                 </help-tip></div>
                                 <div v-if="s.status === 'ready'">
-                                    <button @click="loadSnapReadme(s)" class="text-xs text-blue-400 hover:underline">{{ snapReadme[s.id] ? 'Hide BACKUP-README.txt' : 'Read BACKUP-README.txt' }}</button>
+                                    <button @click="loadSnapReadme(s)" class="text-xs text-blue-400 hover:underline">{{ snapReadme[s.id] ? 'Hide the README' : 'Read the README' }}</button>
                                     <span class="text-xs text-gray-500"> (inside the file: contents and how to restore by hand)</span>
                                     <div v-if="snapReadme[s.id] && snapReadme[s.id].loading" class="text-xs text-gray-500 mt-1">Reading…</div>
                                     <div v-else-if="snapReadme[s.id] && snapReadme[s.id].error" class="text-xs text-red-400 mt-1">{{ snapReadme[s.id].error }}</div>
+                                    <div v-else-if="snapReadme[s.id] && snapReadme[s.id].html" class="mt-2 max-h-[32rem] overflow-auto bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 prose prose-invert prose-blue prose-sm max-w-none" v-html="snapReadme[s.id].html"></div>
                                     <pre v-else-if="snapReadme[s.id]" class="mt-2 max-h-96 overflow-auto text-xs text-gray-300 bg-gray-900 border border-gray-800 rounded p-3 whitespace-pre">{{ snapReadme[s.id].text }}</pre>
                                 </div>
                             </div>

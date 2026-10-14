@@ -11,7 +11,7 @@ Three kinds:
 
 A snapshot is one .tar.gz in SNAPSHOT_DIR, plus a .json file next to it that
 describes it (so listing never opens the archives). Every archive starts with
-manifest.json (what is inside, for restoring) and BACKUP-README.txt (the same
+manifest.json (what is inside, for restoring) and BACKUP-README.md (the same
 for people, with how to restore by hand); it ends with SHA256SUMS, the checksum
 of every file (check it with `sha256sum -c SHA256SUMS` after unpacking).
 
@@ -278,60 +278,79 @@ def _fmt(n: int) -> str:
     return f"{n} B"
 
 
+README_NAME = "BACKUP-README.md"      # snapshots before v0.3's Markdown README hold BACKUP-README.txt
+
+
+def _md_cell(text) -> str:
+    """Text safe inside a Markdown table cell or list line."""
+    return str(text).replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ").replace("`", "'")
+
+
+def _code(lines: list[str], indent: str = "   ") -> list[str]:
+    return [f"{indent}```bash"] + [f"{indent}{l}" for l in lines] + [f"{indent}```"]
+
+
 def readme(manifest: dict) -> str:
-    """BACKUP-README.txt: what is inside and how to restore it by hand."""
+    """BACKUP-README.md: what is inside and how to restore it by hand. Markdown,
+    so it reads well both in the Dashboard and in a terminal."""
     when = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(manifest["created"]))
-    lines = [
-        "OPTIMUX SNAPSHOT",
-        "================",
-        "",
-        f"Type:     {KIND_LABELS.get(manifest['kind'], manifest['kind'])}",
-        f"Taken:    {when}",
-        f"Optimux:  {manifest['optimux_version']}",
-    ]
-    if manifest.get("note"):
-        lines.append(f"Note:     {manifest['note']}")
-    lines += ["", "WHAT IS INSIDE", "--------------"]
-    for i in manifest["items"]:
-        lines.append(f"  {i['path']:<40} {i['label']} ({i['files']} file{'s' if i['files'] != 1 else ''}, {_fmt(i['bytes'])})")
-    lines.append("  SHA256SUMS                               Checksums: after unpacking, run  sha256sum -c SHA256SUMS")
-    q = shlex.quote
     kind = manifest["kind"]
-    home = q(manifest["home"])
-    root = q(manifest["workspace"]) if manifest.get("workspace") else "<your Workspace folder>"
     has_data, has_projects = kind in ("data", "full"), kind in ("workspace", "full")
-    lines.append("")
+    q = shlex.quote
+    home = q(manifest["home"])
+    root = q(manifest["workspace"]) if manifest.get("workspace") else "<your-Workspace-folder>"
+
+    md = ["# Optimux snapshot", ""]
+    md += [f"- **Type:** {KIND_LABELS.get(kind, kind)}", f"- **Taken:** {when}",
+           f"- **Optimux version:** `{_md_cell(manifest['optimux_version'])}`"]
+    if manifest.get("note"):
+        md.append(f"- **Note:** {_md_cell(manifest['note'])}")
+    if manifest.get("includes_secrets"):
+        md += ["", "> **Keep this file private.** It contains your API keys and sign-in data."]
+
+    md += ["", "## What is inside", "", "| Part | What it is | Files | Size |", "|---|---|--:|--:|"]
+    for i in manifest["items"]:
+        md.append(f"| `{_md_cell(i['path'])}` | {_md_cell(i['label'])} | {i['files']} | {_fmt(i['bytes'])} |")
+    md.append("| `SHA256SUMS` | Checksums of every file | | |")
+    md.append("")
     if has_projects:
-        names = ", ".join(p["name"] for p in manifest.get("projects", [])) or "(none)"
-        lines.append(f"Projects: {names}")
+        names = ", ".join(f"`{_md_cell(p['name'])}`" for p in manifest.get("projects", [])) or "none"
+        md.append(f"**Projects:** {names}")
+        md.append("")
         if manifest.get("skip_rebuildable"):
-            lines.append("Skipped (rebuild them with npm install, pip install, ...): "
-                         + ", ".join(manifest.get("rebuildable", [])))
+            md += ["**Skipped** (rebuild them with `npm install`, `pip install`, …): "
+                   + ", ".join(f"`{r}`" for r in manifest.get("rebuildable", [])), ""]
     left = list(manifest.get("left_out") or [])
     if kind == "workspace":
         left = ["chats, usage and memory history (they are in a Data or Everything snapshot)"] + left
     if has_projects:
         left.append("archived projects")
-    lines.append("Not included: " + "; ".join(left) + ".")
+    if left:
+        md += ["**Not included:**", ""] + [f"- {_md_cell(x)}" for x in left] + [""]
     if has_projects:
-        lines.append("Databases inside projects are copied as files: a database in use may need a check after restore.")
-    if manifest.get("includes_secrets"):
-        lines += ["", "!! This file contains API keys and sign-in data. Keep it private."]
-    lines += ["", "RESTORE", "-------"]
+        md += ["Databases inside projects are copied as plain files: if one was in use, check it after a restore.", ""]
+
+    md += ["## Check the files", "", "After unpacking (see below), this checks every file against its checksum:", ""]
+    md += _code(["cd restore && sha256sum -c SHA256SUMS"], indent="")
+    md += ["", "## Restore", "", "### In Optimux", ""]
     if kind == "full":
-        lines += ["If your Optimux has Dashboard -> Backups -> Restore, use it: you choose the parts,",
-                  "it keeps your usage and cost history and takes a snapshot of the current state first."]
+        md.append("If your Optimux has **Dashboard → Backups → Restore**, use it: you choose the parts, it keeps "
+                  "your usage and cost history, and it takes a snapshot of the current state first.")
     elif kind == "data":
-        lines += ["If your Optimux has Dashboard -> Backups -> Restore, use it: it keeps your",
-                  "usage and cost history and takes a snapshot of the current state first."]
+        md.append("If your Optimux has **Dashboard → Backups → Restore**, use it: it keeps your usage and cost "
+                  "history, and it takes a snapshot of the current state first.")
     else:
-        lines.append("If your Optimux has Dashboard -> Backups -> Restore, use it.")
-    lines += ["", "By hand" + (" (this also replaces the usage and cost history with the one in this file):"
-                               if has_data else ":")]
-    steps = []
+        md.append("If your Optimux has **Dashboard → Backups → Restore**, use it.")
+    md += ["", "### By hand", ""]
     if has_data:
-        steps.append("Stop Optimux:   optimux stop    (on a server: sudo optimux stop)")
-    steps.append("Unpack into a new private folder:  mkdir -m 700 restore && tar -xzf <this file> -C restore")
+        md += ["This also replaces the usage and cost history with the one in this file. Nothing is deleted: "
+               "the current files are moved aside first.", ""]
+
+    steps: list[tuple[str, list[str]]] = []
+    if has_data:
+        steps.append(("Stop Optimux.", ["optimux stop        # on a server: sudo optimux stop"]))
+    steps.append(("Unpack the snapshot into a new private folder.",
+                  ["mkdir -m 700 restore && tar -xzf <this-file>.tar.gz -C restore"]))
     if has_data:
         tops = []
         for i in manifest["items"]:
@@ -339,31 +358,35 @@ def readme(manifest: dict) -> str:
             if top != "workspace" and top not in tops:
                 tops.append(top)
         steps += [
-            f"Move the current data folder aside (nothing is deleted):\n       mv {home} {home}.before-restore",
-            f"Put the snapshot's data in its place:\n       mkdir -m 700 {home} && cp -a "
-            + " ".join(f"restore/{t}" for t in tops) + f" {home}/",
-            f"Bring back what a snapshot leaves out, if you want it:\n       cp -a {home}.before-restore/backups "
-            f"{home}.before-restore/logs {home}.before-restore/legacy {home}/",
+            ("Move the current data folder aside.", [f"mv {home} {home}.before-restore"]),
+            ("Put the snapshot's data in its place.",
+             [f"mkdir -m 700 {home}", "cp -a " + " ".join(f"restore/{t}" for t in tops) + f" {home}/"]),
+            ("Bring back what a snapshot leaves out, if you want it.",
+             [f"cp -a {home}.before-restore/backups {home}.before-restore/logs {home}.before-restore/legacy {home}/"]),
         ]
     if has_projects:
-        mem = (f"\n       cp -a restore/memory/projects/<project>.md {home}/memory/projects/"
-               if kind == "workspace" else "")
-        steps += [
-            # Into .archive with Optimux's own name format, so it shows under Archived projects
-            f"For each project, move the current folder to the archive (nothing is deleted):\n"
-            f"       mkdir -p {root}/.archive && mv {root}/<project> {root}/.archive/<project>-$(date +%Y%m%d-%H%M%S)",
-            f"Put the snapshot's copy in its place:\n       cp -a restore/workspace/<project> {root}/" + mem,
-        ]
+        # Into .archive with Optimux's own name format, so it shows under Archived projects
+        steps.append(("For each project, move the current folder to the Workspace archive "
+                      "(it then shows under Archived projects).",
+                      [f"mkdir -p {root}/.archive",
+                       f"mv {root}/<project> {root}/.archive/<project>-$(date +%Y%m%d-%H%M%S)"]))
+        put = [f"cp -a restore/workspace/<project> {root}/"]
+        if kind == "workspace":
+            put.append(f"cp -a restore/memory/projects/<project>.md {home}/memory/projects/")
+        steps.append(("Put the snapshot's copy of the project in its place.", put))
     owner = [home] if has_data else []
     if has_projects:
         owner.append(f"{root}/<project>")
         if kind == "workspace":
             owner.append(f"{home}/memory")
-    steps.append("On a server, give the files back to Optimux's user:  sudo chown -R optimux:optimux " + " ".join(owner))
+    steps.append(("On a server, give the files back to Optimux's user.",
+                  ["sudo chown -R optimux:optimux " + " ".join(owner)]))
     if has_data:
-        steps.append("Start Optimux:  optimux start   (on a server: sudo optimux start)")
-    lines += [f"  {n}. {t}" for n, t in enumerate(steps, 1)]
-    return "\n".join(lines) + "\n"
+        steps.append(("Start Optimux.", ["optimux start       # on a server: sudo optimux start"]))
+    for n, (title, cmds) in enumerate(steps, 1):
+        md.append(f"{n}. {title}")
+        md += _code(cmds)
+    return "\n".join(md) + "\n"
 
 
 def _add_bytes(tar: tarfile.TarFile, name: str, data: bytes) -> None:
@@ -566,7 +589,7 @@ def _create(kind: str, note: str, p: dict, skip_rebuildable: bool, auto: bool, s
         fd = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "wb") as raw, tarfile.open(fileobj=raw, mode="w:gz", compresslevel=6) as tar:
             _add_bytes(tar, "manifest.json", json.dumps(manifest, indent=2).encode())
-            _add_bytes(tar, "BACKUP-README.txt", readme(manifest).encode())
+            _add_bytes(tar, README_NAME, readme(manifest).encode())
             w = _Writer(tar)
             for item in p["items"]:
                 src, arc = item["source"], item["path"]
@@ -691,28 +714,39 @@ def list_snapshots() -> list[dict]:
 
 
 # The first members of every archive: read without unpacking the rest
-_HEAD_MEMBERS = ("manifest.json", "BACKUP-README.txt")
+_HEAD_MEMBERS = ("manifest.json", README_NAME, "BACKUP-README.txt")
+_HEAD_COUNT = 2                         # manifest, then the README (.md, or .txt in older snapshots)
 _HEAD_MAX = 1024 * 1024
 
 
 def read_head_member(sid: str, name: str) -> str:
-    """manifest.json or BACKUP-README.txt from a snapshot, as text. They are the
-    first two members, so only the start of the archive is read."""
+    """manifest.json or the README from a snapshot, as text. They are the first two
+    members, so only the start of the archive is read."""
     if name not in _HEAD_MEMBERS:
-        raise SnapshotError("Only manifest.json and BACKUP-README.txt can be read.")
+        raise SnapshotError("Only manifest.json and the README can be read.")
     path = archive_path(sid)
     if sid in _running or not os.path.exists(path):
         raise SnapshotError("This snapshot is not ready.")
     try:
         with tarfile.open(path, mode="r|gz") as tar:      # stream: stops reading where it stops
             for n, member in enumerate(tar):
-                if n >= len(_HEAD_MEMBERS):
+                if n >= _HEAD_COUNT:
                     break
                 if member.name == name and member.isreg() and member.size <= _HEAD_MAX:
                     return tar.extractfile(member).read().decode("utf-8", "replace")
     except (OSError, tarfile.TarError, EOFError) as e:
         raise SnapshotError(f"The snapshot file can't be read: {e}")
     raise SnapshotError(f"{name} is not in this snapshot.")
+
+
+def read_readme(sid: str) -> dict:
+    """The snapshot's README: {"text", "format": "md" or "txt"}."""
+    try:
+        return {"text": read_head_member(sid, README_NAME), "format": "md"}
+    except SnapshotError as e:
+        if "is not in this snapshot" not in str(e):
+            raise
+    return {"text": read_head_member(sid, "BACKUP-README.txt"), "format": "txt"}
 
 
 def _backfill(sid: str, meta: dict) -> None:
