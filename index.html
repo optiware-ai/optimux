@@ -609,21 +609,23 @@
                             <span><b>Only part of Optimux.</b> {{ snapForm.kind === 'data' ? 'Your projects are not in this snapshot.' : 'Your settings, models, keys, memory, skills and chats are not in this snapshot.' }} To be able to go back fully, choose <button @click="snapForm.kind = 'full'; snapPreview = null" class="underline font-semibold hover:text-yellow-100">Everything</button>.</span>
                         </div>
                         <div v-if="snapForm.kind === 'workspace'" class="mb-4 space-y-2">
-                            <div class="text-[13px] text-gray-300 font-semibold">Projects <button @click="snapForm.projects = []; snapPreview = null" class="ml-2 text-xs text-blue-400 hover:underline">all</button></div>
+                            <div class="text-[13px] text-gray-300 font-semibold">Projects
+                                <button @click="snapSetProjects(true)" class="ml-2 text-xs font-normal text-blue-400 hover:underline">All</button>
+                                <button @click="snapSetProjects(false)" class="ml-2 text-xs font-normal text-blue-400 hover:underline">None</button></div>
                             <div class="flex flex-wrap gap-2">
                                 <label v-for="p in projectsList" :key="p" class="flex items-center gap-1.5 text-[13px] text-gray-300 bg-gray-950 border border-gray-800 rounded-lg px-2 py-1 cursor-pointer">
-                                    <input type="checkbox" :value="p" v-model="snapForm.projects" @change="snapPreview = null" class="w-3.5 h-3.5">{{ p }}
+                                    <input type="checkbox" :value="p" v-model="snapForm.projects" @change="snapTouchProjects" class="w-3.5 h-3.5">{{ p }}
                                 </label>
                                 <span v-if="!projectsList.length" class="text-[13px] text-gray-500 italic">No projects in the Workspace.</span>
                             </div>
-                            <div class="text-xs text-gray-500">{{ snapForm.projects.length ? snapForm.projects.length + ' chosen' : 'None chosen: all projects' }}</div>
+                            <div v-if="projectsList.length" :class="['text-xs', snapNothingChosen ? 'text-yellow-300' : 'text-gray-500']">{{ snapNothingChosen ? 'Choose at least one project.' : snapForm.projects.length + ' of ' + projectsList.length + ' chosen' }}</div>
                         </div>
                         <label v-if="snapForm.kind !== 'data'" class="flex items-center gap-2 text-[13px] text-gray-300 cursor-pointer mb-4"><input type="checkbox" v-model="snapForm.skip_rebuildable" @change="snapPreview = null" class="w-3.5 h-3.5">
                             Skip project folders that can be rebuilt (node_modules, .venv, __pycache__, …)<help-tip>They are often large, and <code>npm install</code> or <code>pip install</code> recreates them.</help-tip></label>
                         <input v-model="snapForm.note" maxlength="200" placeholder="Note (optional), e.g. before testing a new routing" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500 mb-3">
                         <div class="flex flex-wrap items-center gap-2">
-                            <button @click="previewSnapshot" :disabled="snapBusy" class="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 text-[15px] disabled:opacity-50">Show what goes in</button>
-                            <button @click="takeSnapshot" :disabled="snapBusy || snapshotsInfo.running" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-[15px] disabled:opacity-50">{{ snapshotsInfo.running ? 'Taking a snapshot…' : 'Take snapshot: ' + snapKindLabel(snapForm.kind) }}</button>
+                            <button @click="previewSnapshot" :disabled="snapBusy || snapNothingChosen" class="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 text-[15px] disabled:opacity-50">Show what goes in</button>
+                            <button @click="takeSnapshot" :disabled="snapBusy || snapshotsInfo.running || snapNothingChosen" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-[15px] disabled:opacity-50">{{ snapshotsInfo.running ? 'Taking a snapshot…' : 'Take snapshot: ' + snapKindLabel(snapForm.kind) }}</button>
                             <span v-if="snapError" class="text-[13px] text-red-400">{{ snapError }}</span>
                         </div>
                         <div v-if="snapPreview" class="mt-4 bg-gray-950 border border-gray-800 rounded-lg p-3 text-[13px]">

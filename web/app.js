@@ -744,6 +744,21 @@ createApp({
         const snapKindLabel = (k) => ({ full: 'Everything', data: 'Data', workspace: 'Workspace' })[k] || k;
         // After a Data-only or Workspace-only snapshot: a warning that stays until dismissed
         const snapPartialNotice = ref('');
+        // Workspace only: every project starts ticked; All and None change the ticks
+        let snapProjectsTouched = false;
+        const snapSyncProjects = () => {
+            const names = projectsList.value || [];
+            snapForm.value.projects = snapProjectsTouched
+                ? snapForm.value.projects.filter(p => names.includes(p))   // drop removed projects
+                : [...names];
+        };
+        const snapSetProjects = (all) => {
+            snapProjectsTouched = true;
+            snapForm.value.projects = all ? [...projectsList.value] : [];
+            snapPreview.value = null;
+        };
+        const snapTouchProjects = () => { snapProjectsTouched = true; snapPreview.value = null; };
+        const snapNothingChosen = Vue.computed(() => snapForm.value.kind === 'workspace' && !snapForm.value.projects.length);
         const snapPreview = ref(null);
         const snapBusy = ref(false);
         const snapError = ref('');
@@ -1433,7 +1448,7 @@ createApp({
             if (id === 'guide') loadGuide();
             if (id === 'execution') { fetchSandbox(); commandEnvText.value = (appSettings.value.command_env || []).join('\n'); }
             if (id === 'skills') fetchSkills();
-            if (id === 'backups') { fetchSnapshots(); fetchProjectsList(); }
+            if (id === 'backups') { fetchSnapshots(); fetchProjectsList().then(snapSyncProjects); }
         };
         const dashboardHash = () => `#/dashboard/${settingsTab.value}`;
         const openSettings = (section) => {
@@ -2311,7 +2326,7 @@ createApp({
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
-            snapshotsInfo, snapForm, snapKinds, snapKindLabel, snapPartialNotice, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
+            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapPartialNotice, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
