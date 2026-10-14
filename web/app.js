@@ -733,6 +733,82 @@ createApp({
             });
             return list;
         });
+        // ---- v0.3: snapshots (Dashboard → Backups)
+        const snapshotsInfo = ref({ snapshots: [], used_bytes: 0, limit_bytes: 0, free_bytes: 0, dir: '', running: false });
+        const snapForm = ref({ kind: 'data', note: '', projects: [], skip_rebuildable: true });
+        const snapPreview = ref(null);
+        const snapBusy = ref(false);
+        const snapError = ref('');
+        const snapLimit = ref('');
+        let snapTimer = null;
+        // A 422's detail is a message, or a list of field errors from FastAPI
+        const detailText = (d, fallback) => Array.isArray(d) ? d.map(x => x.msg).join('; ') : (d || fallback);
+        const readJson = async (r) => { try { return await r.json(); } catch (_) { return {}; } };
+        const snapProblems = (s) => [
+            s.unreadable_count ? `${s.unreadable_count} file(s) couldn't be read and are not inside: ${(s.unreadable || []).join(', ')}` : '',
+            s.changed_count ? `${s.changed_count} file(s) changed while they were copied (stored as they were when the copy began): ${(s.changed || []).join(', ')}` : '',
+        ].filter(Boolean).join('\n');
+        const fetchSnapshots = async () => {
+            try {
+                const r = await fetch('/api/snapshots');
+                if (r.ok) snapshotsInfo.value = await r.json();
+                if (snapLimit.value === '' && snapshotsInfo.value.limit_bytes) {
+                    snapLimit.value = String(Math.round(snapshotsInfo.value.limit_bytes / 1024 ** 3 * 10) / 10);
+                }
+            } catch (error) { console.error('Failed to load snapshots', error); }
+            clearTimeout(snapTimer);
+            // Poll while one is being taken (only while the section is open)
+            if (snapshotsInfo.value.running && showSettingsModal.value && settingsTab.value === 'backups') {
+                snapTimer = setTimeout(fetchSnapshots, 1500);
+            }
+        };
+        const snapPayload = () => ({ kind: snapForm.value.kind, note: snapForm.value.note,
+            projects: snapForm.value.kind === 'workspace' ? snapForm.value.projects : [],
+            skip_rebuildable: snapForm.value.skip_rebuildable });
+        const previewSnapshot = async () => {
+            snapBusy.value = true; snapError.value = '';
+            try {
+                const r = await fetch('/api/snapshots/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snapPayload()) });
+                const d = await readJson(r);
+                if (r.ok) snapPreview.value = d; else snapError.value = detailText(d.detail, 'Preview failed.');
+            } catch (error) { snapError.value = 'Preview failed.'; }
+            finally { snapBusy.value = false; }
+        };
+        const takeSnapshot = async () => {
+            snapBusy.value = true; snapError.value = '';
+            try {
+                const r = await fetch('/api/snapshots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snapPayload()) });
+                const d = await readJson(r);
+                if (!r.ok) { snapError.value = detailText(d.detail, 'The snapshot could not be started.'); return; }
+                snapForm.value.note = ''; snapPreview.value = null;
+                pushToast({ title: 'Taking a snapshot', text: 'It appears in the list below; you can keep working meanwhile.' });
+                await fetchSnapshots();
+            } catch (error) { snapError.value = 'The snapshot could not be started.'; }
+            finally { snapBusy.value = false; }
+        };
+        const deleteSnapshot = async (s) => {
+            const label = `${s.kind === 'data' ? 'Data' : 'Workspace'} snapshot of ${new Date(s.created * 1000).toLocaleString()}${s.note ? ' (' + s.note + ')' : ''}`;
+            if (!window.confirm(`Delete the ${label}? This can't be undone.`)) return;
+            try {
+                const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/delete`, { method: 'POST' });
+                if (!r.ok) pushToast({ kind: 'warn', title: 'Not deleted', text: detailText((await readJson(r)).detail, '') });
+            } catch (error) { console.error('Delete failed', error); }
+            await fetchSnapshots();
+        };
+        const saveSnapshotLimit = async () => {
+            // Only the limit: other unsaved Dashboard edits stay unsaved
+            const gb = Number(snapLimit.value);
+            if (snapLimit.value === '' || !Number.isFinite(gb) || gb < 0.1) {
+                pushToast({ kind: 'warn', title: 'Not saved', text: 'The limit must be at least 0.1 GB.' });
+                return;
+            }
+            try {
+                const r = await fetch('/api/snapshots/limit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gb }) });
+                if (r.ok) { appSettings.value.snapshot_limit_gb = gb; pushToast({ title: 'Snapshot limit saved', text: `${gb} GB` }); }
+                else pushToast({ kind: 'warn', title: 'Not saved', text: detailText((await readJson(r)).detail, '') });
+            } catch (error) { console.error('Saving the limit failed', error); }
+            await fetchSnapshots();
+        };
         const fetchSystemInfo = async () => {
             try { systemInfo.value = await (await fetch('/api/system')).json(); }
             catch (error) { console.error('Failed to load system info', error); }
@@ -1252,6 +1328,7 @@ createApp({
             { id: 'execution', label: 'Execution', icon: '›', group: 'Configuration', hint: 'Command approval and how many steps a request may take.' },
             { id: 'github', label: 'GitHub', icon: '⑂', group: 'Configuration', hint: 'A token so Optimux can create GitHub repositories for new projects, and who commits.' },
             { id: 'scope', label: 'Scope', icon: '▣', group: 'Configuration', hint: 'The Workspace folder: the folder that holds your projects.' },
+            { id: 'backups', label: 'Backups', icon: '⧉', group: 'Configuration', hint: 'Snapshots of your data and projects, kept on this machine.' },
             { id: 'system', label: 'System', icon: '≡', group: 'Configuration', hint: 'Files, storage, backups, access token and model cooldowns.' },
             { id: 'guide', label: 'Guide', icon: '?', group: 'Help', hint: 'Everything about Optimux: getting started, routing, memory, skills, costs, and how to spend less.' },
         ];
@@ -1346,6 +1423,7 @@ createApp({
             if (id === 'guide') loadGuide();
             if (id === 'execution') { fetchSandbox(); commandEnvText.value = (appSettings.value.command_env || []).join('\n'); }
             if (id === 'skills') fetchSkills();
+            if (id === 'backups') { fetchSnapshots(); fetchProjectsList(); }
         };
         const dashboardHash = () => `#/dashboard/${settingsTab.value}`;
         const openSettings = (section) => {
@@ -1596,6 +1674,7 @@ createApp({
         };
         const fmtBytes = (n) => {
             n = n || 0;
+            if (n >= 1073741824) return (n / 1073741824).toFixed(1).replace(/\.0$/, '') + ' GB';
             if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
             if (n >= 1024) return Math.round(n / 1024) + ' KB';
             return n + ' B';
@@ -2222,6 +2301,7 @@ createApp({
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
+            snapshotsInfo, snapForm, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,

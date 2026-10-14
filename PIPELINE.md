@@ -60,6 +60,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── sandbox.py_AGENT.md
 │       ├── security.py          (Auth, origin, scope & env-key validation)
 │       ├── skills.py            (Skills: discovery, loading, editing, starters)
+│       ├── snapshots.py         (Data and Workspace snapshots kept on this machine)
+│       ├── snapshots.py_AGENT.md
 │       ├── skills.py_AGENT.md
 │       ├── sessions.py          (Stored chats: state, event log, history)
 │       ├── sessions.py_AGENT.md

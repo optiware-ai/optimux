@@ -4,7 +4,8 @@
     ├── config/       settings.json models.json routing.json budgets.json
     ├── secrets.env   API keys and the access token (mode 0600)
     ├── data/         optimux.db
-    ├── backups/
+    ├── backups/      daily database copies
+    ├── snapshots/    Data and Workspace snapshots (taken in the Dashboard)
     ├── memory/       personal.md professional.md projects/<name>.md
     ├── skills/
     ├── logs/         migrations.log
@@ -29,6 +30,7 @@ AUTH_FILE = os.path.join(HOME, "auth.json")  # password hash and two-step secret
 DATA_DIR = os.path.join(HOME, "data")
 DB_PATH = os.path.join(DATA_DIR, "optimux.db")
 BACKUP_DIR = os.path.join(HOME, "backups")
+SNAPSHOT_DIR = os.path.join(HOME, "snapshots")
 MEMORY_DIR = os.path.join(HOME, "memory")
 SKILLS_DIR = os.path.join(HOME, "skills")
 LOGS_DIR = os.path.join(HOME, "logs")
@@ -43,7 +45,7 @@ LEGACY_USAGE_LOG = os.path.join(HOME, "usage.jsonl")  # imported once by usage.p
 
 def layout() -> dict:
     return {"home": HOME, "config": CONFIG_DIR, "secrets": SECRETS_FILE, "auth": AUTH_FILE, "data": DATA_DIR,
-            "backups": BACKUP_DIR, "memory": MEMORY_DIR, "skills": SKILLS_DIR,
+            "backups": BACKUP_DIR, "snapshots": SNAPSHOT_DIR, "memory": MEMORY_DIR, "skills": SKILLS_DIR,
             "logs": LOGS_DIR, "legacy": LEGACY_DIR}
 
 

@@ -20,7 +20,7 @@ from optimux_backend.core.config_manager import (
     delete_api_key_from_env, get_routing_config, save_routing_config, RoutingPayload,
     get_settings, save_settings, SettingsPayload, model_id_problem, get_all_models,
     litellm_key_kwargs, max_steps_for, thinking_kwargs, set_thinking, _read_settings, GITHUB_FIELDS,
-    set_github_fields,
+    set_github_fields, update_settings,
 )
 from optimux_backend.core.executor import run_shell_command, get_active_cwd
 import litellm
@@ -34,6 +34,7 @@ from optimux_backend.core import project_records
 from optimux_backend.core import skills as skills_lib
 from optimux_backend.core import sandbox as sandbox_lib
 from optimux_backend.core import curator
+from optimux_backend.core import snapshots
 from optimux_backend.core import auth
 from optimux_backend.core import sessions as chat_store
 from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
@@ -582,6 +583,66 @@ async def system_info():
         "paths": paths.layout(),
         "migrations": paths.migration_log(20),
     }
+
+
+# ---------------------------------------------------------------- snapshots (v0.3)
+# Errors are 422 (not 400) so the Backups forms show them inline (boot.js alerts on 400).
+
+class SnapshotPayload(BaseModel):
+    kind: str
+    note: str = ""
+    projects: list[str] = []
+    skip_rebuildable: bool = True
+
+
+class SnapshotLimitPayload(BaseModel):
+    gb: float
+
+
+@app.get("/api/snapshots")
+async def list_snapshots_api():
+    """Snapshots kept on this machine, newest first, with the space they use."""
+    return await asyncio.to_thread(snapshots.summary)
+
+
+@app.post("/api/snapshots/preview")
+async def preview_snapshot_api(payload: SnapshotPayload):
+    """What a snapshot would hold and whether it fits; nothing is written."""
+    try:
+        return await asyncio.to_thread(snapshots.preview, payload.kind, payload.projects or None,
+                                       payload.skip_rebuildable)
+    except snapshots.SnapshotError as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/api/snapshots")
+async def take_snapshot_api(payload: SnapshotPayload):
+    """Start taking a snapshot in the background; poll GET /api/snapshots for its status."""
+    try:
+        sid = await asyncio.to_thread(snapshots.start, payload.kind, payload.note,
+                                      payload.projects or None, payload.skip_rebuildable)
+    except snapshots.SnapshotError as e:
+        raise HTTPException(422, str(e))
+    return {"id": sid}
+
+
+@app.post("/api/snapshots/limit")
+async def snapshot_limit_api(payload: SnapshotLimitPayload):
+    """Change only the snapshot space limit (other unsaved Dashboard edits stay unsaved)."""
+    try:
+        update_settings(snapshot_limit_gb=payload.gb)
+    except (ValidationError, ScopeError) as e:
+        raise HTTPException(422, str(e))
+    return {"snapshot_limit_gb": payload.gb}
+
+
+@app.post("/api/snapshots/{sid}/delete")
+async def delete_snapshot_api(sid: str):
+    try:
+        snapshots.delete(sid)
+    except snapshots.SnapshotError as e:
+        raise HTTPException(422, str(e))
+    return {"status": "deleted"}
 
 
 class RotatePayload(BaseModel):

@@ -156,6 +156,7 @@ Memory costs tokens on every model call, so short and precise memory is cheaper 
 - **Dashboard**: overview, usage by project, role, model and skill, a 30-day cost chart, budgets, history with filters.
 - **Monthly budgets** per project (block or warn) and **cost warnings** before paid one-off actions.
 - Every chat and every model call is stored in SQLite and **survives restarts**, with daily backups.
+- **Snapshots** of your data or your projects, kept on the machine (Dashboard → Backups): see what goes in, take one in the background, within a space limit.
 
 **Interface**
 - A single-page web app: chat, history, dashboard and an in-app **[Guide](docs/GUIDE.md)** with search.
@@ -304,6 +305,7 @@ Limits and recommendations are in the [Guide](docs/GUIDE.md#security). Please re
 ├── auth.json     password hash and two-step secret (mode 600)
 ├── data/         optimux.db: chats, every model call, memory history
 ├── backups/      daily database copies (14 kept)
+├── snapshots/    Data and Workspace snapshots (Dashboard → Backups)
 ├── memory/       personal.md, professional.md, projects/<name>.md
 ├── skills/       global skills
 ├── logs/

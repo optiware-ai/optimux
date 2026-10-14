@@ -141,6 +141,8 @@ class SettingsPayload(BaseModel):
     git_email: str = ""
     # The GitHub account last checked (shown in the Dashboard; the token is in secrets.env)
     github_login: str = ""
+    # v0.3: how much disk the snapshots (Dashboard -> Backups) may use, in GB
+    snapshot_limit_gb: float = 5
 
 
 DEFAULT_MAX_STEPS = {"simple": 8, "complex": 25}
@@ -195,6 +197,8 @@ def save_settings(payload: SettingsPayload):
     for field, top in (("limit_memory_mb", 1024 * 1024), ("limit_file_mb", 1024 * 1024), ("limit_processes", 100000)):
         if not 0 <= getattr(payload, field) <= top:
             raise ValidationError(f"{field} must be between 0 (no limit) and {top}.")
+    if not 0.1 <= payload.snapshot_limit_gb <= 10000:
+        raise ValidationError("snapshot_limit_gb must be between 0.1 and 10000.")
     if 0 < payload.limit_memory_mb < 256:
         raise ValidationError("A memory limit under 256 MB stops most tools from starting; use 0 for no limit.")
     if 0 < payload.limit_processes < 32:

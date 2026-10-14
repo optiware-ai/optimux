@@ -9,6 +9,7 @@
 - `secrets.env`: API keys and `OPTIMUX_TOKEN`, mode 0600, outside the repo
 - `data/optimux.db`: usage and sessions (SQLite)
 - `backups/`
+- `snapshots/`: Data and Workspace snapshots (v0.3, see snapshots.py_AGENT.md); created by `snapshots.py` with mode 700 when the first one is taken
 - `memory/`: `personal.md`, `professional.md`, `projects/<name>.md`
 - `skills/`: reserved for the skill system
 - `logs/migrations.log`
@@ -16,7 +17,7 @@
 
 ## Core Functionality
 - **Privacy:** `prepare_home` creates `OPTIMUX_HOME` with mode 700 (and resets it to 700 on every start) and tightens an existing `secrets.env` to 600. `write_private(path, text, append=False)` writes secret files created with mode 600 from the start (no window where they are readable) and tightens existing ones; used for the token, API keys and merged `.env` keys.
-- **Constants:** `HOME`, `CONFIG_DIR`, `SECRETS_FILE`, `DATA_DIR`, `DB_PATH`, `BACKUP_DIR`, `MEMORY_DIR`, `SKILLS_DIR`, `LOGS_DIR`, `LEGACY_DIR`, the four config file paths, and `LEGACY_USAGE_LOG`. `layout()` returns them for `/api/system`.
+- **Constants:** `HOME`, `CONFIG_DIR`, `SECRETS_FILE`, `DATA_DIR`, `DB_PATH`, `BACKUP_DIR`, `SNAPSHOT_DIR`, `MEMORY_DIR`, `SKILLS_DIR`, `LOGS_DIR`, `LEGACY_DIR`, the four config file paths, and `LEGACY_USAGE_LOG`. `layout()` returns them for `/api/system`.
 - **`prepare_home(repo_dir=cwd)`:** creates the folders and moves old files. It only moves (never deletes) and logs each move to `logs/migrations.log`:
   - The repo's `.env` becomes `secrets.env`. If `secrets.env` exists, keys it lacks are added (home wins), and the old file goes to `legacy/repo.env` (0600).
   - `usage.jsonl.migrated` and the old `projects/` folder go to `legacy/`.
