@@ -132,6 +132,7 @@ You will see, in order: which tier answered (**Routed to: …**), any commands t
 From left to right:
 
 - **The dot next to the logo** shows the connection to the server: green connected, yellow connecting, red disconnected. Optimux reconnects by itself and reopens your chat.
+- **The logo and the name** take you back to your **most recent chat**, in whichever project it is (the project menu follows), or to the **Workspace** when there is no chat yet. In the Dashboard, the logo at the top of the sidebar does the same and closes the Dashboard. Chats of archived or deleted projects are skipped.
 - **The project menu** chooses the active project, or **Workspace** (no project). Switching opens that project's latest chat.
 - **+** next to it creates a **new project** with a form (no model involved, so it costs nothing; see *Creating a project*).
 - **The cost button** shows this month's cost for the active project, or *spent / budget* when it has a budget (yellow from 80%, red from 100%). Hover it for today, this month, all time and this browser session; click it to open Budgets or the Overview.

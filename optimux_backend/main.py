@@ -2363,15 +2363,41 @@ def missing_project_reason(name: str) -> str | None:
     return "missing"
 
 
+def last_open_chat() -> str | None:
+    """The most recent chat, in any project, whose project folder is still in the
+    Workspace (chats of archived or deleted projects are skipped)."""
+    for s in chat_store.list_sessions(None, False, "", limit=100):
+        if missing_project_reason(s["project"]) is None:
+            return s["id"]
+    return None
+
+
+def switch_active_project(name: str) -> bool:
+    """Make name ("" = the Workspace) the active project. True when it changed."""
+    if active_project() == name:
+        return False
+    save_settings(SettingsPayload(**{**get_settings(), "active_project": name}))
+    return True
+
+
 async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> None:
     """Load a stored session into this connection and send its events for replay.
-    sid "latest" opens the active project's most recent session, if any."""
+    sid "latest" opens the active project's most recent session, if any; "last" opens
+    the most recent chat in any project (the logo), or the Workspace when there is none."""
+    switched = False
     if sid == "latest":
         sid = chat_store.latest(active_project())
+    elif sid == "last":
+        sid = last_open_chat()
+        target = chat_store.get(sid)["project"] if sid else ""
+        try:
+            switched = switch_active_project(target)
+        except Exception as e:
+            await send(websocket, "error", f"Can't switch to {target or 'the Workspace'}: {e}")
     data = chat_store.get(sid) if sid else None
     if data is None:
         reset_chat(session)  # nothing to open: start clean, as the UI does
-        await send(websocket, "session_loaded", session=None, events=[])
+        await send(websocket, "session_loaded", session=None, events=[], active_project_changed=switched)
         return
     summary = {k: data[k] for k in ("id", "project", "title", "created", "updated", "turns", "tier", "cost",
                                     "calls_without_cost", "archived")}
@@ -2396,7 +2422,7 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
         "tier_pinned": data["tier_pinned"], "last_turn_ok": data["last_turn_ok"],
     })
     session["budget_notes"] = set()
-    await send(websocket, "session_loaded", session=summary, events=data["events"])
+    await send(websocket, "session_loaded", session=summary, events=data["events"], active_project_changed=switched)
 
 
 async def handle_escalate(websocket: WebSocket, session: dict) -> None:

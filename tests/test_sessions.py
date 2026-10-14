@@ -103,6 +103,66 @@ def test_opening_a_session_of_another_project_switches_project(mocker, client, t
     assert not loaded.get("read_only")
 
 
+def _age(sid, seconds_ago):
+    conn = store.connect()
+    try:
+        conn.execute("UPDATE sessions SET updated = strftime('%s','now') - ? WHERE id = ?", (seconds_ago, sid))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_logo_opens_the_newest_chat_of_any_project(mocker, client, tmp_path):
+    """The logo ("last"): the most recent chat in any project, skipping chats whose
+    project folder is gone, and the active project follows it."""
+    (tmp_path / "ws" / "alpha").mkdir(parents=True)
+    (tmp_path / "ws" / "beta").mkdir(parents=True)
+    _age(sessions.create("alpha", "old alpha chat"), 300)
+    beta = sessions.create("beta", "beta chat")
+    _age(beta, 100)
+    _age(sessions.create("gone", "chat of a deleted project"), 10)          # newest, but its folder is gone
+    mocker.patch.object(main.workspace, "list_archived", return_value=[])
+    saved = mocker.patch.object(main, "save_settings")
+    mocker.patch.object(main, "get_settings", return_value={"projects_root": str(tmp_path / "ws"), "active_project": "alpha"})
+    chat = Conversation(client)
+    loaded = next(m for m in chat.send({"type": "open_session", "id": "last"}) if m["type"] == "session_loaded")
+    chat.close()
+    assert loaded["session"]["id"] == beta and not loaded.get("read_only")
+    assert loaded["active_project_changed"] is True
+    assert saved.call_args.args[0].active_project == "beta"
+
+
+def test_logo_with_no_chats_goes_to_the_workspace(mocker, client, tmp_path):
+    saved = mocker.patch.object(main, "save_settings")
+    mocker.patch.object(main, "get_settings", return_value={"projects_root": str(tmp_path / "ws"), "active_project": "alpha"})
+    chat = Conversation(client)
+    loaded = next(m for m in chat.send({"type": "open_session", "id": "last"}) if m["type"] == "session_loaded")
+    chat.close()
+    assert loaded["session"] is None and loaded["active_project_changed"] is True
+    assert saved.call_args.args[0].active_project == ""
+
+
+def test_logo_already_in_the_newest_chats_project_switches_nothing(mocker, client, tmp_path):
+    (tmp_path / "ws" / "alpha").mkdir(parents=True)
+    sid = sessions.create("alpha", "alpha chat")
+    saved = mocker.patch.object(main, "save_settings")
+    mocker.patch.object(main, "get_settings", return_value={"projects_root": str(tmp_path / "ws"), "active_project": "alpha"})
+    chat = Conversation(client)
+    loaded = next(m for m in chat.send({"type": "open_session", "id": "last"}) if m["type"] == "session_loaded")
+    chat.close()
+    assert loaded["session"]["id"] == sid and loaded["active_project_changed"] is False
+    saved.assert_not_called()
+
+
+def test_frontend_logo_and_name_are_links_home():
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    html = open(os.path.join(root, "index.html")).read()
+    js = open(os.path.join(root, "web", "app.js")).read()
+    assert html.count('@click.prevent="goHome"') == 2          # chat header and Dashboard sidebar
+    assert "openSession('last')" in js and "if (data.active_project_changed) fetchConfig();" in js
+
+
 @pytest.mark.parametrize("archived, reason", [(True, "archived"), (False, "missing")])
 def test_chat_of_a_removed_project_opens_read_only(mocker, client, tmp_path, archived, reason):
     """fix38: the project's folder is gone, so the chat is shown but not continued,

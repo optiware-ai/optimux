@@ -1685,6 +1685,13 @@ createApp({
             isGenerating.value = true;
             ws.value.send(JSON.stringify({ type: 'open_session', id: sid }));
         };
+        // The logo and the name: back to the most recent chat (any project), or the Workspace
+        const goHome = () => {
+            if (showSettingsModal.value) closeSettings();
+            historyOpen.value = false;
+            if (isGenerating.value || pendingApproval.value || !ws.value) return;
+            openSession('last');
+        };
         // Leave a read-only chat: back to the active project's latest chat
         const leaveReadOnly = () => {
             readOnlyChat.value = null;
@@ -1974,6 +1981,7 @@ createApp({
             loadSession = (data) => {
                 readOnlyChat.value = data.read_only && data.session
                     ? { project: data.session.project, reason: data.reason || 'missing' } : null;
+                if (data.active_project_changed) fetchConfig();  // the server changed the active project
                 if (!data.session) {
                     currentSession.value = null;
                     if (messages.value.length > 1) {
@@ -1998,7 +2006,7 @@ createApp({
                     }
                 }
                 finalizeReply(messages.value[messages.value.length - 1]);
-                if (!readOnlyChat.value && data.session.project && data.session.project !== appSettings.value.active_project) {
+                if (!data.active_project_changed && !readOnlyChat.value && data.session.project && data.session.project !== appSettings.value.active_project) {
                     fetchConfig();  // the server switched to the session's project
                 }
                 nextTick(scrollToBottom);
@@ -2212,7 +2220,7 @@ createApp({
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
             setThinking, copyThinking, storageInfo, fmtBytes,
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
-            toggleHistory, openSession, renameSession, archiveSession, deleteSession, changeProject,
+            toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
