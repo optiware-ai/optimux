@@ -1561,7 +1561,7 @@ createApp({
 
         const deleteCustomModel = async (modelId) => {
             if (!await askConfirm({ title: 'Delete this model?', detail: modelId, ok: 'Delete', danger: true,
-                text: 'It is removed from the model list. Its API key stays in secrets.env.' })) return;
+                text: 'It will be removed from the model list. Its API key stays in secrets.env.' })) return;
             try {
                 await fetch(`/api/models/${encodeURIComponent(modelId)}`, {
                     method: 'DELETE'

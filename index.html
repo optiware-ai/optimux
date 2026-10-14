@@ -704,7 +704,7 @@
                                 <button v-if="snapDeleting !== s.id" @click="snapDeleting = s.id" :disabled="s.status === 'running'" class="text-xs px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-red-500 hover:text-red-400 disabled:opacity-40 shrink-0">Delete</button>
                             </div>
                             <div v-if="snapDeleting === s.id" role="alertdialog" :aria-label="'Delete this snapshot'" class="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2">
-                                <span class="flex-1 min-w-0 text-red-200">Delete this {{ snapKindLabel(s.kind) }} snapshot{{ s.note ? ' (' + s.note + ')' : '' }}? The file is removed from the server; this can't be undone.</span>
+                                <span class="flex-1 min-w-0 text-red-200">Delete this {{ snapKindLabel(s.kind) }} snapshot{{ s.note ? ' (' + s.note + ')' : '' }}? The file will be removed from the server, and this can't be undone.</span>
                                 <button @click="deleteSnapshot(s)" class="text-xs px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-white font-semibold">Delete</button>
                                 <button @click="snapDeleting = ''" class="text-xs px-3 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Cancel</button>
                             </div>
@@ -1219,7 +1219,7 @@
                     <div class="w-9 h-9 rounded-lg bg-red-950/60 text-red-400 flex items-center justify-center flex-shrink-0 font-bold text-lg">!</div>
                     <div>
                         <h2 class="text-lg font-bold text-gray-100">Delete {{ deleteBox.item.name }} permanently?</h2>
-                        <p class="text-gray-400">Its folder is removed from disk. This can't be undone.</p>
+                        <p class="text-gray-400">Its folder will be removed from disk, and this can't be undone.</p>
                     </div>
                 </div>
                 <!-- Only for a project with a GitHub remote (fix25d) -->
