@@ -366,6 +366,17 @@ createApp({
             lang = LANG_ALIAS[lang] || lang;
             openViewer('Code block', m ? m[1] : 'no language given', lang, [{ label: 'Code', text: code.textContent.replace(/\n$/, '') }]);
         };
+        // Clicks on the Copy button of a code block outside chat (codeButtons: 'copy')
+        const onCopyCodeClick = async (e) => {
+            const btn = e.target.closest && e.target.closest('[data-cm-copy]');
+            if (!btn) return;
+            const code = btn.closest('.cm-pre-bar')?.querySelector('code');
+            if (!code) return;
+            const ok = await writeClipboard(code.textContent.replace(/\n$/, ''));
+            btn.textContent = ok ? 'Copied ✓' : 'Copy failed';
+            btn.classList.toggle('cm-copied', !!ok);
+            setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('cm-copied'); }, 2000);
+        };
         const copyViewerSection = async (sec) => {
             sec.copied = await writeClipboard(sec.text);
             setTimeout(() => { sec.copied = false; }, 2000);
@@ -833,7 +844,7 @@ createApp({
                 const d = await readJson(r);
                 // Markdown (new snapshots) is rendered like chat replies; older .txt READMEs stay plain text
                 snapReadme.value[s.id] = !r.ok ? { error: detailText(d.detail, 'It could not be read.') }
-                    : d.format === 'md' ? { html: renderMarkdown(d.text) } : { text: d.text };
+                    : d.format === 'md' ? { html: optimuxSafeHtml(marked.parse(d.text), { codeButtons: 'copy' }) } : { text: d.text };
             } catch (error) { snapReadme.value[s.id] = { error: 'It could not be read.' }; }
         };
         const deleteSnapshot = async (s) => {
@@ -2351,7 +2362,7 @@ createApp({
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
-            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
+            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,

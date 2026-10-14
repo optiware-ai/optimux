@@ -32,6 +32,8 @@
     // Everything shown as HTML (model replies, the guide, charts) passes through this.
     // With codeButtons, each <pre> also gets a "View" button, added to the cleaned
     // DOM (not by editing the HTML string, which could reopen what was removed).
+    // codeButtons: 'copy' puts a bar above each block instead, with the language
+    // and a Copy button, so the button never covers the code (used outside chat).
     const PURIFY = {
         FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select'],
         FORBID_ATTR: ['style'],
@@ -40,6 +42,25 @@
         if (!opts.codeButtons) return window.DOMPurify.sanitize(html, PURIFY);
         const frag = window.DOMPurify.sanitize(html, { ...PURIFY, RETURN_DOM_FRAGMENT: true });
         frag.querySelectorAll('pre').forEach((pre) => {
+            if (opts.codeButtons === 'copy') {
+                const box = document.createElement('div');
+                box.className = 'cm-pre-bar';
+                const bar = document.createElement('div');
+                bar.className = 'cm-bar';
+                const lang = document.createElement('span');
+                const m = ((pre.querySelector('code') || {}).className || '').match(/language-([\w+#-]+)/);
+                lang.textContent = m ? m[1] : '';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'cm-copy-btn';
+                btn.setAttribute('data-cm-copy', '');
+                btn.title = 'Copy to the clipboard';
+                btn.textContent = 'Copy';
+                bar.append(lang, btn);
+                pre.replaceWith(box);
+                box.append(bar, pre);
+                return;
+            }
             const box = document.createElement('div');
             box.className = 'cm-pre';
             const btn = document.createElement('button');

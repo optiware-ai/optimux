@@ -735,7 +735,7 @@
                                     <span class="text-xs text-gray-500"> (inside the file: contents and how to restore by hand)</span>
                                     <div v-if="snapReadme[s.id] && snapReadme[s.id].loading" class="text-xs text-gray-500 mt-1">Reading…</div>
                                     <div v-else-if="snapReadme[s.id] && snapReadme[s.id].error" class="text-xs text-red-400 mt-1">{{ snapReadme[s.id].error }}</div>
-                                    <div v-else-if="snapReadme[s.id] && snapReadme[s.id].html" class="mt-2 max-h-[32rem] overflow-auto bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 prose prose-invert prose-blue prose-sm max-w-none" v-html="snapReadme[s.id].html"></div>
+                                    <div v-else-if="snapReadme[s.id] && snapReadme[s.id].html" class="mt-2 max-h-[32rem] overflow-auto bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 prose prose-invert prose-blue prose-sm max-w-none" @click="onCopyCodeClick" v-html="snapReadme[s.id].html"></div>
                                     <pre v-else-if="snapReadme[s.id]" class="mt-2 max-h-96 overflow-auto text-xs text-gray-300 bg-gray-900 border border-gray-800 rounded p-3 whitespace-pre">{{ snapReadme[s.id].text }}</pre>
                                 </div>
                             </div>

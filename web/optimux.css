@@ -10,6 +10,15 @@
     background: rgba(17,24,39,.85); border: 1px solid #374151; border-radius: 4px; padding: 1px 8px; opacity: .55; transition: opacity .15s; }
 .cm-pre:hover .cm-view-btn, .cm-pre .cm-view-btn:focus { opacity: 1; }
 .cm-pre .cm-view-btn:hover { color: #e5e7eb; border-color: #6b7280; }
+/* Code blocks outside chat (snapshot README): a bar above the code with the language and Copy */
+.cm-pre-bar { margin: 0.8em 0; border: 1px solid #1f2937; border-radius: 6px; overflow: hidden; }
+.cm-pre-bar .cm-bar { display: flex; justify-content: space-between; align-items: center; padding: 3px 8px 3px 12px;
+    background: #111827; border-bottom: 1px solid #1f2937; font: 11px ui-monospace, monospace; color: #6b7280; }
+.cm-pre-bar pre { margin: 0 !important; border-radius: 0 !important; }
+.cm-pre-bar .cm-copy-btn { font: 11px ui-monospace, monospace; color: #9ca3af; border: 1px solid #374151; border-radius: 4px;
+    padding: 1px 10px; background: transparent; }
+.cm-pre-bar .cm-copy-btn:hover, .cm-pre-bar .cm-copy-btn:focus { color: #e5e7eb; border-color: #6b7280; }
+.cm-pre-bar .cm-copy-btn.cm-copied { color: #4ade80; border-color: #166534; }
 /* Code viewer: line numbers + optional wrapping */
 .cm-code { font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .cm-code .hljs { background: transparent; padding: 0; }
