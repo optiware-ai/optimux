@@ -587,16 +587,26 @@
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
                         <h3 class="font-bold text-gray-200 mb-1 flex items-center">Take a snapshot<help-tip wide>
                             <p>A snapshot is a copy kept <b>on this machine</b>, in Optimux's private folder. Take one before an experiment (new models, routing, memory changes), then go back to it if you don't like the result.</p>
-                            <p><b>Data</b>: settings, models and routing, memory, skills, chats and usage, and the keys. <b>Workspace</b>: your project folders, each with its project memory.</p>
+                            <p><b>Everything</b> (recommended): your data and all your projects, in one snapshot taken at the same moment.</p>
+                            <p><b>Data only</b>: settings, models and routing, memory, skills, chats and usage, and the keys. <b>Workspace only</b>: your project folders (all or some), each with its project memory.</p>
                             <p>A snapshot is <b>not a real backup</b>: if the disk fails or the server is deleted, the snapshots go with it.</p>
                         </help-tip></h3>
                         <p class="text-sm text-gray-400 mb-4">A copy kept on this machine, to come back to later. Nothing is sent anywhere.</p>
-                        <div class="flex gap-2 mb-4">
-                            <button v-for="k in ['data', 'workspace']" :key="k" @click="snapForm.kind = k; snapPreview = null"
-                                    :class="['px-4 py-2 rounded-lg border text-[15px] text-left', snapForm.kind === k ? 'border-blue-500 bg-blue-500/10 text-gray-100' : 'border-gray-700 text-gray-400 hover:border-gray-500']">
-                                <div class="font-semibold">{{ k === 'data' ? 'Data' : 'Workspace' }}</div>
-                                <div class="text-xs text-gray-500">{{ k === 'data' ? 'Settings, models, memory, skills, chats, keys' : 'Project folders and their memory' }}</div>
-                            </button>
+                        <div class="text-[13px] text-gray-300 font-semibold mb-2">What to save</div>
+                        <div role="radiogroup" aria-label="What to save" class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                            <label v-for="k in snapKinds" :key="k.id"
+                                   :class="['flex gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer', snapForm.kind === k.id ? 'border-blue-500 bg-blue-500/10' : 'border-gray-700 hover:border-gray-500']">
+                                <input type="radio" name="snap-kind" :value="k.id" v-model="snapForm.kind" @change="snapPreview = null; snapError = ''" class="mt-1 w-3.5 h-3.5 shrink-0">
+                                <span>
+                                    <span :class="['font-semibold text-[15px]', snapForm.kind === k.id ? 'text-gray-100' : 'text-gray-300']">{{ k.label }}</span>
+                                    <span v-if="k.id === 'full'" class="ml-1.5 text-[11px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400">recommended</span>
+                                    <span class="block text-xs text-gray-500">{{ k.hint }}</span>
+                                </span>
+                            </label>
+                        </div>
+                        <div v-if="snapForm.kind !== 'full'" class="mb-4 flex gap-2 items-start rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-[13px] text-yellow-200">
+                            <span aria-hidden="true">⚠</span>
+                            <span><b>Only part of Optimux.</b> {{ snapForm.kind === 'data' ? 'Your projects are not in this snapshot.' : 'Your settings, models, keys, memory, skills and chats are not in this snapshot.' }} To be able to go back fully, choose <button @click="snapForm.kind = 'full'; snapPreview = null" class="underline font-semibold hover:text-yellow-100">Everything</button>.</span>
                         </div>
                         <div v-if="snapForm.kind === 'workspace'" class="mb-4 space-y-2">
                             <div class="text-[13px] text-gray-300 font-semibold">Projects <button @click="snapForm.projects = []; snapPreview = null" class="ml-2 text-xs text-blue-400 hover:underline">all</button></div>
@@ -607,13 +617,13 @@
                                 <span v-if="!projectsList.length" class="text-[13px] text-gray-500 italic">No projects in the Workspace.</span>
                             </div>
                             <div class="text-xs text-gray-500">{{ snapForm.projects.length ? snapForm.projects.length + ' chosen' : 'None chosen: all projects' }}</div>
-                            <label class="flex items-center gap-2 text-[13px] text-gray-300 cursor-pointer"><input type="checkbox" v-model="snapForm.skip_rebuildable" @change="snapPreview = null" class="w-3.5 h-3.5">
-                                Skip folders that can be rebuilt (node_modules, .venv, __pycache__, …)<help-tip>They are often large, and <code>npm install</code> or <code>pip install</code> recreates them.</help-tip></label>
                         </div>
+                        <label v-if="snapForm.kind !== 'data'" class="flex items-center gap-2 text-[13px] text-gray-300 cursor-pointer mb-4"><input type="checkbox" v-model="snapForm.skip_rebuildable" @change="snapPreview = null" class="w-3.5 h-3.5">
+                            Skip project folders that can be rebuilt (node_modules, .venv, __pycache__, …)<help-tip>They are often large, and <code>npm install</code> or <code>pip install</code> recreates them.</help-tip></label>
                         <input v-model="snapForm.note" maxlength="200" placeholder="Note (optional), e.g. before testing a new routing" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500 mb-3">
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
                             <button @click="previewSnapshot" :disabled="snapBusy" class="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 text-[15px] disabled:opacity-50">Show what goes in</button>
-                            <button @click="takeSnapshot" :disabled="snapBusy || snapshotsInfo.running" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-[15px] disabled:opacity-50">{{ snapshotsInfo.running ? 'Taking a snapshot…' : 'Take snapshot' }}</button>
+                            <button @click="takeSnapshot" :disabled="snapBusy || snapshotsInfo.running" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-[15px] disabled:opacity-50">{{ snapshotsInfo.running ? 'Taking a snapshot…' : 'Take snapshot: ' + snapKindLabel(snapForm.kind) }}</button>
                             <span v-if="snapError" class="text-[13px] text-red-400">{{ snapError }}</span>
                         </div>
                         <div v-if="snapPreview" class="mt-4 bg-gray-950 border border-gray-800 rounded-lg p-3 text-[13px]">
@@ -627,9 +637,21 @@
                                 <span class="text-gray-500 w-20 text-right shrink-0">{{ i.files }} file{{ i.files === 1 ? '' : 's' }}</span>
                                 <span class="text-gray-400 w-20 text-right shrink-0">{{ fmtBytes(i.bytes) }}</span>
                             </div>
-                            <div v-if="snapPreview.kind === 'workspace' && snapPreview.skip_rebuildable && snapPreview.skipped.dirs" class="text-xs text-gray-500 mt-2">Skipped: {{ snapPreview.skipped.dirs }} rebuildable folder{{ snapPreview.skipped.dirs === 1 ? '' : 's' }} ({{ fmtBytes(snapPreview.skipped.bytes) }}).</div>
+                            <div v-if="snapPreview.kind !== 'data' && snapPreview.skip_rebuildable && snapPreview.skipped.dirs" class="text-xs text-gray-500 mt-2">Skipped: {{ snapPreview.skipped.dirs }} rebuildable folder{{ snapPreview.skipped.dirs === 1 ? '' : 's' }} ({{ fmtBytes(snapPreview.skipped.bytes) }}).</div>
                             <div v-if="snapPreview.left_out.length" class="text-xs text-gray-500 mt-2">Not included: {{ snapPreview.left_out.join('; ') }}.</div>
                             <div :class="['text-xs mt-2', snapPreview.fits ? 'text-green-400' : 'text-red-400']">{{ snapPreview.fits ? '✓ Fits: ' + fmtBytes(snapPreview.free_bytes) + ' free on disk.' : snapPreview.reason }}</div>
+                        </div>
+                    </div>
+
+                    <div v-if="snapPartialNotice" role="alert" class="rounded-xl border-2 border-yellow-500/60 bg-yellow-500/10 p-4 flex flex-wrap sm:flex-nowrap gap-3 items-start">
+                        <span class="text-2xl leading-none text-yellow-400" aria-hidden="true">⚠</span>
+                        <div class="flex-1 min-w-0 text-[15px] text-yellow-100">
+                            <div class="font-bold text-yellow-300 mb-1">This snapshot holds only {{ snapPartialNotice === 'data' ? 'your data' : 'your projects' }}</div>
+                            <p class="text-[13px] text-yellow-200">{{ snapPartialNotice === 'data' ? 'Your projects are not in this snapshot.' : 'Your settings, models, keys, memory, skills and chats are not in this snapshot.' }} To be able to go back fully before an experiment, also take {{ snapPartialNotice === 'data' ? 'a Workspace' : 'a Data' }} snapshot, or one of Everything.</p>
+                        </div>
+                        <div class="flex gap-2 shrink-0">
+                            <button @click="snapForm.kind = 'full'; snapPartialNotice = ''; takeSnapshot()" :disabled="snapBusy || snapshotsInfo.running" class="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-3 py-1.5 rounded-lg font-bold text-[13px] disabled:opacity-50">Take Everything now</button>
+                            <button @click="snapPartialNotice = ''" class="px-3 py-1.5 rounded-lg border border-yellow-500/40 text-yellow-200 text-[13px] hover:border-yellow-400">I know</button>
                         </div>
                     </div>
 
@@ -650,13 +672,13 @@
                             <div v-for="s in snapshotsInfo.snapshots" :key="s.id" class="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1 py-2 text-[13px]">
                                 <span class="text-gray-300 sm:w-40 shrink-0">{{ new Date(s.created * 1000).toLocaleString() }}</span>
                                 <span class="sm:w-48 shrink-0">
-                                    <span class="text-gray-200">{{ s.kind === 'data' ? 'Data' : 'Workspace' }}</span>
-                                    <span v-if="s.kind === 'workspace' && s.projects" class="text-gray-500"> ({{ s.projects.length }} project{{ s.projects.length === 1 ? '' : 's' }})</span>
+                                    <span class="text-gray-200">{{ snapKindLabel(s.kind) }}</span>
+                                    <span v-if="s.kind !== 'data' && s.projects" class="text-gray-500"> ({{ s.projects.length }} project{{ s.projects.length === 1 ? '' : 's' }})</span>
                                     <span v-if="s.auto" class="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">auto</span>
                                     <span v-if="s.includes_secrets" class="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400" title="Contains API keys and sign-in data">keys</span>
                                     <span v-if="s.unreadable_count || s.changed_count" class="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400" :title="snapProblems(s)">{{ (s.unreadable_count || 0) + (s.changed_count || 0) }} warning{{ (s.unreadable_count || 0) + (s.changed_count || 0) === 1 ? '' : 's' }}</span>
                                 </span>
-                                <span class="flex-1 min-w-0 truncate text-gray-400" :title="s.kind === 'workspace' && s.projects ? 'Projects: ' + s.projects.join(', ') : ''">{{ s.note }}</span>
+                                <span class="flex-1 min-w-0 truncate text-gray-400" :title="s.kind !== 'data' && s.projects && s.projects.length ? 'Projects: ' + s.projects.join(', ') : ''">{{ s.note }}</span>
                                 <span v-if="s.status === 'running'" class="text-blue-400 animate-pulse shrink-0">taking…</span>
                                 <span v-else-if="s.status === 'failed'" class="text-red-400 shrink-0 truncate max-w-[16rem]" :title="s.error">failed: {{ s.error }}</span>
                                 <span v-else class="text-gray-400 w-20 text-right shrink-0">{{ fmtBytes(s.size_bytes) }}</span>

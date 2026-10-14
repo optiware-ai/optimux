@@ -735,7 +735,15 @@ createApp({
         });
         // ---- v0.3: snapshots (Dashboard → Backups)
         const snapshotsInfo = ref({ snapshots: [], used_bytes: 0, limit_bytes: 0, free_bytes: 0, dir: '', running: false });
-        const snapForm = ref({ kind: 'data', note: '', projects: [], skip_rebuildable: true });
+        const snapForm = ref({ kind: 'full', note: '', projects: [], skip_rebuildable: true });
+        const snapKinds = [
+            { id: 'full', label: 'Everything', hint: 'Your data and all projects, at the same moment' },
+            { id: 'data', label: 'Data only', hint: 'Settings, models, memory, skills, chats, keys' },
+            { id: 'workspace', label: 'Workspace only', hint: 'Project folders (all or some) and their memory' },
+        ];
+        const snapKindLabel = (k) => ({ full: 'Everything', data: 'Data', workspace: 'Workspace' })[k] || k;
+        // After a Data-only or Workspace-only snapshot: a warning that stays until dismissed
+        const snapPartialNotice = ref('');
         const snapPreview = ref(null);
         const snapBusy = ref(false);
         const snapError = ref('');
@@ -780,14 +788,16 @@ createApp({
                 const r = await fetch('/api/snapshots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snapPayload()) });
                 const d = await readJson(r);
                 if (!r.ok) { snapError.value = detailText(d.detail, 'The snapshot could not be started.'); return; }
+                const kind = snapForm.value.kind;
                 snapForm.value.note = ''; snapPreview.value = null;
-                pushToast({ title: 'Taking a snapshot', text: 'It appears in the list below; you can keep working meanwhile.' });
+                snapPartialNotice.value = kind === 'full' ? '' : kind;
+                pushToast({ title: `Taking a snapshot: ${snapKindLabel(kind)}`, text: 'It appears in the list below; you can keep working meanwhile.' });
                 await fetchSnapshots();
             } catch (error) { snapError.value = 'The snapshot could not be started.'; }
             finally { snapBusy.value = false; }
         };
         const deleteSnapshot = async (s) => {
-            const label = `${s.kind === 'data' ? 'Data' : 'Workspace'} snapshot of ${new Date(s.created * 1000).toLocaleString()}${s.note ? ' (' + s.note + ')' : ''}`;
+            const label = `${snapKindLabel(s.kind)} snapshot of ${new Date(s.created * 1000).toLocaleString()}${s.note ? ' (' + s.note + ')' : ''}`;
             if (!window.confirm(`Delete the ${label}? This can't be undone.`)) return;
             try {
                 const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/delete`, { method: 'POST' });
@@ -2301,7 +2311,7 @@ createApp({
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
-            snapshotsInfo, snapForm, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
+            snapshotsInfo, snapForm, snapKinds, snapKindLabel, snapPartialNotice, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,

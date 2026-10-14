@@ -91,7 +91,8 @@ def test_readme_explains_contents_and_how_to_restore_by_hand(home):
     meta = snapshots.create("data")
     text = read(snapshots.archive_path(meta["id"]), "BACKUP-README.txt")
     assert "contains API keys" in text and "By hand" in text and "sha256sum -c" in text
-    assert f"mv {h} {h}.before-restore" in text and "cp -a restore/. " in text
+    assert f"mv {h} {h}.before-restore" in text
+    assert f"cp -a restore/config restore/memory restore/skills restore/data restore/secrets.env restore/auth.json {h}/" in text
     assert "secrets.env" in text and "Not included" in text
 
 
@@ -356,3 +357,52 @@ def test_readme_moves_aside_and_quotes_paths(home, monkeypatch):
     text = snapshots.readme(meta)
     assert "mv '/srv/my data/.optimux' '/srv/my data/.optimux'.before-restore" in text
     assert "mkdir -m 700 restore" in text
+
+
+# ---------- Everything (full): data and all projects in one archive
+
+def test_everything_holds_data_and_all_projects_once(home):
+    h, ws = home
+    meta = snapshots.create("full", note="before the experiment")
+    assert meta["kind"] == "full" and meta["includes_secrets"] and meta["projects"] == ["alpha", "beta"]
+    path = snapshots.archive_path(meta["id"])
+    with tarfile.open(path) as tar:
+        names = [m.name for m in tar.getmembers()]
+    assert len(names) == len(set(names))                                    # project memory only once
+    for n in ("config/settings.json", "data/optimux.db", "secrets.env", "memory/projects/alpha.md",
+              "workspace/alpha/src/a.py", "workspace/beta/README.md"):
+        assert n in names, n
+    assert not any("node_modules" in n for n in names)
+    m = members(path)
+    assert m["config/settings.json"].mode & 0o077 == 0                         # data: private
+    assert m["workspace/alpha/src/a.py"].mode & 0o044                         # projects: modes kept
+    text = read(path, "BACKUP-README.txt")
+    assert "Type:     Everything" in text and "Projects: alpha, beta" in text
+    assert "restore/workspace" not in text.split("Put the snapshot's data")[1].split("\n")[1]   # data step skips workspace/
+    assert f"cp -a restore/workspace/<project> {ws}/" in text
+
+
+def test_everything_without_a_workspace_is_the_data_alone(home, monkeypatch):
+    def no_root():
+        raise workspace.WorkspaceError("No Workspace folder is set.")
+    monkeypatch.setattr(workspace, "projects_root", no_root)
+    meta = snapshots.create("full")
+    assert meta["status"] == "ready" and meta["projects"] == []
+    with pytest.raises(snapshots.SnapshotError, match="No Workspace"):
+        snapshots.create("workspace")
+
+
+def test_everything_cannot_pick_projects(home):
+    with pytest.raises(snapshots.SnapshotError, match="choose Workspace"):
+        snapshots.preview("full", projects=["alpha"])
+
+
+def test_api_takes_everything(client):
+    sid = client.post("/api/snapshots", json={"kind": "full"}, headers=H).json()["id"]
+    assert sid.endswith("-full")
+    for _ in range(100):
+        s = client.get("/api/snapshots", headers=H).json()["snapshots"][0]
+        if s["status"] != "running":
+            break
+        time.sleep(0.05)
+    assert s["status"] == "ready" and s["kind"] == "full"

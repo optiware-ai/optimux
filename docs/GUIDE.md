@@ -626,7 +626,7 @@ Most of the cost is **input tokens resent on every step**. The levers below are 
 | **Execution** | Auto-approve, the sandbox, what commands see and their limits, the step limits. |
 | **GitHub** | The GitHub CLI, the GitHub token (check, replace, remove) and who commits. |
 | **Scope** | The Workspace folder. |
-| **Backups** | Snapshots of your data or your projects, kept on this machine: take one, see what goes in, delete, and the space limit. |
+| **Backups** | Snapshots of everything, your data or your projects, kept on this machine: take one, see what goes in, delete, and the space limit. |
 | **System** | The security checklist, versions, where files are kept, sign-in (password, two-step codes, signed-in browsers), the access token, database and backups, models in cooldown. |
 | **Guide** | This guide. |
 
@@ -730,10 +730,13 @@ Inside your Workspace folder, Optimux only ever adds what you ask for:
 
 ### Snapshots
 
-A **snapshot** is a copy kept on this machine, so you can try something and go back. Open **Dashboard → Backups**.
+A **snapshot** is a copy kept on this machine, so you can try something and go back. Open **Dashboard → Backups** and choose what to save:
 
-- **Data** holds your settings, models and routing, memory, skills, the database (chats, usage and costs, memory history, sign-ins) and your keys (`secrets.env`, `auth.json`). It leaves out the daily backups, the snapshots themselves, logs and `legacy/`.
-- **Workspace** holds your projects (all of them, or the ones you tick), each with its project memory file. Folders that can be rebuilt (`node_modules`, `.venv`, `venv`, `__pycache__` and tool caches) are skipped unless you untick the box. Archived projects are not included, and a project folder that is a link to another folder is not followed.
+- **Everything** (the default, recommended) holds your data and all your projects, in one snapshot taken at the same moment. Use it before an experiment, so you can go back fully.
+- **Data only** holds your settings, models and routing, memory, skills, the database (chats, usage and costs, memory history, sign-ins) and your keys (`secrets.env`, `auth.json`). It leaves out the daily backups, the snapshots themselves, logs and `legacy/`.
+- **Workspace only** holds your projects (all of them, or the ones you tick), each with its project memory file. Folders that can be rebuilt (`node_modules`, `.venv`, `venv`, `__pycache__` and tool caches) are skipped unless you untick the box. Archived projects are not included, and a project folder that is a link to another folder is not followed.
+
+Choosing Data only or Workspace only shows a yellow note saying what will **not** be saved, and after taking one a warning stays on the page until you click **I know** or **Take Everything now**.
 
 **Show what goes in** lists every part with its size, what is skipped and what is left out, and says whether it fits. **Take snapshot** runs in the background; the list shows *taking…* until it is ready. Add a note (for example "before trying the new routing") so you know later why you took it.
 

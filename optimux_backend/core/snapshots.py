@@ -1,6 +1,8 @@
 """Snapshots: copies of Optimux's data or of the Workspace, kept on this machine.
 
-Two kinds:
+Three kinds:
+- full:      everything below in one archive (the default in the Dashboard, so
+             nothing is forgotten; one moment in time for data and projects).
 - data:      settings, models and routing, memory, skills, the database (chats,
              usage and costs, memory history, sign-ins), and the keys
              (secrets.env, auth.json).
@@ -42,7 +44,8 @@ from optimux_backend.core import paths
 
 FORMAT = "optimux-snapshot"
 FORMAT_VERSION = 1
-KINDS = ("data", "workspace")
+KINDS = ("full", "data", "workspace")
+KIND_LABELS = {"full": "Everything", "data": "Data", "workspace": "Workspace"}
 DEFAULT_LIMIT_GB = 5
 FREE_MARGIN = 200 * 1024 * 1024      # never fill the disk to the last byte
 
@@ -63,7 +66,7 @@ DATA_LEFT_OUT = ("backups/ (daily database copies)", "snapshots/ (the snapshots 
 REBUILDABLE = frozenset({"node_modules", ".venv", "venv", "__pycache__", ".pytest_cache",
                          ".mypy_cache", ".ruff_cache", ".tox"})
 
-ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{6}-(data|workspace)(-\d+)?$")
+ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{6}-(full|data|workspace)(-\d+)?$")
 
 _running: set[str] = set()
 _lock = threading.Lock()
@@ -188,9 +191,9 @@ def plan(kind: str, projects: list[str] | None = None, skip_rebuildable: bool = 
     """What a snapshot would hold: the items (archive path, label, real path, files,
     bytes), the projects, the total size and whether it fits."""
     if kind not in KINDS:
-        raise SnapshotError(f"Unknown snapshot type '{kind}' (data or workspace).")
-    items, project_rows, skipped = [], [], {"dirs": 0, "bytes": 0}
-    if kind == "data":
+        raise SnapshotError(f"Unknown snapshot type '{kind}' (full, data or workspace).")
+    items, project_rows, skipped, left_out = [], [], {"dirs": 0, "bytes": 0}, []
+    if kind in ("data", "full"):
         for rel, label in DATA_ITEMS:
             full = os.path.join(paths.HOME, rel)
             if not os.path.exists(full):
@@ -202,10 +205,17 @@ def plan(kind: str, projects: list[str] | None = None, skip_rebuildable: bool = 
                 files, size = 1, os.path.getsize(full)
                 if rel == "data/optimux.db" and os.path.exists(full + "-wal"):
                     size += os.path.getsize(full + "-wal")   # the copy includes what the WAL holds
-            items.append({"path": rel, "label": label, "source": full, "files": files, "bytes": size})
-    else:
-        root = _workspace_root()
-        for name in _choose_projects(root, projects):
+            items.append({"path": rel, "label": label, "source": full, "files": files, "bytes": size,
+                          "private": True})
+        left_out += DATA_LEFT_OUT
+    if kind in ("workspace", "full"):
+        if kind == "full":
+            root = _safe_workspace()       # no Workspace folder yet: Everything is the data alone
+            if projects:
+                raise SnapshotError("Everything holds all projects; choose Workspace to pick some.")
+        else:
+            root = _workspace_root()
+        for name in _choose_projects(root, projects) if root else []:
             full = os.path.join(root, name)
             entries, size, sd, sb = _walk(full, skip_rebuildable)
             skipped["dirs"] += sd
@@ -214,12 +224,14 @@ def plan(kind: str, projects: list[str] | None = None, skip_rebuildable: bool = 
             mem = _project_memory(name)
             has_mem = os.path.isfile(mem)
             items.append({"path": f"workspace/{name}", "label": f"Project {name}", "source": full,
-                          "files": files, "bytes": size})
-            if has_mem:
+                          "files": files, "bytes": size, "project": True})
+            if has_mem and kind == "workspace":       # in full, memory/ already holds it
                 items.append({"path": f"memory/projects/{name}.md", "label": f"Memory of {name}",
                               "source": mem, "files": 1, "bytes": os.path.getsize(mem)})
             project_rows.append({"name": name, "files": files, "bytes": size, "memory": has_mem,
                                  "git": os.path.isdir(os.path.join(full, ".git"))})
+        if root:
+            left_out += [f"{n}/ (a link to another folder; not followed)" for n in _linked_projects(root)]
     total = sum(i["bytes"] for i in items)
     # The archive can't be bigger than this: compression only shrinks the data, but
     # every file and folder adds a header (512 bytes, often 1 KB with long names)
@@ -234,8 +246,7 @@ def plan(kind: str, projects: list[str] | None = None, skip_rebuildable: bool = 
     return {
         "kind": kind, "items": items, "projects": project_rows, "total_bytes": total, "estimate_bytes": estimate,
         "skip_rebuildable": skip_rebuildable, "skipped": skipped, "rebuildable": sorted(REBUILDABLE),
-        "left_out": list(DATA_LEFT_OUT) if kind == "data" else
-        [f"{n}/ (a link to another folder; not followed)" for n in _linked_projects(_workspace_root())],
+        "left_out": left_out,
         "used_bytes": used, "limit_bytes": limit, "free_bytes": free,
         "fits": not reason, "reason": reason,
     }
@@ -244,7 +255,7 @@ def plan(kind: str, projects: list[str] | None = None, skip_rebuildable: bool = 
 def preview(kind: str, projects: list[str] | None = None, skip_rebuildable: bool = True) -> dict:
     """plan() without the local paths of the sources."""
     p = plan(kind, projects, skip_rebuildable)
-    p["items"] = [{k: v for k, v in i.items() if k != "source"} for i in p["items"]]
+    p["items"] = [{k: v for k, v in i.items() if k not in ("source", "private")} for i in p["items"]]
     return p
 
 
@@ -274,7 +285,7 @@ def readme(manifest: dict) -> str:
         "OPTIMUX SNAPSHOT",
         "================",
         "",
-        f"Type:     {'Data' if manifest['kind'] == 'data' else 'Workspace'}",
+        f"Type:     {KIND_LABELS.get(manifest['kind'], manifest['kind'])}",
         f"Taken:    {when}",
         f"Optimux:  {manifest['optimux_version']}",
     ]
@@ -285,55 +296,73 @@ def readme(manifest: dict) -> str:
         lines.append(f"  {i['path']:<40} {i['label']} ({i['files']} file{'s' if i['files'] != 1 else ''}, {_fmt(i['bytes'])})")
     lines.append("  SHA256SUMS                               Checksums: after unpacking, run  sha256sum -c SHA256SUMS")
     q = shlex.quote
+    kind = manifest["kind"]
     home = q(manifest["home"])
     root = q(manifest["workspace"]) if manifest.get("workspace") else "<your Workspace folder>"
-    unpack = "  {n}. Unpack into a new private folder:  mkdir -m 700 restore && tar -xzf <this file> -C restore"
-    if manifest["kind"] == "data":
-        lines += ["", "Not included: " + "; ".join(manifest.get("left_out") or DATA_LEFT_OUT) + ".", ""]
-        if manifest.get("includes_secrets"):
-            lines += ["!! This file contains API keys and sign-in data. Keep it private.", ""]
-        lines += [
-            "RESTORE",
-            "-------",
-            "If your Optimux has Dashboard -> Backups -> Restore, use it: it keeps your",
-            "usage and cost history and takes a snapshot of the current state first.",
-            "",
-            "By hand (this also replaces the usage and cost history with the one in this file):",
-            "  1. Stop Optimux:   optimux stop    (on a server: sudo optimux stop)",
-            unpack.format(n=2),
-            f"  3. Move the current data folder aside (nothing is deleted):",
-            f"       mv {home} {home}.before-restore",
-            f"  4. Put the snapshot in its place:",
-            f"       mkdir -m 700 {home} && cp -a restore/. {home}/",
-            f"       rm -f {home}/manifest.json {home}/BACKUP-README.txt {home}/SHA256SUMS",
-            f"  5. Bring back what a snapshot leaves out, if you want it:",
-            f"       cp -a {home}.before-restore/backups {home}.before-restore/logs {home}.before-restore/legacy {home}/",
-            f"  6. On a server, give the files back to Optimux's user:  sudo chown -R optimux:optimux {home}",
-            "  7. Start Optimux:  optimux start   (on a server: sudo optimux start)",
-        ]
-    else:
+    has_data, has_projects = kind in ("data", "full"), kind in ("workspace", "full")
+    lines.append("")
+    if has_projects:
         names = ", ".join(p["name"] for p in manifest.get("projects", [])) or "(none)"
-        lines += ["", f"Projects: {names}"]
+        lines.append(f"Projects: {names}")
         if manifest.get("skip_rebuildable"):
             lines.append("Skipped (rebuild them with npm install, pip install, ...): "
                          + ", ".join(manifest.get("rebuildable", [])))
-        lines += [
-            "Not included: chats, usage and memory history (they are in the Data snapshot), archived projects.",
-            "Databases inside projects are copied as files: a database in use may need a check after restore.",
-            "",
-            "RESTORE",
-            "-------",
-            "If your Optimux has Dashboard -> Backups -> Restore, use it.",
-            "",
-            "By hand, for each project:",
-            unpack.format(n=1),
-            f"  2. Move the current project folder aside (nothing is deleted):",
-            f"       mv {root}/<project> {root}/<project>.before-restore",
-            f"  3. Put the snapshot's copy in its place:",
-            f"       cp -a restore/workspace/<project> {root}/",
-            f"       cp -a restore/memory/projects/<project>.md {home}/memory/projects/",
-            f"  4. On a server:  sudo chown -R optimux:optimux {root}/<project> {home}/memory",
+    left = list(manifest.get("left_out") or [])
+    if kind == "workspace":
+        left = ["chats, usage and memory history (they are in a Data or Everything snapshot)"] + left
+    if has_projects:
+        left.append("archived projects")
+    lines.append("Not included: " + "; ".join(left) + ".")
+    if has_projects:
+        lines.append("Databases inside projects are copied as files: a database in use may need a check after restore.")
+    if manifest.get("includes_secrets"):
+        lines += ["", "!! This file contains API keys and sign-in data. Keep it private."]
+    lines += ["", "RESTORE", "-------"]
+    if kind == "full":
+        lines += ["If your Optimux has Dashboard -> Backups -> Restore, use it: you choose the parts,",
+                  "it keeps your usage and cost history and takes a snapshot of the current state first."]
+    elif kind == "data":
+        lines += ["If your Optimux has Dashboard -> Backups -> Restore, use it: it keeps your",
+                  "usage and cost history and takes a snapshot of the current state first."]
+    else:
+        lines.append("If your Optimux has Dashboard -> Backups -> Restore, use it.")
+    lines += ["", "By hand" + (" (this also replaces the usage and cost history with the one in this file):"
+                               if has_data else ":")]
+    steps = []
+    if has_data:
+        steps.append("Stop Optimux:   optimux stop    (on a server: sudo optimux stop)")
+    steps.append("Unpack into a new private folder:  mkdir -m 700 restore && tar -xzf <this file> -C restore")
+    if has_data:
+        tops = []
+        for i in manifest["items"]:
+            top = i["path"].split("/")[0]
+            if top != "workspace" and top not in tops:
+                tops.append(top)
+        steps += [
+            f"Move the current data folder aside (nothing is deleted):\n       mv {home} {home}.before-restore",
+            f"Put the snapshot's data in its place:\n       mkdir -m 700 {home} && cp -a "
+            + " ".join(f"restore/{t}" for t in tops) + f" {home}/",
+            f"Bring back what a snapshot leaves out, if you want it:\n       cp -a {home}.before-restore/backups "
+            f"{home}.before-restore/logs {home}.before-restore/legacy {home}/",
         ]
+    if has_projects:
+        mem = (f"\n       cp -a restore/memory/projects/<project>.md {home}/memory/projects/"
+               if kind == "workspace" else "")
+        steps += [
+            # Into .archive with Optimux's own name format, so it shows under Archived projects
+            f"For each project, move the current folder to the archive (nothing is deleted):\n"
+            f"       mkdir -p {root}/.archive && mv {root}/<project> {root}/.archive/<project>-$(date +%Y%m%d-%H%M%S)",
+            f"Put the snapshot's copy in its place:\n       cp -a restore/workspace/<project> {root}/" + mem,
+        ]
+    owner = [home] if has_data else []
+    if has_projects:
+        owner.append(f"{root}/<project>")
+        if kind == "workspace":
+            owner.append(f"{home}/memory")
+    steps.append("On a server, give the files back to Optimux's user:  sudo chown -R optimux:optimux " + " ".join(owner))
+    if has_data:
+        steps.append("Start Optimux:  optimux start   (on a server: sudo optimux start)")
+    lines += [f"  {n}. {t}" for n, t in enumerate(steps, 1)]
     return "\n".join(lines) + "\n"
 
 
@@ -375,13 +404,13 @@ class _Writer:
     """Adds files to the archive: full copies (also of hard links), symlinks as
     links, owner names removed; records checksums and problems."""
 
-    def __init__(self, tar: tarfile.TarFile, private: bool):
-        self.tar, self.private = tar, private
+    def __init__(self, tar: tarfile.TarFile):
+        self.tar = tar
         self.sums: list[tuple[str, str]] = []
         self.changed: list[str] = []
         self.unreadable: list[str] = []
 
-    def add(self, path: str, arcname: str) -> None:
+    def add(self, path: str, arcname: str, private: bool = False) -> None:
         self.tar.inodes.clear()            # never store a hard link: each file is a full copy
         try:
             info = self.tar.gettarinfo(path, arcname)
@@ -392,7 +421,7 @@ class _Writer:
             return                         # sockets, pipes, devices: never
         info.uid = info.gid = 0
         info.uname = info.gname = ""
-        if self.private:                   # the data folder: readable only by its owner when unpacked
+        if private:                        # the data folder: readable only by its owner when unpacked
             info.mode = 0o700 if info.isdir() else 0o600
         if not info.isreg():
             self.tar.addfile(info)
@@ -518,10 +547,10 @@ def _create(kind: str, note: str, p: dict, skip_rebuildable: bool, auto: bool, s
         "created": time.time(), "optimux_version": optimux_version(), "note": (note or "").strip()[:200],
         "auto": bool(auto), "home": paths.HOME,
         "workspace": _workspace_root() if kind == "workspace" else _safe_workspace(),
-        "includes_secrets": kind == "data" and any(i["path"] in ("secrets.env", "auth.json") for i in p["items"]),
-        "skip_rebuildable": skip_rebuildable if kind == "workspace" else False,
+        "includes_secrets": kind in ("data", "full") and any(i["path"] in ("secrets.env", "auth.json") for i in p["items"]),
+        "skip_rebuildable": skip_rebuildable if kind != "data" else False,
         "rebuildable": sorted(REBUILDABLE), "left_out": p["left_out"],
-        "items": [{k: v for k, v in i.items() if k != "source"} for i in p["items"]],
+        "items": [{k: v for k, v in i.items() if k not in ("source", "private")} for i in p["items"]],
         "projects": p["projects"], "total_bytes": p["total_bytes"],
     }
     meta = {k: manifest[k] for k in ("id", "kind", "created", "note", "auto", "includes_secrets",
@@ -537,21 +566,21 @@ def _create(kind: str, note: str, p: dict, skip_rebuildable: bool, auto: bool, s
         with os.fdopen(fd, "wb") as raw, tarfile.open(fileobj=raw, mode="w:gz", compresslevel=6) as tar:
             _add_bytes(tar, "manifest.json", json.dumps(manifest, indent=2).encode())
             _add_bytes(tar, "BACKUP-README.txt", readme(manifest).encode())
-            w = _Writer(tar, private=kind == "data")
+            w = _Writer(tar)
             for item in p["items"]:
                 src, arc = item["source"], item["path"]
                 if arc == "data/optimux.db":
                     _copy_database(db_copy)
-                    w.add(db_copy, arc)
+                    w.add(db_copy, arc, private=True)
                 elif os.path.isdir(src) and not os.path.islink(src):
                     errors: list[str] = []
-                    entries, _, _, _ = _walk(src, skip_rebuildable and kind == "workspace", errors)
+                    entries, _, _, _ = _walk(src, skip_rebuildable and item.get("project", False), errors)
                     w.unreadable += [f"{arc}/{os.path.relpath(e, src)}" for e in errors if e]
                     for e in entries:
                         rel = os.path.relpath(e, src)
-                        w.add(e, arc if rel == "." else f"{arc}/{rel}")
+                        w.add(e, arc if rel == "." else f"{arc}/{rel}", item.get("private", False))
                 else:
-                    w.add(src, arc)
+                    w.add(src, arc, item.get("private", False))
             _add_bytes(tar, "SHA256SUMS", w.checksums())
         os.replace(partial, final)
         meta.update(status="ready", size_bytes=os.path.getsize(final), finished=time.time(),
