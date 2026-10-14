@@ -783,6 +783,8 @@ Then open **http://localhost:8000** in your browser. Keep that terminal open: th
 - `-L 8000:127.0.0.1:8000` means "port 8000 on my computer → port 8000 inside the server". If 8000 is taken on your computer, change the first number (`-L 8080:127.0.0.1:8000`, then open http://localhost:8080). If the installer chose another port on the server, change the second one.
 - `-N` opens only the tunnel, without a shell. Add `-p 2222` if your SSH server listens on another port.
 - On Windows, the same command works in PowerShell (OpenSSH is built in).
+- **Behind NAT, an office network or in a container**, the address the installer finds (the one the server uses to reach the internet) may belong to the router or gateway, not to the server; the installer then adds a note with the server's own address. Use whichever address your computer can reach. On cloud servers (AWS, Google Cloud, ...) the public address is the right one.
+- **No SSH server on the machine** (common in containers): the installer says so instead of printing a command that can't work. Install one (`sudo apt install openssh-server`), or, in an Incus container, forward the port from the host: `incus config device add <container> web proxy listen=tcp:127.0.0.1:8000 connect=tcp:127.0.0.1:8000`.
 
 Uninstalling (`sudo optimux uninstall`) removes the program, the service, Optimux's Caddy file and its import line (other sites stay), and asks separately before deleting `/var/lib/optimux` and the optimux user. Firewall rules for 80/443 are left in place.
 

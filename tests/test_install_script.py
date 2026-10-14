@@ -486,12 +486,89 @@ def test_final_card_says_how_to_use_the_command_in_this_terminal(tmp_path, later
 ])
 def test_tunnel_command_uses_the_real_login_address_and_ssh_port(sudo_user, ssh, expected):
     r = lib(f'''public_ip() {{ echo 203.0.113.7; }}; ssh_ports() {{ CM_SSH_PORTS="{ssh} "; CM_SSH_SURE=1; }}
-              id() {{ echo root; }}; declare -gA M=([PORT]=8000); tunnel_command''', SUDO_USER=sudo_user)
+              ssh_listening() {{ return 0; }}; hostname() {{ echo "203.0.113.7 fd00::1"; }}
+              id() {{ echo root; }}; declare -gA M=([PORT]=8000); tunnel_plan; echo "$CM_TUNNEL_CMD"''', SUDO_USER=sudo_user)
     assert r.stdout.strip() == expected, r.stdout + r.stderr
+
+
+def tunnel(script, **env):
+    base = '''ssh_ports() { CM_SSH_PORTS="22 "; CM_SSH_SURE=1; }; id() { echo root; }
+               declare -gA M=([MODE]=server [PORT]=8000 [URL]=http://127.0.0.1:8000); CM_PW_SET=1; CM_LOG=/dev/null; '''
+    r = lib(base + script, **env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    return " ".join(r.stdout.split())                    # messages wrap at the terminal width
+
+
+def test_behind_nat_the_command_stays_but_a_note_names_the_own_address():
+    """Office network, home router or container: the public address is the gateway's."""
+    out = tunnel('''public_ip() { echo 84.18.153.125; }; hostname() { echo "10.227.207.228 172.17.0.1 fd42::1"; }
+                    ssh_listening() { return 0; }; tunnel_plan; echo "CMD=$CM_TUNNEL_CMD"; echo "NOTE=$CM_TUNNEL_NOTE"''')
+    assert "CMD=ssh -N -L 8000:127.0.0.1:8000 root@84.18.153.125" in out     # still right for AWS-style 1:1 NAT
+    assert "84.18.153.125 is the address this server uses to reach the internet" in out and "(10.227.207.228, 172.17.0.1)" in out
+
+
+def test_no_note_when_the_public_address_is_this_servers_own():
+    out = tunnel('''public_ip() { echo 203.0.113.7; }; hostname() { echo "203.0.113.7"; }
+                    ssh_listening() { return 0; }; tunnel_plan; echo "NOTE=[$CM_TUNNEL_NOTE]"''')
+    assert "NOTE=[]" in out
+
+
+def test_no_public_address_uses_the_servers_own():
+    out = tunnel('''public_ip() { :; }; hostname() { echo "10.0.0.5"; }; ssh_listening() { return 0; }
+                    tunnel_plan; echo "CMD=$CM_TUNNEL_CMD"; echo "NOTE=[$CM_TUNNEL_NOTE]"''')
+    assert "root@10.0.0.5" in out and "NOTE=[]" in out
+
+
+@pytest.mark.parametrize("container", [True, False])
+def test_no_ssh_server_means_no_ssh_command(container):
+    detect = "return 0" if container else "return 1"
+    common = f'''public_ip() {{ echo 84.18.153.125; }}; ssh_listening() {{ return 1; }}; CM_PM=dnf
+                 hostname() {{ if [[ "${{1:-}}" == -I ]]; then echo 10.0.0.5; else echo optimux-test; fi; }}
+                 systemd-detect-virt() {{ {detect}; }}; '''
+    card = tunnel(common + "finish_server")
+    assert "ssh -N" not in card and "No SSH server runs here" in card and "See the note below" in card
+    if container:
+        assert "incus config device add optimux-test web proxy listen=tcp:127.0.0.1:8000" in card
+        assert "From another computer, add an SSH tunnel to the host" in card
+    else:
+        assert "sudo dnf install openssh-server" in card              # the hint follows the package manager
+    opened = tunnel(common + "cli_open")
+    assert "ssh -N" not in opened and "No SSH server runs here" in opened
+
+
+@pytest.mark.parametrize("listening,expected", [
+    ("tcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:*", 0),
+    ("tcp LISTEN 0 128 [::]:2222 [::]:*", 0),
+    ("tcp LISTEN 0 128 0.0.0.0:2200 0.0.0.0:*", 1),          # 22 must not match 2200
+    ("tcp LISTEN 0 128 127.0.0.1:8000 0.0.0.0:*", 1),
+])
+def test_ssh_listening(tmp_path, listening, expected):
+    (tmp_path / "ss.txt").write_text(listening + "\n")
+    r = lib(f'CM_SUDO=""; CM_SSH_PORTS="22 2222 "; ss() {{ cat "{tmp_path}/ss.txt"; }}; ssh_listening && echo YES || echo NO')
+    assert r.stdout.strip() == ("YES" if expected == 0 else "NO"), r.stdout + r.stderr
+
+
+def test_ssh_listening_assumes_yes_when_ss_fails():
+    r = lib('CM_SUDO=""; CM_SSH_PORTS="22 "; ss() { return 1; }; ssh_listening && echo YES || echo NO')
+    assert r.stdout.strip() == "YES"
+
+
+@pytest.mark.parametrize("state,crashed", [
+    ("activating\nstart", False), ("active\nrunning", False),
+    ("failed\nfailed", True), ("activating\nauto-restart", True),
+])
+def test_a_slow_first_start_is_not_reported_as_an_error(state, crashed):
+    r = lib(f'CM_SUDO=""; systemctl() {{ printf "{state}\\n"; }}; still_starting optimux.service')
+    out = " ".join(r.stdout.split())
+    if crashed:
+        assert "didn't start" in out and "sudo optimux logs" in out
+    else:
+        assert "still starting" in out and "sudo optimux status" in out and "didn't start" not in out
 
 
 def test_server_card_and_open_say_where_to_run_the_tunnel():
     common = '''public_ip() { echo 203.0.113.7; }; ssh_ports() { CM_SSH_PORTS="22 "; CM_SSH_SURE=1; }
+                ssh_listening() { return 0; }; hostname() { echo "203.0.113.7"; }
                 declare -gA M=([MODE]=server [PORT]=8000 [URL]=http://127.0.0.1:8000); CM_PW_SET=1; CM_LOG=/dev/null; '''
     card = lib(common + 'finish_server', SUDO_USER="bob").stdout
     assert "On your own computer" in card and "ssh -N -L 8000:127.0.0.1:8000 bob@203.0.113.7" in card

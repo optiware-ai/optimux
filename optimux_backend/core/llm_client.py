@@ -2,8 +2,7 @@ import json
 import os
 import time
 
-os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
-import litellm
+import litellm  # its price list stays local: see optimux_backend/__init__.py
 from litellm import acompletion
 from optimux_backend.core.config_manager import get_routing_config, litellm_key_kwargs
 from optimux_backend.core.agents import get_router_prompt

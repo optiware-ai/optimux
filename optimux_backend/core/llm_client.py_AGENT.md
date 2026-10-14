@@ -18,7 +18,7 @@
 ## Links & Dependencies
 - `config_manager.get_routing_config` (Conductor model) and `agents.get_router_prompt`.
 - Called by `main.py` (`resolve_tier`).
-- Sets `LITELLM_LOCAL_MODEL_COST_MAP=True`, so LiteLLM uses its bundled price list. Prices for newer models may be missing; see `usage.py`.
+- LiteLLM uses its bundled price list: `LITELLM_LOCAL_MODEL_COST_MAP=True` is set in `optimux_backend/__init__.py`, which runs before any module imports LiteLLM (main.py imported it before this file, so every start downloaded the list from GitHub; `tests/test_no_network_at_start.py` guards it). Prices for newer models may be missing; see `usage.py`.
 
 - **`execute_bash` description:** no longer mentions `create-repo-github.sh`; project creation is a workspace tool (`workspace.py`).
 

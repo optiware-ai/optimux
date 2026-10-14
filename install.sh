@@ -890,20 +890,74 @@ server_unit() {
 
 server_socket() { echo "/run/$(nm)/$(nm).sock"; }
 
+# The service was started but doesn't answer yet: usually a slow first start. A service
+# that failed or keeps restarting is reported as a problem ($1: the systemd unit).
+still_starting() {
+  local state=""
+  [[ -n "${1:-}" ]] && state="$($CM_SUDO systemctl show -p ActiveState -p SubState --value "$1" 2>/dev/null | tr '\n' ' ' || true)"
+  if [[ "$state" == *failed* || "$state" == *auto-restart* ]]; then
+    warn "Optimux didn't start. The log says why: sudo optimux logs"
+  else
+    info "Optimux is still starting (it may take a minute on a slow server)."
+    note "Check in a minute: sudo optimux status. If it doesn't run, the log says why: sudo optimux logs"
+  fi
+}
+
 public_ip() { curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true; }
 
-# The command that reaches an SSH-tunnel-only server from the user's own computer:
-# their login on this server (the one behind sudo) and its public address and SSH port.
-tunnel_command() {
-  local user="${SUDO_USER:-}" host port=""
+# How to reach an SSH-tunnel-only server from the user's own computer -> CM_TUNNEL_CMD
+# (empty when no SSH server runs here) and CM_TUNNEL_NOTE (advice, may be empty).
+# The command uses their login on this server (the one behind sudo), the server's
+# public address and its SSH port.
+tunnel_plan() {
+  local user="${SUDO_USER:-}" pub own host port=""
+  CM_TUNNEL_CMD=""; CM_TUNNEL_NOTE=""
   [[ -n "$user" ]] || user="$(id -un 2>/dev/null || echo root)"
-  host="$(public_ip)"
-  [[ -n "$host" ]] || host="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
-  [[ -n "$host" ]] || host="<server-address>"
   ssh_ports
+  if ! ssh_listening; then
+    if systemd-detect-virt -cq 2>/dev/null; then
+      CM_TUNNEL_NOTE="No SSH server runs here, so an SSH tunnel can't reach Optimux. This is a container: on its host, forward the port (Incus: incus config device add $(hostname 2>/dev/null || echo '<container>') web proxy listen=tcp:127.0.0.1:${M[PORT]} connect=tcp:127.0.0.1:${M[PORT]}) and open http://localhost:${M[PORT]} there. From another computer, add an SSH tunnel to the host."
+    else
+      CM_TUNNEL_NOTE="No SSH server runs here, so an SSH tunnel can't reach Optimux yet. Install one ($(ssh_install_hint)), then run: sudo optimux open"
+    fi
+    return 0
+  fi
+  pub="$(public_ip)"
+  own="$(hostname -I 2>/dev/null || true)"
+  host="$pub"
+  [[ -n "$host" ]] || host="$(awk '{print $1}' <<<"$own")"
+  [[ -n "$host" ]] || host="<server-address>"
+  if [[ -n "$pub" && -n "${own// }" && " $own " != *" $pub "* ]]; then
+    # 1:1 NAT (AWS, Google Cloud...) still reaches this server; an office network,
+    # a home router or a container host doesn't.
+    CM_TUNNEL_NOTE="$pub is the address this server uses to reach the internet, not one of its own ($(own_ipv4 "$own")). On a cloud server that's fine. Behind an office or home network, or in a container, use an address your computer can reach instead."
+  fi
   if [[ -n "${CM_SSH_SURE:-}" ]]; then port="${CM_SSH_PORTS%% *}"; fi
   if [[ -n "$port" && "$port" != 22 ]]; then port=" -p $port"; else port=""; fi
-  echo "ssh -N${port} -L ${M[PORT]}:127.0.0.1:${M[PORT]} ${user}@${host}"
+  CM_TUNNEL_CMD="ssh -N${port} -L ${M[PORT]}:127.0.0.1:${M[PORT]} ${user}@${host}"
+}
+
+# This machine's IPv4 addresses from `hostname -I` output, comma separated
+own_ipv4() { tr ' ' '\n' <<<"$1" | grep -E '^[0-9]+(\.[0-9]+){3}$' | paste -sd, - | sed 's/,/, /g' || true; }
+
+ssh_install_hint() {
+  case "${CM_PM:-}" in
+    dnf) echo "sudo dnf install openssh-server" ;;
+    pacman) echo "sudo pacman -S openssh" ;;
+    zypper) echo "sudo zypper install openssh" ;;
+    *) echo "sudo apt install openssh-server" ;;
+  esac
+}
+
+# An SSH server listens on one of CM_SSH_PORTS (call ssh_ports first). When ss can't
+# tell, assume it does: better a command that may fail than no command at all.
+ssh_listening() {
+  local out p
+  out="$(ss -Htln 2>/dev/null)" || return 0     # listening sockets: no root needed
+  for p in $CM_SSH_PORTS; do
+    grep -qE ":${p}[[:space:]]" <<<"$out" && return 0
+  done
+  return 1
 }
 
 # SSH port(s) to keep open -> CM_SSH_PORTS; CM_SSH_SURE=1 when really found (not a guess)
@@ -1043,13 +1097,13 @@ EOF
   run "Starting Optimux" $CM_SUDO systemctl restart "$N.service"
   if [[ -n "$domain" ]]; then
     if wait_http "http://localhost/auth/status" "$(server_socket)" 30; then ok "Optimux is running"
-    else warn "Optimux didn't answer yet: sudo journalctl -u $N -n 50"; fi
+    else still_starting "$N.service"; fi
     info "Waiting for the HTTPS certificate (up to a minute)…"
     if wait_http "https://$domain/auth/status" "" 60; then ok "HTTPS works: ${CB}https://$domain${C0}"
     else warn "HTTPS isn't answering yet (DNS or ports 80/443?). Caddy keeps trying: sudo journalctl -u caddy -n 50"; fi
   else
     if wait_http "${M[URL]}/auth/status" "" 30; then ok "Optimux is running on 127.0.0.1:${M[PORT]}"
-    else warn "Optimux didn't answer yet: sudo journalctl -u $N -n 50"; fi
+    else still_starting "$N.service"; fi
   fi
   finish_server
 }
@@ -1211,11 +1265,17 @@ configure_auto_updates() {
 
 finish_server() {
   local open=() signin
+  CM_TUNNEL_CMD=""; CM_TUNNEL_NOTE=""
   if [[ -n "${M[DOMAIN]:-}" ]]; then open=("${CB}Open${C0}       ${CA}${M[URL]}${C0}")
   else
-    open=("${CB}Open${C0}       ${CY}On your own computer${C0} (not on this server), run and keep it open:"
-          "           $(tunnel_command)"
-          "           then open ${CA}http://localhost:${M[PORT]}${C0} in your browser.")
+    tunnel_plan
+    if [[ -n "$CM_TUNNEL_CMD" ]]; then
+      open=("${CB}Open${C0}       ${CY}On your own computer${C0} (not on this server), run and keep it open:"
+            "           $CM_TUNNEL_CMD"
+            "           then open ${CA}http://localhost:${M[PORT]}${C0} in your browser.")
+    else
+      open=("${CB}Open${C0}       Optimux listens on 127.0.0.1:${M[PORT]} here. See the note below.")
+    fi
   fi
   if [[ -n "${CM_PW_SET:-}" ]]; then signin="Sign in with the password you just chose."
   elif password_is_set; then signin="Sign in with your password."
@@ -1233,6 +1293,7 @@ finish_server() {
     "" \
     "${CB}Next${C0}       Turn on two-step codes in Dashboard → System." \
     "           Check the Security checklist there."
+  if [[ -n "$CM_TUNNEL_NOTE" ]]; then note "$CM_TUNNEL_NOTE"; fi
   dim "Install log: $CM_LOG"
   printf '\n'
 }
@@ -1296,7 +1357,10 @@ cli_status() {
     wait_http "http://127.0.0.1:${M[PORT]}/auth/status" "" 1 && ok "Answers on 127.0.0.1:${M[PORT]}" || warn "Doesn't answer on 127.0.0.1:${M[PORT]}"
   fi
   if [[ "${M[MODE]}" == server && -z "${M[DOMAIN]:-}" ]]; then
-    info "Open:    on your own computer: $(tunnel_command), then http://localhost:${M[PORT]}"
+    tunnel_plan
+    if [[ -n "$CM_TUNNEL_CMD" ]]; then info "Open:    on your own computer: $CM_TUNNEL_CMD, then http://localhost:${M[PORT]}"
+    else info "Open:    it listens on 127.0.0.1:${M[PORT]} (no SSH server here, see below)"; fi
+    if [[ -n "$CM_TUNNEL_NOTE" ]]; then note "$CM_TUNNEL_NOTE"; fi
   else info "Open:    ${M[URL]}"; fi
   info "Program: ${M[APP_DIR]}  ($(git -C "${M[APP_DIR]}" describe --always 2>/dev/null || echo '?'))"
   info "Data:    ${M[DATA_DIR]}"
@@ -1312,9 +1376,13 @@ cli_logs() {
 
 cli_open() {
   if [[ "${M[MODE]}" == server && -z "${M[DOMAIN]:-}" ]]; then
-    say "Optimux on this server is reachable only through an SSH tunnel. On your own computer, run:"
-    say "  $(tunnel_command)"
-    say "then open http://localhost:${M[PORT]}"
+    tunnel_plan
+    if [[ -n "$CM_TUNNEL_CMD" ]]; then
+      say "Optimux on this server is reachable only through an SSH tunnel. On your own computer, run:"
+      say "  $CM_TUNNEL_CMD"
+      say "then open http://localhost:${M[PORT]}"
+    fi
+    if [[ -n "$CM_TUNNEL_NOTE" ]]; then say "$CM_TUNNEL_NOTE"; fi
     return 0
   fi
   say "${M[URL]}"

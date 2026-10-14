@@ -29,6 +29,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 ├── docs/
 │   └── GUIDE.md                 (User guide, shown in Dashboard → Guide)
 ├── optimux_backend/
+│   ├── __init__.py              (runs first: settings other libraries read on import)
+│   ├── __init__.py_AGENT.md
 │   ├── main.py                  (FastAPI orchestrator & WebSocket)
 │   ├── main.py_AGENT.md
 │   ├── admin.py                 (setup commands for the installer: password, keys, models, Workspace, GitHub)
