@@ -492,6 +492,19 @@ def archive_path(sid: str) -> str:
     return os.path.join(paths.SNAPSHOT_DIR, f"{sid}.tar.gz")
 
 
+def _mark_failed(sid: str, error: Exception) -> None:
+    """Mark a snapshot that is still "running" as failed, with the reason
+    (a failure already recorded while writing is left as it is)."""
+    try:
+        with open(_meta_path(sid)) as f:
+            meta = json.load(f)
+        if meta.get("status") == "running":
+            meta.update(status="failed", error=str(error)[:300], finished=time.time())
+            _write_meta(sid, meta)
+    except (OSError, ValueError):
+        pass
+
+
 def _db_copy_path(sid: str) -> str:
     return os.path.join(paths.SNAPSHOT_DIR, f".{sid}.db")
 
@@ -558,6 +571,11 @@ def create(kind: str, note: str = "", projects: list[str] | None = None, skip_re
         _running.add(sid)                  # so _sweep() never takes its files for leftovers
     try:
         return _create(kind, note, p, skip_rebuildable, auto, sid)
+    except Exception as e:
+        # Record the reason while the id is still in _running: once it leaves,
+        # a "running" description reads as interrupted by a stop
+        _mark_failed(sid, e)
+        raise
     finally:
         with _lock:
             _running.discard(sid)
@@ -660,16 +678,9 @@ def start(kind: str, note: str = "", projects: list[str] | None = None, skip_reb
         try:
             create(kind, note, projects, skip_rebuildable, auto, sid=sid)
         except Exception as e:
-            # Failures while writing are already recorded; this records the ones before
-            # (the plan changed since the check: a project removed, the disk filled, ...)
-            try:
-                with open(_meta_path(sid)) as f:
-                    meta = json.load(f)
-                if meta.get("status") == "running":
-                    meta.update(status="failed", error=str(e)[:300], finished=time.time())
-                    _write_meta(sid, meta)
-            except (OSError, ValueError):
-                pass
+            # create() records its own failures; this records one before it starts
+            # (its new plan no longer fits: a project removed, the disk filled, ...)
+            _mark_failed(sid, e)
         finally:
             with _lock:
                 _running.discard(sid)

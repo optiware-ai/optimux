@@ -465,3 +465,28 @@ def test_readme_escapes_the_note_in_markdown(home):
     meta = snapshots.create("data", note="a | b `c`\nd")
     text = read(snapshots.archive_path(meta["id"]), "BACKUP-README.md")
     assert "- **Note:** a \\| b 'c' d" in text
+
+
+def test_a_failure_is_recorded_before_the_snapshot_stops_counting_as_running(home, monkeypatch):
+    """No moment where a failed background snapshot reads as "Interrupted": the
+    reason is written while its id is still in _running (slow machines showed
+    the gap between the two)."""
+    def boom(needed):
+        raise snapshots.SnapshotError("The Workspace folder changed.")
+    monkeypatch.setattr(snapshots, "_make_room", boom)
+    seen = []
+
+    class Watch(set):
+        def discard(self, sid):
+            if sid in self:                       # the moment it stops counting as running
+                with open(snapshots._meta_path(sid)) as f:
+                    seen.append(json.load(f)["status"])
+            super().discard(sid)
+    monkeypatch.setattr(snapshots, "_running", Watch())
+    sid = snapshots.start("data")
+    for _ in range(100):
+        if not snapshots._running:
+            break
+        time.sleep(0.02)
+    assert seen and seen[0] == "failed"           # already failed when it left _running
+    assert snapshots.get(sid)["error"] == "The Workspace folder changed."
