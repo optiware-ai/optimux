@@ -143,6 +143,7 @@ class SettingsPayload(BaseModel):
     github_login: str = ""
     # v0.3: how much disk the snapshots (Dashboard -> Backups) may use, in GB
     snapshot_limit_gb: float = 5
+    snapshot_recipient: str = ""      # a public key remembered for encrypted downloads
 
 
 DEFAULT_MAX_STEPS = {"simple": 8, "complex": 25}
@@ -199,6 +200,15 @@ def save_settings(payload: SettingsPayload):
             raise ValidationError(f"{field} must be between 0 (no limit) and {top}.")
     if not 0.1 <= payload.snapshot_limit_gb <= 10000:
         raise ValidationError("snapshot_limit_gb must be between 0.1 and 10000.")
+    # Checked only when it changes: a saved key never blocks unrelated saves
+    # (switching project, archiving), even if a later library refuses it
+    if payload.snapshot_recipient.strip() and \
+            payload.snapshot_recipient != _read_settings().get("snapshot_recipient", ""):
+        from optimux_backend.core.exports import ExportError, parse_recipient
+        try:
+            parse_recipient(payload.snapshot_recipient)
+        except ExportError as e:
+            raise ValidationError(str(e))
     if 0 < payload.limit_memory_mb < 256:
         raise ValidationError("A memory limit under 256 MB stops most tools from starting; use 0 for no limit.")
     if 0 < payload.limit_processes < 32:
@@ -212,7 +222,12 @@ def save_settings(payload: SettingsPayload):
         raise ValidationError("github_login isn't a GitHub user name.")
     # Reject bad paths at save time (raises ScopeError -> HTTP 400 in main.py)
     if payload.projects_root:
-        resolve_scope_root(payload.projects_root)
+        root = resolve_scope_root(payload.projects_root)
+        if payload.projects_root != _read_settings().get("projects_root", ""):
+            from optimux_backend.core.snapshots import is_private_home_path
+            if is_private_home_path(str(root)):
+                raise ValidationError("The Workspace folder can't be Optimux's own data folder (or a part of it that "
+                                      "holds keys and chats). Pick a folder for your projects, for example ~/projects.")
     if payload.active_project:
         resolve_project_dir(payload.projects_root, payload.active_project)
     settings_file = SETTINGS_FILE

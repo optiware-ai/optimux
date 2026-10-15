@@ -156,7 +156,7 @@ Memory costs tokens on every model call, so short and precise memory is cheaper 
 - **Dashboard**: overview, usage by project, role, model and skill, a 30-day cost chart, budgets, history with filters.
 - **Monthly budgets** per project (block or warn) and **cost warnings** before paid one-off actions.
 - Every chat and every model call is stored in SQLite and **survives restarts**, with daily backups.
-- **Snapshots** of everything (or only your data, or only your projects), kept on the machine (Dashboard → Backups): see what goes in, take one in the background, within a space limit.
+- **Snapshots** of everything (or only your data, or only your projects), kept on the machine (Dashboard → Backups): see what goes in, take one in the background, within a space limit. Download them **encrypted** (age): with a one-time key or your own public key.
 
 **Interface**
 - A single-page web app: chat, history, dashboard and an in-app **[Guide](docs/GUIDE.md)** with search.

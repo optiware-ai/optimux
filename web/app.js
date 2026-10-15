@@ -843,6 +843,64 @@ createApp({
         // Delete asks inside the row (snapDeleting = the id waiting for an answer)
         const snapDeleting = ref('');
         const snapReadme = ref({});          // id -> README text (or an error), shown in Details
+        // v0.3 C: downloads. The one-time key lives only in this page's memory and
+        // is dropped when the panel closes; the server keeps it nowhere.
+        const snapDl = ref({});
+        const dlOpen = (s) => {
+            snapDl.value[s.id] = { mode: 'key', recipient: appSettings.value.snapshot_recipient || '', remember: false,
+                                   busy: false, error: '', result: null, saved: false };
+        };
+        const dlClose = (s) => { delete snapDl.value[s.id]; };
+        const dlPrepare = async (s) => {
+            const d = snapDl.value[s.id];
+            d.busy = true; d.error = '';
+            try {
+                const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/export`, { method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: d.mode, recipient: d.recipient, remember: d.remember }) });
+                const body = await readJson(r);
+                if (!r.ok) { d.error = detailText(body.detail, 'The download could not be prepared.'); return; }
+                if (d.mode === 'recipient' && d.remember) appSettings.value.snapshot_recipient = d.recipient.trim();
+                d.result = body;
+                if (body.mode === 'plain') clickDownload(body.url, body.filename);   // nothing to save first
+            } catch (error) { d.error = 'The download could not be prepared.'; }
+            finally { d.busy = false; }
+        };
+        const clickDownload = (url, name) => {
+            const a = document.createElement('a');
+            a.href = url; a.download = name || '';
+            document.body.appendChild(a); a.click(); a.remove();
+        };
+        const dlSaveKey = (s) => {
+            const d = snapDl.value[s.id];
+            const text = `# Optimux snapshot key for ${d.result.filename}\n# Open with: age -d -i optimux-key-${s.id}.txt -o snapshot.tar.gz ${d.result.filename}\n${d.result.key}\n`;
+            const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+            const a = document.createElement('a');
+            a.href = url; a.download = `optimux-key-${s.id}.txt`;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        };
+        const dlStarted = (s, e) => {
+            const d = snapDl.value[s.id];
+            if (d.result.key && !d.saved) { e.preventDefault(); return; }   // save the key first
+            if (d.result.key) {
+                // Saved and downloading: the key leaves this page too (the link still works for an hour)
+                d.result.key = null;
+                d.keyCleared = true;
+            }
+        };
+        const dlCommand = (s) => {
+            const d = snapDl.value[s.id];
+            const rec = d.recipient || '';
+            const keyArg = d.result.mode === 'key' ? `optimux-key-${s.id}.txt`
+                : rec.includes('ssh-ed25519') ? '~/.ssh/id_ed25519'
+                : rec.includes('ssh-rsa') ? '~/.ssh/id_rsa' : '<your-age-key-file>';
+            return `age -d -i ${keyArg} -o snapshot.tar.gz ${d.result.filename}`;
+        };
+        // Leaving Backups drops any download panel (and a one-time key still shown in it)
+        watch(() => [showSettingsModal.value, settingsTab.value], ([open, tab]) => {
+            if (!open || tab !== 'backups') snapDl.value = {};
+        });
         const loadSnapReadme = async (s) => {
             if (snapReadme.value[s.id]) { delete snapReadme.value[s.id]; return; }   // second click hides it
             snapReadme.value[s.id] = { loading: true };
@@ -2369,7 +2427,7 @@ createApp({
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
-            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
+            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,

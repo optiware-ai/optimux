@@ -34,7 +34,7 @@ from optimux_backend.core import project_records
 from optimux_backend.core import skills as skills_lib
 from optimux_backend.core import sandbox as sandbox_lib
 from optimux_backend.core import curator
-from optimux_backend.core import snapshots
+from optimux_backend.core import exports, snapshots
 from optimux_backend.core import auth
 from optimux_backend.core import sessions as chat_store
 from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
@@ -63,6 +63,10 @@ try:
     print(f"[Optimux] database backup: {store.backup()}")
 except Exception as e:
     print(f"[Optimux] database backup failed: {e}")
+try:
+    exports.sweep()                 # encrypted snapshot downloads older than an hour
+except Exception as e:
+    print(f"[Optimux] cleaning old snapshot downloads failed: {e}")
 
 # No CORS middleware: the UI is served from this same origin.
 
@@ -609,6 +613,7 @@ class SnapshotLimitPayload(BaseModel):
 @app.get("/api/snapshots")
 async def list_snapshots_api():
     """Snapshots kept on this machine, newest first, with the space they use."""
+    await asyncio.to_thread(exports.sweep)          # expired encrypted downloads
     return await asyncio.to_thread(snapshots.summary)
 
 
@@ -643,6 +648,47 @@ async def snapshot_limit_api(payload: SnapshotLimitPayload):
     return {"snapshot_limit_gb": payload.gb}
 
 
+class ExportPayload(BaseModel):
+    mode: str                      # key | recipient | plain
+    recipient: str = ""
+    remember: bool = False         # keep this public key for next time (settings)
+
+
+@app.post("/api/snapshots/{sid}/export")
+async def export_snapshot_api(sid: str, payload: ExportPayload):
+    """Prepare a download. In "key" mode the answer holds the secret key, once:
+    it is kept nowhere (the response is never cached: Cache-Control no-store)."""
+    try:
+        result = await asyncio.to_thread(exports.prepare, sid, payload.mode, payload.recipient)
+    except exports.ExportError as e:
+        raise HTTPException(422, str(e))
+    if payload.mode == "recipient" and payload.remember:
+        try:
+            update_settings(snapshot_recipient=payload.recipient.strip())
+        except (ValidationError, ScopeError):
+            pass                   # the download is ready; remembering is a convenience
+    return result
+
+
+@app.get("/api/snapshots/exports/{token}")
+async def download_export_api(token: str):
+    try:
+        path, filename = exports.export_file(token)
+    except exports.ExportError as e:
+        raise HTTPException(404, str(e))
+    return FileResponse(path, filename=filename, media_type="application/octet-stream")
+
+
+@app.get("/api/snapshots/{sid}/download")
+async def download_plain_api(sid: str):
+    """A Workspace snapshot without keys, unencrypted (the user chose it)."""
+    try:
+        result = await asyncio.to_thread(exports.prepare, sid, "plain")
+    except exports.ExportError as e:
+        raise HTTPException(422, str(e))
+    return FileResponse(snapshots.archive_path(sid), filename=result["filename"], media_type="application/gzip")
+
+
 @app.get("/api/snapshots/{sid}/readme")
 async def snapshot_readme_api(sid: str):
     """The README inside a snapshot, to read it in the page: {text, format: md|txt}."""
@@ -658,6 +704,7 @@ async def delete_snapshot_api(sid: str):
         snapshots.delete(sid)
     except snapshots.SnapshotError as e:
         raise HTTPException(422, str(e))
+    exports.remove_for(sid)         # and its prepared download, if any
     return {"status": "deleted"}
 
 

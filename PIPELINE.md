@@ -47,6 +47,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── curator.py_AGENT.md
 │       ├── config_manager.py_AGENT.md
 │       ├── executor.py          (Async bash subprocess, scoped to project)
+│       ├── exports.py           (Encrypted snapshot downloads, age)
+│       ├── exports.py_AGENT.md
 │       ├── executor.py_AGENT.md
 │       ├── llm_client.py        (LiteLLM router & Tool schemas)
 │       ├── llm_client.py_AGENT.md

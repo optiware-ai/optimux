@@ -700,7 +700,7 @@
                                 <span v-if="s.status === 'running'" class="text-blue-400 animate-pulse shrink-0">taking…</span>
                                 <span v-else-if="s.status === 'failed'" class="text-red-400 shrink-0 truncate max-w-[16rem]" :title="s.error">failed: {{ s.error }}</span>
                                 <span v-else class="text-gray-400 w-20 text-right shrink-0">{{ fmtBytes(s.size_bytes) }}</span>
-                                <button @click="snapOpen[s.id] = !snapOpen[s.id]" :aria-expanded="!!snapOpen[s.id]" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 shrink-0">{{ snapOpen[s.id] ? 'Hide' : 'Details' }}</button>
+                                <button @click="snapOpen[s.id] = !snapOpen[s.id]; if (!snapOpen[s.id]) dlClose(s)" :aria-expanded="!!snapOpen[s.id]" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 shrink-0">{{ snapOpen[s.id] ? 'Hide' : 'Details' }}</button>
                                 <button v-if="snapDeleting !== s.id" @click="snapDeleting = s.id" :disabled="s.status === 'running'" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-red-500 hover:text-red-400 disabled:opacity-40 shrink-0">Delete</button>
                             </div>
                             <div v-if="snapDeleting === s.id" role="alertdialog" :aria-label="'Delete this snapshot'" class="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2">
@@ -738,6 +738,84 @@
                                     <div v-else-if="snapReadme[s.id] && snapReadme[s.id].error" class="text-[13px] text-red-400 mt-1">{{ snapReadme[s.id].error }}</div>
                                     <div v-else-if="snapReadme[s.id] && snapReadme[s.id].html" class="mt-2 max-h-[32rem] overflow-auto bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 prose prose-invert prose-blue max-w-none" @click="onCopyCodeClick" v-html="snapReadme[s.id].html"></div>
                                     <pre v-else-if="snapReadme[s.id]" class="mt-2 max-h-96 overflow-auto text-[13px] text-gray-300 bg-gray-900 border border-gray-800 rounded p-3 whitespace-pre">{{ snapReadme[s.id].text }}</pre>
+                                </div>
+                                <!-- v0.3 C: download, encrypted with age -->
+                                <div v-if="s.status === 'ready'" class="pt-2 border-t border-gray-800">
+                                    <button v-if="!snapDl[s.id]" @click="dlOpen(s)" class="text-[14px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500">⬇ Download this snapshot…</button>
+                                    <div v-else class="space-y-3">
+                                        <div class="flex items-center justify-between">
+                                            <div class="text-[14px] font-semibold text-gray-200">Download this snapshot</div>
+                                            <button @click="dlClose(s)" class="text-[13px] text-gray-400 hover:text-gray-200">Close</button>
+                                        </div>
+                                        <template v-if="!snapDl[s.id].result">
+                                            <p v-if="s.includes_secrets" class="text-[13px] text-yellow-300">It holds your API keys and sign-in data, so it can only leave this server encrypted.</p>
+                                            <div role="radiogroup" aria-label="How to protect the download" class="space-y-2">
+                                                <label :class="['flex gap-2.5 px-3 py-2 rounded-lg border cursor-pointer', snapDl[s.id].mode === 'key' ? 'border-blue-500 bg-blue-500/10' : 'border-gray-700']">
+                                                    <input type="radio" value="key" v-model="snapDl[s.id].mode" class="mt-1 w-3.5 h-3.5 shrink-0">
+                                                    <span><span class="text-[14px] text-gray-100 font-semibold">Encrypt with a one-time key</span> <span class="ml-1 text-[12px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400">recommended</span>
+                                                        <span class="block text-[13px] text-gray-400">Optimux makes a key and shows it to you once. Without it, nobody can open the file: not Optimux, not anyone who intercepts it, and not you if you lose it.</span></span>
+                                                </label>
+                                                <label :class="['flex gap-2.5 px-3 py-2 rounded-lg border cursor-pointer', snapDl[s.id].mode === 'recipient' ? 'border-blue-500 bg-blue-500/10' : 'border-gray-700']">
+                                                    <input type="radio" value="recipient" v-model="snapDl[s.id].mode" class="mt-1 w-3.5 h-3.5 shrink-0">
+                                                    <span class="flex-1 min-w-0"><span class="text-[14px] text-gray-100 font-semibold">Encrypt to my public key</span>
+                                                        <span class="block text-[13px] text-gray-400">An <code>age1…</code> key, or your SSH key (<code>ssh-ed25519 …</code> or <code>ssh-rsa …</code>, from <code>~/.ssh/id_ed25519.pub</code>). Only your secret key opens it.</span>
+                                                        <template v-if="snapDl[s.id].mode === 'recipient'">
+                                                            <details class="mt-2 rounded-lg border border-gray-800 bg-gray-950/60 px-3 py-2 text-[13px] text-gray-300" :open="!snapDl[s.id].recipient">
+                                                                <summary class="cursor-pointer text-blue-400 select-none">How do I get a public key?</summary>
+                                                                <div class="mt-2 space-y-2.5">
+                                                                    <p class="text-yellow-200">Use a key from <b>the computer where you will open the download</b> (your laptop), never one made on this server: the secret half must not live next to the backup.</p>
+                                                                    <div><b>1. Do you already have one?</b> Most developers have an SSH key. On your computer, run:</div>
+                                                                    <span class="cm-path-box"><code>cat ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub 2>/dev/null</code>
+                                                                        <button type="button" @click="snapCopy('k1-' + s.id, 'cat ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub 2>/dev/null')" :class="['cm-copy-btn', snapCopied['k1-' + s.id] ? 'cm-copied' : '']">{{ snapCopied['k1-' + s.id] ? 'Copied ✓' : 'Copy' }}</button></span>
+                                                                    <div class="text-gray-400">On Windows (PowerShell): <code>type $env:USERPROFILE\.ssh\id_ed25519.pub</code>. A line starting with <code>ssh-ed25519</code> or <code>ssh-rsa</code> is your public key: paste it below.</div>
+                                                                    <div><b>2. None yet? Make one</b> on your computer (press Enter for the defaults; a passphrase is a good idea):</div>
+                                                                    <span class="cm-path-box"><code>ssh-keygen -t ed25519</code>
+                                                                        <button type="button" @click="snapCopy('k2-' + s.id, 'ssh-keygen -t ed25519')" :class="['cm-copy-btn', snapCopied['k2-' + s.id] ? 'cm-copied' : '']">{{ snapCopied['k2-' + s.id] ? 'Copied ✓' : 'Copy' }}</button></span>
+                                                                    <div class="text-gray-400">Or a key only for backups, with age: <code>age-keygen -o ~/optimux-backup.key</code>. It prints <code>Public key: age1…</code>: paste the <code>age1…</code> part.</div>
+                                                                    <div><b>3. Paste only the public part</b>: the <code>.pub</code> file's line or the <code>age1…</code> key. Never the file without <code>.pub</code>, and never a line starting with <code>AGE-SECRET-KEY</code>: those stay on your computer.</div>
+                                                                    <div class="text-gray-400">To open the download later you need the secret half: <code>~/.ssh/id_ed25519</code> (or <code>id_rsa</code>, or your age key file). Keys in a hardware token (<code>sk-ssh-…</code>) don't work with age.</div>
+                                                                </div>
+                                                            </details>
+                                                            <input v-model="snapDl[s.id].recipient" placeholder="age1… or ssh-ed25519 AAAA…" spellcheck="false" class="mt-2 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-[13px] text-gray-200 outline-none focus:border-blue-500">
+                                                            <label class="mt-1.5 flex items-center gap-2 text-[13px] text-gray-400"><input type="checkbox" v-model="snapDl[s.id].remember" class="w-3.5 h-3.5"> Remember this public key for next time</label>
+                                                        </template></span>
+                                                </label>
+                                                <label v-if="!s.includes_secrets && s.kind === 'workspace'" :class="['flex gap-2.5 px-3 py-2 rounded-lg border cursor-pointer', snapDl[s.id].mode === 'plain' ? 'border-yellow-500/60 bg-yellow-500/10' : 'border-gray-700']">
+                                                    <input type="radio" value="plain" v-model="snapDl[s.id].mode" class="mt-1 w-3.5 h-3.5 shrink-0">
+                                                    <span><span class="text-[14px] text-gray-100 font-semibold">No encryption</span>
+                                                        <span class="block text-[13px] text-gray-400">A plain <code>.tar.gz</code>. Anyone who gets the file can read your code.</span></span>
+                                                </label>
+                                            </div>
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <button @click="dlPrepare(s)" :disabled="snapDl[s.id].busy" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-[14px] disabled:opacity-50">{{ snapDl[s.id].busy ? 'Encrypting…' : (snapDl[s.id].mode === 'plain' ? 'Download' : 'Encrypt and prepare the download') }}</button>
+                                                <span v-if="snapDl[s.id].error" class="text-[13px] text-red-400">{{ snapDl[s.id].error }}</span>
+                                            </div>
+                                        </template>
+                                        <template v-else>
+                                            <div v-if="snapDl[s.id].keyCleared" class="text-[13px] text-gray-400">The key was removed from this page when the download started. Use the copy you saved.</div>
+                                            <div v-if="snapDl[s.id].result.key" class="rounded-xl border-2 border-yellow-500/60 bg-yellow-500/10 p-4 space-y-2">
+                                                <div class="font-bold text-yellow-300 text-[15px]">⚠ Save this key now: it is shown only once</div>
+                                                <p class="text-[13px] text-yellow-100">Optimux doesn't keep it. Without it the download can't be opened, by anyone. Store it apart from the file (a password manager is a good place).</p>
+                                                <span class="cm-path-box w-full"><code>{{ snapDl[s.id].result.key }}</code>
+                                                    <button type="button" @click="snapCopy('key-' + s.id, snapDl[s.id].result.key)" :class="['cm-copy-btn', snapCopied['key-' + s.id] ? 'cm-copied' : '']">{{ snapCopied['key-' + s.id] ? 'Copied ✓' : 'Copy' }}</button></span>
+                                                <div class="flex flex-wrap items-center gap-3">
+                                                    <button @click="dlSaveKey(s)" class="text-[13px] px-3 py-1 rounded border border-yellow-500/40 text-yellow-100 hover:border-yellow-400">Save the key as a file</button>
+                                                    <label class="flex items-center gap-2 text-[14px] text-yellow-100"><input type="checkbox" v-model="snapDl[s.id].saved" class="w-4 h-4"> I have saved the key</label>
+                                                </div>
+                                            </div>
+                                            <div class="flex flex-wrap items-center gap-3">
+                                                <a :href="snapDl[s.id].result.url" :download="snapDl[s.id].result.filename" @click="dlStarted(s, $event)" @auxclick="dlStarted(s, $event)"
+                                                   :class="['px-4 py-2 rounded-lg font-bold text-[14px]', (snapDl[s.id].result.key && !snapDl[s.id].saved) ? 'bg-gray-700 text-gray-400 pointer-events-none' : 'bg-blue-600 hover:bg-blue-500 text-white']"
+                                                   :aria-disabled="!!(snapDl[s.id].result.key && !snapDl[s.id].saved)">⬇ Download {{ snapDl[s.id].result.filename }}</a>
+                                                <span class="text-[13px] text-gray-400">{{ fmtBytes(snapDl[s.id].result.size) }}<template v-if="snapDl[s.id].result.expires_in"> · the link works for 1 hour</template></span>
+                                            </div>
+                                            <div v-if="snapDl[s.id].result.mode !== 'plain'" class="text-[13px] text-gray-400 space-y-1">
+                                                <div>To open it on your computer, with <a href="https://age-encryption.org" target="_blank" rel="noopener" class="text-blue-400 hover:underline">age</a> (<code>apt install age</code>, <code>brew install age</code>):</div>
+                                                <span class="cm-path-box"><code>{{ dlCommand(s) }}</code>
+                                                    <button type="button" @click="snapCopy('cmd-' + s.id, dlCommand(s))" :class="['cm-copy-btn', snapCopied['cmd-' + s.id] ? 'cm-copied' : '']">{{ snapCopied['cmd-' + s.id] ? 'Copied ✓' : 'Copy' }}</button></span>
+                                            </div>
+                                        </template>
+                                    </div>
                                 </div>
                             </div>
                             </div>

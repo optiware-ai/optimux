@@ -110,16 +110,48 @@ def used_bytes() -> int:
 
 # ------------------------------------------------------------------ what goes in
 
-def _walk(top: str, skip_rebuildable: bool, errors: list[str] | None = None) -> tuple[list[str], int, int, int]:
+def _is_home(path: str) -> bool:
+    """True for Optimux's own data folder: it holds the keys, so it never goes into a
+    project's copy (a Workspace such as /home can contain it, as the sandbox knows)."""
+    try:
+        return os.path.realpath(path) == os.path.realpath(paths.HOME)
+    except OSError:
+        return False
+
+
+# Parts of the data folder that hold keys, chats or copies of them. A project inside
+# one of these (a Workspace set to the data folder itself) is never copied; a
+# Workspace kept elsewhere under the data folder (e.g. ~/.optimux/workspace) is fine.
+HOME_PRIVATE = ("config", "data", "memory", "skills", "backups", "snapshots", "logs", "legacy")
+
+
+def is_private_home_path(path: str) -> bool:
+    """True for the data folder itself or anything inside its private parts."""
+    try:
+        real, home = os.path.realpath(path), os.path.realpath(paths.HOME)
+    except OSError:
+        return False
+    if real == home:
+        return True
+    return any(real == os.path.join(home, p) or real.startswith(os.path.join(home, p) + os.sep)
+               for p in HOME_PRIVATE)
+
+
+def _walk(top: str, skip_rebuildable: bool, errors: list[str] | None = None,
+          home_found: list[str] | None = None) -> tuple[list[str], int, int, int]:
     """Files, symlinks and folders under top (never following links), with the total
     size; and how much the skipped rebuildable folders hold. Folders that can't be
-    read are added to errors."""
+    read are added to errors. Optimux's own data folder is never entered; when
+    home_found is given, its path is added there."""
     entries, size, skipped_dirs, skipped_bytes = [top], 0, 0, 0
     onerror = (lambda e: errors.append(e.filename)) if errors is not None else None
     for dirpath, dirnames, filenames in os.walk(top, followlinks=False, onerror=onerror):
         keep = []
         for d in dirnames:
             full = os.path.join(dirpath, d)
+            if home_found is not None and not os.path.islink(full) and _is_home(full):
+                home_found.append(full)
+                continue
             if skip_rebuildable and d in REBUILDABLE and not os.path.islink(full):
                 skipped_dirs += 1
                 skipped_bytes += _tree_size(full)
@@ -217,7 +249,17 @@ def plan(kind: str, projects: list[str] | None = None, skip_rebuildable: bool = 
             root = _workspace_root()
         for name in _choose_projects(root, projects) if root else []:
             full = os.path.join(root, name)
-            entries, size, sd, sb = _walk(full, skip_rebuildable)
+            if is_private_home_path(full):
+                # The data folder, or a part of it, seen as a project (the Workspace folder
+                # is set to the data folder): it holds keys and chats, so never here
+                left_out.append(f"{name}/ (part of Optimux's own data folder, with your keys: only in Data "
+                                "and Everything snapshots)")
+                continue
+            home_inside: list[str] = []
+            entries, size, sd, sb = _walk(full, skip_rebuildable, home_found=home_inside)
+            for h in home_inside:
+                left_out.append(f"{name}/{os.path.relpath(h, full)}/ (Optimux's own data folder, with your keys: "
+                                "only in Data and Everything snapshots)")
             skipped["dirs"] += sd
             skipped["bytes"] += sb
             files = sum(1 for e in entries if not os.path.isdir(e) or os.path.islink(e))
@@ -591,12 +633,14 @@ def _create(kind: str, note: str, p: dict, skip_rebuildable: bool, auto: bool, s
         "includes_secrets": kind in ("data", "full") and any(i["path"] in ("secrets.env", "auth.json") for i in p["items"]),
         "skip_rebuildable": skip_rebuildable if kind != "data" else False,
         "rebuildable": sorted(REBUILDABLE), "left_out": p["left_out"],
+        "home_excluded": True,          # projects were checked for the data folder (exports: plain download)
         "items": [{k: v for k, v in i.items() if k not in ("source", "private")} for i in p["items"]],
         "projects": p["projects"], "total_bytes": p["total_bytes"],
     }
     # The list shows what is inside from this file, without opening the archive
     meta = {k: manifest[k] for k in ("id", "kind", "created", "note", "auto", "includes_secrets",
-                                      "optimux_version", "total_bytes", "items", "left_out", "skip_rebuildable")}
+                                      "optimux_version", "total_bytes", "items", "left_out", "skip_rebuildable",
+                                      "home_excluded")}
     meta["projects"] = [x["name"] for x in p["projects"]]
     meta["status"] = "running"
     _write_meta(sid, meta)
@@ -616,7 +660,8 @@ def _create(kind: str, note: str, p: dict, skip_rebuildable: bool, auto: bool, s
                     w.add(db_copy, arc, private=True)
                 elif os.path.isdir(src) and not os.path.islink(src):
                     errors: list[str] = []
-                    entries, _, _, _ = _walk(src, skip_rebuildable and item.get("project", False), errors)
+                    entries, _, _, _ = _walk(src, skip_rebuildable and item.get("project", False), errors,
+                                             home_found=[] if item.get("project") else None)
                     w.unreadable += [f"{arc}/{os.path.relpath(e, src)}" for e in errors if e]
                     for e in entries:
                         rel = os.path.relpath(e, src)

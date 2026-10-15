@@ -734,7 +734,7 @@ A **snapshot** is a copy kept on this machine, so you can try something and go b
 
 - **Everything** (the default, recommended) holds your data and all your projects, in one snapshot taken at the same moment. Use it before an experiment, so you can go back fully.
 - **Data only** holds your settings, models and routing, memory, skills, the database (chats, usage and costs, memory history, sign-ins) and your keys (`secrets.env`, `auth.json`). It leaves out the daily backups, the snapshots themselves, logs and `legacy/`.
-- **Workspace only** holds your projects (all of them, or the ones you tick), each with its project memory file. Folders that can be rebuilt (`node_modules`, `.venv`, `venv`, `__pycache__` and tool caches) are skipped unless you untick the box. Archived projects are not included, and a project folder that is a link to another folder is not followed.
+- **Workspace only** holds your projects (all of them, or the ones you tick), each with its project memory file. Folders that can be rebuilt (`node_modules`, `.venv`, `venv`, `__pycache__` and tool caches) are skipped unless you untick the box. Archived projects are not included, a project folder that is a link to another folder is not followed, and Optimux's own data folder (with your keys) is never copied into a project, even when a project contains it.
 
 Choosing Data only or Workspace only shows a yellow note saying what will **not** be saved. **Take snapshot** then asks first, naming what is left out (including projects you didn't tick): **Take Everything instead**, **Proceed with only my data** / **only the selected projects**, or **Cancel**.
 
@@ -748,7 +748,26 @@ A file that changes while it is copied (a log, a database in use) is stored as i
 
 **Space.** Sizes are counted before compression, so the archive is usually smaller. Snapshots may use up to the limit set in Backups (5 GB by default), and never the last 200 MB of free disk. To make room, Optimux removes its own **automatic** snapshots, oldest first. Yours are never removed automatically: delete them yourself when you no longer need them.
 
-A snapshot lives on the same disk as the data, so it doesn't protect you against losing the disk. Keep a copy elsewhere too.
+A snapshot lives on the same disk as the data, so it doesn't protect you against losing the disk. Keep a copy elsewhere too: download it.
+
+### Downloading a snapshot
+
+In a snapshot's **Details**, **Download this snapshot…** prepares a copy to keep on your computer or another disk. A snapshot with your keys (Data, Everything) only leaves the server **encrypted**, with [age](https://age-encryption.org):
+
+- **Encrypt with a one-time key** (recommended): Optimux makes a key and shows it **once**. Copy it or **Save the key as a file**, tick **I have saved the key**, then download. Optimux doesn't keep the key: without it, nobody can open the file, and neither can you if you lose it. Keep the key apart from the file, for example in a password manager.
+- **Encrypt to my public key**: paste an `age1…` key or your SSH public key (`ssh-ed25519 …` or `ssh-rsa …`); only your secret key opens it. **Remember this public key** saves it for next time. **How do I get a public key?** in the panel walks you through it:
+    1. Use a key from **the computer where you will open the download**, never one made on the server (the secret half must not live next to the backup).
+    2. Most developers already have one: on your computer, `cat ~/.ssh/id_ed25519.pub` (or `id_rsa.pub`; on Windows, `type $env:USERPROFILE\.ssh\id_ed25519.pub`).
+    3. None yet: `ssh-keygen -t ed25519`, or a key just for backups with `age-keygen -o ~/optimux-backup.key` (it prints `Public key: age1…`).
+    4. Paste only the public part: the `.pub` line or the `age1…` key, never the secret file. Hardware-token keys (`sk-ssh-…`) don't work with age.
+- **No encryption**: only for a Workspace snapshot, which holds no keys.
+
+The download link works for one hour. To open the file on your computer, install age (`apt install age`, `brew install age`) and run the command shown, for example:
+
+```bash
+age -d -i optimux-key-2026-10-15_093000-full.txt -o snapshot.tar.gz optimux-snapshot-2026-10-15_093000-full.tar.gz.age
+mkdir -m 700 restore && tar -xzf snapshot.tar.gz -C restore
+```
 
 ### Backing up, starting over, moving
 
