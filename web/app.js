@@ -833,6 +833,13 @@ createApp({
             } catch (error) { snapError.value = 'The snapshot could not be started.'; }
             finally { snapBusy.value = false; }
         };
+        // Copy buttons on the paths: green "Copied ✓" for two seconds, like the README's
+        const snapCopied = ref({});
+        const snapCopy = async (key, text) => {
+            if (!await writeClipboard(text)) return;
+            snapCopied.value[key] = true;
+            setTimeout(() => { delete snapCopied.value[key]; }, 2000);
+        };
         // Delete asks inside the row (snapDeleting = the id waiting for an answer)
         const snapDeleting = ref('');
         const snapReadme = ref({});          // id -> README text (or an error), shown in Details
@@ -2362,7 +2369,7 @@ createApp({
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
-            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
+            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
