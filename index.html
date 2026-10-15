@@ -448,8 +448,82 @@
 
                 <!-- Tab Content: Models -->
                 <div v-if="settingsTab === 'models'" class="overflow-y-auto flex-1 pr-2">
-                    <div class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6">
-                        <h3 class="font-bold text-gray-200 mb-4">Add Model</h3>
+                    <!-- v0.3: add a model from the catalog (offline list; online on Refresh only) -->
+                    <div class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6 space-y-4">
+                        <h3 class="font-bold text-gray-200 flex items-center">Add a model<help-tip wide>
+                            <p>Pick a provider, then one of its models. Prices and context sizes come from the list Optimux ships with (LiteLLM's), so this works with no network. With the online catalog on, <b>Refresh</b> can update them.</p>
+                            <p>An API key belongs to a provider, not to a model: once your OpenAI key is saved, every OpenAI model uses it.</p>
+                        </help-tip></h3>
+                        <div>
+                            <label class="text-[13px] text-gray-400 block mb-1">Provider</label>
+                            <select :value="catPid" @change="pickProvider($event.target.value)" class="w-full sm:w-96 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
+                                <option value="" disabled>Choose a provider…</option>
+                                <option v-for="p in cat.providers" :key="p.id" :value="p.id">{{ p.label }}{{ p.env ? (p.key_saved ? '  ✓ key saved' : '') : '' }}</option>
+                                <option value="other">Other (any LiteLLM model ID, by hand)</option>
+                            </select>
+                        </div>
+
+                        <template v-if="catProvider">
+                            <div>
+                                <label class="text-[13px] text-gray-400 block mb-1">Model <span class="text-gray-500">({{ catVisible.length }} shown<template v-if="catRows.length !== catVisible.length"> of {{ catRows.length }}</template>; cheapest first; prices in USD per 1 million tokens)</span></label>
+                                <select :value="catModel" @change="catChoose($event.target.value)" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[14px] text-gray-100 focus:border-blue-500 outline-none font-mono">
+                                    <option value="" disabled>Choose a model…</option>
+                                    <option v-for="r in catVisible" :key="r.id" :value="r.id">{{ r.id }}  ·  in {{ fmtMtok(r.input) }} / out {{ fmtMtok(r.output) }}  ·  {{ fmtCtx(r.context) }}{{ configuredIds.has(r.id) ? '  · added' : '' }}{{ r.new ? '  · new, price unknown' : '' }}</option>
+                                </select>
+                                <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[13px] text-gray-400">
+                                    <label class="flex items-center gap-1.5"><input type="checkbox" v-model="catToolsOnly" class="w-3.5 h-3.5"> Only models that can use tools<help-tip>The Simple and Complex roles run commands, which needs tool support. A Conductor doesn't.</help-tip></label>
+                                    <label class="flex items-center gap-1.5"><input type="checkbox" v-model="catHideRetired" class="w-3.5 h-3.5"> Hide retired models</label>
+                                    <label v-if="catInfo && catInfo.models_refreshed" class="flex items-center gap-1.5"><input type="checkbox" v-model="catMineOnly" class="w-3.5 h-3.5"> Only models my key can use</label>
+                                </div>
+                            </div>
+
+                            <div v-if="catSelected" class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[13px]">
+                                <div class="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2"><div class="text-gray-500 text-[12px]">Input</div><div class="text-gray-100 font-semibold">{{ fmtMtok(catSelected.input) }}</div></div>
+                                <div class="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2"><div class="text-gray-500 text-[12px]">Output</div><div class="text-gray-100 font-semibold">{{ fmtMtok(catSelected.output) }}</div></div>
+                                <div class="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2"><div class="text-gray-500 text-[12px]">Cached input</div><div class="text-gray-100 font-semibold">{{ fmtMtok(catSelected.cached) }}</div></div>
+                                <div class="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2"><div class="text-gray-500 text-[12px]">Context</div><div class="text-gray-100 font-semibold">{{ fmtCtx(catSelected.context) }}</div></div>
+                                <div class="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2"><div class="text-gray-500 text-[12px]">Tools / reasoning</div><div class="text-gray-100 font-semibold">{{ catSelected.tools === false ? 'no' : catSelected.tools ? 'yes' : '?' }} / {{ catSelected.reasoning ? 'yes' : catSelected.reasoning === false ? 'no' : '?' }}</div></div>
+                            </div>
+                            <div v-if="catSelected && catSelected.retired" class="text-[13px] text-red-300">The provider retired this model on {{ catSelected.deprecated }}: requests to it will probably fail. Choose a newer one.</div>
+                            <div v-else-if="catSelected && catSelected.deprecated" class="text-[13px] text-gray-400">The provider will retire this model on {{ catSelected.deprecated }}.</div>
+                            <div v-if="catSelected && catSelected.new" class="text-[13px] text-yellow-300">This model is new: the price list doesn't know it yet. Enter its prices below (from the provider's pricing page), or costs will show as unknown.</div>
+
+                            <div v-if="catSelected" class="grid sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-[13px] text-gray-400 block mb-1">Display name</label>
+                                    <input v-model="catName" type="text" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="text-[13px] text-gray-400 block mb-1">API key</label>
+                                    <div v-if="!catProvider.env" class="text-[14px] text-gray-300 py-2">Runs on this machine: no key needed. Optimux reaches Ollama at <code>OLLAMA_API_BASE</code> (default <code>http://localhost:11434</code>).</div>
+                                    <div v-else-if="catProvider.key_saved && !catReplaceKey" class="flex items-center gap-3 py-2 text-[14px]">
+                                        <span class="text-green-400">✓ Your {{ catProvider.label }} key is saved</span> <code class="text-gray-500 text-[12px]">{{ catProvider.env }}</code>
+                                        <button type="button" @click="catReplaceKey = true" class="text-[13px] text-blue-400 hover:underline">Replace</button>
+                                    </div>
+                                    <div v-else>
+                                        <input v-model="catKey" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true" data-bwignore :placeholder="'Your ' + catProvider.label + ' key (required)'" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
+                                        <div class="text-[12px] text-gray-500 mt-1">Saved as <code>{{ catProvider.env }}</code> in <code>~/.optimux/secrets.env</code> (readable only by Optimux). <a :href="catProvider.keys_url" target="_blank" rel="noopener" class="text-blue-400 hover:underline">Get a key</a></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div v-if="catSelected">
+                                <label class="flex items-center gap-2 text-[13px] text-gray-400"><input type="checkbox" v-model="catOwnPrices" class="w-3.5 h-3.5" :disabled="catSelected.new"> Use my own prices for this model (e.g. a discount, or a price the list doesn't have yet)</label>
+                                <div v-if="catOwnPrices || catSelected.new" class="flex gap-3 mt-2">
+                                    <input v-model="newModelPrices.input_cost_per_mtok" type="number" min="0" step="any" placeholder="Input $/1M" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
+                                    <input v-model="newModelPrices.output_cost_per_mtok" type="number" min="0" step="any" placeholder="Output $/1M" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
+                                    <input v-model="newModelPrices.cached_input_cost_per_mtok" type="number" min="0" step="any" placeholder="Cached $/1M" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-3">
+                                <button type="button" @click="addCatalogModel" :disabled="!catSelected || catBusy === 'add' || configuredIds.has(catModel)" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-[15px] font-bold disabled:opacity-50">{{ configuredIds.has(catModel) ? 'Already added' : (catBusy === 'add' ? 'Adding…' : 'Add model') }}</button>
+                                <span v-if="catMsg" :class="['text-[13px]', catMsg.ok ? 'text-green-400' : 'text-red-400']">{{ catMsg.text }}</span>
+                            </div>
+                        </template>
+
+                        <div v-if="catPid === 'other'">
+                            <p class="text-[13px] text-gray-400 mb-3">Any model LiteLLM can route, with its provider prefix (e.g. <code>together_ai/…</code>, <code>bedrock/…</code>). Prices are optional: without them, Optimux uses LiteLLM's list, or shows the cost as unknown.</p>
                         <form @submit.prevent="addCustomModel" class="flex flex-col gap-4">
                             <div class="flex gap-3">
                                 <div class="flex-1">
@@ -463,16 +537,16 @@
                             </div>
                             <div class="flex gap-3">
                                 <div class="flex-1">
-                                    <label class="text-[13px] text-gray-400 block mb-1">Environment Key Variable (Optional)</label>
+                                    <label class="text-[13px] text-gray-400 block mb-1">Key variable <span class="text-gray-500">(empty for local models that need no key)</span></label>
                                     <input v-model="newModelEnvKey" type="text" placeholder="e.g. GROQ_API_KEY" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none font-mono uppercase">
                                 </div>
                                 <div class="flex-1" :class="{'opacity-50 pointer-events-none': !newModelEnvKey}">
-                                    <label class="text-[13px] text-gray-400 block mb-1">API Key for Provider (Optional)</label>
+                                    <label class="text-[13px] text-gray-400 block mb-1">API key <span class="text-gray-500">(needed once per provider; empty if already saved)</span></label>
                                     <input v-model="newModelApiKey" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true" data-bwignore placeholder="sk-..." class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
                                 </div>
                             </div>
                             <div>
-                                <label class="text-[13px] text-gray-400 block mb-1">Prices in USD per million tokens (optional; overrides LiteLLM's price list)</label>
+                                <label class="text-[13px] text-gray-400 block mb-1">Prices in USD per million tokens <span class="text-gray-500">(only to override LiteLLM's list)</span></label>
                                 <div class="flex gap-3">
                                     <input v-model="newModelPrices.input_cost_per_mtok" type="number" min="0" step="any" placeholder="Input" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
                                     <input v-model="newModelPrices.output_cost_per_mtok" type="number" min="0" step="any" placeholder="Output" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
@@ -481,6 +555,68 @@
                             </div>
                             <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-[15px] font-bold transition self-end">Add Model</button>
                         </form>
+                        </div>
+                    </div>
+
+                    <!-- v0.3: prices of the chosen provider's models -->
+                    <div v-if="catProvider" class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6">
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                            <h3 class="font-bold text-gray-200">Prices: {{ catProvider.label }} <span class="text-[13px] font-normal text-gray-500">USD per 1 million tokens</span></h3>
+                            <input v-model="catSearch" placeholder="Search models…" class="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-[14px] text-gray-100 outline-none focus:border-blue-500 w-56">
+                        </div>
+                        <div class="overflow-x-auto max-h-[28rem] overflow-y-auto border border-gray-800 rounded-lg">
+                            <table class="w-full text-[13px]">
+                                <thead class="sticky top-0 bg-gray-900 text-gray-400">
+                                    <tr>
+                                        <th v-for="c in [['id','Model'],['input','Input'],['output','Output'],['cached','Cached'],['context','Context']]" :key="c[0]" @click="catSortBy(c[0])"
+                                            :class="['px-3 py-2 font-semibold cursor-pointer select-none hover:text-gray-200 whitespace-nowrap', c[0] === 'id' ? 'text-left' : 'text-right']">{{ c[1] }}<span v-if="catSort.key === c[0]">{{ catSort.desc ? ' ▼' : ' ▲' }}</span></th>
+                                        <th class="px-3 py-2 font-semibold text-center">Tools</th>
+                                        <th class="px-3 py-2 font-semibold text-center">Reasoning</th>
+                                        <th v-if="catInfo && catInfo.models_refreshed" class="px-3 py-2 font-semibold text-center">Your key</th>
+                                        <th class="px-3 py-2"></th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-800">
+                                    <tr v-for="r in catVisible" :key="r.id" :class="['hover:bg-gray-800/60', r.id === catModel ? 'bg-blue-500/10' : '']">
+                                        <td class="px-3 py-1.5 font-mono text-gray-200 whitespace-nowrap">{{ r.id }} <span v-if="configuredIds.has(r.id)" class="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 font-sans">added</span><span v-if="r.new" class="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-300 font-sans">new</span><span v-if="r.retired" class="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-300 font-sans" :title="'The provider retired it on ' + r.deprecated">retired</span><span v-else-if="r.deprecated" class="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 font-sans" :title="'The provider will retire it on ' + r.deprecated">retires {{ r.deprecated }}</span></td>
+                                        <td class="px-3 py-1.5 text-right text-gray-200 tabular-nums">{{ fmtMtok(r.input) }}</td>
+                                        <td class="px-3 py-1.5 text-right text-gray-200 tabular-nums">{{ fmtMtok(r.output) }}</td>
+                                        <td class="px-3 py-1.5 text-right text-gray-400 tabular-nums">{{ fmtMtok(r.cached) }}</td>
+                                        <td class="px-3 py-1.5 text-right text-gray-400 tabular-nums">{{ fmtCtx(r.context) }}</td>
+                                        <td class="px-3 py-1.5 text-center">{{ r.tools ? '✓' : r.tools === false ? '·' : '?' }}</td>
+                                        <td class="px-3 py-1.5 text-center">{{ r.reasoning ? '✓' : r.reasoning === false ? '·' : '?' }}</td>
+                                        <td v-if="catInfo && catInfo.models_refreshed" class="px-3 py-1.5 text-center">{{ r.available ? '✓' : '·' }}</td>
+                                        <td class="px-3 py-1.5 text-right"><button @click="catChoose(r.id)" class="text-[12px] text-blue-400 hover:underline">Choose</button></td>
+                                    </tr>
+                                    <tr v-if="!catVisible.length"><td colspan="9" class="px-3 py-4 text-center text-gray-500 italic">No model matches.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="text-[12px] text-gray-500 mt-2">Prices from LiteLLM's list: {{ cat.prices_refreshed ? 'downloaded ' + fmtWhen(cat.prices_refreshed) : 'the copy shipped with this Optimux' }}. Providers change prices: check their pricing page before relying on them. Prices you set on a model win.</p>
+                    </div>
+
+                    <!-- v0.3: online catalog (opt-in; only on Refresh) -->
+                    <div class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6 space-y-3">
+                        <h3 class="font-bold text-gray-200 flex items-center">Online catalog<help-tip wide>
+                            <p>Off by default: Optimux then contacts nothing for the catalog, and the list is as fresh as your Optimux version.</p>
+                            <p>When on, nothing runs in the background. Only a click on Refresh contacts:</p>
+                            <p><b>Refresh prices:</b> GitHub (<code>raw.githubusercontent.com</code>), to download LiteLLM's public price list. Providers don't publish prices through their APIs. Cost metering uses the new prices too.</p>
+                            <p><b>Refresh models:</b> the provider you chose (for example <code>api.openai.com</code>), with your own saved key, to list the models your account can use, including brand-new ones.</p>
+                        </help-tip></h3>
+                        <label class="flex items-start gap-2.5 text-[14px] text-gray-200 cursor-pointer">
+                            <input type="checkbox" :checked="cat.online" @change="setCatalogOnline($event.target.checked)" class="mt-1 w-4 h-4">
+                            <span>Allow Optimux to go online for the model catalog, <b>only when I click Refresh</b>
+                                <span class="block text-[13px] text-gray-400">Prices from GitHub (LiteLLM's public list); models from the provider, with your key. Nothing in the background.</span></span>
+                        </label>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button @click="catRefresh('prices')" :disabled="!cat.online || !!catBusy" class="text-[14px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500 disabled:opacity-40">{{ catBusy === 'prices' ? 'Downloading…' : '↻ Refresh prices' }}</button>
+                            <span class="text-[12px] text-gray-500">last: {{ fmtWhen(cat.prices_refreshed) }}</span>
+                            <template v-if="catProvider">
+                                <button @click="catRefresh('models')" :disabled="(!cat.online && catProvider.env) || !!catBusy || (catProvider.env && !catProvider.key_saved && catPid !== 'openrouter')" class="ml-2 text-[14px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500 disabled:opacity-40">{{ catBusy === 'models' ? 'Asking…' : '↻ Refresh ' + catProvider.label + ' models' }}</button>
+                                <span class="text-[12px] text-gray-500">last: {{ fmtWhen(catInfo && catInfo.models_refreshed) }}<template v-if="catProvider.env && !catProvider.key_saved && catPid !== 'openrouter'"> · save the key first</template><template v-if="!catProvider.env"> · Ollama is on this machine, so this works offline too</template></span>
+                            </template>
+                        </div>
+                        <div v-if="catRefreshMsg" role="status" :class="['text-[13px]', catRefreshMsg.ok ? 'text-green-400' : 'text-red-400']">{{ catRefreshMsg.text }}</div>
                     </div>
 
                     <div>

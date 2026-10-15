@@ -34,7 +34,7 @@ from optimux_backend.core import project_records
 from optimux_backend.core import skills as skills_lib
 from optimux_backend.core import sandbox as sandbox_lib
 from optimux_backend.core import curator
-from optimux_backend.core import exports, snapshots
+from optimux_backend.core import catalog, exports, snapshots
 from optimux_backend.core import auth
 from optimux_backend.core import sessions as chat_store
 from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
@@ -63,6 +63,12 @@ try:
     print(f"[Optimux] database backup: {store.backup()}")
 except Exception as e:
     print(f"[Optimux] database backup failed: {e}")
+try:
+    _n = catalog.load_saved_prices()  # a price list downloaded earlier with Refresh (no network here)
+    if _n:
+        print(f"[Optimux] model prices: using the list downloaded earlier ({_n} models)")
+except Exception as e:
+    print(f"[Optimux] loading the downloaded model prices failed: {e}")
 try:
     exports.sweep()                 # encrypted snapshot downloads older than an hour
 except Exception as e:
@@ -594,6 +600,53 @@ async def system_info():
         "paths": paths.layout(),
         "migrations": paths.migration_log(20),
     }
+
+
+# ---------------------------------------------------------------- model catalog (v0.3)
+# Offline unless the user turns on online_catalog; even then, only on Refresh.
+
+class CatalogOnlinePayload(BaseModel):
+    on: bool
+
+
+class CatalogRefreshPayload(BaseModel):
+    what: str                      # prices | models
+    provider: str = ""
+
+
+@app.get("/api/catalog")
+async def catalog_summary_api():
+    return await asyncio.to_thread(catalog.summary)
+
+
+@app.get("/api/catalog/{pid}")
+async def catalog_models_api(pid: str):
+    try:
+        return await asyncio.to_thread(catalog.models, pid)
+    except catalog.CatalogError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/api/catalog/online")
+async def catalog_online_api(payload: CatalogOnlinePayload):
+    """Allow (or stop) the Models screen's Refresh from contacting providers and GitHub."""
+    try:
+        update_settings(online_catalog=payload.on)
+    except (ValidationError, ScopeError) as e:
+        raise HTTPException(422, str(e))
+    return {"online": payload.on}
+
+
+@app.post("/api/catalog/refresh")
+async def catalog_refresh_api(payload: CatalogRefreshPayload):
+    try:
+        if payload.what == "prices":
+            return await asyncio.to_thread(catalog.refresh_prices)
+        if payload.what == "models":
+            return await asyncio.to_thread(catalog.refresh_models, payload.provider)
+    except catalog.CatalogError as e:
+        raise HTTPException(422, str(e))
+    raise HTTPException(422, "what must be prices or models.")
 
 
 # ---------------------------------------------------------------- snapshots (v0.3)

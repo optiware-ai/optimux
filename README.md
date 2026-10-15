@@ -154,6 +154,7 @@ Memory costs tokens on every model call, so short and precise memory is cheaper 
 **Costs and data**
 - Live cost while a reply runs, and a cost line under every reply.
 - **Dashboard**: overview, usage by project, role, model and skill, a 30-day cost chart, budgets, history with filters.
+- **Model catalog**: pick a provider, then a model from its list with prices per million tokens and context size, in a sortable price table, offline. An opt-in online catalog refreshes prices (LiteLLM's public list) and asks the provider which models your key can use, only when you click Refresh.
 - **Monthly budgets** per project (block or warn) and **cost warnings** before paid one-off actions.
 - Every chat and every model call is stored in SQLite and **survives restarts**, with daily backups.
 - **Snapshots** of everything (or only your data, or only your projects), kept on the machine (Dashboard → Backups): see what goes in, take one in the background, within a space limit. Download them **encrypted** (age): with a one-time key or your own public key.

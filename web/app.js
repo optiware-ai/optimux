@@ -1549,6 +1549,7 @@ createApp({
             if (id === 'guide') loadGuide();
             if (id === 'execution') { fetchSandbox(); commandEnvText.value = (appSettings.value.command_env || []).join('\n'); }
             if (id === 'skills') fetchSkills();
+            if (id === 'models') { fetchCatalog(); loadProviderModels(); }
             if (id === 'backups') { fetchSnapshots(); fetchProjectsList().then(snapSyncProjects); }
         };
         const dashboardHash = () => `#/dashboard/${settingsTab.value}`;
@@ -1603,6 +1604,137 @@ createApp({
             }
         };
 
+        // ---- v0.3: the model catalog (Models screen). Offline list from LiteLLM;
+        // online only when allowed AND on Refresh.
+        const cat = ref({ online: false, providers: [], prices_refreshed: null, prices_count: 0 });
+        const catPid = ref('');                // '' = not chosen; 'other' = any LiteLLM model ID, by hand
+        const catRows = ref([]);
+        const catInfo = ref(null);
+        const catModel = ref('');
+        const catToolsOnly = ref(true);
+        const catMineOnly = ref(false);
+        const catHideRetired = ref(true);
+        const catSearch = ref('');
+        const catSort = ref({ key: 'input', desc: false });
+        const catBusy = ref('');
+        const catMsg = ref(null);
+        const catRefreshMsg = ref(null);      // the Online catalog panel's own message
+        const catOwnPrices = ref(false);
+        const catKey = ref('');
+        const catReplaceKey = ref(false);
+        const catName = ref('');
+        const catProvider = Vue.computed(() => cat.value.providers.find(p => p.id === catPid.value) || null);
+        // "anthropic/claude-x" and "claude-x" (also openai/) are the same model for LiteLLM
+        const bareId = (id) => (id || '').replace(/^(anthropic|openai)\//, '');
+        const configuredIds = Vue.computed(() => {
+            const ids = new Set();
+            for (const m of [...availableModels.value, ...setupModels.value]) { ids.add(m.id); ids.add(bareId(m.id)); }
+            return ids;
+        });
+        const fetchCatalog = async () => {
+            try { const r = await fetch('/api/catalog'); if (r.ok) cat.value = await r.json(); }
+            catch (error) { console.error('Failed to load the model catalog', error); }
+        };
+        const loadProviderModels = async () => {
+            if (!catPid.value || catPid.value === 'other') { catRows.value = []; catInfo.value = null; return; }
+            try {
+                const r = await fetch(`/api/catalog/${encodeURIComponent(catPid.value)}`);
+                if (!r.ok) return;
+                const d = await r.json();
+                catInfo.value = d; catRows.value = d.models;
+                catMineOnly.value = !!d.models_refreshed;
+            } catch (error) { console.error('Failed to load models', error); }
+        };
+        const pickProvider = async (pid) => {
+            catPid.value = pid; catModel.value = ''; catName.value = ''; catKey.value = '';
+            catReplaceKey.value = false; catOwnPrices.value = false; catMsg.value = null; catSearch.value = '';
+            await loadProviderModels();
+        };
+        const catVisible = Vue.computed(() => {
+            const q = catSearch.value.trim().toLowerCase();
+            const { key, desc } = catSort.value;
+            const rows = catRows.value.filter(r =>
+                (!catToolsOnly.value || r.tools !== false) &&
+                (!catMineOnly.value || r.available !== false) &&
+                (!catHideRetired.value || !r.retired || r.id === catModel.value) &&
+                (!q || r.id.toLowerCase().includes(q)));
+            const val = (r) => key === 'id' ? r.id : r[key];
+            return rows.sort((a, b) => {
+                const x = val(a), y = val(b);
+                if (x == null && y == null) return 0;
+                if (x == null) return 1;               // unknown prices always last
+                if (y == null) return -1;
+                const c = typeof x === 'string' ? x.localeCompare(y) : x - y;
+                return desc ? -c : c;
+            });
+        });
+        const catSelected = Vue.computed(() => catRows.value.find(r => r.id === catModel.value) || null);
+        const catSortBy = (key) => {
+            catSort.value = catSort.value.key === key ? { key, desc: !catSort.value.desc } : { key, desc: false };
+        };
+        const fmtMtok = (v) => v == null ? '—' : v === 0 ? 'free' : '$' + (v < 0.1 ? v.toFixed(3) : v < 10 ? v.toFixed(2) : v.toFixed(1));
+        const fmtCtx = (n) => !n ? '—' : n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`;
+        const fmtWhen = (ts) => ts ? new Date(ts * 1000).toLocaleString() : 'never';
+        const catChoose = (id) => {
+            catModel.value = id;
+            catName.value = id.split('/').pop();
+            catOwnPrices.value = false;
+            const r = catRows.value.find(x => x.id === id);
+            newModelPrices.value = { input_cost_per_mtok: r && r.input != null && r.new ? r.input : '',
+                                     output_cost_per_mtok: r && r.output != null && r.new ? r.output : '',
+                                     cached_input_cost_per_mtok: '' };
+        };
+        const catNeedsKey = Vue.computed(() => !!(catProvider.value && catProvider.value.env &&
+            (!catProvider.value.key_saved || catReplaceKey.value)));
+        const addCatalogModel = async () => {
+            const p = catProvider.value;
+            if (!p || !catModel.value) return;
+            catMsg.value = null;
+            if (catNeedsKey.value && !catKey.value.trim()) {
+                catMsg.value = { ok: false, text: `Paste your ${p.label} API key: Optimux can't call ${p.label} without it.` };
+                return;
+            }
+            catBusy.value = 'add';
+            try {
+                if (catNeedsKey.value) {
+                    const k = await fetch('/api/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ env_key: p.env, api_key: catKey.value.trim() }) });
+                    if (!k.ok) { catMsg.value = { ok: false, text: detailText((await readJson(k)).detail, 'The key was not saved.') }; return; }
+                }
+                const r = await fetch('/api/models', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: catModel.value, name: catName.value.trim() || catModel.value,
+                        env_key: p.env || '', ...(catOwnPrices.value || (catSelected.value && catSelected.value.new)
+                            ? pricePayload(newModelPrices.value) : pricePayload({})) }) });
+                if (!r.ok) { catMsg.value = { ok: false, text: detailText((await readJson(r)).detail, 'The model was not added.') }; return; }
+                pushToast({ title: 'Model added', text: `${catName.value || catModel.value}: assign it in Routing to use it.` });
+                catKey.value = ''; catReplaceKey.value = false; catModel.value = ''; catName.value = '';
+                newModelPrices.value = { input_cost_per_mtok: '', output_cost_per_mtok: '', cached_input_cost_per_mtok: '' };
+                await fetchConfig(); await fetchCatalog(); await loadProviderModels();
+            } catch (error) { catMsg.value = { ok: false, text: 'The model was not added.' }; }
+            finally { catBusy.value = ''; }
+        };
+        const setCatalogOnline = async (on) => {
+            try {
+                const r = await fetch('/api/catalog/online', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ on }) });
+                if (r.ok) { cat.value.online = on; appSettings.value.online_catalog = on; if (catInfo.value) catInfo.value.online = on; }
+            } catch (error) { console.error('Failed to change the online catalog setting', error); }
+        };
+        const catRefresh = async (what) => {
+            catBusy.value = what; catRefreshMsg.value = null;
+            try {
+                const r = await fetch('/api/catalog/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ what, provider: catPid.value }) });
+                const d = await readJson(r);
+                if (!r.ok) { catRefreshMsg.value = { ok: false, text: detailText(d.detail, 'The refresh failed.') }; return; }
+                catRefreshMsg.value = { ok: true, text: what === 'prices'
+                    ? `Prices updated: ${d.count} models. Costs in Usage use them from now on.`
+                    : `${catProvider.value ? catProvider.value.label : 'The provider'} lists ${d.count} models for your key.` };
+                await fetchCatalog(); await loadProviderModels();
+                if (what === 'prices') await fetchConfig();     // configured models' "price known" follows
+            } catch (error) { catRefreshMsg.value = { ok: false, text: 'The refresh failed.' }; }
+            finally { catBusy.value = ''; }
+        };
         const addCustomModel = async () => {
             if (!newModelId.value || !newModelName.value) return;
             try {
@@ -2417,7 +2549,7 @@ createApp({
             memoryTab, memoryContent, fetchMemory, saveMemory, showMemorySaved,
             copySession, copyLabel,
             stopGeneration, isStopping,
-            newModelPrices, modelNotices, testingModels, editingPrices, togglePriceEdit, savePrices, testModel,
+            newModelPrices, modelNotices, cat, catPid, catRows, catInfo, catModel, catToolsOnly, catMineOnly, catHideRetired, catSearch, catSort, catBusy, catMsg, catRefreshMsg, catOwnPrices, catKey, catReplaceKey, catName, catProvider, configuredIds, catVisible, catSelected, catNeedsKey, pickProvider, catSortBy, fmtMtok, fmtCtx, fmtWhen, catChoose, addCatalogModel, setCatalogOnline, catRefresh, testingModels, editingPrices, togglePriceEdit, savePrices, testModel,
             usageData, usagePeriod, cooldowns, fetchUsage, sessionUsage, clearCooldown,
             fmtTokens, fmtCost, fmtMs, modelName,
             newChat, canEscalate, escalate, continueTurn, pendingOutside, pendingWorkdir,

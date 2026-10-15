@@ -363,12 +363,26 @@ A **turn** is one request and its reply. A **step** is one model call inside it:
 
 ### Adding a model
 
-In **Dashboard → Models → Add Model**:
+In **Dashboard → Models → Add a model**:
 
-- **Model ID**: the provider prefix and model name, as LiteLLM knows it: `gemini/gemini-3.6-flash`, `anthropic/claude-sonnet-5-5`, `openai/gpt-5`, `ollama/llama3.1:8b`.
-- **Display name**: how it appears in menus.
-- **Environment key** and **API key** (optional): the variable name (e.g. `GEMINI_API_KEY`) and the key itself. Keys are stored in `~/.optimux/secrets.env`, readable only by you, never in the repository.
-- **Prices** (optional): input, output and cached-input prices in USD per million tokens. Leave them empty to use LiteLLM's built-in price list; set them when a model is missing from it or your price differs.
+1. **Provider**: OpenAI, Anthropic, Google (Gemini), xAI, Mistral, DeepSeek, Groq, OpenRouter or Ollama (local). "✓ key saved" means its key is already there.
+2. **Model**: the provider's models, cheapest first, with input and output price per million tokens and the context size. By default it shows only models that can use tools (the Simple and Complex roles run commands, which needs them) and hides models the provider has retired.
+3. Check the price tiles (input, output, cached input, context, tools, reasoning), and the **display name**.
+4. **API key**: a key belongs to a provider, not to a model: once your OpenAI key is saved, every OpenAI model uses it, and the form says "✓ saved". When it's missing, the field is required (with a link to get one). Ollama needs none. Keys are stored in `~/.optimux/secrets.env`, readable only by you, never in the repository.
+5. **Use my own prices** only when yours differ (a discount) or the model is new and the list doesn't know its price yet.
+
+Below the form, **Prices** lists every model of the provider in a table you can sort by input or output price, context size or name.
+
+**Other** keeps the free form for any model LiteLLM can route (`together_ai/…`, `bedrock/…`): the model ID with its provider prefix, the key variable (empty for local models), the key (needed once per provider), and prices only to override LiteLLM's list.
+
+### Where the prices come from, and the online catalog
+
+The model list and prices come from the price list of LiteLLM (the library Optimux uses to talk to providers), shipped with Optimux: **no network is needed**, and it is as fresh as your Optimux version. Providers change prices, so check their pricing page before relying on a number.
+
+**Online catalog** (off by default) lets the Models screen go online, **only when you click Refresh**; nothing runs in the background:
+
+- **Refresh prices** downloads LiteLLM's public price list from GitHub (`raw.githubusercontent.com`). Providers don't publish prices through their APIs; this list is what LiteLLM itself uses. Costs in Usage use the new prices from then on, also after a restart. Prices you set on a model still win.
+- **Refresh <provider> models** asks that provider (for example `api.openai.com`), with your own saved key, which models your account can use: the list then marks them ("Your key") and adds brand-new models the price list doesn't know yet. Ollama is asked on this machine, so it works with the online catalog off.
 
 ### Each model card
 

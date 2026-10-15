@@ -144,6 +144,7 @@ class SettingsPayload(BaseModel):
     # v0.3: how much disk the snapshots (Dashboard -> Backups) may use, in GB
     snapshot_limit_gb: float = 5
     snapshot_recipient: str = ""      # a public key remembered for encrypted downloads
+    online_catalog: bool = False      # may the Models screen ask providers and GitHub (on Refresh only)
 
 
 DEFAULT_MAX_STEPS = {"simple": 8, "complex": 25}
