@@ -111,11 +111,21 @@ def model_id(p: dict, key: str) -> str:
 
 
 def _row(p: dict, key: str, info: dict) -> dict:
+    inp, out = _per_mtok(info.get("input_cost_per_token")), _per_mtok(info.get("output_cost_per_token"))
+    cached = _per_mtok(info.get("cache_read_input_token_cost"))
+    # A cloud model listed at 0 in and 0 out has no price in the list (often an
+    # experimental model the provider has switched off), it isn't free. Cost
+    # metering reads it the same way (config_manager.price_source: "unknown").
+    # Local models (no key) and OpenRouter's ":free" models really cost nothing.
+    unpriced = p["env"] is not None and not inp and not out and not key.endswith(":free")
+    if unpriced:
+        inp = out = cached = None
     return {
         "id": model_id(p, key),
-        "input": _per_mtok(info.get("input_cost_per_token")),
-        "output": _per_mtok(info.get("output_cost_per_token")),
-        "cached": _per_mtok(info.get("cache_read_input_token_cost")),
+        "input": inp,
+        "output": out,
+        "cached": cached,
+        "unpriced": unpriced,
         "context": info.get("max_input_tokens") or info.get("max_tokens"),
         "max_output": info.get("max_output_tokens"),
         "tools": bool(info.get("supports_function_calling")),
@@ -164,6 +174,7 @@ def models(pid: str) -> dict:
                 rows[mid] = {"id": mid, "input": extra.get("input"), "output": extra.get("output"),
                              "cached": None, "context": extra.get("context"), "max_output": None,
                              "tools": None, "reasoning": None, "deprecated": None, "retired": False,
+                             "unpriced": extra.get("input") is None,
                              "available": True,
                              "new": True}
     out = sorted(rows.values(), key=lambda r: (r["input"] is None, r["input"] or 0, r["id"]))

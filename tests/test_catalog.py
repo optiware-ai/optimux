@@ -233,3 +233,22 @@ def test_retired_models_are_marked(cat, monkeypatch):
     assert rows["gpt-old-test"]["retired"] is True
     assert rows["gpt-later-test"]["retired"] is False and rows["gpt-later-test"]["deprecated"] == "2999-01-01"
     assert rows["gpt-5"]["retired"] is False
+
+
+def test_a_zero_price_is_not_listed_not_free(cat):
+    """LiteLLM lists some switched-off experimental models at 0: shown as no
+    price (last in the list), the same way cost metering reads them."""
+    import litellm
+    litellm.model_cost["gemini/gemini-exp-test"] = {"litellm_provider": "gemini", "mode": "chat",
+                                                    "input_cost_per_token": 0, "output_cost_per_token": 0}
+    litellm.model_cost["openrouter/acme/model:free"] = {"litellm_provider": "openrouter", "mode": "chat",
+                                                         "input_cost_per_token": 0, "output_cost_per_token": 0}
+    rows = catalog.offline_models("gemini")
+    exp = next(r for r in rows if r["id"] == "gemini/gemini-exp-test")
+    assert exp["unpriced"] and exp["input"] is None and exp["output"] is None
+    assert rows.index(exp) > max(i for i, r in enumerate(rows) if r["input"] is not None)
+    from optimux_backend.core.config_manager import price_source
+    assert price_source("gemini/gemini-exp-test", {}) == "unknown"
+    free = next(r for r in catalog.offline_models("openrouter") if r["id"] == "openrouter/acme/model:free")
+    assert free["input"] == 0 and not free["unpriced"]                # really free
+    assert all(r["input"] == 0 and not r["unpriced"] for r in catalog.offline_models("ollama"))   # local
