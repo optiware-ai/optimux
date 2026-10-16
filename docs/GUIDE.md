@@ -346,6 +346,8 @@ For every new message, the Conductor (one short, cheap call) classifies the requ
 - It can move a chat **up** to Complex at any time.
 - It moves a chat back **down** to Simple only after the previous task finished normally, so an unfinished task is never handed to a weaker model halfway.
 - **Conductor: Off** (in Routing) skips this call entirely: chats start on Simple and only escalation changes the tier. Cheapest, but hard tasks start on the weaker model.
+- **When the Conductor can't decide** (its call fails, it is in a cooldown, or its answer isn't the JSON it was asked for), the request starts on Simple and the chat says so: *The Conductor (…) couldn't decide: … This request starts on the simple tier.* If you see this on every message, the Conductor model doesn't work with these settings: test it in **Models**, or pick another one.
+- To keep it cheap, Optimux asks a **Gemini** Conductor for *minimal* thinking. Models that refuse an extra setting like this (Gemma, for example, served through the Gemini API) are asked again once without it.
 
 ### Escalation and fallback
 

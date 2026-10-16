@@ -93,8 +93,10 @@ def _parse_skill(content: str, skills: dict):
 def conductor_thinking(model: str) -> dict:
     """The Conductor only classifies, so keep thinking as low as the model allows.
     Gemini 3 thinks by default (hidden, billed); "minimal" is its lowest level.
-    Other providers don't think unless asked, so nothing is sent for them."""
-    if model.startswith("gemini/"):
+    Other providers don't think unless asked, so nothing is sent for them.
+    Gemma models are served under gemini/ too but don't think, and Google
+    refuses the setting for them ("Thinking budget is not supported")."""
+    if model.startswith("gemini/") and "gemma" not in model.lower():
         return {"reasoning_effort": "minimal"}
     return {}
 
@@ -115,21 +117,26 @@ async def route_model(prompt: str) -> str:
 async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_mode: bool = False) -> tuple:
     """Ask the Conductor for a tier.
 
-    Returns (tier, conductor_model, usage, duration_ms, skill, plan). skill is the name
+    Returns (tier, conductor_model, usage, duration_ms, skill, plan, note). skill is the name
     the Conductor picked from `skills` (validated), or None. plan (only asked when
     plan_mode is on) says whether a complex task should be planned (v0.4). usage is None when no
     call was made (Conductor off) or the call failed before returning usage.
     Bad output, errors and timeouts all fall back to 'simple'; escalation in
-    main.py recovers if that was wrong.
+    main.py recovers if that was wrong. note says why in that case ("" when the
+    Conductor answered), so the chat can tell the user instead of hiding it.
+    A request the provider refuses (400) is tried once more without the extras
+    (thinking level, JSON mode), which not every model accepts.
     """
     conductor_model = get_routing_config().get("conductor_model", "")
     if not conductor_model:
         raise Exception("Routing not configured. Please assign a Conductor Model (or set it to Off) in Settings.")
     if conductor_model == CONDUCTOR_OFF:
-        return "simple", CONDUCTOR_OFF, None, 0, None, False
+        return "simple", CONDUCTOR_OFF, None, 0, None, False, ""
     if not providers.is_available(conductor_model):
         # Known to be down (quota or repeated errors): don't spend a request
-        return "simple", conductor_model, None, 0, None, False
+        info = providers.cooldown(conductor_model)
+        why = f": {info.summary}" if info and info.summary else ""
+        return "simple", conductor_model, None, 0, None, False, f"it is paused after errors{why}"
     from optimux_backend.core.skills import catalog_text
     catalog = catalog_text(skills) if skills else ""
 
@@ -148,13 +155,25 @@ async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_m
         kwargs["response_format"] = {"type": "json_object"}
 
     usage = None
+    note = ""
     started = time.monotonic()
     try:
-        response = await acompletion(**kwargs)
+        try:
+            response = await acompletion(**kwargs)
+        except litellm.BadRequestError as e:
+            extras = [k for k in ("reasoning_effort", "response_format") if k in kwargs]
+            if not extras:
+                raise
+            print(f"Conductor refused {', '.join(extras)} ({e}); trying again without")
+            response = await acompletion(**{k: v for k, v in kwargs.items() if k not in extras})
         ratelimits.record_response(conductor_model, response)
         usage = getattr(response, "usage", None)
         content = response.choices[0].message.content
-        tier = _parse_complexity(content)
+        try:
+            tier = _parse_complexity(content)
+        except (ValueError, AttributeError, TypeError):
+            print(f"Conductor answer is not JSON: {str(content)[:200]!r}")
+            tier, note = "simple", "its answer wasn't the JSON it was asked for"
         skill = _parse_skill(content, skills or {})
         plan = plan_mode and _parse_plan(content)
     except Exception as e:
@@ -163,4 +182,5 @@ async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_m
         tier = "simple"
         skill = None
         plan = False
-    return tier, conductor_model, usage, int((time.monotonic() - started) * 1000), skill, plan
+        note = f"the call failed: {info.summary}" if info.summary else "the call failed"
+    return tier, conductor_model, usage, int((time.monotonic() - started) * 1000), skill, plan, note

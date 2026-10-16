@@ -67,7 +67,7 @@ async def test_json_mode_only_when_supported(mocker, conductor):
 async def test_returns_usage_and_duration(mocker, conductor):
     resp = create_mock_response('{"complexity": "complex"}', usage={"prompt_tokens": 40, "completion_tokens": 6})
     mocker.patch.object(llm, "acompletion", return_value=resp)
-    tier, model, usage, duration, skill, plan = await route_model_with_usage("refactor everything")
+    tier, model, usage, duration, skill, plan, note = await route_model_with_usage("refactor everything")
     assert (tier, model, usage["prompt_tokens"]) == ("complex", "test-conductor", 40)
     assert isinstance(duration, int) and duration >= 0
 
@@ -75,15 +75,16 @@ async def test_returns_usage_and_duration(mocker, conductor):
 @pytest.mark.asyncio
 async def test_error_or_timeout_falls_back_to_simple(mocker, conductor):
     mocker.patch.object(llm, "acompletion", side_effect=TimeoutError("slow"))
-    tier, model, usage, _, skill, plan = await route_model_with_usage("hi")
+    tier, model, usage, _, skill, plan, note = await route_model_with_usage("hi")
     assert (tier, model, usage) == ("simple", "test-conductor", None)
+    assert note.startswith("the call failed")                     # said in the chat, not hidden
 
 
 @pytest.mark.asyncio
 async def test_conductor_off_makes_no_call(mocker, conductor):
     conductor["conductor_model"] = "off"
     call = mocker.patch.object(llm, "acompletion")
-    assert await route_model_with_usage("hi") == ("simple", "off", None, 0, None, False)
+    assert await route_model_with_usage("hi") == ("simple", "off", None, 0, None, False, "")
     call.assert_not_called()
 
 
@@ -117,3 +118,50 @@ async def test_conductor_picks_only_known_skills(mocker):
     call = mocker.patch.object(llm, "acompletion", return_value=create_mock_response('{"complexity": "simple"}'))
     await route_model_with_usage("x")
     assert "Skills" not in call.call_args.kwargs["messages"][0]["content"]   # no skills: original prompt
+
+
+# ------------------------------------------------------------------ models that refuse the extras (Gemma)
+
+GEMMA_400 = ('GeminiException BadRequestError - {\n  "error": {\n    "code": 400,\n    "message": '
+             '"Thinking budget is not supported for this model.",\n    "status": "INVALID_ARGUMENT"\n  }\n}\n')
+
+
+def bad_request(text=GEMMA_400):
+    import litellm
+    return litellm.BadRequestError(message=text, llm_provider="gemini", model="gemini/gemma-4-26b-it")
+
+
+def test_gemma_gets_no_thinking_level():
+    assert llm.conductor_thinking("gemini/gemma-4-26b-it") == {}
+    assert llm.conductor_thinking("gemini/gemini-2.5-flash") == {"reasoning_effort": "minimal"}
+    assert llm.conductor_thinking("anthropic/claude-haiku-4-5") == {}
+
+
+@pytest.mark.asyncio
+async def test_a_refused_request_is_tried_again_without_the_extras(mocker, conductor):
+    conductor["conductor_model"] = "gemini/gemini-2.5-flash"
+    mocker.patch.object(llm, "_supports_json_mode", return_value=True)
+    call = mocker.patch.object(llm, "acompletion", side_effect=[
+        bad_request(), create_mock_response('{"complexity": "complex"}')])
+    tier, *_, note = await route_model_with_usage("refactor everything")
+    assert (tier, note) == ("complex", "")
+    first, second = (c.kwargs for c in call.call_args_list)
+    assert first["reasoning_effort"] == "minimal" and "response_format" in first
+    assert "reasoning_effort" not in second and "response_format" not in second
+    assert second["messages"] == first["messages"]
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_without_extras_says_why(mocker, conductor):
+    mocker.patch.object(llm, "_supports_json_mode", return_value=False)
+    call = mocker.patch.object(llm, "acompletion", side_effect=bad_request())
+    tier, *_, note = await route_model_with_usage("hi")
+    assert tier == "simple" and call.call_count == 1                 # nothing to drop: no second call
+    assert note == "the call failed: refused (400): Thinking budget is not supported for this model."
+
+
+@pytest.mark.asyncio
+async def test_an_answer_that_is_not_json_is_named(mocker, conductor):
+    mocker.patch.object(llm, "acompletion", return_value=create_mock_response("It is complex, I think."))
+    tier, *_, note = await route_model_with_usage("hi")
+    assert tier == "simple" and "wasn't the JSON" in note

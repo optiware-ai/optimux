@@ -150,7 +150,9 @@ async def test_conductor_skipped_when_cooling_down(mocker):
     mocker.patch.object(llm, "get_routing_config", return_value={"conductor_model": "cond"})
     providers.record_failure("cond", rate_limit(GEMINI_QUOTA))
     call = mocker.patch.object(llm, "acompletion")
-    assert await llm.route_model_with_usage("hi") == ("simple", "cond", None, 0, None, False)
+    result = await llm.route_model_with_usage("hi")
+    assert result[:6] == ("simple", "cond", None, 0, None, False)
+    assert result[6].startswith("it is paused after errors: quota exhausted")
     call.assert_not_called()
 
 
@@ -180,3 +182,12 @@ def test_model_not_found_is_one_clear_line():
     info = providers.classify(e)
     assert info.kind == "fatal"
     assert info.summary == "model not found: check the model ID (it may be retired or misspelled)"
+
+
+def test_a_provider_message_inside_json_becomes_the_summary():
+    e = litellm.BadRequestError(
+        message='GeminiException BadRequestError - {\n  "error": {\n    "code": 400,\n    "message": '
+                '"Thinking budget is not supported for this model.",\n    "status": "INVALID_ARGUMENT"\n  }\n}',
+        llm_provider="gemini", model="gemini/gemma-4-26b-it")
+    info = providers.classify(e)
+    assert info.kind == "fatal" and info.summary == "refused (400): Thinking budget is not supported for this model."

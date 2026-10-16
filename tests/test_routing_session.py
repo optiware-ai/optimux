@@ -376,3 +376,19 @@ def test_escalate_reuses_commands_already_run(mocker, client):
     assert roles == ["system", "user", "assistant", "tool", "assistant", "user"]
     assert rec.calls[3]["messages"][4]["content"] == "strong explanation"
     chat.close()
+
+
+def test_a_failed_conductor_is_said_in_the_chat(mocker, client):
+    rec = Recorder(reply("ok"), reply("ok again"))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    main._test_conductor.return_value = ("simple", "conductor-model", None, 40, None, False,
+                                         "the call failed: refused (400): Thinking budget is not supported")
+    chat = Conversation(client)
+    msgs = chat.prompt("write tests for this project")
+    notes = [m["content"] for m in msgs if m["type"] == "system"]
+    assert any(n.startswith("The Conductor (conductor-model) couldn't decide: the call failed: refused (400)")
+               and n.endswith("This request starts on the simple tier.") for n in notes)
+    main._test_conductor.return_value = ("simple", "conductor-model", None, 40, None, False, "")
+    again = chat.prompt("hello")
+    chat.close()
+    assert not any("couldn't decide" in m.get("content", "") for m in again if m["type"] == "system")

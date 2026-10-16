@@ -2654,6 +2654,10 @@ async def resolve_tier(websocket: WebSocket, session: dict, user_message: str) -
     session["conductor_plan"] = bool(result[5]) if len(result) > 5 else False
     if conductor_usage is not None:
         await meter(websocket, session, "conductor", conductor_model, conductor_usage, duration)
+    failed = result[6] if len(result) > 6 else ""
+    if failed:                       # never fall back silently: the user should know routing didn't happen
+        await send(websocket, "system", f"The Conductor ({conductor_model}) couldn't decide: {failed}. "
+                                        "This request starts on the simple tier.")
     if conductor_model == "off" and session["tier"] is not None:
         return session["tier"]  # Conductor Off: only escalation changes the tier
     if tier == "complex":

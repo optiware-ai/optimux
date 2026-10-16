@@ -85,7 +85,8 @@ def test_storage_endpoint(mocker, tmp_path):
 async def test_conductor_uses_minimal_thinking_for_gemini(mocker):
     import optimux_backend.core.llm_client as llm
     from tests.test_llm_client import create_mock_response
-    for model, expected in (("gemini/g", {"reasoning_effort": "minimal"}), ("anthropic/c", {})):
+    for model, expected in (("gemini/g", {"reasoning_effort": "minimal"}), ("anthropic/c", {}),
+                            ("gemini/gemma-4-26b-it", {})):
         mocker.patch.object(llm, "get_routing_config", return_value={"conductor_model": model})
         call = mocker.patch.object(llm, "acompletion", return_value=create_mock_response('{"complexity": "simple"}'))
         await llm.route_model("hi")

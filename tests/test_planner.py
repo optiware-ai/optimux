@@ -21,6 +21,11 @@ def answer(text, usage=None):
 
 # ------------------------------------------------------------------ the Conductor
 
+def test_the_executor_looks_before_it_asks():
+    prompt = agents.get_executor_prompt("", workdir="/w/alpha")
+    assert "look before you ask" in prompt and "Don't ask permission to read" in prompt
+
+
 def test_plan_question_only_when_plan_mode_is_on():
     assert agents.get_router_prompt() == agents.get_router_prompt("", plan=False)       # unchanged when off
     on = agents.get_router_prompt("", plan=True)

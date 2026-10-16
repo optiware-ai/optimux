@@ -124,6 +124,9 @@ def classify(exc: Exception) -> ProviderError:
         return ProviderError("fatal", "model not found: check the model ID (it may be retired or misspelled)", None, 404)
 
     first_line = text.strip().splitlines()[0] if text.strip() else type(exc).__name__
+    message = re.search(r'"message":\s*"((?:[^"\\]|\\.){1,300})"', text)   # the provider's own words (Gemini's JSON)
+    if message:
+        first_line = f"refused{f' ({status})' if status else ''}: {message.group(1)}"
     if len(first_line) > 200:
         first_line = first_line[:200] + "..."
     return ProviderError("fatal", first_line, None, status)
