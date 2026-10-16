@@ -117,7 +117,8 @@ def test_the_push_commits_as_the_dashboard_identity(root, tmp_path, monkeypatch)
     monkeypatch.setenv("EMAIL", "")
     without = ws.git_commands("who")
     assert without["warning"].startswith("Git has no name and email")
-    assert subprocess.run(without["push"], shell=True, capture_output=True).returncode != 0   # the reported failure
+    # (Whether git then fails depends on the machine: with a full name in the
+    # account's details, git makes up an identity; on the VPS it refused.)
     SETTINGS.update(git_name="Masoud O'Brien", git_email="m@example.com")
     out = ws.git_commands("who")
     assert out["warning"] is None and "-c user.name='Masoud O'\"'\"'Brien' -c user.email=m@example.com commit" in out["push"]
