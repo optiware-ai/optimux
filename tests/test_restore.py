@@ -463,11 +463,16 @@ def test_a_damaged_archive_is_found_before_the_safety_snapshot(home):
     sid = snapshots.create("data")["id"]
     path = snapshots.archive_path(sid)
     data = open(path, "rb").read()
-    open(path, "wb").write(data[: len(data) // 2])                       # cut in half
     count = len(snapshots.list_snapshots())
-    with pytest.raises(restore.RestoreError, match="damaged or incomplete"):
-        restore.restore(sid, ["config"], OK)
-    assert len(snapshots.list_snapshots()) == count                      # no snapshot taken for nothing
+    # Depending on where the cut lands: the manifest can't be read ("can't be read"),
+    # the data breaks ("damaged or incomplete"), or the file ends cleanly too early
+    # ("incomplete: its checksums are missing"). Always refused, before any change.
+    for cut in (0.1, 0.25, 0.5, 0.75, 0.95):
+        open(path, "wb").write(data[: int(len(data) * cut)])
+        with pytest.raises(restore.RestoreError, match="incomplete|can't be read"):
+            restore.restore(sid, ["config"], OK)
+        assert len(snapshots.list_snapshots()) == count                  # no snapshot taken for nothing
+        assert restore.pending() is None
 
 
 def test_an_oversized_header_is_refused_without_using_memory(tmp_path):
