@@ -14,7 +14,7 @@ from optimux_backend.core import store
 
 USAGE_FILE = store.paths.LEGACY_USAGE_LOG  # legacy log, imported once
 COLUMNS = ("ts", "session", "project", "role", "model", "prompt_tokens", "completion_tokens",
-           "cached_tokens", "reasoning_tokens", "cost", "duration_ms", "estimated", "skill")
+           "cached_tokens", "reasoning_tokens", "cost", "duration_ms", "estimated", "skill", "plan_id", "step")
 _imported_for: str | None = None
 NO_PROJECT = "(no project)"
 LOCAL_PROVIDERS = ("ollama/", "ollama_chat/")  # run on your machine: no per-token cost
@@ -97,8 +97,10 @@ def cost_for(model: str, tokens: dict) -> float | None:
 
 
 def record(session_id: str, role: str, model: str, usage, duration_ms: int | None = None,
-           project: str = "", skill: str | None = None) -> dict:
-    """Append one call to the usage log and return the entry."""
+           project: str = "", skill: str | None = None, plan_id: str | None = None,
+           step: int | None = None) -> dict:
+    """Append one call to the usage log and return the entry. plan_id and step tie a
+    call to a plan (v0.4 plan mode); both stay empty outside plans."""
     tokens = extract_usage(usage)
     entry = {
         "ts": time.time(),
@@ -111,6 +113,9 @@ def record(session_id: str, role: str, model: str, usage, duration_ms: int | Non
         "cost": cost_for(model, tokens),
         "duration_ms": duration_ms,
     }
+    if plan_id:
+        entry["plan_id"] = plan_id
+        entry["step"] = step
     if isinstance(usage, dict) and usage.get("estimated"):
         entry["estimated"] = True
     try:

@@ -103,6 +103,25 @@ MIGRATIONS = [
         deleted REAL NOT NULL
     );
     """,
+    # 8: plan mode (v0.4): plans and their steps, and which plan and step each call belongs to.
+    # user_id / team_id stay empty until the team version.
+    """
+    CREATE TABLE plans (
+        id TEXT PRIMARY KEY,
+        session TEXT,
+        project TEXT,
+        goal TEXT NOT NULL DEFAULT '',
+        plan TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created REAL NOT NULL,
+        updated REAL NOT NULL,
+        user_id TEXT,
+        team_id TEXT
+    );
+    CREATE INDEX plans_session ON plans (session, created);
+    ALTER TABLE usage ADD COLUMN plan_id TEXT;
+    ALTER TABLE usage ADD COLUMN step INTEGER;
+    """,
 ]
 
 _ready_for: str | None = None

@@ -41,6 +41,7 @@ from optimux_backend.core import skills as skills_lib
 from optimux_backend.core import sandbox as sandbox_lib
 from optimux_backend.core import curator
 from optimux_backend.core import catalog, exports, snapshots
+from optimux_backend.core import plans as plans_lib
 from optimux_backend.core import auth
 from optimux_backend.core import sessions as chat_store
 from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
@@ -69,6 +70,12 @@ try:
     print(f"[Optimux] database backup: {store.backup()}")
 except Exception as e:
     print(f"[Optimux] database backup failed: {e}")
+try:
+    _n = plans_lib.mark_interrupted()  # plans a stop left running wait, paused, for Resume
+    if _n:
+        print(f"[Optimux] plans: {_n} interrupted plan(s) paused; they can be resumed from the chat")
+except Exception as e:
+    print(f"[Optimux] checking interrupted plans failed: {e}")
 try:
     _n = catalog.load_saved_prices()  # a price list downloaded earlier with Refresh (no network here)
     if _n:

@@ -57,6 +57,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── memory_manager.py    (Decoupled state saved to ~/.optimux)
 │       ├── memory_manager.py_AGENT.md
 │       ├── paths.py             (~/.optimux layout & one-time file moves)
+│       ├── plans.py             (Plan mode: parse, check and store plans and their steps)
+│       ├── plans.py_AGENT.md
 │       ├── paths.py_AGENT.md
 │       ├── providers.py         (Provider error classes & model cooldowns)
 │       ├── providers.py_AGENT.md
