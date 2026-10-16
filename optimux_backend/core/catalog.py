@@ -38,7 +38,9 @@ PROVIDERS = [
      "keys_url": "https://console.anthropic.com/settings/keys"},
     {"id": "gemini", "label": "Google (Gemini)", "prefix": "gemini/", "env": "GEMINI_API_KEY",
      "models_url": "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", "kind": "gemini",
-     "keys_url": "https://aistudio.google.com/apikey"},
+     "keys_url": "https://aistudio.google.com/apikey",
+     # Google doesn't send its limits with replies: they are shown on this page
+     "limits_url": "https://ai.google.dev/gemini-api/docs/rate-limits"},
     {"id": "xai", "label": "xAI (Grok)", "prefix": "xai/", "env": "XAI_API_KEY",
      "models_url": "https://api.x.ai/v1/models", "keys_url": "https://console.x.ai"},
     {"id": "mistral", "label": "Mistral", "prefix": "mistral/", "env": "MISTRAL_API_KEY",
@@ -63,7 +65,7 @@ class CatalogError(Exception):
 def provider(pid: str) -> dict:
     for p in PROVIDERS:
         if p["id"] == pid:
-            return p
+            return {"limits_url": None, **p}
     raise CatalogError(f"Unknown provider '{pid}'.")
 
 
@@ -183,8 +185,11 @@ def models(pid: str) -> dict:
                              "unpriced": extra.get("input") is None,
                              "available": True,
                              "new": True}
+    from optimux_backend.core import ratelimits
+    for r in rows.values():
+        r["limits"] = ratelimits.get(r["id"])        # learned from earlier calls, or None
     out = sorted(rows.values(), key=lambda r: (r["input"] is None, r["input"] or 0, r["id"]))
-    return {"provider": {k: p[k] for k in ("id", "label", "prefix", "env", "keys_url")},
+    return {"provider": {k: p[k] for k in ("id", "label", "prefix", "env", "keys_url", "limits_url")},
             "key_saved": key_saved(p), "models": out,
             "models_refreshed": live.get("fetched"), "online": online_allowed()}
 
@@ -197,6 +202,7 @@ def summary() -> dict:
         "prices_count": len(prices.get("models") or {}),
         "providers": [{"id": p["id"], "label": p["label"], "prefix": p["prefix"], "env": p["env"],
                        "key_saved": key_saved(p), "keys_url": p["keys_url"],
+                       "limits_url": p.get("limits_url"),
                        "models_refreshed": (_read_json(f"models-{p['id']}.json") or {}).get("fetched")}
                       for p in PROVIDERS],
     }

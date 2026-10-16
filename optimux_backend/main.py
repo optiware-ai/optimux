@@ -27,6 +27,7 @@ import litellm
 from optimux_backend.core.llm_client import route_model_with_usage, TOOLS
 from optimux_backend.core import usage as usage_meter
 from optimux_backend.core import providers
+from optimux_backend.core import ratelimits
 from optimux_backend.core import budgets
 from optimux_backend.core import store
 from optimux_backend.core import workspace
@@ -268,9 +269,11 @@ async def test_model(payload: ModelTestPayload):
             **litellm_key_kwargs(payload.id),
         )
     except Exception as e:
+        ratelimits.record_error(payload.id, e)
         info = providers.classify(e)
         return {"ok": False, "kind": info.kind, "message": info.summary}
     duration = int((time.monotonic() - started) * 1000)
+    ratelimits.record_response(payload.id, response)
     usage_meter.record("settings", "test", payload.id, getattr(response, "usage", None), duration)
     # The model answered, so any cooldown on it is out of date
     cleared = providers.clear_model(payload.id)
@@ -1208,7 +1211,9 @@ async def draft_skill(payload: SkillDraftPayload):
         response = await litellm.acompletion(model=model, messages=[{"role": "user", "content": prompt}],
                                              timeout=60, **litellm_key_kwargs(model), **thinking_kwargs(model))
     except Exception as e:
+        ratelimits.record_error(model, e)
         raise HTTPException(502, providers.classify(e).summary)
+    ratelimits.record_response(model, response)
     usage_meter.record(payload.session_id, "skill_draft", model, getattr(response, "usage", None),
                        int((time.monotonic() - started) * 1000), project=data.get("project", ""), skill=name)
     content = (response.choices[0].message.content or "").strip()
@@ -1763,6 +1768,7 @@ async def stream_once(websocket: WebSocket, model: str, messages: list, r: Strea
                 r.streamed = True
             else:
                 r.pending_text = True
+    ratelimits.record_response(model, stream)
     return r
 
 
@@ -1903,6 +1909,7 @@ async def curate_session(sid: str | None, websocket: WebSocket | None = None, fo
         response = await litellm.acompletion(
             model=model, messages=[{"role": "user", "content": curator.build_prompt(project, current, chat)}],
             timeout=90, **litellm_key_kwargs(model), **thinking_kwargs(model))
+        ratelimits.record_response(model, response)
         entry = usage_meter.record(sid, "curator", model, getattr(response, "usage", None),
                                    int((time.monotonic() - started) * 1000), project=project)
         cost = entry.get("cost")

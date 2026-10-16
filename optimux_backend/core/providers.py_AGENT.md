@@ -10,7 +10,7 @@
   - `fatal`: everything else. A missing model (404, `not_found_error`, LiteLLM `NotFoundError`) reads "model not found: check the model ID (it may be retired or misspelled)". Otherwise the summary is the first line of the error, truncated to 200 characters.
 - **`parse_retry_after(text)`:** Reads Google's `"retryDelay": "22030s"` or a "retry in 6h7m10s" phrase.
 - **Cooldowns:**
-  - `record_failure(model, exc)` classifies an error and puts the model in cooldown: quota errors for the provider's retry delay (default 30 min), transient errors that survived their retry for 60s, fatal errors not at all.
+  - `record_failure(model, exc)` first gives the error to `ratelimits.record_error` (Google names the limit it hit), then classifies it and puts the model in cooldown: quota errors for the provider's retry delay (default 30 min), transient errors that survived their retry for 60s, fatal errors not at all.
   - `cooldown(model)` returns the reason with a live "resets in"; `is_available(model)` checks for one.
   - `active_cooldowns()` serves `/api/cooldowns`. `clear_model(model)` and `clear_models(models)` end specific cooldowns (used when a key is saved, after a successful test, and by `/api/cooldowns/clear`); `clear()` ends them all.
   - Cooldowns are process-wide and in memory, so a server restart clears them.

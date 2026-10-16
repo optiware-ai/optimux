@@ -5,7 +5,7 @@
 
 ## Core Functionality
 - **`TOOLS`:** OpenAI-style schemas for `execute_bash` (run a shell command; the user approves each one) and `update_markdown_memory` (append to `personal`, `professional` or `project` memory). Both tiers receive them.
-- **`route_model_with_usage(prompt)`:** Returns `(tier, conductor_model, usage, duration_ms)`, where `tier` is `simple` or `complex`.
+- **`route_model_with_usage(prompt)`:** Returns `(tier, conductor_model, usage, duration_ms)`, where `tier` is `simple` or `complex`. A successful Conductor reply goes to `ratelimits.record_response` (the key's rate limits from its headers).
   - For Gemini Conductors, `conductor_thinking()` sends `reasoning_effort="minimal"`: Gemini 3 thinks by default (hidden but billed), and the Conductor only classifies. Other providers don't think unless asked, so nothing is sent for them.
   - The call uses `temperature=0`, `timeout=CONDUCTOR_TIMEOUT` (10s), the Conductor model's own API key (`litellm_key_kwargs`), plus `response_format=json_object` when LiteLLM says the model supports it.
   - Bad output, errors and timeouts fall back to `simple`; `main.py` escalates if that was wrong. The retired `tool` class also maps to `simple`.

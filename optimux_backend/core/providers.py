@@ -158,6 +158,8 @@ def is_available(model: str) -> bool:
 
 def record_failure(model: str, exc: Exception) -> ProviderError:
     """Classify an error and put the model in cooldown if it warrants one."""
+    from optimux_backend.core import ratelimits
+    ratelimits.record_error(model, exc)          # a limit the error names (Google)
     info = classify(exc)
     if info.kind == "quota":
         mark_unavailable(model, info.retry_after or DEFAULT_QUOTA_COOLDOWN, info)

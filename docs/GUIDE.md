@@ -384,6 +384,8 @@ The model list and prices come from the price list of LiteLLM (the library Optim
 - **Refresh prices** downloads LiteLLM's public price list from GitHub (`raw.githubusercontent.com`). Providers don't publish prices through their APIs; this list is what LiteLLM itself uses. Costs in Usage use the new prices from then on, also after a restart. Prices you set on a model still win.
 - **Refresh <provider> models** asks that provider (for example `api.openai.com`), with your own saved key, which models your account can use: the list then marks them ("Your key") and adds brand-new models the price list doesn't know yet. Ollama is asked on this machine, so it works with the online catalog off.
 
+**Your limits** (in the Prices table, under the chosen model, and on each model card): how many requests and tokens your key may use per minute or per day. No list has them, because they depend on your account and its tier. Most providers send them back with every reply, so Optimux shows them after the first call to a model (**Test** or a chat), without any extra request. Google sends none: Optimux learns a Google limit only when it is hit (the error names it, for example "15 requests/min, free tier"), and links to Google's rate limits page.
+
 ### Each model card
 
 - **Status**: *ready*, *needs key*, *test failed*, or *cooldown* (temporarily skipped after errors).

@@ -6,7 +6,7 @@ import litellm  # its price list stays local: see optimux_backend/__init__.py
 from litellm import acompletion
 from optimux_backend.core.config_manager import get_routing_config, litellm_key_kwargs
 from optimux_backend.core.agents import get_router_prompt
-from optimux_backend.core import providers
+from optimux_backend.core import providers, ratelimits
 
 CONDUCTOR_OFF = "off"
 CONDUCTOR_TIMEOUT = 10  # seconds; on timeout the request starts on the simple tier
@@ -139,6 +139,7 @@ async def route_model_with_usage(prompt: str, skills: dict | None = None) -> tup
     started = time.monotonic()
     try:
         response = await acompletion(**kwargs)
+        ratelimits.record_response(conductor_model, response)
         usage = getattr(response, "usage", None)
         content = response.choices[0].message.content
         tier = _parse_complexity(content)

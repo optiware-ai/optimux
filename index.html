@@ -486,6 +486,13 @@
                                 <div class="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2"><div class="text-gray-500 text-[12px]">Context</div><div class="text-gray-100 font-semibold">{{ fmtCtx(catSelected.context) }}</div></div>
                                 <div class="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2"><div class="text-gray-500 text-[12px]">Tools / reasoning</div><div class="text-gray-100 font-semibold">{{ catSelected.tools === false ? 'no' : catSelected.tools ? 'yes' : '?' }} / {{ catSelected.reasoning ? 'yes' : catSelected.reasoning === false ? 'no' : '?' }}</div></div>
                             </div>
+                            <div v-if="catSelected" class="text-[13px] text-gray-400">
+                                <span class="text-gray-500 mr-1">Your limits:</span>
+                                <template v-if="fmtLimits(catSelected.limits)"> <span class="text-gray-200">{{ fmtLimits(catSelected.limits) }}</span> <span class="text-gray-500">({{ fmtLimitsTitle(catSelected.limits) }})</span></template>
+                                <template v-else-if="catProvider.limits_url"> {{ catProvider.label }} doesn't send them with replies; Optimux learns one only when it is hit. See <a :href="catProvider.limits_url" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline">its rate limits page</a>.</template>
+                                <template v-else-if="!catProvider.env"> none: it runs on this machine.</template>
+                                <template v-else> not known yet: they show after the first call to this model (Test or a chat).</template>
+                            </div>
                             <div v-if="catSelected && catSelected.retired" class="text-[13px] text-red-300">The provider retired this model on {{ catSelected.deprecated }}: requests to it will probably fail. Choose a newer one.</div>
                             <div v-else-if="catSelected && catSelected.deprecated" class="text-[13px] text-gray-400">The provider will retire this model on {{ catSelected.deprecated }}.</div>
                             <div v-if="catSelected && catSelected.free" class="text-[13px] text-green-300">Listed at $0, and {{ catProvider.label }} offers it to your key: it should cost nothing. Free models usually have tighter rate limits; your provider's billing page has the final word.</div>
@@ -576,7 +583,8 @@
                                             :class="['px-3 py-2 font-semibold cursor-pointer select-none hover:text-gray-200 whitespace-nowrap', c[0] === 'id' ? 'text-left' : 'text-right']">{{ c[1] }}<span v-if="catSort.key === c[0]">{{ catSort.desc ? ' ▼' : ' ▲' }}</span></th>
                                         <th class="px-3 py-2 font-semibold text-center">Tools</th>
                                         <th class="px-3 py-2 font-semibold text-center">Reasoning</th>
-                                        <th v-if="catInfo && catInfo.models_refreshed" class="px-3 py-2 font-semibold text-center">Your key</th>
+                                        <th v-if="catInfo && catInfo.models_refreshed" class="px-3 py-2 font-semibold text-center whitespace-nowrap">Your key</th>
+                                        <th class="px-3 py-2 font-semibold text-left whitespace-nowrap">Your limits<help-tip>Rate limits depend on your account and tier, so no list has them. Most providers send them back with every reply: Optimux keeps them after the first call to a model (Test or a chat). Google sends none; Optimux learns a Google limit only when it is hit.</help-tip></th>
                                         <th class="px-3 py-2"></th>
                                     </tr>
                                 </thead>
@@ -590,13 +598,14 @@
                                         <td class="px-3 py-1.5 text-center">{{ r.tools ? '✓' : r.tools === false ? '·' : '?' }}</td>
                                         <td class="px-3 py-1.5 text-center">{{ r.reasoning ? '✓' : r.reasoning === false ? '·' : '?' }}</td>
                                         <td v-if="catInfo && catInfo.models_refreshed" class="px-3 py-1.5 text-center">{{ r.available ? '✓' : '·' }}</td>
+                                        <td class="px-3 py-1.5 text-gray-400 text-[12px] leading-snug min-w-[8.5rem]" :title="fmtLimitsTitle(r.limits)"><template v-if="r.limits && r.limits.items && r.limits.items.length"><div v-for="t in fmtLimits(r.limits).split(' · ')" :key="t" class="whitespace-nowrap">{{ t }}</div></template><template v-else>—</template></td>
                                         <td class="px-3 py-1.5 text-right"><button @click="catChoose(r.id)" class="text-[12px] text-blue-400 hover:underline">Choose</button></td>
                                     </tr>
-                                    <tr v-if="!catVisible.length"><td colspan="9" class="px-3 py-4 text-center text-gray-500 italic">No model matches.</td></tr>
+                                    <tr v-if="!catVisible.length"><td colspan="11" class="px-3 py-4 text-center text-gray-500 italic">No model matches.</td></tr>
                                 </tbody>
                             </table>
                         </div>
-                        <p class="text-[12px] text-gray-500 mt-2">Prices from LiteLLM's list: {{ cat.prices_refreshed ? 'downloaded ' + fmtWhen(cat.prices_refreshed) : 'the copy shipped with this Optimux' }}. Providers change prices: check their pricing page before relying on them. Prices you set on a model win.</p>
+                        <p class="text-[12px] text-gray-500 mt-2">Prices from LiteLLM's list: {{ cat.prices_refreshed ? 'downloaded ' + fmtWhen(cat.prices_refreshed) : 'the copy shipped with this Optimux' }}. Providers change prices: check their pricing page before relying on them. Prices you set on a model win. Limits are your own, learned from earlier calls<template v-if="catProvider && catProvider.limits_url">; {{ catProvider.label }} doesn't send them, see <a :href="catProvider.limits_url" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline">its rate limits page</a></template>.</p>
                     </div>
 
                     <!-- v0.3: online catalog (opt-in; only on Refresh) -->
@@ -660,6 +669,7 @@
                                 <div v-if="modelNotices[model.id]" :class="['mt-2 text-[13px]', modelNotices[model.id].ok ? 'text-green-400' : (modelNotices[model.id].warn ? 'text-yellow-400' : 'text-red-400')]">
                                     {{ modelNotices[model.id].ok ? '✓' : '⚠' }} {{ modelNotices[model.id].text }}
                                 </div>
+                                <div v-if="fmtLimits(model.limits)" class="mt-2 text-[13px] text-gray-500 font-mono" :title="fmtLimitsTitle(model.limits)">Limits: {{ fmtLimits(model.limits) }}</div>
                                 <div v-if="model.price_source !== 'local'" class="mt-2 text-[13px] text-gray-500 flex items-center gap-2 flex-wrap">
                                     <label class="font-mono">Thinking</label>
                                     <select :value="model.thinking || 'default'" @change="setThinking(model, $event.target.value)" class="bg-gray-900 border border-gray-700 rounded px-1 py-0.5 text-gray-200 text-[13px]">

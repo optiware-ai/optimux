@@ -1635,14 +1635,14 @@ createApp({
             try { const r = await fetch('/api/catalog'); if (r.ok) cat.value = await r.json(); }
             catch (error) { console.error('Failed to load the model catalog', error); }
         };
-        const loadProviderModels = async () => {
+        const loadProviderModels = async (keepFilters = false) => {
             if (!catPid.value || catPid.value === 'other') { catRows.value = []; catInfo.value = null; return; }
             try {
                 const r = await fetch(`/api/catalog/${encodeURIComponent(catPid.value)}`);
                 if (!r.ok) return;
                 const d = await r.json();
                 catInfo.value = d; catRows.value = d.models;
-                catMineOnly.value = !!d.models_refreshed;
+                if (keepFilters !== true) catMineOnly.value = !!d.models_refreshed;
             } catch (error) { console.error('Failed to load models', error); }
         };
         const pickProvider = async (pid) => {
@@ -1675,6 +1675,17 @@ createApp({
         const fmtMtok = (v) => v == null ? '—' : v === 0 ? 'free' : '$' + (v < 0.1 ? v.toFixed(3) : v < 10 ? v.toFixed(2) : v.toFixed(1));
         const fmtCtx = (n) => !n ? '—' : n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`;
         const fmtWhen = (ts) => ts ? new Date(ts * 1000).toLocaleString() : 'never';
+        // Rate limits learned from replies: "500 requests/min · 200k tokens/min"
+        const PER = { minute: 'min', second: 's', hour: 'h', day: 'day', month: 'month' };
+        const fmtNum = (n) => n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${Math.round(n / 1000)}k` : n.toLocaleString('en-US');
+        const fmtLimits = (l) => !(l && l.items && l.items.length) ? '' :
+            l.items.map(i => `${fmtNum(i.limit)} ${i.what}/${PER[i.per] || i.per}`).join(' · ');
+        const fmtLimitsTitle = (l) => {
+            if (!(l && l.items && l.items.length)) return '';
+            const hit = l.items.filter(i => i.hit);
+            const free = l.items.some(i => i.free_tier) ? ', free tier' : '';
+            return hit.length ? `reached ${fmtWhen(l.hit_at || l.seen)}${free}` : `seen ${fmtWhen(l.seen)}`;
+        };
         const catChoose = (id) => {
             catModel.value = id;
             catName.value = id.split('/').pop();
@@ -1842,6 +1853,8 @@ createApp({
                 });
                 const r = await resp.json();
                 modelNotices.value[modelId] = { ok: r.ok, text: r.message };
+                // the reply may have carried the key's rate limits (or the error named one)
+                fetchConfig(); loadProviderModels(true);
             } catch (error) {
                 modelNotices.value[modelId] = { ok: false, text: String(error) };
             }
@@ -2549,7 +2562,7 @@ createApp({
             memoryTab, memoryContent, fetchMemory, saveMemory, showMemorySaved,
             copySession, copyLabel,
             stopGeneration, isStopping,
-            newModelPrices, modelNotices, cat, catPid, catRows, catInfo, catModel, catToolsOnly, catMineOnly, catHideRetired, catSearch, catSort, catBusy, catMsg, catRefreshMsg, catOwnPrices, catKey, catReplaceKey, catName, catProvider, configuredIds, catVisible, catSelected, catNeedsKey, pickProvider, catSortBy, fmtMtok, fmtCtx, fmtWhen, catChoose, addCatalogModel, setCatalogOnline, catRefresh, testingModels, editingPrices, togglePriceEdit, savePrices, testModel,
+            newModelPrices, modelNotices, cat, catPid, catRows, catInfo, catModel, catToolsOnly, catMineOnly, catHideRetired, catSearch, catSort, catBusy, catMsg, catRefreshMsg, catOwnPrices, catKey, catReplaceKey, catName, catProvider, configuredIds, catVisible, catSelected, catNeedsKey, pickProvider, catSortBy, fmtMtok, fmtCtx, fmtWhen, fmtLimits, fmtLimitsTitle, catChoose, addCatalogModel, setCatalogOnline, catRefresh, testingModels, editingPrices, togglePriceEdit, savePrices, testModel,
             usageData, usagePeriod, cooldowns, fetchUsage, sessionUsage, clearCooldown,
             fmtTokens, fmtCost, fmtMs, modelName,
             newChat, canEscalate, escalate, continueTurn, pendingOutside, pendingWorkdir,

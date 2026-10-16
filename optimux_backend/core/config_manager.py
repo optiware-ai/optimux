@@ -402,6 +402,11 @@ def price_source(model_id: str, details: dict) -> str:
         return "unknown"
 
 
+def _limits(model_id: str) -> dict | None:
+    from optimux_backend.core import ratelimits
+    return ratelimits.get(model_id)
+
+
 def get_models_config() -> dict:
     models = get_all_models()
     available = []
@@ -419,6 +424,7 @@ def get_models_config() -> dict:
             "price_source": price_source(model_id, details),
             "thinking": details.get("thinking", "default"),
             "supports_thinking": supports_thinking(model_id),
+            "limits": _limits(model_id),
         }
         for field in PRICE_FIELDS:
             entry[field] = details.get(field)

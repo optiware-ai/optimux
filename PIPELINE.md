@@ -44,6 +44,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── budgets.py_AGENT.md
 │       ├── catalog.py           (Model catalog: providers, models, prices; opt-in refresh)
 │       ├── catalog.py_AGENT.md
+│       ├── ratelimits.py        (Rate limits of your keys, learned from replies and errors)
+│       ├── ratelimits.py_AGENT.md
 │       ├── config_manager.py    (Env & API key handling)
 │       ├── curator.py           (Project memory curator & history)
 │       ├── curator.py_AGENT.md

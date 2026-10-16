@@ -118,7 +118,7 @@
 - Server → client: `auth_ok`, `memory_updating`, `memory_updated`, `memory_unchanged`, `project_switched`, `projects_changed`, `session_started`, `session_loaded`, `usage`, `thinking`, `step_limit`, `budget`, `system` (the "Routed to" message also carries `tier` and `model`), `token`, `approval_request`, `command_start`, `command_output`, `chat_reset`, `stopped`, `error`, `done`.
 
 ## Links & Dependencies
-- `core/config_manager.py` (routing, models, keys, settings), `core/executor.py` (`run_shell_command`), `core/llm_client.py` (`route_model_with_usage`, `TOOLS`), `core/agents.py` (`get_executor_prompt`), `config_manager.model_id_problem`, `core/memory_manager.py` (memory), `core/usage.py` (metering), `core/providers.py` (error classification, cooldowns), `core/budgets.py` (budgets), `core/security.py` (auth, origin, error types). Calls `litellm.acompletion` directly.
+- `core/config_manager.py` (routing, models, keys, settings), `core/executor.py` (`run_shell_command`), `core/llm_client.py` (`route_model_with_usage`, `TOOLS`), `core/agents.py` (`get_executor_prompt`), `config_manager.model_id_problem`, `core/memory_manager.py` (memory), `core/usage.py` (metering), `core/providers.py` (error classification, cooldowns), `core/ratelimits.py` (the key's rate limits, recorded after `stream_once`, Test, the skill draft and the curator, and from Test errors), `core/budgets.py` (budgets), `core/security.py` (auth, origin, error types). Calls `litellm.acompletion` directly.
 - Serves `index.html`.
 
 ## Feature 23: access and headers
