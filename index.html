@@ -1969,6 +1969,14 @@
                               @submit="sendProjectForm" @cancel="sendApprovalResponse(false)" @setup-github="openSettings('github')"></project-form>
             </div>
 
+            <!-- A project just created from the chat: open it when the user is ready -->
+            <div v-if="projectOffer && !pendingApproval" class="mb-3 flex justify-end">
+                <div role="status" class="flex items-center gap-2 rounded-lg border border-blue-800 bg-blue-950/40 pl-3 pr-1.5 py-1.5 text-[14px] text-blue-100 shadow-lg">
+                    <span><b>{{ projectOffer }}</b> is ready.</span>
+                    <button @click="openOfferedProject" :disabled="isGenerating" class="px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-[13px] font-bold">Open {{ projectOffer }}</button>
+                    <button @click="projectOffer = ''" class="px-1.5 text-blue-300 hover:text-white" aria-label="Stay here" title="Stay in this chat">×</button>
+                </div>
+            </div>
             <!-- The sandbox is on but broken: every command would be refused -->
             <div v-if="sandboxProblem" role="alert" class="mb-3 rounded-lg border border-red-800 bg-red-950/40 p-3 text-[14px] text-red-200 flex gap-2 items-start">
                 <span class="text-red-400 font-bold" aria-hidden="true">!</span>

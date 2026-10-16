@@ -306,11 +306,12 @@ def test_create_via_chat_shows_a_form_even_with_auto_approve(mocker, client, roo
     assert any(m["type"] == "projects_changed" for m in msgs)
     created = next(m for m in msgs if m["type"] == "project_created")
     assert created["project"] == "newapp" and created["ok"] is True
-    # Switched (the default), and the model is told the chat moves there
-    assert settings["active_project"] == "newapp"
-    assert any(m["type"] == "project_switched" and m["project"] == "newapp" for m in msgs)
+    # Offered, not switched: the user is still reading this reply; the page shows an "Open" button
+    assert settings["active_project"] != "newapp"
+    assert not any(m["type"] == "project_switched" for m in msgs)
+    assert any(m["type"] == "project_offer" and m["project"] == "newapp" for m in msgs)
     result = tool_result(rec)
-    assert result["ok"] is True and "switched" in result["note"]
+    assert result["ok"] is True and "don't call switch_project" in result["note"]
     chat.close()
 
 

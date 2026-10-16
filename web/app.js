@@ -139,7 +139,8 @@ const ProjectForm = {
   </div>
   <label class="flex items-center gap-2 cursor-pointer text-gray-300">
     <input type="checkbox" v-model="f.switch" class="w-4 h-4 accent-blue-600">
-    Open it when it's ready<span class="text-xs text-gray-500">{{ activeProject ? '(leaves ' + activeProject + '; that chat stays in History)' : '' }}</span>
+    <template v-if="compact">Offer to open it when it's ready<span class="text-xs text-gray-500">(a button under the reply; you stay in this chat until you click it)</span></template>
+    <template v-else>Open it when it's ready<span class="text-xs text-gray-500">{{ activeProject ? '(leaves ' + activeProject + '; that chat stays in History)' : '' }}</span></template>
   </label>
   </div>
  </div>
@@ -182,6 +183,7 @@ createApp({
         const pendingForm = ref(null);   // Feature 25: { form, error, github, active_project, key } for create_project
         let formSeq = 0;
         let moveChatTo = null;           // the model switched projects: open that project's chat when the reply ends
+        const projectOffer = ref('');    // a project just created from the chat: "Open <name>" above the chat box
 
         // ---- Feature 25: toasts (slide in, leave by themselves)
         const toasts = ref([]);
@@ -1331,6 +1333,11 @@ createApp({
             closeSettings();
             openSession(sid);
         };
+        const openOfferedProject = async () => {
+            const name = projectOffer.value;
+            projectOffer.value = '';
+            if (name && !isGenerating.value && !pendingApproval.value) await switchProject(name);
+        };
         const switchProject = async (name) => {
             appSettings.value.active_project = name;
             await changeProject();
@@ -2304,7 +2311,11 @@ createApp({
                     ws.value.send(JSON.stringify({ type: 'open_session', id: 'latest' }));
                     return;
                 }
-                if (data.type === 'session_loaded') { moveChatTo = null; loadSession(data); return; }
+                if (data.type === 'session_loaded') {
+                    moveChatTo = null;
+                    if (projectOffer.value && projectOffer.value === appSettings.value.active_project) projectOffer.value = '';
+                    loadSession(data); return;
+                }
                 if (data.type === 'session_started') { currentSession.value = data.session; return; }
                 if (data.type === 'memory_updating') {
                     if (!replay) setMemoryStatus({ state: 'running', text: 'Updating memory…',
@@ -2424,6 +2435,9 @@ createApp({
                 }
                 else if (data.type === "project_created") {
                     if (!replay) projectCreatedToast(data.project, data.ok, data.github_url);
+                }
+                else if (data.type === "project_offer") {
+                    if (!replay) projectOffer.value = data.project || '';
                 }
                 else if (data.type === "project_switched") {
                     if (replay) return;  // a reopened chat doesn't change the active project
@@ -2769,7 +2783,7 @@ createApp({
             usageData, usagePeriod, cooldowns, fetchUsage, sessionUsage, clearCooldown,
             fmtTokens, fmtCost, fmtMs, modelName,
             newChat, canEscalate, escalate, continueTurn, pendingOutside, pendingWorkdir,
-            planAction, planStepMark, planStuckStep,
+            planAction, planStepMark, planStuckStep, projectOffer, openOfferedProject,
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
             setThinking, copyThinking, storageInfo, fmtBytes,

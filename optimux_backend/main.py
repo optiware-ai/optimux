@@ -2646,10 +2646,12 @@ async def run_workspace_tool(websocket: WebSocket, session: dict, name: str, arg
             result["form"] = {k: form[k] for k in ("name", "template", "git_init", "github", "description")}
             previous = active_project()
             if form["switch"] and previous != pname and os.path.isdir(result["path"]):
-                await set_active_project(websocket, pname)
-                await send(websocket, "system", f"Switched to project '{pname}'.")
-                result["note"] = (f"Created with the values the user confirmed (see form) and switched to '{pname}'. "
-                                  "The chat moves to the new project when this reply ends: finish with one short sentence.")
+                # Not switched here: the user is reading this reply. The page offers an "Open" button
+                # under it, so the chat moves only when the user decides.
+                await send(websocket, "project_offer", project=pname)
+                result["note"] = (f"Created with the values the user confirmed (see form). The page shows the user a "
+                                  f"button to open '{pname}' when they are ready: don't call switch_project, and "
+                                  "finish with one or two short sentences.")
             elif previous != pname:
                 result["note"] = (f"Created with the values the user confirmed (see form). The user chose to stay in "
                                   f"'{previous or 'the Workspace'}'; don't offer to switch.")

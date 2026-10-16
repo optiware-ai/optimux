@@ -144,3 +144,5 @@
   - `handle_open_session` sends `plans` (their current state) with `session_loaded`; the page updates the replayed cards from it.
 
 - **Broken sandbox notice (v0.4-3d):** `sandbox_problem()` is the reason commands will be refused (sandbox on but not working) or "". It is sent as a `sandbox_problem` WebSocket message right after `auth_ok`, and as `sandbox_problem` in every `approval_request`; the page shows a red banner above the chat box and a red "sandbox broken: will be refused" badge instead of "sandboxed". The System security check shows the probe's error. `switch_project` to the project already active returns "Already active; nothing changed." without a second note.
+
+- **Creating from the chat (v0.4-3e):** with the form's switch option, `create_project` no longer switches: it sends `project_offer` (project) and tells the model not to call `switch_project`. The page shows "<name> is ready. Open <name>" above the chat box (`projectOffer`, `openOfferedProject` → `switchProject`); nothing moves until the user clicks. The **+** dialog still switches at once.

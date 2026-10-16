@@ -261,7 +261,7 @@ The form has:
 | **Git repository** | `git init`, a commit template and a first commit. |
 | **Also on GitHub** | Creates the repository with `gh` and pushes the first commit. **Private** or **Public**. Greyed out, with the reason and a *Set up GitHub* link, until GitHub is set up. |
 | **Description** | Optional (up to 350 characters): goes in the README and on GitHub. Leave it empty for now if you like. |
-| **Open it when it's ready** | Switches to the new project. In the chat, the reply finishes first, then the chat moves to the new project; the conversation you were in stays in History under its own project. |
+| **Open it when it's ready** | From the **+** dialog: switches to the new project. In the chat (*Offer to open it when it's ready*): you stay where you are and can finish reading the reply; a small **Open <name>** button appears above the chat box, and the chat moves to the new project only when you click it (× dismisses it). The conversation you were in stays in History under its own project. |
 
 Nothing is created until you press **Create project**, and the server checks every value again. A notification slides in when the project is ready (with a link to the GitHub repository); if a step failed (for example the push), the folder is kept and the notification says so. Creating a project always waits for you, even with auto-approve on.
 
