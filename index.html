@@ -735,6 +735,40 @@
 
                 <!-- Section: Backups (v0.3: snapshots kept on this machine) -->
                 <div v-if="settingsTab === 'backups'" class="space-y-6 max-w-4xl">
+                    <!-- v0.3 D: a restore waiting for the restart, or the last one applied -->
+                    <div v-if="rsStatus.pending" role="status" class="rounded-xl border-2 border-yellow-500/60 bg-yellow-500/10 p-4 flex gap-3 items-start">
+                        <span class="text-2xl leading-none text-yellow-400" aria-hidden="true">⚠</span>
+                        <div class="flex-1 min-w-0 space-y-2">
+                            <div class="font-bold text-yellow-300">Restart Optimux to finish the restore</div>
+                            <p class="text-[14px] text-yellow-100">Ready to put back: <b>{{ rsStatus.pending.parts.join(', ') }}</b>, from the snapshot of {{ new Date(rsStatus.pending.created * 1000).toLocaleString() }}<template v-if="rsStatus.pending.projects && rsStatus.pending.projects.length"> (projects already restored: {{ rsStatus.pending.projects.join(', ') }})</template>. Chat replies wait until then, so nothing new is lost.</p>
+                            <p v-if="rsStatus.pending.before_snapshot" class="text-[13px] text-yellow-200/80">Your current data was saved first, in the snapshot <code>{{ rsStatus.pending.before_snapshot }}</code>.</p>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button v-if="rsStatus.can_restart" @click="restartForRestore" :disabled="rsRestarting" class="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-3 py-1.5 rounded-lg font-bold text-[14px] disabled:opacity-60">{{ rsRestarting ? 'Restarting… the page reloads by itself' : 'Restart now' }}</button>
+                                <span v-else class="text-[14px] text-yellow-100 flex flex-wrap items-center gap-2">Restart it where it runs:
+                                    <span class="cm-path-box"><code>optimux restart</code>
+                                        <button type="button" @click="snapCopy('rs-restart', 'optimux restart')" :class="['cm-copy-btn', snapCopied['rs-restart'] ? 'cm-copied' : '']">{{ snapCopied['rs-restart'] ? 'Copied ✓' : 'Copy' }}</button></span>
+                                    <span class="text-[13px] text-yellow-200/80">(on a server: <code>sudo optimux restart</code>)</span></span>
+                                <button @click="cancelRestore" :disabled="rsRestarting" class="px-3 py-1.5 rounded-lg border border-yellow-500/40 text-yellow-100 text-[14px] hover:border-yellow-400 disabled:opacity-50">Cancel the restore</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="rsStatus.last" role="status" :class="['rounded-xl border p-4 flex gap-3 items-start', rsStatus.last.ok ? 'border-green-500/40 bg-green-500/10' : 'border-red-500/50 bg-red-500/10']">
+                        <span :class="['text-xl leading-none', rsStatus.last.ok ? 'text-green-400' : 'text-red-400']" aria-hidden="true">{{ rsStatus.last.ok ? '✓' : '✕' }}</span>
+                        <div class="flex-1 min-w-0 text-[14px] space-y-1">
+                            <template v-if="rsStatus.last.ok">
+                                <div class="font-bold text-green-300">Restore finished</div>
+                                <div class="text-gray-300">Put back: <b>{{ rsStatus.last.parts.join(', ') }}</b> ({{ new Date(rsStatus.last.ts * 1000).toLocaleString() }}). Usage and cost history and your sign-ins were kept as they were.</div>
+                                <div class="text-gray-400 flex flex-wrap items-center gap-2">The files they replaced are in
+                                    <span class="cm-path-box"><code>{{ rsStatus.last.aside }}</code>
+                                        <button type="button" @click="snapCopy('rs-aside', rsStatus.last.aside)" :class="['cm-copy-btn', snapCopied['rs-aside'] ? 'cm-copied' : '']">{{ snapCopied['rs-aside'] ? 'Copied ✓' : 'Copy' }}</button></span></div>
+                            </template>
+                            <template v-else>
+                                <div class="font-bold text-red-300">The restore could not be finished</div>
+                                <div class="text-gray-300">{{ rsStatus.last.error }}. Nothing was changed: your data is as it was. The prepared files are in <code>{{ rsStatus.last.aside }}</code>.</div>
+                            </template>
+                        </div>
+                        <button @click="dismissRestore" class="text-[13px] text-gray-400 hover:text-gray-200 shrink-0">Dismiss</button>
+                    </div>
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
                         <h3 class="font-bold text-gray-200 mb-1 flex items-center">Take a snapshot<help-tip wide>
                             <p>A snapshot is a copy kept <b>on this machine</b>, in Optimux's private folder. Take one before an experiment (new models, routing, memory changes), then go back to it if you don't like the result.</p>
@@ -851,8 +885,49 @@
                                 <span v-if="s.status === 'running'" class="text-blue-400 animate-pulse shrink-0">taking…</span>
                                 <span v-else-if="s.status === 'failed'" class="text-red-400 shrink-0 truncate max-w-[16rem]" :title="s.error">failed: {{ s.error }}</span>
                                 <span v-else class="text-gray-400 w-20 text-right shrink-0">{{ fmtBytes(s.size_bytes) }}</span>
+                                <button v-if="s.status === 'ready'" @click="rsPanel[s.id] ? closeRestore(s) : openRestore(s)" :aria-expanded="!!rsPanel[s.id]" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-blue-500 hover:text-blue-300 shrink-0">{{ rsPanel[s.id] ? 'Close restore' : 'Restore…' }}</button>
                                 <button @click="snapOpen[s.id] = !snapOpen[s.id]; if (!snapOpen[s.id]) dlClose(s)" :aria-expanded="!!snapOpen[s.id]" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 shrink-0">{{ snapOpen[s.id] ? 'Hide' : 'Details' }}</button>
                                 <button v-if="snapDeleting !== s.id" @click="snapDeleting = s.id" :disabled="s.status === 'running'" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-red-500 hover:text-red-400 disabled:opacity-40 shrink-0">Delete</button>
+                            </div>
+                            <div v-if="rsPanel[s.id]" class="mt-2 rounded-xl border border-blue-500/40 bg-blue-500/5 p-4 space-y-3" role="region" :aria-label="'Restore this snapshot'">
+                                <div class="flex items-center justify-between">
+                                    <div class="font-semibold text-gray-100 text-[15px]">Restore this snapshot</div>
+                                    <button @click="closeRestore(s)" class="text-[13px] text-gray-400 hover:text-gray-200">Close</button>
+                                </div>
+                                <div v-if="rsPanel[s.id].loading" class="text-[14px] text-gray-400">Reading the snapshot…</div>
+                                <div v-else-if="!rsPanel[s.id].info" class="text-[14px] text-red-400">{{ rsPanel[s.id].error }}</div>
+                                <template v-else>
+                                    <p v-if="rsStatus.pending" class="text-[14px] text-yellow-300">Another restore is waiting for the restart (see the top of this page). Restart Optimux or cancel it first.</p>
+                                    <p v-if="rsPanel[s.id].info.optimux_version && systemInfo && systemInfo.optimux && rsPanel[s.id].info.optimux_version !== systemInfo.optimux" class="text-[13px] text-gray-400">Taken by Optimux <code>{{ rsPanel[s.id].info.optimux_version }}</code>; this is <code>{{ systemInfo.optimux }}</code>. That's fine: older data is brought up to date.</p>
+                                    <div class="text-[14px] text-gray-300 font-semibold">What to put back</div>
+                                    <div class="space-y-1.5">
+                                        <label v-for="part in rsPanel[s.id].info.parts" :key="part.path" :class="['flex gap-2.5 px-3 py-2 rounded-lg border', part.blocked ? 'border-gray-800 opacity-60' : 'border-gray-700 cursor-pointer hover:border-gray-500', rsPanel[s.id].chosen[part.path] ? 'bg-gray-900' : '']">
+                                            <input type="checkbox" v-model="rsPanel[s.id].chosen[part.path]" :disabled="!!part.blocked" class="mt-1 w-3.5 h-3.5 shrink-0">
+                                            <span class="flex-1 min-w-0">
+                                                <span class="text-[14px] text-gray-100">{{ part.label }}</span>
+                                                <code class="ml-1.5 text-[12px] text-gray-500">{{ part.path }}</code>
+                                                <span v-if="part.path in {'secrets.env': 1, 'auth.json': 1}" class="ml-1.5 text-[12px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400">keys</span>
+                                                <span class="block text-[13px] text-gray-400">{{ part.blocked || part.effect }}</span>
+                                                <span v-if="part.note" class="block text-[13px] text-gray-500">{{ part.note }}</span>
+                                            </span>
+                                            <span class="text-[13px] text-gray-500 shrink-0">{{ part.bytes != null ? fmtBytes(part.bytes) : '' }}</span>
+                                        </label>
+                                    </div>
+                                    <ul class="text-[13px] text-gray-400 list-disc pl-5 space-y-0.5">
+                                        <li v-if="rsChosen(s).some(x => x.kind === 'data')">Your current data is saved first, in a new Data snapshot. Data is put back when Optimux <b>restarts</b>; chat replies wait until then.</li>
+                                        <li v-if="rsChosen(s).some(x => x.kind === 'project')">Projects are put back now. A project that exists moves to <b>Archived projects</b> first.</li>
+                                        <li>Usage and cost history and your sign-ins are never rolled back. Nothing is deleted: replaced files are moved aside.</li>
+                                        <li>Every file is checked against the snapshot's checksums first. If one doesn't match, nothing is restored.</li>
+                                    </ul>
+                                    <div>
+                                        <label :for="'rs-confirm-' + s.id" class="text-[14px] text-gray-300">To confirm, type <b class="text-gray-100 select-all">{{ rsPanel[s.id].info.confirm_phrase }}</b></label>
+                                        <input :id="'rs-confirm-' + s.id" v-model="rsPanel[s.id].confirm" @keydown.enter="doRestore(s)" autocomplete="off" spellcheck="false" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500">
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <button @click="doRestore(s)" :disabled="!rsReady(s) || !!rsStatus.pending" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-[14px] disabled:opacity-50">{{ rsPanel[s.id].busy ? 'Restoring… (saving the current state first)' : 'Restore ' + rsChosen(s).length + ' part' + (rsChosen(s).length === 1 ? '' : 's') }}</button>
+                                        <span v-if="rsPanel[s.id].error" class="text-[13px] text-red-400">{{ rsPanel[s.id].error }}</span>
+                                    </div>
+                                </template>
                             </div>
                             <div v-if="snapDeleting === s.id" role="alertdialog" :aria-label="'Delete this snapshot'" class="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2">
                                 <span class="flex-1 min-w-0 text-red-200">Delete this {{ snapKindLabel(s.kind) }} snapshot{{ s.note ? ' (' + s.note + ')' : '' }}? The file will be removed from the server, and this can't be undone.</span>
@@ -971,6 +1046,33 @@
                             </div>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                        <h3 class="font-bold text-gray-200 mb-1 flex items-center">Restore from a downloaded file<help-tip wide>
+                            <p>A snapshot you downloaded earlier: <code>optimux-snapshot-….tar.gz.age</code> (encrypted) or <code>….tar.gz</code>. It can come from another server: use this to move Optimux to a new machine.</p>
+                            <p>The file is checked completely (structure and every checksum) and added to the list above. Nothing is restored until you choose the parts and confirm.</p>
+                            <p>Encrypted to your <b>SSH key</b>? Never paste a private SSH key into a web page. Open it on your computer first, then upload the <code>.tar.gz</code>:</p>
+                            <p><code>age -d -i ~/.ssh/id_ed25519 -o snapshot.tar.gz &lt;file&gt;.age</code></p>
+                        </help-tip></h3>
+                        <p class="text-[15px] text-gray-400 mb-3">Upload a snapshot you downloaded before. It is checked, then added to the list; you choose what to restore there.</p>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <input id="rs-file" type="file" accept=".gz,.age,.tgz" @change="rsPickFile" :disabled="rsUp.busy" class="text-[14px] text-gray-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-gray-800 file:text-gray-200 hover:file:bg-gray-700">
+                            <button v-if="rsUp.file && !rsUp.token" @click="rsUpload" :disabled="rsUp.busy" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-[14px] disabled:opacity-50">{{ rsUp.busy ? 'Uploading… ' + rsUp.progress + '%' : 'Upload and check' }}</button>
+                            <span v-if="rsUp.file && !rsUp.token && !rsUp.busy" class="text-[13px] text-gray-500">{{ fmtBytes(rsUp.file.size) }}</span>
+                        </div>
+                        <div v-if="rsUp.busy && !rsUp.token" class="mt-2 h-1.5 bg-gray-800 rounded overflow-hidden" role="progressbar" :aria-valuenow="rsUp.progress" aria-valuemin="0" aria-valuemax="100"><div class="h-full bg-blue-500 transition-all" :style="{ width: rsUp.progress + '%' }"></div></div>
+                        <div v-if="rsUp.token && rsUp.encrypted" class="mt-3 space-y-2">
+                            <div class="text-[14px] text-gray-300">The file is encrypted. Paste the key that came with the download (it starts with <code>AGE-SECRET-KEY-1</code>), or choose the key file <code>optimux-key-….txt</code>.</div>
+                            <textarea v-model="rsUp.key" rows="2" spellcheck="false" autocomplete="off" placeholder="AGE-SECRET-KEY-1…" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-[13px] text-gray-200 outline-none focus:border-blue-500"></textarea>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <label class="text-[13px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 cursor-pointer">Choose the key file<input type="file" accept=".txt,.key" @change="rsReadKeyFile" class="hidden"></label>
+                                <button @click="rsImport" :disabled="rsUp.busy || !rsUp.key.trim()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-[14px] disabled:opacity-50">{{ rsUp.busy ? 'Decrypting and checking…' : 'Decrypt and check' }}</button>
+                            </div>
+                            <p class="text-[13px] text-gray-500">The key is used once, here, and kept nowhere.</p>
+                        </div>
+                        <div v-else-if="rsUp.token && rsUp.busy" class="mt-2 text-[14px] text-gray-400">Checking every file…</div>
+                        <div v-if="rsUp.error" class="mt-2 text-[14px] text-red-400">{{ rsUp.error }}</div>
                     </div>
                 </div>
 

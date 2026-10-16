@@ -189,6 +189,49 @@ def test_caddy_example_detection(tmp_path, content, example):
     assert ("EX" in r.stdout) == example, r.stdout + r.stderr
 
 
+@pytest.mark.parametrize("ours", [True, False])
+def test_caddy_remove_takes_back_only_its_own_site(tmp_path, ours):
+    """A reinstall in tunnel mode removes the site a domain setup left."""
+    etc = tmp_path / "caddy"
+    etc.mkdir()
+    site = etc / "optimux.caddyfile"
+    site.write_text("optimux.example.com {\n  reverse_proxy unix//run/optimux/optimux.sock\n}\n")
+    other = "shop.example.com {\n  reverse_proxy :3000\n}\n"
+    if ours:      # the installer replaced the package's example Caddyfile
+        (etc / "Caddyfile.before-optimux").write_text(":80 {\n  file_server\n}\n")
+        (etc / "Caddyfile").write_text(f"# Written by the Optimux installer (the previous file: x)\nimport {site}\n")
+    else:         # the user's own Caddyfile, with a line added
+        (etc / "Caddyfile").write_text(f"{other}\n# Added by the Optimux installer\nimport {site}\n")
+    script = open(INSTALL).read().replace("/etc/caddy", str(etc))
+    s = tmp_path / "i.sh"
+    s.write_text(script)
+    r = bash(f'OPTIMUX_LIB_ONLY=1 source "{s}"; tui_init; CM_SUDO=""; systemctl() {{ :; }}; '
+             'declare -gA M=([NAME]=optimux); caddy_remove && echo DONE')
+    assert "DONE" in r.stdout, r.stderr
+    assert not site.exists()
+    left = (etc / "Caddyfile").read_text()
+    assert "optimux" not in left.lower()
+    assert left == (":80 {\n  file_server\n}\n" if ours else other + "\n")
+    assert not (etc / "Caddyfile.before-optimux").exists()
+
+
+def test_services_let_optimux_restart_itself_and_update_refreshes_them():
+    """Restore's "Restart now": Optimux exits with 75 and systemd starts it again.
+    Only units that say so (OPTIMUX_SUPERVISED=1) offer it."""
+    unit = open(os.path.join(ROOT, "deploy", "optimux.service")).read()
+    assert "Environment=OPTIMUX_SUPERVISED=1" in unit and "RestartForceExitStatus=75" in unit
+    script = open(INSTALL).read()
+    user = script.split("write_user_unit() {", 1)[1].split("\n}\n", 1)[0]
+    assert "Environment=OPTIMUX_SUPERVISED=1" in user and "RestartForceExitStatus=75" in user
+    update = script.split("cli_update() {", 1)[1].split("\n}\n", 1)[0]
+    assert 'install_server_unit "${M[DOMAIN]:-}"' in update and "write_user_unit" in update
+
+
+def test_tunnel_reinstall_removes_an_earlier_caddy_site():
+    body = open(INSTALL).read().split("install_server() {", 1)[1].split("\n}\n", 1)[0]
+    assert 'elif [[ -f "$(caddy_site)" ]]; then' in body and "caddy_remove" in body
+
+
 # ---------------------------------------------------------------- Feature 25: GitHub
 
 @pytest.mark.parametrize("pm,pkg", [("apt-get", "gh"), ("dnf", "gh"), ("pacman", "github-cli"), ("brew", "gh"), ("", "")])

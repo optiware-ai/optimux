@@ -13,6 +13,8 @@ User=optimux
 Group=optimux
 WorkingDirectory=/opt/optimux
 EnvironmentFile=/etc/optimux/optimux.env
+# Optimux may restart itself (e.g. to finish a restore): it exits with 75 and systemd starts it again
+Environment=OPTIMUX_SUPERVISED=1
 # Optimux listens on a Unix socket, not a TCP port. Only members of the optimux group
 # (Caddy: `usermod -aG optimux caddy`) can open /run/optimux, and model-run commands
 # can't see it (the sandbox gives them an empty /run). So nothing but Caddy can
@@ -21,6 +23,7 @@ RuntimeDirectory=optimux
 RuntimeDirectoryMode=0750
 ExecStart=/opt/optimux/.venv/bin/uvicorn optimux_backend.main:app --uds /run/optimux/optimux.sock --proxy-headers --forwarded-allow-ips * --no-server-header
 Restart=on-failure
+RestartForceExitStatus=75
 RestartSec=3
 
 # --- Limits for Optimux and every command it runs together (adjust to the VPS) ---

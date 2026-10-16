@@ -13,6 +13,11 @@ from fastapi.staticfiles import StaticFiles
 from optimux_backend.core import paths
 for _move in paths.prepare_home():
     print(f"[Optimux] {_move}")
+# A restore staged before the restart goes in place before anything reads config,
+# keys or the database (Dashboard -> Backups -> Restore)
+from optimux_backend.core import restore as restore_lib
+for _line in restore_lib.apply_pending():
+    print(f"[Optimux] {_line}")
 
 from optimux_backend.core.config_manager import (
     get_models_config, save_api_key_to_env, ApiKeyPayload,
@@ -179,9 +184,19 @@ async def guard(request: Request, call_next):
         response = JSONResponse({"detail": "Cross-site request refused."}, status_code=403)
         security_headers(request, response)
         return response
+    # While a restore runs or waits for the restart, changes would be lost (data is replaced
+    # at the restart): only the restore itself and the snapshots can change things
+    if (request.method not in SAFE_METHODS and path.startswith("/api/")
+            and not path.startswith(RESTORE_ALLOWED) and (why := restore_lib.blocked_reason())):
+        response = JSONResponse({"detail": why}, status_code=422)
+        security_headers(request, response)
+        return response
     response = await call_next(request)
     security_headers(request, response)
     return response
+
+
+RESTORE_ALLOWED = ("/api/restore/", "/api/snapshots")
 
 
 @app.exception_handler(ScopeError)
@@ -686,6 +701,8 @@ async def preview_snapshot_api(payload: SnapshotPayload):
 @app.post("/api/snapshots")
 async def take_snapshot_api(payload: SnapshotPayload):
     """Start taking a snapshot in the background; poll GET /api/snapshots for its status."""
+    if restore_lib.busy():
+        raise HTTPException(422, "A backup is being restored. Wait for it to finish.")
     try:
         sid = await asyncio.to_thread(snapshots.start, payload.kind, payload.note,
                                       payload.projects or None, payload.skip_rebuildable)
@@ -751,6 +768,121 @@ async def snapshot_readme_api(sid: str):
     try:
         return await asyncio.to_thread(snapshots.read_readme, sid)
     except snapshots.SnapshotError as e:
+        raise HTTPException(422, str(e))
+
+
+# ---- Restore (v0.3): from a snapshot in the list; a downloaded file is uploaded and imported first
+
+class RestorePayload(BaseModel):
+    parts: list[str] = []
+    confirm: str = ""
+
+
+class ImportPayload(BaseModel):
+    token: str
+    key: str = ""
+    filename: str = ""
+
+
+def replies_running() -> bool:
+    return any(n > 0 for n in BUSY_PROJECTS.values())
+
+
+@app.get("/api/restore/status")
+async def restore_status_api():
+    """A restore waiting for the restart, the last one applied, and whether Optimux can restart itself."""
+    return restore_lib.status()
+
+
+@app.get("/api/snapshots/{sid}/restore")
+async def restore_inspect_api(sid: str):
+    """The parts of a snapshot and what restoring each would do now. Nothing changes."""
+    try:
+        return await asyncio.to_thread(restore_lib.inspect, sid)
+    except (restore_lib.RestoreError, snapshots.SnapshotError) as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/api/snapshots/{sid}/restore")
+async def restore_api(sid: str, payload: RestorePayload):
+    """Restore the chosen parts. Projects at once; data when Optimux restarts."""
+    try:
+        return await asyncio.to_thread(restore_lib.restore, sid, payload.parts, payload.confirm, replies_running)
+    except (restore_lib.RestoreError, snapshots.SnapshotError) as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/api/restore/cancel")
+async def restore_cancel_api():
+    try:
+        return {"moved_to": restore_lib.cancel_pending()}
+    except restore_lib.RestoreError as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/api/restore/dismiss")
+async def restore_dismiss_api():
+    restore_lib.dismiss_last()
+    return {"ok": True}
+
+
+@app.post("/api/restore/restart")
+async def restore_restart_api():
+    """Restart to finish a data restore. Under systemd, Optimux exits and systemd starts
+    it again (Restart=on-failure); otherwise the user restarts it."""
+    if not restore_lib.pending():
+        raise HTTPException(422, "No restore is waiting for a restart.")
+    if replies_running():
+        raise HTTPException(422, "A reply is running. Wait for it to finish (or stop it), then restart.")
+    if snapshots.summary()["running"] or CURATING:
+        raise HTTPException(422, "A snapshot or a memory update is running. Wait a moment, then restart.")
+    if not restore_lib.supervised():
+        raise HTTPException(422, "Optimux isn't running as a service here, so it can't restart itself. "
+                                 "Restart it with: optimux restart")
+    print("[Optimux] restarting to finish a restore")
+    asyncio.get_running_loop().call_later(0.5, os._exit, 75)
+    return {"restarting": True}
+
+
+@app.post("/api/restore/upload")
+async def restore_upload_api(request: Request):
+    """Receive a downloaded snapshot (.tar.gz, or .tar.gz.age) as the raw request body.
+    It is kept for an hour, until it is imported."""
+    try:
+        length = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        length = 0
+    free = snapshots.free_bytes() - restore_lib.FREE_MARGIN
+    if length and length > free:
+        raise HTTPException(422, "Not enough free disk space for this file.")
+    token, path = restore_lib.new_upload()
+    size = 0
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > free:
+                    raise HTTPException(422, "Not enough free disk space for this file.")
+                f.write(chunk)
+    except BaseException:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        raise
+    if not size:
+        os.unlink(path)
+        raise HTTPException(422, "The file is empty.")
+    return {"token": token, "size": size, "encrypted": restore_lib.is_encrypted(path)}
+
+
+@app.post("/api/restore/import")
+async def restore_import_api(payload: ImportPayload):
+    """Decrypt (with the key) and check an uploaded file, then add it to the snapshot list."""
+    try:
+        return await asyncio.to_thread(restore_lib.import_upload, payload.token, payload.key, payload.filename)
+    except (restore_lib.RestoreError, snapshots.SnapshotError) as e:
         raise HTTPException(422, str(e))
 
 
@@ -1881,6 +2013,8 @@ async def curate_session(sid: str | None, websocket: WebSocket | None = None, fo
     updated this time. Reasons are shown to the user as they are."""
     if not sid or (not force and not curator_enabled()):
         return {"changed": False, "reason": "Automatic updates are off."}
+    if (why := restore_lib.blocked_reason()):
+        return {"changed": False, "reason": why}       # the memory would be replaced by the restore
     if sid in CURATING:
         return {"changed": False, "reason": "An update from this chat is already running."}
     CURATING.add(sid)
@@ -2773,6 +2907,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
             if busy:
                 await send(websocket, "system", "Still working on the previous request. Stop it first.")
+                continue
+            if kind not in ("new_chat", "open_session") and (why := restore_lib.blocked_reason()):
+                await send(websocket, "system", why)
+                await send(websocket, "done")
                 continue
             current = asyncio.create_task(run_job(payload))
     except WebSocketDisconnect:

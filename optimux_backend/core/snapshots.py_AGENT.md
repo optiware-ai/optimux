@@ -36,4 +36,6 @@
 ## Links & Dependencies
 - `paths.py` (folders and the database path), `workspace.py` (`projects_root`, `project_names`), `config_manager.py` (`snapshot_limit_gb`).
 - Used by `main.py`: `GET /api/snapshots`, `POST /api/snapshots/preview`, `POST /api/snapshots`, `POST /api/snapshots/limit`, `GET /api/snapshots/{id}/readme`, `POST /api/snapshots/{id}/delete`. A `SnapshotError` becomes a 422 with its message.
+- `hold(sid)` / `release(sid)` (`_held`): a snapshot being restored is never removed by `_make_room` (nor counted as reclaimable by `plan`), and `delete` refuses it.
+- `restore.py` restores snapshots: it reads the manifest with `read_head_member`, takes the before-restore snapshot with `create("data")`, and imports uploaded files with `_new_id` (under `_lock`) and `_write_meta`; imported descriptions carry `uploaded`, `original_id` and `original_created`.
 - Tests: `tests/test_snapshots.py`.

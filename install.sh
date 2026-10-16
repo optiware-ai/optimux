@@ -727,8 +727,10 @@ Description=Optimux (installed by install.sh)
 [Service]
 Environment=OPTIMUX_HOME=${M[DATA_DIR]}
 WorkingDirectory=${M[APP_DIR]}
+Environment=OPTIMUX_SUPERVISED=1
 ExecStart=${M[APP_DIR]}/.venv/bin/uvicorn optimux_backend.main:app --host 127.0.0.1 --port ${M[PORT]} --no-proxy-headers --no-server-header
 Restart=on-failure
+RestartForceExitStatus=75
 UMask=0077
 
 [Install]
@@ -890,6 +892,20 @@ server_unit() {
 
 server_socket() { echo "/run/$(nm)/$(nm).sock"; }
 
+# The systemd service from deploy/optimux.service; without a domain it listens on
+# 127.0.0.1 (SSH tunnel). Also run on update, so an install gets the current unit.
+install_server_unit() {
+  local domain="${1:-}" n unit
+  n="$(nm)"
+  unit="$(mktemp)"
+  server_unit "$n" >"$unit"
+  if [[ -z "$domain" ]]; then
+    sed -i -E "s#^ExecStart=.*#ExecStart=${M[APP_DIR]}/.venv/bin/uvicorn optimux_backend.main:app --host 127.0.0.1 --port ${M[PORT]} --no-proxy-headers --no-server-header#" "$unit"
+  fi
+  run "Installing the systemd service" bash -c "$CM_SUDO install -m 644 '$unit' /etc/systemd/system/$n.service && $CM_SUDO systemctl daemon-reload && $CM_SUDO systemctl enable $n.service"
+  rm -f "$unit"
+}
+
 # The service was started but doesn't answer yet: usually a slow first start. A service
 # that failed or keeps restarting is reported as a problem ($1: the systemd unit).
 still_starting() {
@@ -1007,6 +1023,7 @@ install_server() {
       else CM_NODOMAIN=1; fi
     fi
   fi
+  M[DOMAIN]=""                         # a reinstall that moved to the SSH tunnel has none
   if [[ -n "$domain" ]]; then
     M[DOMAIN]="$domain"; M[URL]="https://$domain"
     local ip dns
@@ -1072,16 +1089,15 @@ EOF
   configure_sandbox || { fix_apparmor && configure_sandbox; } || warn "The sandbox doesn't work here yet, so commands will be refused. See Dashboard → Execution and the Guide."
 
   step "Service and HTTPS"
-  local unit
-  unit="$(mktemp)"
-  server_unit "$N" >"$unit"
-  if [[ -z "$domain" ]]; then
-    sed -i -E "s#^ExecStart=.*#ExecStart=${M[APP_DIR]}/.venv/bin/uvicorn optimux_backend.main:app --host 127.0.0.1 --port ${M[PORT]} --no-proxy-headers --no-server-header#" "$unit"
-  fi
-  run "Installing the systemd service" bash -c "$CM_SUDO install -m 644 '$unit' /etc/systemd/system/$N.service && $CM_SUDO systemctl daemon-reload && $CM_SUDO systemctl enable $N.service"
-  rm -f "$unit"
+  install_server_unit "$domain"
   M[SERVICE]="systemd"
-  [[ -n "$domain" ]] && configure_caddy "$domain"
+  if [[ -n "$domain" ]]; then configure_caddy "$domain"
+  elif [[ -f "$(caddy_site)" ]]; then
+    # A reinstall that moved from a domain to the SSH tunnel: the old web address goes
+    caddy_remove
+    ok "Removed the web address of the earlier setup (Caddy)"
+    note "Firewall rules for 80/443 were left in place (other sites may use them): sudo ufw delete allow 80/tcp"
+  fi
   configure_firewall "$domain"
   configure_auto_updates
 
@@ -1398,8 +1414,12 @@ cli_update() {
   if [[ "${M[MODE]}" == server ]]; then
     fetch_code "${M[APP_DIR]}" root; make_venv "${M[APP_DIR]}" root
     run "Keeping the program read-only" $CM_SUDO chown -R root:root "${M[APP_DIR]}"
+    [[ "${M[SERVICE]:-}" == systemd ]] && install_server_unit "${M[DOMAIN]:-}"   # the unit of this version
   else
     fetch_code "${M[APP_DIR]}"; make_venv "${M[APP_DIR]}"
+    if [[ "${M[SERVICE]:-}" == systemd-user ]]; then
+      write_user_unit && systemctl --user daemon-reload >/dev/null 2>&1 || true
+    fi
   fi
   run "Restarting" svc restart
   ok "Updated to $(git -C "${M[APP_DIR]}" describe --always 2>/dev/null)"

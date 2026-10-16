@@ -921,6 +921,144 @@ createApp({
             } catch (error) { console.error('Delete failed', error); }
             await fetchSnapshots();
         };
+        // ---- v0.3 D: restore (from a snapshot in the list; a downloaded file is uploaded first)
+        const rsStatus = ref({ pending: null, last: null, busy: false, can_restart: false, confirm_phrase: '' });
+        const rsPanel = ref({});             // snapshot id -> the open restore panel
+        const rsRestarting = ref(false);
+        const fetchRestoreStatus = async () => {
+            try { const r = await fetch('/api/restore/status'); if (r.ok) rsStatus.value = await r.json(); }
+            catch (error) { console.error('Failed to load the restore status', error); }
+        };
+        const openRestore = async (s) => {
+            snapDeleting.value = '';
+            if (!systemInfo.value) fetchSystemInfo();       // to compare versions
+            rsPanel.value[s.id] = { loading: true, info: null, chosen: {}, confirm: '', busy: false, error: '' };
+            try {
+                const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/restore`);
+                const d = await readJson(r);
+                const p = rsPanel.value[s.id];
+                if (!p) return;
+                if (!r.ok) { p.error = detailText(d.detail, 'This snapshot could not be read.'); p.loading = false; return; }
+                p.info = d;
+                for (const part of d.parts) p.chosen[part.path] = !!part.default && !part.blocked;
+                p.loading = false;
+            } catch (error) { if (rsPanel.value[s.id]) { rsPanel.value[s.id].error = 'This snapshot could not be read.'; rsPanel.value[s.id].loading = false; } }
+        };
+        const closeRestore = (s) => { delete rsPanel.value[s.id]; };
+        const rsChosen = (s) => { const p = rsPanel.value[s.id]; return p && p.info ? p.info.parts.filter(x => p.chosen[x.path]) : []; };
+        const rsReady = (s) => {
+            const p = rsPanel.value[s.id];
+            return !!(p && p.info && rsChosen(s).length && p.confirm.trim() === p.info.confirm_phrase && !p.busy);
+        };
+        const doRestore = async (s) => {
+            const p = rsPanel.value[s.id];
+            if (!rsReady(s)) return;
+            p.busy = true; p.error = '';
+            try {
+                const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/restore`, { method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ parts: rsChosen(s).map(x => x.path), confirm: p.confirm }) });
+                const d = await readJson(r);
+                if (!r.ok) { p.error = detailText(d.detail, 'The restore failed.'); return; }
+                closeRestore(s);
+                const projects = d.projects.length ? `Projects restored: ${d.projects.join(', ')}.` : '';
+                const archived = (d.archived.length ? ' Their previous folders are under Archived projects.' : '')
+                    + (d.skipped_links && d.skipped_links.length ? ` ${d.skipped_links.length} link(s) in Optimux's data were left out (links are never restored there).` : '');
+                pushToast(d.restart_needed
+                    ? { title: 'Restore ready: restart Optimux to finish', text: `${projects}${archived} Your data is put back when Optimux restarts (see the top of Backups).` }
+                    : { title: 'Restored', text: `${projects}${archived}` });
+                if (d.projects.length) fetchProjectsList();
+            } catch (error) { p.error = 'The restore failed.'; }
+            finally { p.busy = false; await Promise.all([fetchSnapshots(), fetchRestoreStatus()]); }
+        };
+        const restartForRestore = async () => {
+            try {
+                const r = await fetch('/api/restore/restart', { method: 'POST' });
+                if (!r.ok) { pushToast({ kind: 'warn', title: 'Not restarted', text: detailText((await readJson(r)).detail, '') }); return; }
+            } catch (_) { /* the server may already be going down */ }
+            rsRestarting.value = true;
+            // Wait until Optimux answers again, then reload the page with the restored data
+            const started = Date.now();
+            await new Promise(res => setTimeout(res, 2000));
+            while (Date.now() - started < 120000) {
+                try { const r = await fetch('/auth/status', { cache: 'no-store' }); if (r.ok) { location.reload(); return; } }
+                catch (_) { /* still restarting */ }
+                await new Promise(res => setTimeout(res, 1500));
+            }
+            rsRestarting.value = false;
+            pushToast({ kind: 'warn', title: 'Optimux is not back yet', text: 'Check it on the server: optimux status (sudo on a server).' });
+        };
+        const cancelRestore = async () => {
+            try {
+                const r = await fetch('/api/restore/cancel', { method: 'POST' });
+                const d = await readJson(r);
+                if (r.ok) pushToast({ title: 'Restore cancelled', text: `Nothing changed in your data. The prepared files were moved to ${d.moved_to}.` });
+                else pushToast({ kind: 'warn', title: 'Not cancelled', text: detailText(d.detail, '') });
+            } catch (error) { console.error('Cancel failed', error); }
+            await fetchRestoreStatus();
+        };
+        const dismissRestore = async () => {
+            try { await fetch('/api/restore/dismiss', { method: 'POST' }); } catch (_) { /* a notice only */ }
+            await fetchRestoreStatus();
+        };
+        // Restore from a file: upload (raw body, with progress), then import (decrypt + check)
+        const rsUp = ref({ file: null, progress: 0, busy: false, error: '', token: '', encrypted: false, key: '' });
+        const rsPickFile = (e) => {
+            const f = e.target.files && e.target.files[0];
+            rsUp.value = { file: f || null, progress: 0, busy: false, error: '', token: '', encrypted: false, key: '' };
+        };
+        const rsReadKeyFile = (e) => {
+            const f = e.target.files && e.target.files[0];
+            if (!f) return;
+            const reader = new FileReader();
+            reader.onload = () => { rsUp.value.key = String(reader.result || ''); };
+            reader.readAsText(f);
+            e.target.value = '';
+        };
+        const rsUpload = () => new Promise((resolve) => {
+            const u = rsUp.value;
+            if (!u.file) return resolve();
+            u.busy = true; u.error = ''; u.progress = 0;
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/restore/upload');
+            xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+            xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) u.progress = Math.round(ev.loaded / ev.total * 100); };
+            xhr.onload = async () => {
+                let d = {};
+                try { d = JSON.parse(xhr.responseText); } catch (_) { /* keep {} */ }
+                if (xhr.status !== 200) { u.busy = false; u.error = detailText(d.detail, 'The upload failed.'); return resolve(); }
+                u.token = d.token; u.encrypted = d.encrypted; u.progress = 100;
+                u.busy = false;
+                if (!d.encrypted) await rsImport();             // nothing to ask: check it and add it
+                resolve();
+            };
+            xhr.onerror = () => { u.busy = false; u.error = 'The upload failed (connection lost).'; resolve(); };
+            xhr.send(u.file);
+        });
+        const rsImport = async () => {
+            const u = rsUp.value;
+            u.busy = true; u.error = '';
+            try {
+                const r = await fetch('/api/restore/import', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: u.token, key: u.key, filename: u.file ? u.file.name : '' }) });
+                const d = await readJson(r);
+                if (!r.ok) {
+                    u.error = detailText(d.detail, 'The file could not be checked.');
+                    // The server keeps an encrypted upload only after a wrong key: anything else needs a new upload
+                    const keyProblem = u.encrypted && /key/i.test(u.error) && !/expired|Upload the file again/.test(u.error);
+                    if (!keyProblem) u.token = '';
+                    return;
+                }
+                rsUp.value = { file: null, progress: 0, busy: false, error: '', token: '', encrypted: false, key: '' };
+                const input = document.getElementById('rs-file');
+                if (input) input.value = '';
+                await fetchSnapshots();
+                pushToast({ title: 'Snapshot added to the list', text: 'The file was checked: every part matches its checksum. Choose what to restore below.' });
+                snapOpen.value[d.id] = true;
+                openRestore(d);
+            } catch (error) { u.error = 'The file could not be checked.'; }
+            finally { u.busy = false; }
+        };
         const saveSnapshotLimit = async () => {
             // Only the limit: other unsaved Dashboard edits stay unsaved
             const gb = Number(snapLimit.value);
@@ -1550,7 +1688,7 @@ createApp({
             if (id === 'execution') { fetchSandbox(); commandEnvText.value = (appSettings.value.command_env || []).join('\n'); }
             if (id === 'skills') fetchSkills();
             if (id === 'models') { fetchCatalog(); loadProviderModels(); }
-            if (id === 'backups') { fetchSnapshots(); fetchProjectsList().then(snapSyncProjects); }
+            if (id === 'backups') { fetchSnapshots(); fetchRestoreStatus(); fetchProjectsList().then(snapSyncProjects); }
         };
         const dashboardHash = () => `#/dashboard/${settingsTab.value}`;
         const openSettings = (section) => {
@@ -2573,6 +2711,7 @@ createApp({
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
             snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
+            rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,

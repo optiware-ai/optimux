@@ -785,6 +785,36 @@ age -d -i optimux-key-2026-10-15_093000-full.txt -o snapshot.tar.gz optimux-snap
 mkdir -m 700 restore && tar -xzf snapshot.tar.gz -C restore
 ```
 
+### Restoring a snapshot
+
+In the list, **Restore…** on a snapshot opens a panel that lists its parts. Tick what to put back:
+
+- **Settings, memory, skills** and the **database** (chats, memory history, the list of deleted projects) are ticked by default.
+- **API keys** (`secrets.env`) and **password and two-step codes** (`auth.json`) are **not** ticked by default: an older copy would bring back keys or a password you may have changed since. Tick them on a new server, or if you lost them.
+- **Each project** is ticked. A project that exists now moves to **Archived projects** first (you can bring it back from there); a project that no longer exists comes back as new. Its project memory comes with it, and the change is recorded in the memory history (so **Undo** works).
+
+Then type **yes I am sure I want to restore the backup** and click **Restore**. What happens:
+
+1. Every file in the snapshot is checked against its checksum (`SHA256SUMS`), and its structure is checked (no paths that leave the folder, nothing written through a link). If anything doesn't match, **nothing is restored**.
+2. When you restore data, your **current data is saved first** in a new Data snapshot ("Before restoring …"). It is yours: it is never removed automatically.
+3. **Projects are put back at once.**
+4. **Data is put back when Optimux restarts.** A yellow box at the top of Backups says so. Click **Restart now** when it is offered: Optimux restarts itself and the page reloads. It is offered when Optimux runs as a service set up by the installer (after `optimux update`, older installs get it too). Otherwise run `optimux restart` (`sudo optimux restart` on a server). While the restore waits, other changes (settings, memory, models) wait too, since the restart would replace them. Until then, chat replies wait, so no new chat is lost by the restore. **Cancel the restore** drops it without changing anything.
+5. After the restart, a green box says what was put back and where the files it replaced are: `~/.optimux/legacy/before-restore-<time>/`. **Nothing is deleted.**
+
+Links (shortcuts) inside your projects come back as links. In Optimux's own data a link could point your keys or database somewhere else, so links there are never restored (the result says how many were left out).
+
+**Never rolled back:** your **usage and cost history** (Usage and budgets always show what you really spent) and your **current sign-ins** (a sign-out you did is not undone). A restored database gets the current ones.
+
+A restore is refused while a reply is running, while a snapshot is being taken, or while another restore waits for the restart.
+
+**From a downloaded file.** **Restore from a downloaded file** (under the list) takes a snapshot you downloaded earlier, from this server or another one: this is how you move Optimux to a new machine.
+
+1. Choose the file (`….tar.gz.age` or `….tar.gz`) and click **Upload and check**.
+2. If it is encrypted with a one-time key, paste the key (`AGE-SECRET-KEY-1…`) or **Choose the key file** (`optimux-key-….txt`), then **Decrypt and check**. The key is used once and kept nowhere. A wrong key can be corrected without uploading again.
+3. The whole file is checked; it then appears in the list as **Uploaded: …**, with the restore panel open.
+
+If you encrypted the download to your **SSH key**, don't paste your private SSH key into a web page: open the file on your computer first (`age -d -i ~/.ssh/id_ed25519 -o snapshot.tar.gz <file>.age`) and upload the `.tar.gz`.
+
 ### Backing up, starting over, moving
 
 **Back up** by copying the whole folder while the server is stopped, or just `~/.optimux/backups/` (a daily copy of the database) to another disk from time to time. The backups live in the same folder, so they don't protect you against deleting it.
@@ -797,7 +827,7 @@ mv ~/.optimux ~/.optimux.old      # Optimux starts clean; put it back to undo
 
 If the folder is deleted while the server is running, Optimux keeps working with a fresh, empty database; restart it to also get a new token and the starter files.
 
-**Moving to another machine.** Stop the server, copy `~/.optimux` (it contains your keys: use a secure channel, e.g. `scp` or an encrypted drive), and start Optimux there. Update the Workspace folder in **Scope** if your projects live elsewhere.
+**Moving to another machine.** The easiest way: take an **Everything** snapshot, download it encrypted, install Optimux on the new machine, and restore the file there (see *Restoring a snapshot*; tick the keys and the password too). By hand: stop the server, copy `~/.optimux` (it contains your keys: use a secure channel, e.g. `scp` or an encrypted drive), and start Optimux there. Update the Workspace folder in **Scope** if your projects live elsewhere.
 
 ## Running on a server
 

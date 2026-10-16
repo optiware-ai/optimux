@@ -69,7 +69,18 @@ REBUILDABLE = frozenset({"node_modules", ".venv", "venv", "__pycache__", ".pytes
 ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{6}-(full|data|workspace)(-\d+)?$")
 
 _running: set[str] = set()
+_held: set[str] = set()                 # being restored: never removed meanwhile (restore.py)
 _lock = threading.Lock()
+
+
+def hold(sid: str) -> None:
+    with _lock:
+        _held.add(sid)
+
+
+def release(sid: str) -> None:
+    with _lock:
+        _held.discard(sid)
 
 
 class SnapshotError(Exception):
@@ -279,7 +290,8 @@ def plan(kind: str, projects: list[str] | None = None, skip_rebuildable: bool = 
     # every file and folder adds a header (512 bytes, often 1 KB with long names)
     estimate = total + 1024 * (sum(i["files"] for i in items) + len(items)) + 64 * 1024
     used, limit, free = used_bytes(), limit_bytes(), free_bytes()
-    reclaimable = sum(s["size_bytes"] for s in list_snapshots() if s.get("auto") and s["status"] == "ready")
+    reclaimable = sum(s["size_bytes"] for s in list_snapshots()
+                      if s.get("auto") and s["status"] == "ready" and s["id"] not in _held)
     reason = ""
     if estimate + FREE_MARGIN > free:
         reason = "Not enough free disk space."
@@ -591,8 +603,8 @@ def _new_id(kind: str) -> str:
 def _make_room(needed: int) -> None:
     """Remove automatic snapshots, oldest first, until needed bytes fit the limit."""
     over = used_bytes() + needed - limit_bytes()
-    for s in sorted((x for x in list_snapshots() if x.get("auto") and x["status"] == "ready"),
-                    key=lambda x: x["created"]):
+    for s in sorted((x for x in list_snapshots() if x.get("auto") and x["status"] == "ready"
+                     and x["id"] not in _held), key=lambda x: x["created"]):
         if over <= 0:
             break
         delete(s["id"])
@@ -834,6 +846,8 @@ def delete(sid: str) -> None:
     archive = archive_path(sid)            # validates the id
     if sid in _running:
         raise SnapshotError("This snapshot is still being taken.")
+    if sid in _held:
+        raise SnapshotError("This snapshot is being restored. Wait for the restore to finish.")
     found = False
     for f in (archive, archive + ".partial", _meta_path(sid), _db_copy_path(sid)):
         try:
