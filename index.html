@@ -1801,7 +1801,7 @@
                     <div v-if="msg.role === 'agent' && msg.events && msg.events.length" class="text-xs font-mono mb-3 pb-2 border-b border-gray-800 space-y-1">
                         <div v-for="(ev, eIdx) in msg.events" :key="eIdx" :class="['flex items-start gap-2', ev.kind === 'route' ? 'text-blue-400' : (ev.kind === 'switch' ? 'text-amber-400' : 'text-gray-500')]">
                             <span class="select-none">{{ ev.kind === 'switch' ? '↪' : (ev.kind === 'route' ? '⇄' : '·') }}</span>
-                            <span>{{ ev.text }}</span>
+                            <span class="whitespace-pre-line min-w-0">{{ ev.text }}</span>
                         </div>
                     </div>
                     <div v-else-if="msg.role === 'agent' && msg.system_note" class="text-xs text-blue-400 font-mono mb-3 pb-2 border-b border-gray-800 flex items-center gap-2">

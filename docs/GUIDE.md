@@ -411,7 +411,7 @@ The model list and prices come from the price list of LiteLLM (the library Optim
 - **Status**: *ready*, *needs key*, *test failed*, or *cooldown* (temporarily skipped after errors).
 - **Test** makes a tiny real call (a few tokens) to check the ID and key. A successful test also clears a cooldown.
 - **Key** lets you replace the key; **Prices** lets you edit them; the bin deletes the model (its key stays in `secrets.env`).
-- **Thinking**: how much the model reasons before answering: *Default* (the provider decides), *Minimal*, *Low*, *Medium* or *High*. More thinking means more output tokens, more cost and more time, and usually better results on hard tasks. A note tells you when LiteLLM doesn't list the model as supporting it.
+- **Thinking**: how much the model reasons before answering: *Default* (the provider decides), *Minimal*, *Low*, *Medium* or *High*. More thinking means more output tokens, more cost and more time, and usually better results on hard tasks. A note tells you when LiteLLM doesn't list the model as supporting it. Newer Claude models (Sonnet 5 and later, Opus 4.7 and later) may think even on *Default*, but then Anthropic **hides the text**: the chat shows only "Thinking: N tokens (the model didn't share the text)". Pick a level (*Low*, *Medium*…) to get a readable summary of the thinking. You pay for the full thinking either way; the summary costs nothing extra.
 
 ### Cooldowns
 
