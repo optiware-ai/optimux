@@ -377,7 +377,7 @@ The Conductor decides which tasks are worth a plan: a request to do work now, in
 
 Planning costs one Complex call (two if its first answer can't be used); it is shown in Usage with the role **planner**. The planner gets your request, the project memory and the list of the project's files (up to 300 paths). It doesn't open files or run anything. If it can't make a usable plan, the task is done the usual way, and the chat says so. A new request replaces a plan that hasn't started.
 
-The chat shows the whole plan: for each step, what it will do (**Do**), how it knows it is finished (**Done when**) and the files it touches, then the final **Check**. Read the steps before you run them: a cheap model will work from these instructions alone. When the planner model shares its thinking (Claude does; Gemini keeps it hidden), you can open it above the plan.
+The chat shows the whole plan as a card: for each step, what it will do (**Do**), how it knows it is finished (**Done when**) and the files it touches, then the final **Check**. Read the steps before you run them: a cheap model will work from these instructions alone. When the planner model shares its thinking (Claude does; Gemini keeps it hidden), you can open it above the plan.
 
 ## Models
 

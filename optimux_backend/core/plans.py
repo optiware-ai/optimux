@@ -303,16 +303,3 @@ def summary_for_history(plan: dict) -> str:
         lines.append(f"Check: {plan['check']}")
     return "\n".join(lines)
 
-
-def details_text(plan: dict) -> str:
-    """The whole plan for the user to judge before Run: what each step will do,
-    when it is done and which files it touches (the history keeps the summary)."""
-    lines = [f"[Plan] {plan['goal']} ({plan['status']})"]
-    for s in plan["steps"]:
-        lines.append(f"{s['id']}. {s['title']} [{s['tier']}]")
-        lines.append(f"   Do: {s['do']}")
-        lines.append(f"   Done when: {s['done_when']}")
-        if s.get("files"):
-            lines.append(f"   Files: {', '.join(s['files'])}")
-    lines.append(f"Check: {plan['check']}" if plan.get("check") else "Check: (none)")
-    return "\n".join(lines)

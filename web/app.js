@@ -2357,6 +2357,12 @@ createApp({
                     if (data.estimated) u.estimated = true;
                     if (data.role !== 'conductor') lastMsg.model = data.model;
                 }
+                else if (data.type === "plan") {
+                    // v0.4: a plan card; a later event for the same plan updates it in place
+                    if (lastMsg.role !== 'agent' || !lastMsg.blocks || !data.plan) return;
+                    const old = lastMsg.blocks.find(b => b.kind === 'plan' && b.plan.id === data.plan.id);
+                    if (old) old.plan = data.plan; else lastMsg.blocks.push({ kind: 'plan', plan: data.plan });
+                }
                 else if (data.type === "thinking") {
                     if (lastMsg.role !== 'agent' || !lastMsg.blocks) return;
                     const last = lastMsg.blocks[lastMsg.blocks.length - 1];
@@ -2600,6 +2606,7 @@ createApp({
             items.forEach(b => {
                 if (b.kind === 'text') { lines.push(b.text, ''); return; }
                 if (b.kind === 'note') { lines.push(`*↪ ${b.text}*`, ''); return; }
+                if (b.kind === 'plan') { lines.push(...planLines(b.plan), ''); return; }
                 if (b.kind === 'thinking' && !b.text) { lines.push(`*Thinking: ${b.tokens} tokens (text not shared by the model)*`, ''); return; }
                 if (b.kind === 'thinking') { lines.push('<details><summary>Thinking</summary>', '', b.text.trim(), '', '</details>', ''); return; }
                 const output = (b.output || '').replace(/\n+$/, '');
@@ -2613,6 +2620,17 @@ createApp({
                 lines.push(`_${callsLabel(u)} · ${u.estimated ? '≈' : ''}${fmtTokens(u.tokens)} tokens${u.reasoning ? ' (' + fmtTokens(u.reasoning) + ' thinking)' : ''} · ${u.costKnown ? fmtCost(u.cost) : (u.cost > 0 ? fmtCost(u.cost) + '+' : 'cost unknown')} · ${fmtMs(u.ms)}_`, '');
             }
             return lines;
+        };
+
+        // A plan card as Markdown (chat export)
+        const planLines = (p) => {
+            const out = [`**Plan: ${p.goal}** (${p.status})`, ''];
+            (p.steps || []).forEach(s => {
+                out.push(`${s.id}. **${s.title}** [${s.tier}]`, `   - Do: ${s.do}`, `   - Done when: ${s.done_when}`);
+                if (s.files && s.files.length) out.push(`   - Files: ${s.files.map(f => '`' + f + '`').join(', ')}`);
+            });
+            if (p.check) out.push('', `Final check: ${p.check}`);
+            return out;
         };
 
         const sessionMarkdown = () => {

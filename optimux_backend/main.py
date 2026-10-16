@@ -1764,8 +1764,8 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
         return False
     record = plans_lib.summary_for_history(plan)
     await send(websocket, "plan", plan=public_plan(plan))
-    await send(websocket, "system", plans_lib.details_text(plan) + "\n\nPlan mode preview: this version shows the plan but doesn't run it "
-                                    "yet. To do the task now, send it again starting with /noplan.")
+    await send(websocket, "system", f"Plan ready: {len(plan['steps'])} steps. Plan mode preview: this version shows the "
+                                    "plan but doesn't run it yet. To do the task now, send it again starting with /noplan.")
     session["history"] = trim_history(session["history"] + [{"role": "user", "content": user_message},
                                                             {"role": "assistant", "content": record}])
     session["last_turn_ok"] = True

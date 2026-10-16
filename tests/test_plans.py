@@ -121,12 +121,6 @@ def test_history_record_is_compact():
     assert "Do:" not in text                                         # the history stays compact
 
 
-def test_details_show_what_each_step_will_do():
-    text = plans.details_text(plans.create("chat-7", "", PLAN))
-    assert "   Do: List every public function." in text and "   Done when: A list of functions" in text
-    assert "   Files: src/parser.py" in text and text.splitlines()[-1] == "Check: pytest -q passes"
-    assert "Check: (none)" in plans.details_text(plans.create("chat-8", "", dict(PLAN, check="")))
-
 
 def test_usage_rows_carry_the_plan_and_step():
     usage.record("chat-6", "simple", "gpt-5", {"prompt_tokens": 10, "completion_tokens": 2},

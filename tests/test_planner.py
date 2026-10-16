@@ -141,8 +141,10 @@ def test_a_big_task_gets_a_plan_shown_and_nothing_runs(mocker, client):
     assert len(seen) == 1 and seen[0]["model"] == "complex-model" and "tools" not in seen[0]
     shown = [m for m in msgs if m["type"] == "plan"]
     assert len(shown) == 1 and shown[0]["plan"]["status"] == "waiting" and len(shown[0]["plan"]["steps"]) == 3
-    preview = [n for n in notes(msgs) if "[Plan] Tests for src/parser.py" in n]
-    assert preview and "Do: List every public function." in preview[0] and "Check: pytest -q passes" in preview[0]
+    card = shown[0]["plan"]
+    assert card["steps"][0]["do"] == "List every public function." and card["steps"][0]["files"] == ["src/parser.py"]
+    assert card["check"] == "pytest -q passes"
+    assert any(n.startswith("Plan ready: 3 steps. Plan mode preview") for n in notes(msgs))
     pid = shown[0]["plan"]["id"]
     conn = store.connect()
     rows = [tuple(r) for r in conn.execute("SELECT role, plan_id FROM usage WHERE role IN ('planner', 'conductor')")]

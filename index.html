@@ -1828,6 +1828,30 @@
                                 </div>
                             </div>
                             <div v-else-if="blk.kind === 'note'" class="text-xs font-mono text-amber-400 border-t border-amber-900/40 pt-2">↪ {{ blk.text }}</div>
+                            <div v-else-if="blk.kind === 'plan'" class="border border-gray-700 rounded-lg bg-gray-900/60 overflow-hidden">
+                                <div class="px-4 py-3 border-b border-gray-800 flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="text-[11px] uppercase tracking-wide text-gray-500">Plan · {{ blk.plan.steps.length }} steps</div>
+                                        <div class="text-[15px] text-gray-100 font-medium leading-snug">{{ blk.plan.goal }}</div>
+                                    </div>
+                                    <span class="flex-shrink-0 text-[11px] font-mono rounded px-1.5 py-0.5 border border-gray-700 text-gray-300">{{ blk.plan.status }}</span>
+                                </div>
+                                <ol class="divide-y divide-gray-800">
+                                    <li v-for="s in blk.plan.steps" :key="s.id" class="px-4 py-3 flex gap-3">
+                                        <span class="flex-shrink-0 w-6 h-6 rounded-full bg-gray-800 text-gray-300 text-xs font-mono flex items-center justify-center">{{ s.id }}</span>
+                                        <div class="min-w-0 flex-1 space-y-1">
+                                            <div class="flex items-center gap-2 flex-wrap">
+                                                <span class="text-[14px] text-gray-100 font-medium">{{ s.title }}</span>
+                                                <span :class="['text-[11px] font-mono rounded px-1.5 py-0.5 border', s.tier === 'complex' ? 'text-purple-300 border-purple-800 bg-purple-950/40' : 'text-green-300 border-green-900 bg-green-950/40']" :title="s.tier === 'complex' ? 'Runs on the Complex model' : 'Runs on the Simple (cheaper) model'">{{ s.tier }}</span>
+                                            </div>
+                                            <div class="text-[14px] text-gray-300 leading-relaxed">{{ s.do }}</div>
+                                            <div class="text-[13px] text-gray-400"><span class="text-gray-500">Done when:</span> {{ s.done_when }}</div>
+                                            <div v-if="s.files && s.files.length" class="text-[12px] font-mono text-gray-400 break-all">{{ s.files.join(' · ') }}</div>
+                                        </div>
+                                    </li>
+                                </ol>
+                                <div v-if="blk.plan.check" class="px-4 py-3 border-t border-gray-800 text-[14px] text-gray-300"><span class="text-gray-500">Final check:</span> {{ blk.plan.check }}</div>
+                            </div>
                             <div v-else-if="blk.kind === 'thinking' && !blk.text" class="text-xs font-mono text-gray-600 px-1" title="The provider reported thinking tokens but didn't return the thinking text. Gemini returns summaries only, and often none for short thinking.">
                                 ▹ Thinking: {{ fmtTokens(blk.tokens) }} tokens (the model didn't share the text)
                             </div>
