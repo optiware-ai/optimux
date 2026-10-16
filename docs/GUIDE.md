@@ -1020,7 +1020,9 @@ The reason is shown next to it. *gh isn't installed*: install it on the Optimux 
 Set the commit name and email in Dashboard → GitHub (on a server, the Optimux user has no git settings), then make the first commit by hand.
 
 **"Refused: the sandbox is on but unavailable".**
-The sandbox is on, but bubblewrap is missing or can't create a sandbox (some systems disable unprivileged user namespaces). Install it (`sudo apt install bubblewrap`), then click **check again** in Execution → Sandbox. Commands are refused on purpose rather than run unprotected.
+The sandbox is on, but bubblewrap is missing or can't create a sandbox (some systems disable unprivileged user namespaces). Install it (`sudo apt install bubblewrap`), then click **check again** in Execution → Sandbox. Commands are refused on purpose rather than run unprotected. Optimux checks this when it starts: a red notice above the chat box says so before you approve anything.
+
+If the reason is **"Can't mount proc … Operation not permitted"**, something is mounted over parts of `/proc` where Optimux runs, and the kernel then refuses each command its own `/proc`. In a systemd service this comes from `ProtectHostname`, `ProtectProc`, `ProcSubset`, `ProtectKernelTunables` or `ProtectKernelLogs` (`ProtectHostname` only does it together with other settings, such as `ProtectSystem`). The service file Optimux installs sets none of them since v0.4; `sudo optimux update` installs the corrected file. To check a service by hand: `systemctl cat optimux | grep -E "^(Protect|Proc)"`. In a container (`systemd-detect-virt` says `lxc` or `openvz`), the host may mount files over `/proc`, and only the host can change that.
 
 **With the sandbox on, a command can't find a file, a virtualenv or a library.**
 Only the project folder, the system and the folders you list are visible. Keep the virtualenv inside the project, or add the folder under **Extra read-only folders**. Files written to `~` or `/tmp` disappear after each command.

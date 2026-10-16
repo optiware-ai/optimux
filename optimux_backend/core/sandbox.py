@@ -134,6 +134,10 @@ def build_argv(command: str, workdir: str, shell: str, network: bool = True,
 
 
 _STATUS: dict | None = None
+PROC_HINT = ("Something is mounted over parts of /proc where Optimux runs, so the kernel refuses each command its "
+             "own /proc. As a systemd service, remove ProtectHostname, ProtectProc, ProcSubset, "
+             "ProtectKernelTunables and ProtectKernelLogs (see the Guide, Troubleshooting); in a container, "
+             "the host may mount files over /proc.")
 
 
 def status(refresh: bool = False) -> dict:
@@ -154,9 +158,9 @@ def status(refresh: bool = False) -> dict:
                                capture_output=True, text=True, timeout=10)
             out["works"] = t.returncode == 0
             if not out["works"]:
-                out["error"] = ("bubblewrap is installed but can't create a sandbox here: "
-                                + ((t.stderr or "").strip()[:300] or f"exit {t.returncode}")
-                                + ". Unprivileged user namespaces may be disabled.")
+                why = (t.stderr or "").strip()[:300] or f"exit {t.returncode}"
+                out["error"] = "bubblewrap is installed but can't create a sandbox here: " + why + ". " + (
+                    PROC_HINT if "mount proc" in why else "Unprivileged user namespaces may be disabled.")
         except Exception as e:
             out["error"] = f"bubblewrap check failed: {e}"
     _STATUS = out

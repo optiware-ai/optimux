@@ -146,3 +146,24 @@ def test_writes_outside_the_project_fail_loudly(monkeypatch, fake_home):
     assert r["exit_code"] == 0 and "hi" in r["stdout"] and sandbox.SANDBOX_HOME in r["stdout"]
     assert (fake_home / "ws" / "proj" / "here").exists()
     assert _run(monkeypatch, "git config --global user.name", proj)["stdout"].strip() == "Me"
+
+
+def test_a_proc_mount_refusal_gets_the_proc_hint(monkeypatch):
+    from types import SimpleNamespace as NS
+    import optimux_backend.core.sandbox as sb
+    monkeypatch.setattr(sb, "bwrap_path", lambda: "/usr/bin/bwrap")
+    results = iter([NS(returncode=0, stdout="bubblewrap 0.9.0", stderr=""),
+                    NS(returncode=1, stdout="", stderr="bwrap: Can't mount proc on /newroot/proc: Operation not permitted")])
+    monkeypatch.setattr(sb.subprocess, "run", lambda *a, **k: next(results))
+    out = sb.status(refresh=True)
+    assert not out["works"] and "Can't mount proc" in out["error"] and "ProtectHostname" in out["error"]
+    sb._STATUS = None
+
+
+def test_the_service_file_never_overmounts_proc():
+    import os
+    unit = open(os.path.join(os.path.dirname(__file__), "..", "deploy", "optimux.service")).read()
+    active = [line.split("=")[0] for line in unit.splitlines() if line and not line.startswith("#") and "=" in line]
+    for setting in ("ProtectHostname", "ProtectProc", "ProcSubset", "ProtectKernelTunables", "ProtectKernelLogs",
+                    "RestrictNamespaces"):
+        assert setting not in active, setting

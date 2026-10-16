@@ -142,3 +142,5 @@
   - `run_in_step` gives a step the usual safety nets for that step only: a Simple step stuck (step limit or a repeated call) continues on Complex from its own messages; a provider failure moves to the other tier once. The chat's tier never changes.
   - `run_final_check`: the plan's check as a Simple step without `finish_step`, whose plain-text reply ends the plan (`CHECK_STEP` in usage); without a check, the reply is a summary of the step results, with no model call.
   - `handle_open_session` sends `plans` (their current state) with `session_loaded`; the page updates the replayed cards from it.
+
+- **Broken sandbox notice (v0.4-3d):** `sandbox_problem()` is the reason commands will be refused (sandbox on but not working) or "". It is sent as a `sandbox_problem` WebSocket message right after `auth_ok`, and as `sandbox_problem` in every `approval_request`; the page shows a red banner above the chat box and a red "sandbox broken: will be refused" badge instead of "sandboxed". The System security check shows the probe's error. `switch_project` to the project already active returns "Already active; nothing changed." without a second note.

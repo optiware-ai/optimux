@@ -43,7 +43,6 @@ NoNewPrivileges=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 ProtectClock=yes
-ProtectHostname=yes
 LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
@@ -51,9 +50,12 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 SystemCallArchitectures=native
 UMask=0077
 # Not set on purpose:
-# - ProtectKernelTunables, ProtectKernelLogs, ProtectProc, ProcSubset: they over-mount
-#   parts of /proc, and the kernel then refuses the fresh /proc that bubblewrap mounts
+# - ProtectKernelTunables, ProtectKernelLogs, ProtectProc, ProcSubset, ProtectHostname:
+#   they over-mount parts of /proc (ProtectHostname makes /proc/sys/kernel/hostname and
+#   domainname read-only as soon as the service has its own mounts, e.g. with
+#   ProtectSystem), and the kernel then refuses the fresh /proc that bubblewrap mounts
 #   for each command ("Can't mount proc"), so every command would be refused.
+#   Optimux checks the sandbox at start and warns in the page when it doesn't work.
 # - RestrictNamespaces, CapabilityBoundingSet, SystemCallFilter: bubblewrap needs user,
 #   mount, pid, ipc, uts and net namespaces.
 # - MemoryDenyWriteExecute: commands may run JIT runtimes (Node, Java).

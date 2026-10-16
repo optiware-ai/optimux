@@ -252,6 +252,8 @@ createApp({
         const pendingOutside = ref([]);
         const pendingWorkdir = ref('');
         const pendingSandboxed = ref(false);
+        const pendingSandboxProblem = ref('');   // the sandbox is on but broken: the command will be refused
+        const sandboxProblem = ref('');          // the same, told on connect (banner above the chat box)
         // ---- Sandbox (bubblewrap)
         const sandboxInfo = ref({});
         const sandboxPathsText = ref('');
@@ -2293,7 +2295,9 @@ createApp({
             };
             // replay=true while rebuilding a stored session: only the chat view changes
             const handleMessage = (data, replay = false) => {
+                if (data.type === 'sandbox_problem') { sandboxProblem.value = data.content || ''; return; }
                 if (data.type === 'auth_ok') {
+                    sandboxProblem.value = '';   // told again right after, if still true
                     // Reopen where we left off: the active project's latest session
                     moveChatTo = null;   // a reconnect opens the right chat already
                     isGenerating.value = true;
@@ -2405,6 +2409,7 @@ createApp({
                 else if (data.type === "approval_request") {
                     pendingOutside.value = data.outside_paths || [];
                     pendingSandboxed.value = !!data.sandboxed;
+                    pendingSandboxProblem.value = data.sandbox_problem || '';
                     pendingWorkdir.value = data.workdir || '';
                     pendingAction.value = data.action || '';  // project actions always ask
                     pendingForm.value = data.form ? { form: data.form, error: data.error || '', github: data.github || {},
@@ -2790,6 +2795,7 @@ createApp({
             confirmBox, confirmOkRef, answerConfirm, costEstimates, memoryStatus,
             guide, guideQuery, guideActive, guideResults, goGuide, onDashScroll, loadGuide,
             sandboxInfo, sandboxPathsText, fetchSandbox, saveSandboxPaths, pendingSandboxed, toggleSandbox,
+            pendingSandboxProblem, sandboxProblem,
             projectLabel, viewer, viewerLanguages, openCmdViewer, onChatClick, closeViewer, rehighlightViewer, copyViewerSection
         };
     }

@@ -78,6 +78,12 @@ try:
 except Exception as e:
     print(f"[Optimux] checking interrupted plans failed: {e}")
 try:
+    _sb = sandbox_lib.status(refresh=True)       # once at start, so a broken sandbox shows before a command needs it
+    if sandbox_lib.enabled(get_settings()) and not _sb["works"]:
+        print(f"[Optimux] WARNING: the sandbox is on but doesn't work, so every command will be refused: {_sb['error']}")
+except Exception as e:
+    print(f"[Optimux] checking the sandbox failed: {e}")
+try:
     _n = catalog.load_saved_prices()  # a price list downloaded earlier with Refresh (no network here)
     if _n:
         print(f"[Optimux] model prices: using the list downloaded earlier ({_n} models)")
@@ -1215,7 +1221,7 @@ async def security_checklist(request: Request):
                    "Off: the password alone signs in. Turn it on below."},
         {"id": "sandbox", "label": "Sandbox", "ok": sandbox_on, "important": True,
          "detail": ("Commands can only change the working folder." if sandbox_on else
-                    ("On, but bubblewrap doesn't work here, so commands are refused." if sandbox_lib.enabled(settings) else
+                    (f"On, but bubblewrap doesn't work here, so commands are refused: {sb['error']}" if sandbox_lib.enabled(settings) else
                      "Off: an approved command can change anything the server's user can. Turn it on in Execution."))},
         {"id": "network", "label": "Network for commands", "ok": not (sandbox_on and network), "important": server,
          "detail": ("Commands have no network." if sandbox_on and not network else
@@ -2294,6 +2300,17 @@ def active_project() -> str:
     return get_settings().get("active_project", "")
 
 
+def sandbox_problem() -> str:
+    """Why commands will be refused (the sandbox is on but doesn't work), or ""."""
+    try:
+        sb = sandbox_lib.status()
+        if sandbox_lib.enabled(get_settings()) and not sb["works"]:
+            return sb["error"] or "bubblewrap doesn't work here."
+    except Exception:
+        pass
+    return ""
+
+
 def budget_text(s: dict) -> str:
     unknown = f" ({s['calls_without_cost']} calls without a known price aren't counted)" if s["calls_without_cost"] else ""
     return (f"Budget for {s['project']}: ${s['spent']:.2f} of ${s['monthly_usd']:.2f} this month "
@@ -2502,7 +2519,7 @@ async def wait_for_answer(websocket: WebSocket, session: dict, tc_id: str, comma
     approval = asyncio.get_running_loop().create_future()
     session["approval"] = approval
     await send(websocket, "approval_request", command=command, tool_call_id=tc_id,
-               sandboxed=sandbox_lib.enabled(get_settings()), **extra)
+               sandboxed=sandbox_lib.enabled(get_settings()), sandbox_problem=sandbox_problem(), **extra)
     try:
         answer = await approval
     finally:
@@ -2598,6 +2615,8 @@ async def run_workspace_tool(websocket: WebSocket, session: dict, name: str, arg
 
         if name == "switch_project":
             target = workspace.check_switch(str(args.get("name", "")))
+            if target == active_project():
+                return {"ok": True, "active_project": target or None, "note": "Already active; nothing changed."}
             await set_active_project(websocket, target)
             where = f"project '{target}'" if target else "the Workspace (no project)"
             await send(websocket, "system", f"Switched to {where}.")
@@ -3241,6 +3260,9 @@ async def websocket_endpoint(websocket: WebSocket):
         LIVE_SOCKETS.setdefault(login_id, set()).add(websocket)
         ensure_workspace_watcher()
     await websocket.send_text(json.dumps({"type": "auth_ok"}))
+    problem = sandbox_problem()
+    if problem:
+        await websocket.send_text(json.dumps({"type": "sandbox_problem", "content": problem}))
 
     session = new_session()
     websocket.optimux_recorder = session["recorder"]  # send() records what this chat shows
