@@ -124,6 +124,11 @@ def get_planner_prompt() -> str:
         "files: the files the step will read or change, if known.\n"
         "- check: a final check run as the last step, for example running the tests; it also writes the reply "
         "to the user. Leave it empty if there is nothing to check.\n"
+        "- Plan only the files the user's task needs. Don't plan files that just carry notes from one step to the "
+        "next (a design spec, a checklist, a plan): a step hands those on in its result and notes, which Optimux "
+        "keeps outside the project.\n"
+        "- The final check runs commands, so make it something commands can check (run the tests, parse the files, "
+        "grep for what must be there), not something only a person can see.\n"
         "- Work only inside the active project. Never plan to delete a remote repository.\n"
         "- Don't plan when the task is to create, switch or archive a project (Optimux does that with its own tools, "
         "not with steps), or when it is too vague to act on without asking the user (what kind of project? which "
@@ -146,9 +151,12 @@ def get_step_prompt(plan: dict, step: dict | None, results: list[str], details: 
         return "\n".join(head + earlier + [
             f"Final check: {plan.get('check') or 'Look over the work of the steps above.'}",
             "",
-            "Do the check (for example, run the tests). Then write the reply to the user: what was done, step by "
-            "step, which files changed, the check's result, and anything the user should look at. Reply in plain "
-            "text; don't call finish_step."])
+            "Do the check now, with commands: the user approves each command, so never ask for confirmation in "
+            "text. If part of it needs something you can't do here (looking at a page in a browser, a person's "
+            "judgment), check what commands can (the files exist, parse, contain what they should) and tell the "
+            "user what to look at themselves. Then write the reply to the user: what was done, step by step, "
+            "which files changed, the check's result, and anything the user should look at. Reply in plain text; "
+            "don't call finish_step."])
     total = len(plan["steps"])
     files = f"Files: {', '.join(step['files'])} (read what you need yourself)" if step.get("files") else ""
     return "\n".join(head + earlier + [
@@ -160,5 +168,5 @@ def get_step_prompt(plan: dict, step: dict | None, results: list[str], details: 
         "Do only this step; later steps do the rest. When it is done, call finish_step with status \"done\" and a "
         "result of at most 150 words for the next steps: what you did, the files you changed, facts they need. "
         "If later steps must follow something longer (a design, a list of test cases), put it in details, at "
-        "most 6000 characters. If you can't do the step, call finish_step with status \"blocked\" and say why "
-        "in result."])
+        "most 6000 characters, not in a new file in the project: write files only when the task itself needs "
+        "them. If you can't do the step, call finish_step with status \"blocked\" and say why in result."])

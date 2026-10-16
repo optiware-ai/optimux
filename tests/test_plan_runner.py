@@ -429,3 +429,14 @@ def test_each_step_is_marked_so_the_page_can_fold_it(mocker, client):
 def test_ask_first_is_the_default():
     from optimux_backend.core.config_manager import SettingsPayload
     assert SettingsPayload().plan_mode == "ask"
+
+
+def test_prompts_keep_handover_notes_out_of_the_project_and_run_the_check():
+    planner_rules = agents.get_planner_prompt()
+    assert "Don't plan files that just carry notes from one step to the next" in planner_rules
+    assert "make it something commands can check" in planner_rules
+    p = plans.create("c-prompts", "", PLAN, request="x")
+    step = agents.get_step_prompt(p, p["steps"][0], [], [])
+    assert "not in a new file in the project: write files only when the task itself needs them" in step
+    check = agents.get_step_prompt(p, None, [], [])
+    assert "never ask for confirmation in text" in check and "tell the user what to look at themselves" in check
