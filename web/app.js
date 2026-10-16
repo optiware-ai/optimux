@@ -38,6 +38,44 @@ const ROLE_HELP = {
     test: 'the Test button on a model in Dashboard → Models (one tiny call).',
 };
 const PROJECT_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+// The logo while Optimux works: a green ball runs along the trunk and takes one of the
+// two lanes, picked at random each time, like a request routed to a model. SMIL
+// animateMotion (no inline styles, so the CSP allows it); no motion when the user asks
+// the system for reduced motion.
+const BUSY_LANES = { up: 'M6 32 H22 C32 32 32 17 47 17', down: 'M6 32 H22 C32 32 32 46 50 46' };
+const BusyLogo = {
+    props: { size: { type: Number, default: 26 }, dim: { type: Boolean, default: true } },
+    data() {
+        return { lane: 'up', still: !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) };
+    },
+    computed: { path() { return BUSY_LANES[this.lane]; } },
+    mounted() {
+        this.run();
+        if (!this.still) this.timer = setInterval(() => this.run(), 1100);
+    },
+    beforeUnmount() { clearInterval(this.timer); },
+    methods: {
+        run() {
+            this.lane = Math.random() < 0.5 ? 'up' : 'down';
+            this.$nextTick(() => { const m = this.$refs.motion; if (m && m.beginElement && !this.still) m.beginElement(); });
+        },
+    },
+    template: `
+<svg :width="size" :height="size" viewBox="0 0 64 64" role="img" aria-label="Working">
+  <g fill="none" stroke="#3b82f6" stroke-linecap="round" :opacity="dim ? 0.45 : 1">
+    <path d="M6 32 H22" stroke-width="6"/>
+    <path d="M22 32 C32 32 32 17 42 17" stroke-width="4"/>
+    <path d="M22 32 C32 32 32 46 40 46" stroke-width="7"/>
+  </g>
+  <circle cx="47" cy="17" r="5" fill="#3b82f6" :opacity="dim ? 0.45 : 1"/>
+  <circle cx="50" cy="46" r="9.5" fill="#3b82f6" :opacity="dim ? 0.45 : 1"/>
+  <circle cx="0" cy="0" r="5.5" fill="#22c55e" :transform="still ? 'translate(6 32)' : null">
+    <animateMotion v-if="!still" ref="motion" :path="path" dur="0.95s" begin="indefinite" fill="freeze"
+                   calcMode="spline" keyTimes="0;1" keySplines="0.45 0 0.25 1"/>
+  </circle>
+</svg>`,
+};
+
 const ProjectForm = {
     props: {
         initial: { type: Object, default: () => ({}) },
@@ -2839,4 +2877,4 @@ createApp({
             projectLabel, viewer, viewerLanguages, openCmdViewer, onChatClick, closeViewer, rehighlightViewer, copyViewerSection
         };
     }
-}).component('help-tip', HelpTip).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).mount('#app');
+}).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).mount('#app');

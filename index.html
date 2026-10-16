@@ -46,7 +46,8 @@
                     <span :class="['w-2.5 h-2.5 rounded-full', wsState === 'connected' ? 'bg-green-500' : (wsState === 'connecting' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500')]"
                           :title="wsState === 'connected' ? 'Connected to the Optimux server' : (wsState === 'connecting' ? 'Connecting to the Optimux server…' : 'Disconnected from the Optimux server; retrying')"></span>
                     <a href="#/" @click.prevent="goHome" title="Back to your last chat (or the Workspace)" class="flex items-center gap-2 rounded hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                        <img src="/static/logo.svg" alt="" class="w-6 h-6">
+                        <busy-logo v-if="isGenerating" :size="24" :dim="false"></busy-logo>
+                        <img v-else src="/static/logo.svg" alt="" class="w-6 h-6">
                         <span>Opti<span class="text-blue-500">mux</span></span>
                     </a>
                 </h1>
@@ -933,8 +934,9 @@
                                         <li>Every file is checked against the snapshot's checksums first. If one doesn't match, nothing is restored.</li>
                                     </ul>
                                     <div>
-                                        <label :for="'rs-confirm-' + s.id" class="text-[14px] text-gray-300">To confirm, type <b class="text-gray-100 select-all">{{ rsPanel[s.id].info.confirm_phrase }}</b></label>
-                                        <input :id="'rs-confirm-' + s.id" v-model="rsPanel[s.id].confirm" @keydown.enter="doRestore(s)" autocomplete="off" spellcheck="false" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500">
+                                        <label :for="'rs-confirm-' + s.id" class="block text-gray-300 mb-1">To confirm, type <span class="font-mono text-red-300 select-none">{{ rsPanel[s.id].info.confirm_phrase }}</span></label>
+                                        <input :id="'rs-confirm-' + s.id" v-model="rsPanel[s.id].confirm" @keydown.enter="doRestore(s)" autocomplete="off" spellcheck="false" :placeholder="rsPanel[s.id].info.confirm_phrase" @paste.prevent @drop.prevent
+                                               class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-gray-100 focus:outline-none focus:border-red-600">
                                     </div>
                                     <div class="flex flex-wrap items-center gap-2">
                                         <button @click="doRestore(s)" :disabled="!rsReady(s) || !!rsStatus.pending" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-[14px] disabled:opacity-50">{{ rsPanel[s.id].busy ? 'Restoring… (saving the current state first)' : 'Restore ' + rsChosen(s).length + ' part' + (rsChosen(s).length === 1 ? '' : 's') }}</button>
@@ -1951,10 +1953,8 @@
                         <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
                         <span>So far: {{ callsLabel(msg.usage) }} · {{ fmtTokens(msg.usage.tokens) }} tok · {{ msg.usage.costKnown ? fmtCost(msg.usage.cost) : (msg.usage.cost > 0 ? fmtCost(msg.usage.cost) + '+' : 'cost ?') }}</span>
                     </div>
-                    <div v-if="msg.role === 'agent' && isGenerating && index === messages.length - 1 && !msg.content && (!msg.commands || msg.commands.length === 0)" class="flex gap-1 mt-2">
-                        <div class="w-2 h-2 bg-gray-600 rounded-full animate-bounce"></div>
-                        <div class="w-2 h-2 bg-gray-600 rounded-full animate-bounce [animation-delay:0.1s]"></div>
-                        <div class="w-2 h-2 bg-gray-600 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                    <div v-if="msg.role === 'agent' && isGenerating && index === messages.length - 1 && !msg.content && (!msg.commands || msg.commands.length === 0)" class="mt-2" title="Working…">
+                        <busy-logo :size="30"></busy-logo>
                     </div>
                 </div>
             </div>
