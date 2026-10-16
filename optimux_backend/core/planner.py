@@ -51,6 +51,18 @@ def build_messages(request: str, memory: str, files: list[str], total: int) -> l
     return [{"role": "system", "content": get_planner_prompt()}, {"role": "user", "content": user}]
 
 
+def no_plan_reason(text: str) -> str:
+    """The planner's {"no_plan": "<why>"} answer, or "" for anything else."""
+    try:
+        data = plans.parse(text)
+    except plans.PlanError:
+        return ""
+    reason = data.get("no_plan") if isinstance(data, dict) else None
+    if not reason or "steps" in data:
+        return ""
+    return " ".join(str(reason).split())[:300] or "the planner says this task doesn't need a plan"
+
+
 async def make_plan(request: str, model: str, memory: str, workdir: str, call=None) -> dict:
     """Ask the planner for a plan. Returns {"plan": checked plan or None, "calls":
     [(response usage, duration_ms)], "error": reason or "", "thinking": the
@@ -73,6 +85,11 @@ async def make_plan(request: str, model: str, memory: str, workdir: str, call=No
         reasoning = getattr(message, "reasoning_content", None)
         if isinstance(reasoning, str) and reasoning.strip():
             thinking.append(reasoning.strip())
+        declined = no_plan_reason(text)
+        if declined:
+            # The planner says this isn't a task for a plan: no retry, the usual way runs
+            return {"plan": None, "calls": calls, "error": declined, "declined": True,
+                    "thinking": "\n\n".join(thinking)}
         try:
             return {"plan": plans.validate(text), "calls": calls, "error": "", "thinking": "\n\n".join(thinking)}
         except plans.PlanError as e:

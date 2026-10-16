@@ -373,7 +373,7 @@ A big task usually mixes hard thinking with routine work: reading files, writing
 - **Ask first**: show each plan and wait until you press **Run** (or **Cancel**).
 - **Automatic**: show each plan and start it at once; you can still stop it.
 
-The Conductor decides which tasks are worth a plan: a request to do work now, in separate phases, with routine parts. Nothing is planned when you picked a model by hand, when a skill runs, when no project is active, or when Simple and Complex are the same model or one of them is unavailable. `/plan <task>` plans anyway (it says why when it can't), and `/noplan <task>` never plans.
+The Conductor decides which tasks are worth a plan: a request to do work now, in separate phases, with routine parts. Nothing is planned for creating, switching or archiving a project (Optimux has its own tools for that), or for a request too vague to act on without asking you first; the planner itself can also decline ("Not planned: …"). Nothing is planned either when you picked a model by hand, when a skill runs, when no project is active, or when Simple and Complex are the same model or one of them is unavailable. `/plan <task>` plans anyway (it says why when it can't), and `/noplan <task>` never plans.
 
 Planning costs one Complex call (two if its first answer can't be used); it is shown in Usage with the role **planner**. The planner gets your request, the project memory and the list of the project's files (up to 300 paths). It doesn't open files or run anything. If it can't make a usable plan, the task is done the usual way, and the chat says so. A new request replaces a plan that hasn't started.
 

@@ -3,7 +3,8 @@ PLAN_RULES = (
     "model. plan is true only when all three hold: the user asks for work to be done now (not a question); the "
     "work has separate phases (look, write, run, fix) or touches several files or parts; and some phases are "
     "routine (reading, listing, writing boilerplate, running commands). Otherwise plan is false; a simple task is "
-    "never planned.\n"
+    "never planned. plan is also false for creating, switching or archiving a project (Optimux has its own tools "
+    "for that) and for a request too vague to act on without asking the user first.\n"
 )
 
 
@@ -119,7 +120,10 @@ def get_planner_prompt() -> str:
         "files: the files the step will read or change, if known.\n"
         "- check: a final check run as the last step, for example running the tests; it also writes the reply "
         "to the user. Leave it empty if there is nothing to check.\n"
-        "- Work only inside the active project. Never plan to delete a remote repository.\n\n"
+        "- Work only inside the active project. Never plan to delete a remote repository.\n"
+        "- Don't plan when the task is to create, switch or archive a project (Optimux does that with its own tools, "
+        "not with steps), or when it is too vague to act on without asking the user (what kind of project? which "
+        "file?). Then reply only {\"no_plan\": \"<why, in one sentence>\"} and the task is done the usual way.\n\n"
         "Reply with only JSON, no other text:\n"
         '{"goal": "<one line>", "steps": [{"id": 1, "title": "<short>", "tier": "simple" or "complex", '
         '"do": "<instructions>", "done_when": "<when finished>", "files": ["<path>"]}], "check": "<final check>"}'

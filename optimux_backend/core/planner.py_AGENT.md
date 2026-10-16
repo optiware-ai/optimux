@@ -11,3 +11,5 @@
 ## Links & Dependencies
 - `plans.py` (`validate`), `agents.py` (`get_planner_prompt`), `config_manager.py` (`litellm_key_kwargs`, `thinking_kwargs`).
 - Used by `main.start_plan`. Tests: `tests/test_planner.py`.
+
+- **Declining (v0.4-3b):** the planner may answer `{"no_plan": "<why>"}` for project actions (create, switch, archive) or a request too vague to act on. `no_plan_reason` reads it; `make_plan` returns `plan` None, `declined` True and the reason as `error`, with no retry. `main.start_plan` says "Not planned: <why>. Doing the task the usual way." The Conductor's plan rules say the same, so most such requests aren't sent to the planner at all.

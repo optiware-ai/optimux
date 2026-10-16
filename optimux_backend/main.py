@@ -1760,7 +1760,10 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
     for usage, ms in result["calls"]:
         await meter(websocket, session, "planner", model, usage, ms, plan_id=plan["id"] if plan else None)
     if not plan:
-        await send(websocket, "system", f"The plan couldn't be used ({result['error']}); doing the task the usual way.")
+        if result.get("declined"):
+            await send(websocket, "system", f"Not planned: {result['error'].rstrip('.')}. Doing the task the usual way.")
+        else:
+            await send(websocket, "system", f"The plan couldn't be used ({result['error']}); doing the task the usual way.")
         return False
     record = plans_lib.summary_for_history(plan)
     await send(websocket, "plan", plan=public_plan(plan))

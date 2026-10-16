@@ -251,3 +251,28 @@ def test_make_plan_keeps_the_thinking_of_both_tries(tmp_path):
         return replies.pop(0)
     result = asyncio.run(planner.make_plan("x", "m", "", str(tmp_path), call=call))
     assert result["plan"] and result["thinking"] == "first\n\nsecond"
+
+
+def test_the_planner_can_decline_and_the_task_runs_the_usual_way(mocker, client):
+    conductor_says(mocker, "complex", True)
+    seen = calls_by(mocker, [answer('{"no_plan": "Creating a project is done with the project tools."}'),
+                             fake_stream([chunk("Which kind of project?"), chunk(empty=True, usage_obj=DONE)])])
+    chat = Conversation(client)
+    msgs = chat.prompt("create a new project for me")
+    chat.close()
+    assert len(seen) == 2 and seen[1].get("stream")                       # no retry; then the usual way
+    assert any(n == "Not planned: Creating a project is done with the project tools. Doing the task the usual way."
+               for n in notes(msgs))
+    assert not [m for m in msgs if m["type"] == "plan"]
+
+
+def test_no_plan_reason_only_for_a_clear_refusal():
+    assert planner.no_plan_reason('{"no_plan": "too vague"}') == "too vague"
+    assert planner.no_plan_reason(json.dumps(PLAN)) == ""
+    assert planner.no_plan_reason('{"no_plan": "x", "steps": []}') == ""
+    assert planner.no_plan_reason("no plan here") == ""
+
+
+def test_project_actions_are_never_planned_in_the_prompts():
+    assert "creating, switching or archiving a project" in agents.get_router_prompt("", plan=True)
+    assert '{"no_plan":' in agents.get_planner_prompt()
