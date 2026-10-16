@@ -60,10 +60,3 @@
 .cm-toast-move { transition: transform .3s; }
 @keyframes cm-pop { from { transform: scale(.96) translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 .cm-pop { animation: cm-pop .18s ease-out; }
-/* Busy dots under a reply: each grows, then shrinks and fades, in turn */
-.cm-dots { display: inline-flex; align-items: center; gap: 6px; height: 16px; padding-left: 2px; }
-.cm-dots span { width: 7px; height: 7px; border-radius: 9999px; background: #22c55e; animation: cm-dot 1.2s ease-in-out infinite; }
-.cm-dots span:nth-child(2) { animation-delay: .16s; }
-.cm-dots span:nth-child(3) { animation-delay: .32s; }
-@keyframes cm-dot { 0%, 100% { transform: scale(.45); opacity: .25; } 40% { transform: scale(1); opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .cm-dots span { animation: none; opacity: .7; } }

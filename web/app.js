@@ -76,6 +76,111 @@ const BusyLogo = {
 </svg>`,
 };
 
+// Under a reply that hasn't started: a green signal leaves a fading trail
+// and takes a route each cycle, mostly the lower (Simple) lane, sometimes the
+// upper (Complex) one, now and then an escalation (stuck, amber, climbs up).
+// Built with SVG attributes and SMIL only: the CSP allows no inline style.
+const TRAIL_NS = 'http://www.w3.org/2000/svg';
+const TRAIL_LAYERS = [[3, 0.95], [6, 0.5], [10, 0.3], [16, 0.18], [24, 0.09]];   // dash length, opacity
+const TRAIL_TAIL = 24;
+const TRAIL_CYCLE = 2.6;
+const TRAIL_TRUNK = 'M3 11 L24 11';
+const TRAIL_UP = TRAIL_TRUNK + ' C32 11, 34 4, 42 4 L61 4';
+const TRAIL_DOWN = TRAIL_TRUNK + ' C32 11, 34 18, 42 18 L61 18';
+const TRAIL_STUCK = TRAIL_TRUNK + ' C32 11, 34 18, 42 18 L46 18';
+const TRAIL_ESCALATE = TRAIL_STUCK + ' C51 18, 50 4, 55 4 L61 4';
+let trailIds = 0;
+
+function trailEl(name, attrs, parent) {
+    const e = document.createElementNS(TRAIL_NS, name);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+}
+
+function buildRouteTrail(svg, still) {
+    const glow = 'trail-glow-' + (++trailIds);
+    const f = trailEl('filter', { id: glow, x: '-50%', y: '-50%', width: '200%', height: '200%' }, trailEl('defs', {}, svg));
+    trailEl('feGaussianBlur', { stdDeviation: '0.9', result: 'b' }, f);
+    const m = trailEl('feMerge', {}, f);
+    trailEl('feMergeNode', { in: 'b' }, m); trailEl('feMergeNode', { in: 'SourceGraphic' }, m);
+    const url = `url(#${glow})`;
+    const measure = (d) => {
+        const p = trailEl('path', { d }, svg); const len = p.getTotalLength(); const end = p.getPointAtLength(len); p.remove();
+        return { len, end };
+    };
+    for (const d of [TRAIL_UP, TRAIL_DOWN, TRAIL_ESCALATE]) {
+        trailEl('path', { d, fill: 'none', stroke: '#22c55e', 'stroke-opacity': '.09', 'stroke-width': '.6' }, svg);
+    }
+    for (const [x, y] of [[24, 11], [61, 4], [61, 18], [46, 18]]) trailEl('circle', { cx: x, cy: y, r: '1.1', fill: '#22c55e', opacity: '.22' }, svg);
+    if (still) { trailEl('circle', { cx: 24, cy: 11, r: '1.5', fill: '#bbf7d0', filter: url }, svg); return () => {}; }
+
+    const r4 = (n) => +n.toFixed(4);
+    const flow = (travel) => [[0, 0], [travel, 100 + TRAIL_TAIL], [1, 100 + TRAIL_TAIL]];
+    const holdAt = (q, reach, hold, travel) => [[0, 0], [reach, q], [reach + hold, q], [travel, 100 + TRAIL_TAIL], [1, 100 + TRAIL_TAIL]];
+
+    // One run along d; its animations start together when the run is picked.
+    const signal = (d, timeline, pulses = []) => {
+        const anims = [];
+        const anim = (name, attrs, parent) => anims.push(trailEl(name, { dur: TRAIL_CYCLE + 's', begin: 'indefinite', ...attrs }, parent));
+        const tl = timeline.slice();
+        let arrive = 1;                                        // when the head reaches the end (100)
+        for (let i = 1; i < tl.length; i++) {
+            const [t0, p0] = tl[i - 1], [t1, p1] = tl[i];
+            if (p0 < 100 && p1 >= 100) { arrive = t0 + (t1 - t0) * (100 - p0) / (p1 - p0); if (p1 > 100) tl.splice(i, 0, [arrive, 100]); break; }
+        }
+        const times = tl.map(([t]) => r4(t)).join(';');
+        const g = trailEl('g', { filter: url }, svg);
+        for (const [L, op] of TRAIL_LAYERS) {
+            const p = trailEl('path', { d, pathLength: 100, fill: 'none', stroke: '#22c55e', 'stroke-width': '.8', 'stroke-linecap': 'round',
+                'stroke-opacity': op, 'stroke-dasharray': `${L} 200`, 'stroke-dashoffset': L }, g);
+            anim('animate', { attributeName: 'stroke-dashoffset', values: tl.map(([, q]) => r4(L - q)).join(';'), keyTimes: times }, p);
+        }
+        const dot = trailEl('circle', { r: '1.5', fill: '#bbf7d0', opacity: 0, filter: url }, svg);
+        anim('animateMotion', { path: d, keyPoints: tl.map(([, q]) => r4(Math.min(q, 100) / 100)).join(';'), keyTimes: times, calcMode: 'linear' }, dot);
+        anim('animate', { attributeName: 'opacity', values: '0;1;1;0;0', keyTimes: `0;.001;${r4(arrive)};${r4(Math.min(arrive + 0.01, 0.999))};1` }, dot);
+        const flash = (x, y, at, color, grow) => {
+            const s = trailEl('circle', { cx: x, cy: y, r: '1', fill: 'none', stroke: color, 'stroke-width': '.6', opacity: 0 }, svg);
+            const end = r4(Math.min(at + 0.25, 0.995));
+            anim('animate', { attributeName: 'r', values: `1;1;${grow};${grow}`, keyTimes: `0;${r4(at)};${end};1` }, s);
+            anim('animate', { attributeName: 'opacity', values: '0;0;.9;0;0', keyTimes: `0;${r4(at)};${r4(at + 0.005)};${end};1` }, s);
+        };
+        const { end } = measure(d);
+        flash(end.x, end.y, arrive, '#4ade80', 5);
+        for (const { x, y, at, color } of pulses) {
+            const n = trailEl('circle', { cx: x, cy: y, r: '1.6', fill: color, opacity: 0, filter: url }, svg);
+            anim('animate', { attributeName: 'opacity', values: '0;0;1;.6;1;0;0',
+                keyTimes: `0;${r4(at[0])};${r4(at[0] + 0.03)};${r4((at[0] + at[1]) / 2)};${r4(at[1] - 0.02)};${r4(at[1])};1` }, n);
+            flash(x, y, at[1] - 0.03, color, 4);
+        }
+        return anims;
+    };
+
+    const q = 100 * measure(TRAIL_STUCK).len / measure(TRAIL_ESCALATE).len;
+    const runs = [
+        [0.55, signal(TRAIL_DOWN, flow(0.7))],
+        [0.25, signal(TRAIL_UP, flow(0.7))],
+        [0.20, signal(TRAIL_ESCALATE, holdAt(q, 0.4, 0.22, 0.93), [{ x: 46, y: 18, at: [0.4, 0.62], color: '#f59e0b' }])],
+    ];
+    return () => {
+        let r = Math.random(), i = 0;
+        while ((r -= runs[i][0]) > 0 && i < runs.length - 1) i++;
+        runs[i][1].forEach((a) => a.beginElement && a.beginElement());
+    };
+}
+
+const RouteTrail = {
+    mounted() {
+        const still = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        const go = buildRouteTrail(this.$refs.svg, still);
+        if (still) return;
+        go();
+        this.timer = setInterval(go, TRAIL_CYCLE * 1000);
+    },
+    beforeUnmount() { clearInterval(this.timer); },
+    template: `<svg ref="svg" width="64" height="22" viewBox="0 0 64 22" overflow="visible" role="img" aria-label="Working"></svg>`,
+};
+
 const ProjectForm = {
     props: {
         initial: { type: Object, default: () => ({}) },
@@ -2402,9 +2507,17 @@ createApp({
                         if (data.tier) { lastMsg.tier = data.tier; lastMsg.model = data.model; }
                         return;
                     }
-                    if (data.content.startsWith('Execution finished (LLM loop gracefully aborted)')) lastMsg.interrupted = 'aborted';
                     const isSwitch = /^(Escalated|Fell back|Skipping|Conductor:)/.test(data.content);
                     const kind = data.tier ? 'route' : (isSwitch ? 'switch' : 'info');
+                    // Inside a plan run, what happens in a step is shown under that step's heading
+                    // (a step's stuck loop is handled by the plan, so it doesn't mark the reply interrupted)
+                    if (lastMsg.blocks && lastMsg.blocks.some(b => b.kind === 'stephead') && !data.tier
+                        && !/^Plan (paused|cancelled)/.test(data.content)) {
+                        lastMsg.blocks.push({ kind: 'note', text: data.content });
+                        if (/^Escalated to /.test(data.content)) lastMsg.tier = 'complex';
+                        return;
+                    }
+                    if (data.content.startsWith('Execution finished (LLM loop gracefully aborted)')) lastMsg.interrupted = 'aborted';
                     // Mark where a model switch happened inside an answer already under way
                     if (/^(Escalated to |Fell back)/.test(data.content) && (lastMsg.content || (lastMsg.commands || []).length)) {
                         if (lastMsg.blocks) lastMsg.blocks.push({ kind: 'note', text: data.content });
@@ -2877,4 +2990,4 @@ createApp({
             projectLabel, viewer, viewerLanguages, openCmdViewer, onChatClick, closeViewer, rehighlightViewer, copyViewerSection
         };
     }
-}).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).mount('#app');
+}).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).mount('#app');

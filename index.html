@@ -1954,7 +1954,7 @@
                         <span>So far: {{ callsLabel(msg.usage) }} · {{ fmtTokens(msg.usage.tokens) }} tok · {{ msg.usage.costKnown ? fmtCost(msg.usage.cost) : (msg.usage.cost > 0 ? fmtCost(msg.usage.cost) + '+' : 'cost ?') }}</span>
                     </div>
                     <div v-if="msg.role === 'agent' && isGenerating && index === messages.length - 1 && !msg.content && (!msg.commands || msg.commands.length === 0)" class="mt-2" title="Working…">
-                        <span class="cm-dots" aria-label="Working"><span></span><span></span><span></span></span>
+                        <route-trail></route-trail>
                     </div>
                 </div>
             </div>
