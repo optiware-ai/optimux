@@ -187,19 +187,22 @@ const RouteTrail = {
 const ODO_ROLL_MS = 650;
 const OdoDigit = {
     props: { d: { type: Number, required: true }, up: { type: Boolean, default: true } },
-    data() { return { pos: 10 + this.d, rolling: false }; },
+    data() { return { pos: 10 + this.d, rolling: false, lit: false }; },
     watch: {
         d(n) {
             const at = this.pos % 10;
             if (n === at) return;
             clearTimeout(this.timer);
+            clearTimeout(this.glow);
             this.rolling = true;
+            this.lit = true;            // green with a soft glow while it rolls, then it fades back
+            this.glow = setTimeout(() => { this.lit = false; }, ODO_ROLL_MS);
             this.pos = this.up ? this.pos + (n - at + 10) % 10 : this.pos - (at - n + 10) % 10;
             this.timer = setTimeout(() => { this.rolling = false; this.pos = 10 + n; }, ODO_ROLL_MS + 50);
         },
     },
-    beforeUnmount() { clearTimeout(this.timer); },
-    template: `<span class="cm-odo-cell"><span :class="['cm-odo-strip', rolling && 'cm-odo-rolling']" :style="{ transform: 'translateY(' + (-pos * 1.25) + 'em)' }"><span v-for="i in 30" :key="i">{{ (i - 1) % 10 }}</span></span></span>`,
+    beforeUnmount() { clearTimeout(this.timer); clearTimeout(this.glow); },
+    template: `<span :class="['cm-odo-cell', lit && 'cm-odo-lit']"><span :class="['cm-odo-strip', rolling && 'cm-odo-rolling']" :style="{ transform: 'translateY(' + (-pos * 1.25) + 'em)' }"><span v-for="i in 30" :key="i">{{ (i - 1) % 10 }}</span></span></span>`,
 };
 
 const OdoText = {
@@ -633,6 +636,25 @@ createApp({
             } catch (error) {
                 console.error('Failed to load project usage', error);
             }
+        };
+
+        // The header's month cost moves with every model call, not only when the reply
+        // ends: add the call at once, then ask the server for the exact totals.
+        let headerSync = null;
+        const countCallInHeader = (call) => {
+            const name = appSettings.value.active_project || '(no project)';
+            if ((call.project || '(no project)') !== name) return;
+            const known = call.cost !== null && call.cost !== undefined;
+            if (projectUsage.value && projectUsage.value.month) {
+                const m = projectUsage.value.month;
+                if (known) m.cost = (m.cost || 0) + call.cost; else m.calls_without_cost = (m.calls_without_cost || 0) + 1;
+            }
+            if (budgetStatus.value) {
+                if (known) budgetStatus.value.spent = (budgetStatus.value.spent || 0) + call.cost;
+                else budgetStatus.value.calls_without_cost = (budgetStatus.value.calls_without_cost || 0) + 1;
+            }
+            clearTimeout(headerSync);
+            headerSync = setTimeout(fetchProjectUsage, 1500);
         };
 
         const saveSettings = async () => {
@@ -2600,6 +2622,7 @@ createApp({
                 }
                 else if (data.type === "usage") {
                     if (!replay) sessionUsage.value = { tokens: data.session_tokens, cost: data.session_cost, complete: data.session_cost_complete };
+                    if (!replay) countCallInHeader(data);
                     if (lastMsg.role !== 'agent') return;
                     const u = lastMsg.usage || (lastMsg.usage = { calls: 0, tokens: 0, cost: 0, costKnown: true, ms: 0, estimated: false, byModel: {} });
                     if (!u.byModel) u.byModel = {};
