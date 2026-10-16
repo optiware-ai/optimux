@@ -444,6 +444,19 @@
                             </button>
                         </div>
                     </div>
+                    <!-- v0.4: plan mode (task manager) -->
+                    <div class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6">
+                        <h3 class="font-bold text-gray-200 mb-1 flex items-center">Plan big tasks<help-tip wide>
+                            <p>For a big task, the Complex model writes a short plan of 2 to 8 steps, and each step runs on the cheapest tier that can do it: routine steps (reading, writing to a clear spec, running tests) on Simple, only the hard ones on Complex.</p>
+                            <p>The Conductor decides which tasks are big enough. Type <code>/plan &lt;task&gt;</code> to plan a task anyway, or <code>/noplan &lt;task&gt;</code> to do it the usual way.</p>
+                            <p>Not planned: a hand-picked model, a skill, no active project, or Simple and Complex set to the same model.</p>
+                        </help-tip></h3>
+                        <p class="text-[14px] text-gray-400 mb-3">Splits big tasks into steps so routine work runs on the cheaper model.</p>
+                        <div class="inline-flex rounded-lg overflow-hidden border border-gray-700 text-[14px]" role="radiogroup" aria-label="Plan big tasks">
+                            <button v-for="o in [['off','Off'],['ask','Ask first'],['auto','Automatic']]" :key="o[0]" role="radio" :aria-checked="(appSettings.plan_mode || 'off') === o[0]" @click="appSettings.plan_mode = o[0]; saveSettings()" :class="['px-3 py-1.5', (appSettings.plan_mode || 'off') === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                        </div>
+                        <p class="text-[13px] text-gray-500 mt-2">{{ ({ off: 'Never plan; /plan still works.', ask: 'Show each plan and its estimate; nothing runs until you press Run.', auto: 'Show each plan and start it at once; you can still stop it.' })[appSettings.plan_mode || 'off'] }}</p>
+                    </div>
                 </div>
 
                 <!-- Tab Content: Models -->

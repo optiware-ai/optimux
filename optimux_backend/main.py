@@ -25,7 +25,7 @@ from optimux_backend.core.config_manager import (
     delete_api_key_from_env, get_routing_config, save_routing_config, RoutingPayload,
     get_settings, save_settings, SettingsPayload, model_id_problem, get_all_models,
     litellm_key_kwargs, max_steps_for, thinking_kwargs, set_thinking, _read_settings, GITHUB_FIELDS,
-    set_github_fields, update_settings,
+    set_github_fields, update_settings, PLAN_MODES,
 )
 from optimux_backend.core.executor import run_shell_command, get_active_cwd
 import litellm
@@ -42,6 +42,7 @@ from optimux_backend.core import sandbox as sandbox_lib
 from optimux_backend.core import curator
 from optimux_backend.core import catalog, exports, snapshots
 from optimux_backend.core import plans as plans_lib
+from optimux_backend.core import planner
 from optimux_backend.core import auth
 from optimux_backend.core import sessions as chat_store
 from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
@@ -1660,6 +1661,7 @@ async def github_clone_cancel(job_id: str):
 HISTORY_CAP = 40                 # messages kept between turns
 TOOL_OUTPUT_HISTORY_CHARS = 4000  # tool output kept in history (full output is used in-turn)
 TIER_COMMANDS = {"/simple": "simple", "/complex": "complex"}
+PLAN_COMMANDS = {"/plan": True, "/noplan": False}      # v0.4: plan this task / don't
 NEW_CHAT_COMMAND = "/new"
 
 
@@ -1684,6 +1686,88 @@ def reset_chat(session: dict) -> None:
     session["tier"] = None
     session["tier_pinned"] = False
     session["last_turn_ok"] = True
+
+
+def parse_plan_command(text: str) -> tuple[bool | None, str]:
+    """'/plan write tests' -> (True, 'write tests'); '/noplan ...' -> (False, ...)."""
+    stripped = text.strip()
+    head, _, rest = stripped.partition(" ")
+    if head.lower() in PLAN_COMMANDS:
+        return PLAN_COMMANDS[head.lower()], rest.strip()
+    return None, text
+
+
+def plan_mode() -> str:
+    mode = get_settings().get("plan_mode", "off")
+    return mode if mode in PLAN_MODES else "off"
+
+
+def plan_skip_reason(session: dict, role: str, routing: dict) -> str:
+    """Why this request can't be planned ("" when it can). Plans need two different,
+    available models, a project to work in, and no hand-picked model or skill."""
+    if role == "override":
+        return "a model was picked by hand"
+    if session.get("skill"):
+        return "a skill runs, with its own steps"
+    simple, complex_ = routing.get("simple_model", ""), routing.get("complex_model", "")
+    if not simple or not complex_:
+        return "the Simple or Complex model is not set"
+    if simple == complex_:
+        return "Simple and Complex are the same model, so there is nothing to save"
+    for m in (simple, complex_):
+        if not providers.is_available(m):
+            return unavailable_note(m)
+    if not get_settings().get("active_project"):
+        return "no project is active (plans work inside one project)"
+    return ""
+
+
+def public_plan(plan: dict) -> dict:
+    """The plan as the page shows it."""
+    return {k: plan[k] for k in ("id", "goal", "status", "steps", "check", "note", "interrupted", "created")
+            } | {"total_cost": plans_lib.total_cost(plan)}
+
+
+def cancel_waiting_plans(session: dict, why: str) -> None:
+    """A new request replaces a plan that never started (a paused one stays, to resume)."""
+    for p in plans_lib.for_session(session.get("chat_id") or ""):
+        if p["status"] == "waiting":
+            plans_lib.set_status(p["id"], "cancelled", note=why)
+
+
+async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_message: str) -> bool:
+    """Plan a big task (v0.4). True when a plan was made and shown; False means the
+    task goes on the usual way (the planner failed, with the reason shown)."""
+    model = routing["complex_model"]
+    await send(websocket, "system", f"Planning: {model} splits the task into steps for the cheaper model.",
+               tier="complex", model=model)
+    try:
+        result = await planner.make_plan(user_message, model, get_memory_context(), current_workdir())
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        info = providers.record_failure(model, e)
+        ratelimits.record_error(model, e)
+        await send(websocket, "system", f"Couldn't make a plan ({info.summary}); doing the task the usual way.")
+        return False
+    plan = None
+    if result["plan"]:
+        cancel_waiting_plans(session, "Replaced by a newer request.")
+        plan = plans_lib.create(session["chat_id"], get_settings().get("active_project", ""), result["plan"],
+                                request=user_message)
+    for usage, ms in result["calls"]:
+        await meter(websocket, session, "planner", model, usage, ms, plan_id=plan["id"] if plan else None)
+    if not plan:
+        await send(websocket, "system", f"The plan couldn't be used ({result['error']}); doing the task the usual way.")
+        return False
+    record = plans_lib.summary_for_history(plan)
+    await send(websocket, "plan", plan=public_plan(plan))
+    await send(websocket, "system", record + "\n\nPlan mode preview: this version shows the plan but doesn't run it "
+                                    "yet. To do the task now, send it again starting with /noplan.")
+    session["history"] = trim_history(session["history"] + [{"role": "user", "content": user_message},
+                                                            {"role": "assistant", "content": record}])
+    session["last_turn_ok"] = True
+    return True
 
 
 def parse_tier_command(text: str) -> tuple[str | None, str]:
@@ -1753,11 +1837,12 @@ def build_messages(context: str, history: list, user_message: str | None, model:
 
 # ------------------------------------------------------------------ metering
 
-async def meter(websocket: WebSocket, session: dict, role: str, model: str, usage, duration_ms: int | None = None) -> None:
+async def meter(websocket: WebSocket, session: dict, role: str, model: str, usage, duration_ms: int | None = None,
+                plan_id: str | None = None, step: int | None = None) -> None:
     """Record one LLM call and push it, with session totals, to the UI."""
     entry = usage_meter.record(session.get("chat_id") or session["id"], role, model, usage, duration_ms,
                                project=get_settings().get("active_project", ""),
-                               skill=(session.get("skill") or {}).get("name"))
+                               skill=(session.get("skill") or {}).get("name"), plan_id=plan_id, step=step)
     session["tokens"] += entry["prompt_tokens"] + entry["completion_tokens"]
     if entry["cost"] is None:
         session["cost_complete"] = False
@@ -2561,9 +2646,12 @@ async def resolve_tier(websocket: WebSocket, session: dict, user_message: str) -
     """
     if session["tier_pinned"]:
         return session["tier"]
-    result = await route_model_with_usage(user_message, session.get("skills") or None)
+    ask_plan = plan_mode() != "off" and session.get("plan_cmd") is not False
+    result = await route_model_with_usage(user_message, session.get("skills") or None,
+                                          **({"plan_mode": True} if ask_plan else {}))
     tier, conductor_model, conductor_usage, duration = result[:4]
     session["picked_skill"] = result[4] if len(result) > 4 else None
+    session["conductor_plan"] = bool(result[5]) if len(result) > 5 else False
     if conductor_usage is not None:
         await meter(websocket, session, "conductor", conductor_model, conductor_usage, duration)
     if conductor_model == "off" and session["tier"] is not None:
@@ -2599,7 +2687,13 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
     session["skills"] = listed_skills(found)
     session["skill"] = None          # the skill active for this request, if any
     session["picked_skill"] = None
+    session["conductor_plan"] = False
 
+    plan_cmd, user_message = parse_plan_command(user_message)
+    session["plan_cmd"] = plan_cmd
+    if plan_cmd is not None and not user_message:
+        await send(websocket, "system", "Add the task after the command, for example: /plan write tests for the parser")
+        return
     tier_cmd, user_message = parse_tier_command(user_message)
     if tier_cmd:
         session["tier"] = tier_cmd
@@ -2644,6 +2738,16 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
             await send(websocket, "system", note, skill=picked)
         except skills_lib.SkillError:
             session["skill"] = None
+    # v0.4 plan mode: a big task the Conductor marks (or /plan) is split into steps
+    wants_plan = plan_cmd is True or (plan_cmd is None and plan_mode() != "off" and session.get("conductor_plan")
+                                       and role == "complex")
+    if wants_plan:
+        why_not = plan_skip_reason(session, role, routing)
+        if not why_not:
+            if await start_plan(websocket, session, routing, user_message):
+                return
+        elif plan_cmd is True:
+            await send(websocket, "system", f"Not planned: {why_not}. Doing the task the usual way.")
     await send(websocket, "system", f"Routed to: {model} ({role})", tier=role, model=model)
     await run_with_fallback(websocket, session, routing, model, role, user_message)
 

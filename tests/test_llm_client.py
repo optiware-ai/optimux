@@ -67,7 +67,7 @@ async def test_json_mode_only_when_supported(mocker, conductor):
 async def test_returns_usage_and_duration(mocker, conductor):
     resp = create_mock_response('{"complexity": "complex"}', usage={"prompt_tokens": 40, "completion_tokens": 6})
     mocker.patch.object(llm, "acompletion", return_value=resp)
-    tier, model, usage, duration, skill = await route_model_with_usage("refactor everything")
+    tier, model, usage, duration, skill, plan = await route_model_with_usage("refactor everything")
     assert (tier, model, usage["prompt_tokens"]) == ("complex", "test-conductor", 40)
     assert isinstance(duration, int) and duration >= 0
 
@@ -75,7 +75,7 @@ async def test_returns_usage_and_duration(mocker, conductor):
 @pytest.mark.asyncio
 async def test_error_or_timeout_falls_back_to_simple(mocker, conductor):
     mocker.patch.object(llm, "acompletion", side_effect=TimeoutError("slow"))
-    tier, model, usage, _, skill = await route_model_with_usage("hi")
+    tier, model, usage, _, skill, plan = await route_model_with_usage("hi")
     assert (tier, model, usage) == ("simple", "test-conductor", None)
 
 
@@ -83,7 +83,7 @@ async def test_error_or_timeout_falls_back_to_simple(mocker, conductor):
 async def test_conductor_off_makes_no_call(mocker, conductor):
     conductor["conductor_model"] = "off"
     call = mocker.patch.object(llm, "acompletion")
-    assert await route_model_with_usage("hi") == ("simple", "off", None, 0, None)
+    assert await route_model_with_usage("hi") == ("simple", "off", None, 0, None, False)
     call.assert_not_called()
 
 

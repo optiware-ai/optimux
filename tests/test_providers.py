@@ -150,7 +150,7 @@ async def test_conductor_skipped_when_cooling_down(mocker):
     mocker.patch.object(llm, "get_routing_config", return_value={"conductor_model": "cond"})
     providers.record_failure("cond", rate_limit(GEMINI_QUOTA))
     call = mocker.patch.object(llm, "acompletion")
-    assert await llm.route_model_with_usage("hi") == ("simple", "cond", None, 0, None)
+    assert await llm.route_model_with_usage("hi") == ("simple", "cond", None, 0, None, False)
     call.assert_not_called()
 
 

@@ -156,6 +156,8 @@ Under the header, the **chat title** (the first message of the chat) has a ✎ t
 | `/new` | Start a new chat (same as the New chat button). |
 | `/simple` | Use the Simple tier for the rest of this chat (the Conductor stops switching). Add a request after it to send it right away: `/simple explain this error`. |
 | `/complex` | Same, with the Complex tier. Useful when you know a task is hard. |
+| `/plan <task>` | Split this task into steps for the cheaper model (see *Plan big tasks*), even if the Conductor wouldn't. |
+| `/noplan <task>` | Do this task the usual way, without a plan. |
 | `/<skill>` | Run a skill, e.g. `/run-tests` or `/run-tests only the unit tests`. |
 | `/skill <name>` | Same as `/<name>`. |
 
@@ -358,6 +360,20 @@ For every new message, the Conductor (one short, cheap call) classifies the requ
 ### Steps and turns
 
 A **turn** is one request and its reply. A **step** is one model call inside it: the model calls a command, reads the output, decides the next command, and so on. Each step resends the conversation, so long turns cost more per step. Step limits (in **Dashboard → Execution**) cap how far one request can go before Optimux escalates or asks you.
+
+### Plan big tasks
+
+*Being built (v0.4). This version shows plans; running them comes in the next updates.*
+
+A big task usually mixes hard thinking with routine work: reading files, writing code to a clear spec, running tests. Without a plan, the Complex model pays for all of it. With **Plan big tasks** (in **Dashboard → Routing**), the Complex model first writes a short plan of 2 to 8 steps, and each step runs on the tier it needs: routine steps on Simple, only the hard ones on Complex.
+
+- **Off** (for now the default): never plan. `/plan <task>` still plans one task.
+- **Ask first**: show each plan, with a cost estimate, and wait until you press **Run**.
+- **Automatic**: show each plan and start it at once; you can still stop it.
+
+The Conductor decides which tasks are worth a plan: a request to do work now, in separate phases, with routine parts. Nothing is planned when you picked a model by hand, when a skill runs, when no project is active, or when Simple and Complex are the same model or one of them is unavailable. `/plan <task>` plans anyway (it says why when it can't), and `/noplan <task>` never plans.
+
+Planning costs one Complex call (two if its first answer can't be used); it is shown in Usage with the role **planner**. The planner gets your request, the project memory and the list of the project's files (up to 300 paths). It doesn't open files or run anything. If it can't make a usable plan, the task is done the usual way, and the chat says so. A new request replaces a plan that hasn't started.
 
 ## Models
 

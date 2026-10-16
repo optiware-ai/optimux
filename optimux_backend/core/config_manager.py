@@ -145,9 +145,12 @@ class SettingsPayload(BaseModel):
     snapshot_limit_gb: float = 5
     snapshot_recipient: str = ""      # a public key remembered for encrypted downloads
     online_catalog: bool = False      # may the Models screen ask providers and GitHub (on Refresh only)
+    # v0.4 plan mode: off | ask (show the plan, wait for Run) | auto (show it and start)
+    plan_mode: str = "off"
 
 
 DEFAULT_MAX_STEPS = {"simple": 8, "complex": 25}
+PLAN_MODES = ("off", "ask", "auto")
 
 
 def max_steps_for(tier: str) -> int:
@@ -216,6 +219,8 @@ def save_settings(payload: SettingsPayload):
         raise ValidationError("A process limit under 32 breaks ordinary commands; use 0 for no limit.")
     if payload.skills_mode not in ("off", "manual", "auto"):
         raise ValidationError("skills_mode must be off, manual or auto.")
+    if payload.plan_mode not in PLAN_MODES:
+        raise ValidationError("plan_mode must be off, ask or auto.")
     if not 1 <= payload.curator_idle_minutes <= 240:
         raise ValidationError("curator_idle_minutes must be between 1 and 240.")
     payload.git_name, payload.git_email = check_git_identity(payload.git_name, payload.git_email)

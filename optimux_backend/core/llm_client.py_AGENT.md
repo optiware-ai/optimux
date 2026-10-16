@@ -22,4 +22,5 @@
 
 - **`execute_bash` description:** no longer mentions `create-repo-github.sh`; project creation is a workspace tool (`workspace.py`).
 
+- **Plan mode (v0.4):** `route_model_with_usage(prompt, skills=None, plan_mode=False)` returns a sixth value, `plan`: true only when `plan_mode` is on and `_parse_plan` finds `"plan": true` for a complex task. With the Conductor Off, in cooldown, or on an error it is False.
 - **Skill selection:** `route_model_with_usage(prompt, skills=None)` returns `(tier, conductor_model, usage, duration_ms, skill)`. The Conductor sees the skill catalog, and `_parse_skill` accepts only names that exist; anything else becomes `None`.

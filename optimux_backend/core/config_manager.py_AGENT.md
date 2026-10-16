@@ -44,3 +44,4 @@
 - v0.3 C: `snapshot_recipient` (default empty): a public key remembered for encrypted snapshot downloads, validated with `exports.parse_recipient` (a secret key is refused).
 - v0.3 C: a new `projects_root` (only when it changes) is refused when it is the data folder or inside its private parts (`snapshots.is_private_home_path`): those hold keys and chats and must never look like projects.
 - v0.3: `online_catalog` (default false): whether the Models screen's Refresh may contact providers (with the user's key) and GitHub (LiteLLM's price list). Even when on, nothing happens without a click.
+- v0.4: `plan_mode` (`PLAN_MODES`: off | ask | auto; default off until the plan card ships): whether big tasks are planned. `save_settings` refuses other values.

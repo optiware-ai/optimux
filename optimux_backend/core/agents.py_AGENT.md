@@ -9,6 +9,7 @@
 
 ## Links & Dependencies
 - `get_router_prompt` is used by `llm_client.route_model_with_usage`.
+- **Plan mode (v0.4):** `get_router_prompt(catalog, plan=True)` adds `PLAN_RULES` (plan only a request to do work now, in separate phases, with routine parts; never a simple task) and asks for `"plan": true or false` in the JSON (with or without skills); with `plan=False` the prompt is byte-for-byte the old one. `get_planner_prompt()` is the planner's system prompt (Complex, no tools): 2–8 standalone steps, `tier` simple for routine work and complex only for hard thinking (at least one simple), `do` ≤ 600 characters, `done_when`, `files`, a final `check`; reply with JSON only.
 - `get_executor_prompt` is used by `main.build_messages` with the output of `memory_manager.get_memory_context()`.
 
 - **Workspace mode:** with `workspace=True` (no active project), the prompt says the model is at the projects root and must manage projects with `list_projects`, `create_project`, `switch_project` and `archive_project`, never with shell commands, and that deleting is only possible from the dashboard. Inside a project, it mentions `switch_project` for working on another project or creating one.

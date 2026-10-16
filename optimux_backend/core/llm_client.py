@@ -68,6 +68,17 @@ def _parse_complexity(content: str) -> str:
     return "complex" if data.get("complexity") == "complex" else "simple"
 
 
+def _parse_plan(content: str) -> bool:
+    """The Conductor's plan flag (plan mode): true only when it says so for a complex task."""
+    try:
+        clean = _strip_markdown(content or "")
+        start, end = clean.find("{"), clean.rfind("}")
+        data = json.loads(clean[start:end + 1])
+    except Exception:
+        return False
+    return data.get("plan") is True and data.get("complexity") == "complex"
+
+
 def _parse_skill(content: str, skills: dict):
     """The skill name from the Conductor's JSON, only if it's a known skill."""
     try:
@@ -101,11 +112,12 @@ async def route_model(prompt: str) -> str:
     return complexity
 
 
-async def route_model_with_usage(prompt: str, skills: dict | None = None) -> tuple:
+async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_mode: bool = False) -> tuple:
     """Ask the Conductor for a tier.
 
-    Returns (tier, conductor_model, usage, duration_ms, skill). skill is the name
-    the Conductor picked from `skills` (validated), or None. usage is None when no
+    Returns (tier, conductor_model, usage, duration_ms, skill, plan). skill is the name
+    the Conductor picked from `skills` (validated), or None. plan (only asked when
+    plan_mode is on) says whether a complex task should be planned (v0.4). usage is None when no
     call was made (Conductor off) or the call failed before returning usage.
     Bad output, errors and timeouts all fall back to 'simple'; escalation in
     main.py recovers if that was wrong.
@@ -114,17 +126,17 @@ async def route_model_with_usage(prompt: str, skills: dict | None = None) -> tup
     if not conductor_model:
         raise Exception("Routing not configured. Please assign a Conductor Model (or set it to Off) in Settings.")
     if conductor_model == CONDUCTOR_OFF:
-        return "simple", CONDUCTOR_OFF, None, 0, None
+        return "simple", CONDUCTOR_OFF, None, 0, None, False
     if not providers.is_available(conductor_model):
         # Known to be down (quota or repeated errors): don't spend a request
-        return "simple", conductor_model, None, 0, None
+        return "simple", conductor_model, None, 0, None, False
     from optimux_backend.core.skills import catalog_text
     catalog = catalog_text(skills) if skills else ""
 
     kwargs = {
         "model": conductor_model,
         "messages": [
-            {"role": "system", "content": get_router_prompt(catalog)},
+            {"role": "system", "content": get_router_prompt(catalog, plan=plan_mode)},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0,
@@ -144,9 +156,11 @@ async def route_model_with_usage(prompt: str, skills: dict | None = None) -> tup
         content = response.choices[0].message.content
         tier = _parse_complexity(content)
         skill = _parse_skill(content, skills or {})
+        plan = plan_mode and _parse_plan(content)
     except Exception as e:
         info = providers.record_failure(conductor_model, e)
         print(f"Routing failed ({info.kind}: {info.summary}): {e}")
         tier = "simple"
         skill = None
-    return tier, conductor_model, usage, int((time.monotonic() - started) * 1000), skill
+        plan = False
+    return tier, conductor_model, usage, int((time.monotonic() - started) * 1000), skill, plan

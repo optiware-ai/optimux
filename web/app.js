@@ -1504,6 +1504,8 @@ createApp({
             { cmd: '/new', hint: 'Start a new chat' },
             { cmd: '/simple', hint: 'Use the Simple model for this chat' },
             { cmd: '/complex', hint: 'Use the Complex model for this chat' },
+            { cmd: '/plan', hint: 'Split this task into steps for the cheaper model' },
+            { cmd: '/noplan', hint: 'Do this task without a plan' },
         ];
         const slashIndex = ref(0);
         const slashSuggestions = Vue.computed(() => {

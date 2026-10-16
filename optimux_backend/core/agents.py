@@ -1,6 +1,24 @@
-def get_router_prompt(skills_catalog: str = "") -> str:
+PLAN_RULES = (
+    "\nAlso say whether a complex task should be planned: split into steps so routine steps run on a cheaper "
+    "model. plan is true only when all three hold: the user asks for work to be done now (not a question); the "
+    "work has separate phases (look, write, run, fix) or touches several files or parts; and some phases are "
+    "routine (reading, listing, writing boilerplate, running commands). Otherwise plan is false; a simple task is "
+    "never planned.\n"
+)
+
+
+def get_router_prompt(skills_catalog: str = "", plan: bool = False) -> str:
     """System prompt for the Conductor: a silent two-class difficulty classifier
-    that also picks the one skill that clearly fits, if skills exist."""
+    that also picks the one skill that clearly fits, if skills exist, and (plan
+    mode on) says whether a complex task should be planned. With plan mode off the
+    prompt is exactly as before, so nothing extra is paid for it."""
+    if plan:
+        base = get_router_prompt(skills_catalog)
+        head, _, _ = base.rpartition("Reply with only JSON")
+        fields = '"complexity": "simple" or "complex", "plan": true or false'
+        if skills_catalog:
+            fields += ', "skill": "<skill name>" or null'
+        return head + PLAN_RULES + "Reply with only JSON: {" + fields + "}."
     if skills_catalog:
         return (
             get_router_prompt()[:get_router_prompt().index("Reply with only JSON")]
@@ -74,4 +92,30 @@ def get_executor_prompt(context_str: str, workdir: str = "", workspace: bool = F
            f"Folder: {active_skill['folder']}"
            + (f"; files: {', '.join(active_skill['files'])}" if active_skill.get("files") else "")
            + f"\n{active_skill['instructions']}" if active_skill else "")
+    )
+
+
+def get_planner_prompt() -> str:
+    """System prompt for the planner (plan mode, v0.4): the Complex model, no tools,
+    turns a big task into a short plan whose routine steps run on the Simple model."""
+    return (
+        "You are the planner for Optimux, a coding assistant that routes work between two models: a cheap "
+        "Simple model and an expensive Complex model. Split the user's task into a short plan so that routine "
+        "work runs on Simple and only the hard thinking runs on Complex. You cannot read files or run commands: "
+        "plan from the request, the project memory and the list of project files you are given.\n\n"
+        "Rules:\n"
+        "- 2 to 8 steps, in the order they must run. Each step is done by a fresh model that sees only its own "
+        "step, the goal and short result notes from earlier steps, so write each step's instructions so they "
+        "stand alone.\n"
+        "- tier \"simple\" for routine work: reading or listing files, writing boilerplate or code that follows "
+        "a clear spec, running commands and tests, small fixes. tier \"complex\" only for design decisions, "
+        "tricky reasoning, or code whose approach is not obvious. At least one step must be simple.\n"
+        "- do: the step's instructions, at most 600 characters. done_when: how the step knows it is finished. "
+        "files: the files the step will read or change, if known.\n"
+        "- check: a final check run as the last step, for example running the tests; it also writes the reply "
+        "to the user. Leave it empty if there is nothing to check.\n"
+        "- Work only inside the active project. Never plan to delete a remote repository.\n\n"
+        "Reply with only JSON, no other text:\n"
+        '{"goal": "<one line>", "steps": [{"id": 1, "title": "<short>", "tier": "simple" or "complex", '
+        '"do": "<instructions>", "done_when": "<when finished>", "files": ["<path>"]}], "check": "<final check>"}'
     )
