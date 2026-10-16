@@ -124,6 +124,80 @@ def list_projects() -> dict:
     return {"root": root, "active": active or None, "projects": projects, "archived": archived}
 
 
+# ---- One-liners to push and pull a project by hand (Dashboard → Projects).
+# The model can't push (its commands get no token, and a server's sandbox has
+# no network), so the card offers commands for the user's own terminal.
+
+MANUAL_COMMIT_MESSAGE = "Update from Optimux"
+_GITHUB_REMOTE = re.compile(r"^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)"
+                            r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
+
+
+def _clean_remote(remote: str) -> str:
+    """The remote without a user or token in it (never shown or copied)."""
+    return re.sub(r"^(https?://)[^@/]+@", r"\1", remote or "")
+
+
+def git_commands(name: str) -> dict:
+    """Push (here) and pull (on another computer) one-liners for a project.
+    The push commits every change first, runs as the user Optimux runs as on a
+    server, and gets the saved GitHub token for that one command only (gh as
+    git's credential helper: nothing is written to a git config)."""
+    from optimux_backend.core import paths
+    from optimux_backend.core.auth import server_mode
+    import getpass
+
+    name = validate_name(name)
+    path = os.path.join(projects_root(), name)
+    if not os.path.isdir(path):
+        raise WorkspaceError(f"There's no project called {name} in the Workspace folder.")
+    out = {"project": name, "path": path, "git": os.path.isdir(os.path.join(path, ".git")),
+           "remote": None, "branch": None, "changes": 0, "push": None, "pull": None, "pull_ssh": None,
+           "server": server_mode(), "commit_message": MANUAL_COMMIT_MESSAGE, "problem": None}
+    if not out["git"]:
+        out["problem"] = "This project isn't a git repository."
+        return out
+    remote = _clean_remote(_git_remote(path) or "")
+    branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], path, timeout=5)
+    status = _run(["git", "status", "--porcelain"], path, timeout=10, keep=None)
+    out["branch"] = branch["output"] if branch["ok"] else None
+    out["changes"] = len([l for l in status["output"].splitlines() if l.strip()]) if status["ok"] else 0
+    if not remote:
+        out["problem"] = ("It has no origin. Create the repository on GitHub, then run "
+                          "git remote add origin https://github.com/<owner>/<name>.git in it.")
+        return out
+    out["remote"] = remote
+
+    m = _GITHUB_REMOTE.match(remote)
+    use_token = bool(m) and remote.startswith("https://") and bool(os.environ.get(GITHUB_TOKEN_ENV))
+    q = shlex.quote
+    commit = f"git add -A && (git diff --cached --quiet || git commit -m {q(MANUAL_COMMIT_MESSAGE)})"
+    if use_token:
+        push = ("GH_TOKEN=\"$" + GITHUB_TOKEN_ENV + "\" git -c credential.helper= "
+                "-c 'credential.helper=!gh auth git-credential' push -u origin HEAD")
+        inner = f"set -a && . {q(os.path.abspath(paths.SECRETS_FILE))} && set +a && cd {q(path)} && {commit} && {push}"
+    else:
+        inner = f"cd {q(path)} && {commit} && git push -u origin HEAD"
+    if out["server"]:
+        out["push"] = f"sudo -u {q(getpass.getuser())} bash -c {q(inner)}"
+    elif use_token:
+        out["push"] = f"bash -c {q(inner)}"
+    else:
+        out["push"] = inner
+
+    folder = m.group(2) if m else re.sub(r"\.git$", "", remote.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]) or name
+    def pull(url: str) -> str:
+        f = q(folder)
+        return f"if [ -d {f}/.git ]; then git -C {f} pull; else git clone {q(url)} {f}; fi"
+    if m:
+        owner, repo = m.group(1), m.group(2)
+        out["pull"] = pull(f"https://github.com/{owner}/{repo}.git")
+        out["pull_ssh"] = pull(f"git@github.com:{owner}/{repo}.git")
+    else:
+        out["pull"] = pull(remote)
+    return out
+
+
 def form_values(form) -> dict:
     """The create form (from the model's tool call, the chat form or the New
     project button) as plain values, without judging them (so a form shown

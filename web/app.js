@@ -814,6 +814,37 @@ createApp({
             await fetchProjectsList();
             fetchProjectsOverview();
         };
+        // Push / Pull manually on a project card: one-liners for the user's own terminal
+        const gitBox = Vue.reactive({ project: '', kind: '', data: null, error: '', loading: false, ssh: false, copied: false });
+        let savedSshHost = 'github.com';
+        try { savedSshHost = localStorage.getItem('optimux.sshHost') || 'github.com'; } catch (_) {}
+        const sshHost = ref(savedSshHost);
+        Vue.watch(sshHost, (h) => { try { localStorage.setItem('optimux.sshHost', h); } catch (_) {} });
+        const openGitBox = async (project, kind) => {
+            if (gitBox.project === project && gitBox.kind === kind) { gitBox.project = ''; return; }
+            Object.assign(gitBox, { project, kind, data: null, error: '', loading: true, copied: false });
+            try {
+                const r = await fetch('/api/projects/' + encodeURIComponent(project) + '/git-commands');
+                const d = await r.json();
+                if (gitBox.project !== project) return;
+                if (!r.ok) gitBox.error = d.detail || 'Could not read the project.'; else gitBox.data = d;
+            } catch (_) { gitBox.error = 'Could not reach Optimux.'; }
+            gitBox.loading = false;
+        };
+        const gitLine = Vue.computed(() => {
+            const d = gitBox.data;
+            if (!d) return '';
+            if (gitBox.kind === 'push') return d.push || '';
+            if (gitBox.ssh && d.pull_ssh) {
+                const host = /^[A-Za-z0-9._-]+$/.test(sshHost.value.trim()) ? sshHost.value.trim() : 'github.com';
+                return d.pull_ssh.replace('git@github.com:', 'git@' + host + ':');
+            }
+            return d.pull || '';
+        });
+        const gitFolder = Vue.computed(() => { const m = /git -C (\S+) pull/.exec(gitLine.value); return m ? m[1] : ''; });
+        const copyGitLine = async () => {
+            if (await writeClipboard(gitLine.value)) { gitBox.copied = true; setTimeout(() => { gitBox.copied = false; }, 1500); }
+        };
         const archiveFromDashboard = async (name) => {
             if (!await askConfirm({ title: `Archive ${name}?`, text: "Its folder moves to the Workspace's .archive folder. Its chats, costs and memory are kept, and you can restore it from this page.", ok: 'Archive' })) return;
             try {
@@ -3017,7 +3048,7 @@ createApp({
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
-            startClone, cancelClone, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, copyPath, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
+            startClone, cancelClone, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, copyPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,
             removeSkill, saveAsSkill, skillDialog, confirmSkillDialog,
             setSkillsMode, setSkillMode, slashSuggestions, slashIndex, pickSlash,

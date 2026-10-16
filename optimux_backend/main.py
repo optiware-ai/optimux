@@ -555,6 +555,16 @@ async def archived_projects():
     return out
 
 
+@app.get("/api/projects/{name}/git-commands")
+async def project_git_commands(name: str):
+    """One-liners to push this project from here and pull it on another computer
+    (Dashboard → Projects). Nothing runs: they are for the user's own terminal."""
+    try:
+        return await asyncio.to_thread(workspace.git_commands, name)
+    except workspace.WorkspaceError as e:
+        return JSONResponse({"detail": str(e)}, status_code=422)
+
+
 @app.post("/api/projects/{name}/archive")
 async def archive_project_api(name: str):
     if BUSY_PROJECTS.get(name):

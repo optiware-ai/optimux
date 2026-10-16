@@ -242,7 +242,35 @@
                             <button @click="historyPage.project = p.project; openSettings('history')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Chats</button>
                             <button @click="memoryTab = 'project'; memoryProject = p.project; openSettings('memory'); fetchMemory()" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Memory</button>
                             <button v-if="!p.deleted || p.exists" @click="openSettings('budgets')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Budget</button>
+                            <button v-if="p.exists" @click="openGitBox(p.project, 'push')" :class="['px-2 py-1 rounded border hover:border-gray-500', gitBox.project === p.project && gitBox.kind === 'push' ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-300']" title="A one-line command to commit and push this project from a terminal">Push manually</button>
+                            <button v-if="p.exists" @click="openGitBox(p.project, 'pull')" :class="['px-2 py-1 rounded border hover:border-gray-500', gitBox.project === p.project && gitBox.kind === 'pull' ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-300']" title="A one-line command to get this project on another computer">Pull manually</button>
                             <button v-if="p.exists" @click="archiveFromDashboard(p.project)" :disabled="p.active && (isGenerating || pendingApproval)" class="px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-yellow-700 hover:text-yellow-300 disabled:opacity-40 ml-auto" title="Move its folder to .archive/ (chats and costs are kept)">Archive</button>
+                        </div>
+                        <div v-if="gitBox.project === p.project" class="mt-3 bg-gray-950 border border-gray-800 rounded-lg p-3 text-xs">
+                            <div v-if="gitBox.loading" class="text-gray-500">Reading the project…</div>
+                            <div v-else-if="gitBox.error" class="text-red-300">{{ gitBox.error }}</div>
+                            <template v-else-if="gitBox.data">
+                                <p v-if="gitBox.data.problem" class="text-yellow-300">{{ gitBox.data.problem }}</p>
+                                <template v-else>
+                                    <p v-if="gitBox.kind === 'push'" class="text-gray-400 mb-2">
+                                        Run it in a terminal on {{ gitBox.data.server ? 'this server (it acts as the Optimux user through sudo)' : 'this computer' }}.
+                                        <template v-if="gitBox.data.changes">It first commits {{ gitBox.data.changes }} changed file{{ gitBox.data.changes === 1 ? '' : 's' }} as <span class="font-mono text-gray-300">"{{ gitBox.data.commit_message }}"</span> (edit the message if you like), then</template><template v-else>Nothing to commit, so it only</template>
+                                        pushes <span class="font-mono text-gray-300">{{ gitBox.data.branch }}</span> to <span class="font-mono text-gray-300 break-all">{{ gitBox.data.remote }}</span>.
+                                    </p>
+                                    <template v-else>
+                                        <p class="text-gray-400 mb-2">Run it on the other computer, in the folder where you keep your projects: the first time it clones <span class="font-mono text-gray-300">{{ gitFolder }}</span>, after that it pulls. A private repository needs <span class="font-mono">gh auth login</span> there (HTTPS) or an SSH key.</p>
+                                        <div v-if="gitBox.data.pull_ssh" class="flex flex-wrap items-center gap-2 mb-2">
+                                            <button @click="gitBox.ssh = false" :class="['px-2 py-0.5 rounded border', !gitBox.ssh ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-400']">HTTPS</button>
+                                            <button @click="gitBox.ssh = true" :class="['px-2 py-0.5 rounded border', gitBox.ssh ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-400']">SSH</button>
+                                            <label v-if="gitBox.ssh" class="flex items-center gap-1 text-gray-500">host <input v-model="sshHost" class="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-gray-200 w-36" title="github.com, or your SSH host alias from ~/.ssh/config"></label>
+                                        </div>
+                                    </template>
+                                    <div class="flex items-start gap-2">
+                                        <code class="flex-1 font-mono text-gray-200 bg-gray-900 rounded px-2 py-1.5 break-all whitespace-pre-wrap">{{ gitLine }}</code>
+                                        <button @click="copyGitLine" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500 flex-shrink-0">{{ gitBox.copied ? 'Copied' : 'Copy' }}</button>
+                                    </div>
+                                </template>
+                            </template>
                         </div>
                     </div>
                     <!-- fix25a: archived projects: restore, or delete permanently -->
