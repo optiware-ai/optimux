@@ -440,7 +440,7 @@ The Conductor decides which tasks are worth a plan: a request to do work now, in
 
 Planning costs one Complex call (two if its first answer can't be used); it is shown in Usage with the role **planner**. The planner gets your request, the project memory and the list of the project's files (up to 300 paths). It doesn't open files or run anything. If it can't make a usable plan, the task is done the usual way, and the chat says so. A new request replaces a plan that hasn't started.
 
-The chat shows the whole plan as a card: for each step, what it will do (**Do**), how it knows it is finished (**Done when**) and the files it touches, then the final **Check**. Read the steps before you run them: a cheap model will work from these instructions alone. When the planner model shares its thinking (Claude does; Gemini keeps it hidden), you can open it above the plan. For risky changes, take a Workspace snapshot first (**Dashboard → Backups**).
+The chat shows the whole plan as a card: for each step, what it will do (**Do**), how it knows it is finished (**Done when**) and the files it creates or changes (a step isn't accepted until they exist), then the final **Check**. Read the steps before you run them: a cheap model will work from these instructions alone. When the planner model shares its thinking (Claude does; Gemini keeps it hidden), you can open it above the plan. For risky changes, take a Workspace snapshot first (**Dashboard → Backups**).
 
 Before you run it, the card shows:
 
@@ -453,13 +453,15 @@ Before you run it, the card shows:
 - A step ends by reporting a short **result** (what it did, the files it changed) for the next steps. A step that decides something longer the next steps must follow, such as a design or a list of test cases, also leaves **notes**; the card shows them under the step. Results and notes are kept in Optimux's database (in `~/.optimux`), never in your project.
 - Every command still needs your approval and runs in the sandbox when it is on; the budget is checked before every model call.
 - The card updates live: each step's status, model, number of calls and cost, and the plan's cost so far. In the reply below it, each step has a heading with what it did (commands, output, text) under it; a finished step folds, and a click opens it again.
-- At the end, the plan's **check** runs as a last Simple step (for example, running the tests) and writes the reply. A plan without a check gets a summary of the step results, with no model call.
+- At the end, the plan's **check** runs as a last Simple step (for example, running the tests) and writes the reply. It ends with a verdict shown on the card: **✓ Passed**, **✗ Failed** (the card's status says *done · check failed*), or **? Not verified** (*done · not verified*) when the check couldn't run, for example because a tool or package is missing, or when the model gave no verdict. Steps are done either way; the verdict tells you whether to trust them. A plan without a check gets a summary of the step results, with no model call.
 - The chat history keeps a short record of the plan (each step's tier, model and result) and the reply, so a follow-up question knows what happened without paying for every step again.
 
 **When a step has trouble:**
 
 | What happens | What Optimux does |
 | --- | --- |
+| A step says it's done, but a file it was planned to create doesn't exist anywhere in the project | Not accepted: the model is told which files are missing and goes on; if it keeps failing, the usual escalation follows |
+| A step answers in text instead of doing the work ("Shall I write the file?") | It is told the plan is approved and to do the step; after two such answers, it counts as stuck |
 | A Simple step reaches its step limit or repeats the same call | That step only continues on Complex (escalation); the next steps keep their tier, and the chat doesn't move to Complex |
 | It is still stuck on Complex | The plan pauses: **Try step N again** (on Complex), **Skip step N**, or **Stop the plan** |
 | A step says it can't be done (blocked) | The plan pauses with its reason, with the same three buttons |

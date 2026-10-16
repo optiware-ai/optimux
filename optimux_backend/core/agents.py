@@ -121,7 +121,7 @@ def get_planner_prompt() -> str:
         "- Order steps so each one can check its own work: set up and install what is needed before the steps "
         "that use it. Merge small steps that work on the same files; fewer steps cost less.\n"
         "- do: the step's instructions, at most 600 characters. done_when: how the step knows it is finished. "
-        "files: the files the step will read or change, if known.\n"
+        "files: the files the step will create or change, if known (not files it only reads).\n"
         "- check: a final check run as the last step, for example running the tests; it also writes the reply "
         "to the user. Leave it empty if there is nothing to check.\n"
         "- Plan only the files the user's task needs. Don't plan files that just carry notes from one step to the "
@@ -155,8 +155,10 @@ def get_step_prompt(plan: dict, step: dict | None, results: list[str], details: 
             "text. If part of it needs something you can't do here (looking at a page in a browser, a person's "
             "judgment), check what commands can (the files exist, parse, contain what they should) and tell the "
             "user what to look at themselves. Then write the reply to the user: what was done, step by step, "
-            "which files changed, the check's result, and anything the user should look at. Reply in plain text; "
-            "don't call finish_step."])
+            "which files changed, the check's result, and anything the user should look at. Say plainly if the "
+            "check failed or couldn't run; don't offer options or ask what to do next. Finally call finish_check "
+            "with the verdict: passed only if the check's commands ran and passed, failed if they ran and found "
+            "a problem, not_verified if they couldn't run."])
     total = len(plan["steps"])
     files = f"Files: {', '.join(step['files'])} (read what you need yourself)" if step.get("files") else ""
     return "\n".join(head + earlier + [
@@ -165,6 +167,9 @@ def get_step_prompt(plan: dict, step: dict | None, results: list[str], details: 
         f"Done when: {step['done_when']}",
         *([files] if files else []),
         "",
+        "The user already approved this plan and approves each command, so do the work now: never ask for "
+        "confirmation, show a file instead of writing it, or offer options in text. Write the step's files "
+        "yourself; a step whose files don't exist isn't accepted.",
         "Do only this step; later steps do the rest. When it is done, call finish_step with status \"done\" and a "
         "result of at most 150 words for the next steps: what you did, the files you changed, facts they need. "
         "If later steps must follow something longer (a design, a list of test cases), put it in details, at "

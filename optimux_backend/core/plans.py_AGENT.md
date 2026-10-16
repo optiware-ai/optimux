@@ -28,3 +28,4 @@
 - Used by `main.py` at start (`mark_interrupted`). Tests: `tests/test_plans.py`.
 
 - **Estimate (commit 4):** `estimate(plan, averages)` gives `{low, high, missing}` for the steps still pending, running or blocked plus the check: `STEP_CALLS` simple (2, 4), complex (1, 3), `CHECK_CALLS` (1, 3) times the tier's average call cost; `low`/`high` are None and `missing` names the tiers without a priced call.
+- **Real work and the check's verdict (v0.4-5a):** `missing_files(step, workdir)` lists a step's `files` that exist nowhere in the project (not at the given path, and no file of that name in any folder outside `SKIP_DIRS`; at most `MAX_WALK` files are looked at; paths leaving the project count as missing). `set_check(pid, verdict, note)` stores `check_verdict` (`CHECK_VERDICTS`: passed, failed, not_verified) and `check_note`; `_save` keeps them, and `summary_for_history` adds the verdict to the Check line.

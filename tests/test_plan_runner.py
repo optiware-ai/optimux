@@ -21,6 +21,12 @@ def call(name, args):
     return fake_stream([chunk(tool_call=(name, args)), chunk(empty=True, usage_obj=DONE)])
 
 
+def check(text, verdict="passed", reason="All tests pass."):
+    """The final check: its reply, then its verdict, in one answer."""
+    return fake_stream([chunk(text), chunk(tool_call=("finish_check", {"verdict": verdict, "reason": reason})),
+                        chunk(empty=True, usage_obj=DONE)])
+
+
 def finish(result="ok", status="done", details=None):
     args = {"status": status, "result": result}
     if details:
@@ -59,6 +65,8 @@ def client(mocker, tmp_path):
     mode = {"plan_mode": "ask", "active_project": "alpha"}
     mocker.patch.object(main, "get_settings", lambda: {**real(), **mode})
     mocker.patch.object(main, "plan_mode", lambda: mode["plan_mode"])
+    # The plan's files don't exist in the test project; tests of that rule turn it back on
+    c.missing = mocker.patch.object(main, "plan_step_missing_files", return_value=[])
     c.mode = mode
     return c
 
@@ -79,8 +87,8 @@ def test_ask_first_waits_for_run_then_runs_every_step(mocker, client):
     model = Model(answer(json.dumps(PLAN)),
                   finish("parse() and tokenize() are public."),
                   finish("Three cases chosen.", details="1. empty input\n2. nesting\n3. bad token"),
-                  say("I wrote tests/test_parser.py with 3 tests."),
-                  say("All 3 tests pass. Step 1 listed the functions, step 2 chose the cases, step 3 wrote them."))
+                  finish("I wrote tests/test_parser.py with 3 tests."),
+                  check("All 3 tests pass. Step 1 listed the functions, step 2 chose the cases, step 3 wrote them."))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
     assert plans.get(pid)["status"] == "waiting" and not model.step_calls()       # nothing ran yet
@@ -97,13 +105,15 @@ def test_ask_first_waits_for_run_then_runs_every_step(mocker, client):
     assert "Details from step 2 (Choose the tricky cases):\n1. empty input" in card3
     assert "finish_step" in [t["function"]["name"] for t in steps[0]["tools"]]
     assert "finish_step" not in [t["function"]["name"] for t in steps[3]["tools"]]       # the final check
+    assert "finish_check" in [t["function"]["name"] for t in steps[3]["tools"]]
     assert "Final check: pytest -q passes" in steps[3]["messages"][1]["content"]
     assert not any("create_project" == t["function"]["name"] for c in steps for t in c["tools"])
 
     p = plans.get(pid)
     assert p["status"] == "done" and [s["status"] for s in p["steps"]] == ["done"] * 3
     assert p["steps"][1]["details"].startswith("1. empty input")
-    assert p["steps"][2]["result"] == "I wrote tests/test_parser.py with 3 tests."            # plain text end
+    assert p["steps"][2]["result"] == "I wrote tests/test_parser.py with 3 tests."
+    assert p["check_verdict"] == "passed" and p["check_note"] == "All tests pass."
     assert [s["calls"] for s in p["steps"]] == [1, 1, 1] and p["check_calls"] == 1
     tokens = "".join(m.get("content", "") for m in msgs if m["type"] == "token")
     assert "All 3 tests pass" in tokens
@@ -116,7 +126,7 @@ def test_ask_first_waits_for_run_then_runs_every_step(mocker, client):
 
 
 def test_history_keeps_the_record_and_reply_not_the_steps(mocker, client):
-    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), say("Done: all pass."),
+    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), check("Done: all pass."),
                   say("Sure."))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
@@ -133,7 +143,7 @@ def test_history_keeps_the_record_and_reply_not_the_steps(mocker, client):
 
 def test_a_blocked_step_pauses_and_can_be_tried_again(mocker, client):
     model = Model(answer(json.dumps(PLAN)), finish("src/parser.py doesn't exist.", status="blocked"),
-                  finish("Found it in lib/parser.py."), finish("b"), finish("c"), say("ok"))
+                  finish("Found it in lib/parser.py."), finish("b"), finish("c"), check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
     msgs = act(chat, pid, "run")
@@ -150,7 +160,7 @@ def test_a_blocked_step_pauses_and_can_be_tried_again(mocker, client):
 
 
 def test_skip_moves_on_and_the_next_steps_know(mocker, client):
-    model = Model(answer(json.dumps(PLAN)), finish("can't", status="blocked"), finish("b"), finish("c"), say("ok"))
+    model = Model(answer(json.dumps(PLAN)), finish("can't", status="blocked"), finish("b"), finish("c"), check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
     act(chat, pid, "run")
@@ -163,7 +173,7 @@ def test_skip_moves_on_and_the_next_steps_know(mocker, client):
 
 def test_a_stuck_simple_step_escalates_that_step_only(mocker, client):
     loop = [call("nope", {"x": 1}), call("nope", {"x": 1})]       # the same call twice: aborted
-    model = Model(answer(json.dumps(PLAN)), *loop, finish("done on complex"), finish("b"), finish("c"), say("ok"))
+    model = Model(answer(json.dumps(PLAN)), *loop, finish("done on complex"), finish("b"), finish("c"), check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
     msgs = act(chat, pid, "run")
@@ -181,7 +191,7 @@ def test_stuck_after_escalation_pauses_and_retries_on_complex(mocker, client):
     def loop():
         return [call("nope", {"x": 1}), call("nope", {"x": 1})]     # fresh streams each time
     model = Model(answer(json.dumps(PLAN)), *loop(), *loop(), finish("now it works"), finish("b"), finish("c"),
-                  say("ok"))
+                  check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
     act(chat, pid, "run")
@@ -194,7 +204,7 @@ def test_stuck_after_escalation_pauses_and_retries_on_complex(mocker, client):
 
 
 def test_stop_pauses_at_the_step_and_resume_redoes_it(mocker, client):
-    model = Model(answer(json.dumps(PLAN)), finish("a"), hanging(), finish("b again"), finish("c"), say("ok"))
+    model = Model(answer(json.dumps(PLAN)), finish("a"), hanging(), finish("b again"), finish("c"), check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
     chat.ws.send_text(json.dumps({"type": "plan_action", "action": "run", "plan_id": pid}))
@@ -211,7 +221,7 @@ def test_stop_pauses_at_the_step_and_resume_redoes_it(mocker, client):
 
 
 def test_a_block_budget_pauses_the_plan(mocker, client):
-    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), say("ok"))
+    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
     status = {"project": "alpha", "spent": 5.0, "monthly_usd": 5.0, "ratio": 1.0, "calls_without_cost": 0,
@@ -233,7 +243,7 @@ def test_a_provider_failure_falls_back_for_that_step(mocker, client):
     import litellm
     down = litellm.ServiceUnavailableError(message="overloaded", llm_provider="x", model="simple-model")
     mocker.patch.object(main.asyncio, "sleep", side_effect=lambda *_: asyncio.sleep(0))
-    model = Model(answer(json.dumps(PLAN)), down, down, finish("a on complex"), finish("b"), finish("c"), say("ok"))
+    model = Model(answer(json.dumps(PLAN)), down, down, finish("a on complex"), finish("b"), finish("c"), check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
     msgs = act(chat, pid, "run")
@@ -271,7 +281,7 @@ def test_a_plan_of_another_chat_is_refused(mocker, client):
 
 def test_automatic_runs_the_plan_at_once(mocker, client):
     client.mode["plan_mode"] = "auto"
-    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), say("All done."))
+    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), check("All done."))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
     chat.close()
@@ -343,7 +353,7 @@ def test_check_cost_counts_in_the_total():
 
 
 def test_stop_during_the_final_check_says_so(mocker, client):
-    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), hanging(), say("All pass."))
+    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), hanging(), check("All pass."))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
     chat.ws.send_text(json.dumps({"type": "plan_action", "action": "run", "plan_id": pid}))
@@ -416,7 +426,7 @@ def test_edit_before_run_changes_a_tier_and_removes_a_step(mocker, client):
 
 
 def test_each_step_is_marked_so_the_page_can_fold_it(mocker, client):
-    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), say("ok"))
+    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
     msgs = act(chat, pid, "run")
@@ -440,3 +450,77 @@ def test_prompts_keep_handover_notes_out_of_the_project_and_run_the_check():
     assert "not in a new file in the project: write files only when the task itself needs them" in step
     check = agents.get_step_prompt(p, None, [], [])
     assert "never ask for confirmation in text" in check and "tell the user what to look at themselves" in check
+
+
+# ---- v0.4-5a: a step must really be done, and the check says what it verified
+
+def test_done_with_missing_files_is_not_accepted(mocker, client):
+    answers = [["src/parser.py"]]                                     # missing the first time, written after
+    client.missing.side_effect = lambda ctx: answers.pop(0) if answers else []
+    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("a, really"), finish("b"), finish("c"), check("ok"))
+    chat = Conversation(client)
+    pid = make_plan(mocker, chat, model)
+    act(chat, pid, "run")
+    chat.close()
+    second = model.step_calls()[1]["messages"]
+    assert second[-1]["role"] == "tool" and second[-1]["content"].startswith(
+        "Not accepted: these files of the step don't exist yet: src/parser.py.")
+    p = plans.get(pid)
+    assert p["status"] == "done" and p["steps"][0]["result"] == "a, really"
+
+
+def test_a_step_that_asks_in_text_is_told_to_do_it(mocker, client):
+    model = Model(answer(json.dumps(PLAN)), say("Shall I write the file? If you approve, I'll do it."),
+                  finish("a"), finish("b"), finish("c"), check("ok"))
+    chat = Conversation(client)
+    pid = make_plan(mocker, chat, model)
+    act(chat, pid, "run")
+    chat.close()
+    nudged = model.step_calls()[1]["messages"]
+    assert nudged[-1] == {"role": "user", "content": main.PLAN_STEP_NUDGE}
+    assert plans.get(pid)["steps"][0]["status"] == "done"
+
+
+def test_a_step_that_keeps_asking_moves_to_complex(mocker, client):
+    asks = [say("Want me to do it?") for _ in range(main.PLAN_NUDGES + 1)]
+    model = Model(answer(json.dumps(PLAN)), *asks, finish("done on complex"), finish("b"), finish("c"), check("ok"))
+    chat = Conversation(client)
+    pid = make_plan(mocker, chat, model)
+    msgs = act(chat, pid, "run")
+    chat.close()
+    s1 = plans.get(pid)["steps"][0]
+    assert s1["escalated"] and s1["model"] == "complex-model" and s1["status"] == "done"
+    assert any(n.startswith("Escalated this step to complex-model") for n in notes(msgs))
+
+
+@pytest.mark.parametrize("ending,verdict,note", [
+    ([check("Tests fail: 2 of 3.", verdict="failed", reason="2 of 3 tests fail.")], "failed", "2 of 3 tests fail."),
+    ([check("pytest isn't installed.", verdict="not_verified", reason="pytest: command not found.")],
+     "not_verified", "pytest: command not found."),
+    ([say("Looks fine."), say("Still fine."), say("Really.")], "not_verified", "The check ended without a verdict."),
+])
+def test_the_check_records_its_verdict(mocker, client, ending, verdict, note):
+    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), *ending)
+    chat = Conversation(client)
+    pid = make_plan(mocker, chat, model)
+    msgs = act(chat, pid, "run")
+    chat.close()
+    p = plans.get(pid)
+    assert p["status"] == "done" and p["check_verdict"] == verdict and p["check_note"] == note
+    card = [m for m in msgs if m["type"] == "plan"][-1]["plan"]
+    assert card["check_verdict"] == verdict and card["check_note"] == note
+    label = {"failed": " (failed)", "not_verified": " (not verified)"}[verdict]
+    assert f"Check: pytest -q passes{label}" in plans.summary_for_history(p)
+
+
+def test_missing_files_looks_by_path_and_by_name(tmp_path):
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "database.py").write_text("")
+    (tmp_path / "README.md").write_text("")
+    (tmp_path / "venv" / "lib").mkdir(parents=True)
+    (tmp_path / "venv" / "lib" / "test_main.py").write_text("")       # in a skipped folder
+    step = {"files": ["database.py", "README.md", "app/database.py", "test_main.py", "../outside.txt"]}
+    (tmp_path.parent / "outside.txt").write_text("")
+    assert plans.missing_files(step, str(tmp_path)) == ["test_main.py", "../outside.txt"]
+    assert plans.missing_files({"files": []}, str(tmp_path)) == []
+    assert plans.missing_files(step, "") == []

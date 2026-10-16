@@ -11,6 +11,7 @@ model, cost and times. It is saved after every change, so a stop, an error or a
 restart leaves it at a known step (see mark_interrupted).
 """
 import json
+import os
 import re
 import secrets
 import time
@@ -35,6 +36,7 @@ MAX_DETAILS_IN_CONTEXT = 12000   # all earlier details given to one step, at mos
 PLAN_STATUSES = ("waiting", "running", "paused", "done", "cancelled")
 STEP_STATUSES = ("pending", "running", "done", "blocked", "skipped", "failed")
 OPEN = ("waiting", "running", "paused")
+CHECK_VERDICTS = ("passed", "failed", "not_verified")   # the final check's own verdict (finish_check)
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{16}$")
 
 
@@ -180,6 +182,8 @@ def _save(plan: dict) -> dict:
     body = {k: plan[k] for k in ("steps", "check", "request", "note", "interrupted")}
     body["check_cost"] = plan.get("check_cost", 0.0)
     body["check_calls"] = plan.get("check_calls", 0)
+    if plan.get("check_verdict"):
+        body["check_verdict"], body["check_note"] = plan["check_verdict"], plan.get("check_note", "")
     plan["updated"] = time.time()
     conn = store.connect()
     try:
@@ -189,6 +193,42 @@ def _save(plan: dict) -> dict:
     finally:
         conn.close()
     return plan
+
+
+def set_check(pid: str, verdict: str, note: str = "") -> dict:
+    """The final check's verdict: passed, failed, or not_verified (it couldn't run)."""
+    plan = get(pid)
+    plan["check_verdict"] = verdict if verdict in CHECK_VERDICTS else "not_verified"
+    plan["check_note"] = (note or "")[:300]
+    return _save(plan)
+
+
+SKIP_DIRS = {".git", "node_modules", "venv", ".venv", "__pycache__", ".pytest_cache", "dist", "build"}
+MAX_WALK = 20000
+
+
+def missing_files(step: dict, workdir: str) -> list[str]:
+    """The step's files that exist nowhere in the project: not at the given path,
+    and no file of that name in any folder (the planner may not know the final
+    folder). An empty list when the step lists none."""
+    want = [f for f in (step.get("files") or []) if f.strip()]
+    if not want or not workdir or not os.path.isdir(workdir):
+        return []
+    root = os.path.realpath(workdir)
+    names, seen = set(), 0
+    for d, dirs, files in os.walk(root):
+        dirs[:] = [x for x in dirs if x not in SKIP_DIRS]
+        names.update(files)
+        seen += len(files)
+        if seen > MAX_WALK:
+            break
+    missing = []
+    for f in want:
+        path = os.path.realpath(os.path.join(root, f.lstrip("/")))
+        if (path.startswith(root + os.sep) and os.path.exists(path)) or os.path.basename(f.rstrip("/")) in names:
+            continue
+        missing.append(f)
+    return missing
 
 
 def set_status(pid: str, status: str, note: str | None = None) -> dict:
@@ -318,7 +358,11 @@ def summary_for_history(plan: dict) -> str:
         if s.get("result"):
             lines.append(f"   {s['result']}")
     if plan.get("check"):
-        lines.append(f"Check: {plan['check']}")
+        verdict = {"passed": " (passed)", "failed": " (failed)", "not_verified": " (not verified)"}.get(
+            plan.get("check_verdict") or "", "")
+        lines.append(f"Check: {plan['check']}{verdict}")
+        if plan.get("check_note"):
+            lines.append(f"   {plan['check_note']}")
     return "\n".join(lines)
 
 

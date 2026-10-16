@@ -32,6 +32,24 @@ FINISH_STEP_TOOL = {
         },
     },
 }
+FINISH_CHECK_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "finish_check",
+        "description": "End the plan's final check with its verdict, after writing the reply to the user.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "verdict": {"type": "string", "enum": ["passed", "failed", "not_verified"],
+                            "description": "passed: the check's commands ran and passed; failed: they ran and "
+                                           "something is wrong; not_verified: they couldn't run (a tool or "
+                                           "package is missing, no network...)"},
+                "reason": {"type": "string", "description": "One sentence: what passed, failed, or couldn't run"},
+            },
+            "required": ["verdict", "reason"],
+        },
+    },
+}
 CONDUCTOR_TIMEOUT = 10  # seconds; on timeout the request starts on the simple tier
 TIERS = ("simple", "complex")
 

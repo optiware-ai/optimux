@@ -28,3 +28,4 @@
 - **Skill selection:** `route_model_with_usage(prompt, skills=None)` returns `(tier, conductor_model, usage, duration_ms, skill)`. The Conductor sees the skill catalog, and `_parse_skill` accepts only names that exist; anything else becomes `None`.
 
 - **`FINISH_STEP_TOOL` (v0.4):** `finish_step(status: done|blocked, result, details?)`, offered only inside a plan step (`main.run_plan_step`), never in a normal chat.
+- **`FINISH_CHECK_TOOL` (v0.4-5a):** `finish_check(verdict: passed|failed|not_verified, reason)`, given only to a plan's final check (main.py `run_final_check`).

@@ -1877,7 +1877,7 @@
                                             <span v-if="blk.plan.planned_cost" class="text-gray-500"> · planning cost {{ fmtCost(blk.plan.planned_cost) }}</span>
                                         </div>
                                     </div>
-                                    <span :class="['flex-shrink-0 text-[11px] font-mono rounded px-1.5 py-0.5 border', blk.plan.status === 'running' ? 'text-blue-300 border-blue-800' : (blk.plan.status === 'paused' ? 'text-amber-300 border-amber-800' : (blk.plan.status === 'done' ? 'text-green-300 border-green-900' : 'text-gray-300 border-gray-700'))]">{{ blk.plan.status }}</span>
+                                    <span :class="['flex-shrink-0 text-[11px] font-mono rounded px-1.5 py-0.5 border', blk.plan.status === 'running' ? 'text-blue-300 border-blue-800' : (blk.plan.status === 'paused' || (blk.plan.status === 'done' && blk.plan.check_verdict === 'not_verified') ? 'text-amber-300 border-amber-800' : (blk.plan.status === 'done' && blk.plan.check_verdict === 'failed' ? 'text-red-300 border-red-800' : (blk.plan.status === 'done' ? 'text-green-300 border-green-900' : 'text-gray-300 border-gray-700')))]" :title="blk.plan.check_note || null">{{ blk.plan.status === 'done' && blk.plan.check_verdict === 'failed' ? 'done · check failed' : (blk.plan.status === 'done' && blk.plan.check_verdict === 'not_verified' ? 'done · not verified' : blk.plan.status) }}</span>
                                 </div>
                                 <ol class="divide-y divide-gray-800">
                                     <li v-for="s in blk.plan.steps" :key="s.id" :class="['px-4 py-3 flex gap-3', s.status === 'running' ? 'bg-blue-950/20' : '']">
@@ -1900,7 +1900,8 @@
                                         </div>
                                     </li>
                                 </ol>
-                                <div v-if="blk.plan.check" class="px-4 py-3 border-t border-gray-800 text-[14px] text-gray-300"><span class="text-gray-500">Final check:</span> {{ blk.plan.check }}<span v-if="blk.plan.check_cost" class="text-[12px] font-mono text-gray-500"> · {{ fmtCost(blk.plan.check_cost) }}</span></div>
+                                <div v-if="blk.plan.check" class="px-4 py-3 border-t border-gray-800 text-[14px] text-gray-300"><span class="text-gray-500">Final check:</span> {{ blk.plan.check }}<span v-if="blk.plan.check_cost" class="text-[12px] font-mono text-gray-500"> · {{ fmtCost(blk.plan.check_cost) }}</span>
+                                    <div v-if="blk.plan.check_verdict" :class="['mt-1 text-[13px]', blk.plan.check_verdict === 'passed' ? 'text-green-300' : (blk.plan.check_verdict === 'failed' ? 'text-red-300' : 'text-amber-300')]">{{ blk.plan.check_verdict === 'passed' ? '✓ Passed' : (blk.plan.check_verdict === 'failed' ? '✗ Failed' : '? Not verified') }}<template v-if="blk.plan.check_note">: {{ blk.plan.check_note }}</template></div></div>
                                 <div v-if="blk.plan.note && blk.plan.status === 'paused'" class="px-4 py-2 border-t border-amber-900/40 bg-amber-950/20 text-[13px] text-amber-200">{{ blk.plan.note }}</div>
                                 <div v-if="blk.plan.status === 'waiting' || blk.plan.status === 'paused'" class="px-4 py-3 border-t border-gray-800 flex flex-wrap items-center gap-2">
                                     <template v-if="blk.plan.status === 'waiting'">

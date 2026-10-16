@@ -29,7 +29,7 @@ from optimux_backend.core.config_manager import (
 )
 from optimux_backend.core.executor import run_shell_command, get_active_cwd
 import litellm
-from optimux_backend.core.llm_client import route_model_with_usage, TOOLS, FINISH_STEP_TOOL
+from optimux_backend.core.llm_client import route_model_with_usage, TOOLS, FINISH_STEP_TOOL, FINISH_CHECK_TOOL
 from optimux_backend.core import usage as usage_meter
 from optimux_backend.core import providers
 from optimux_backend.core import ratelimits
@@ -1746,7 +1746,8 @@ def plan_skip_reason(session: dict, role: str, routing: dict) -> str:
 def public_plan(plan: dict) -> dict:
     """The plan as the page shows it."""
     out = {k: plan[k] for k in ("id", "goal", "status", "steps", "check", "note", "interrupted", "created")
-           } | {"total_cost": plans_lib.total_cost(plan), "check_cost": plan.get("check_cost", 0.0)}
+           } | {"total_cost": plans_lib.total_cost(plan), "check_cost": plan.get("check_cost", 0.0),
+                "check_verdict": plan.get("check_verdict"), "check_note": plan.get("check_note", "")}
     try:
         out["planned_cost"] = usage_meter.plan_spent(plan["id"], "planner")["cost"]
         if plan["status"] in ("waiting", "paused"):
@@ -1956,18 +1957,23 @@ async def run_final_check(websocket: WebSocket, session: dict, routing: dict, pi
                               current_workdir())
     await send(websocket, "system", f"Final check on {model} ({role}): {plan['check']}", tier=role, model=model,
                plan_step=plans_lib.CHECK_STEP, step_title="Final check")
-    session.update(plan_ctx={"plan_id": pid, "step": plans_lib.CHECK_STEP}, step_tools=TOOLS, step_finish=None)
+    session.update(plan_ctx={"plan_id": pid, "step": plans_lib.CHECK_STEP}, step_tools=TOOLS + [FINISH_CHECK_TOOL],
+                   step_finish=None)
     try:
         outcome, model, role = await run_in_step(websocket, session, routing, pid, plans_lib.CHECK_STEP,
                                                  model, role, messages)
     finally:
         session["plan_ctx"] = session["step_tools"] = None
-        session.pop("step_finish", None)
+        finish = session.pop("step_finish", None)
     if outcome not in ("ok", "finished"):
         await pause_plan(websocket, session, pid, f"The final check got stuck ({stuck_reason(outcome, role)}). "
                                                   "Resume to run it again.")
         return None
-    return last_reply(messages)
+    # No verdict (the model never called finish_check) counts as not verified
+    verdict = finish["status"] if finish else "not_verified"
+    note = (finish or {}).get("result") or ("The check ended without a verdict." if not finish else "")
+    plans_lib.set_check(pid, verdict, note)
+    return last_reply(messages) or note
 
 
 async def run_plan(websocket: WebSocket, session: dict, pid: str) -> None:
@@ -2718,6 +2724,23 @@ def with_thinking(message: dict, r: StreamResult) -> dict:
     return message
 
 
+PLAN_NUDGES = 2       # text replies a plan step may give before it counts as stuck
+PLAN_STEP_NUDGE = ("The plan is approved and I approve each command, so don't ask or show files in text: do the "
+                   "step now with commands, then call finish_step (status \"blocked\" if you can't).")
+PLAN_CHECK_NUDGE = ("Now call finish_check with the verdict: passed, failed, or not_verified if the check "
+                    "couldn't run. Don't ask me anything.")
+
+
+def plan_step_missing_files(ctx: dict) -> list[str]:
+    """The current step's files that exist nowhere in the project (see plans.missing_files)."""
+    try:
+        plan = plans_lib.get(ctx["plan_id"])
+        step = next(s for s in plan["steps"] if s["id"] == ctx["step"])
+    except (plans_lib.PlanError, StopIteration, KeyError):
+        return []
+    return plans_lib.missing_files(step, current_workdir() or "")
+
+
 async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, messages: list,
                    max_loops: int | None = None) -> str:
     """Agent loop for one user request. Mutates `messages`.
@@ -2727,6 +2750,7 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
     are in session["step_finish"]). Provider errors propagate to the caller.
     """
     last_tool_calls_str = ""
+    nudges = 0
     max_loops = max_loops or (session.get("skill") or {}).get("max_steps") or max_steps_for(role)
     for loop_count in range(1, max_loops + 1):
         r = await call_model(websocket, session, role, model, messages)
@@ -2764,6 +2788,15 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                 messages.append({"role": "system", "content": "Please provide a direct conversational response."})
                 continue
             messages.append(with_thinking({"role": "assistant", "content": full_text_response}, r))
+            ctx = session.get("plan_ctx")
+            if ctx and nudges < PLAN_NUDGES:
+                # A plan step (or the check) must end with its finish tool, not with a question in text
+                nudges += 1
+                messages.append({"role": "user", "content": PLAN_CHECK_NUDGE if ctx["step"] == plans_lib.CHECK_STEP
+                                 else PLAN_STEP_NUDGE})
+                continue
+            if ctx and ctx["step"] != plans_lib.CHECK_STEP:
+                return "aborted"      # still no finish_step: stuck (a Simple step moves to Complex)
             return "ok"
 
         tool_calls_list = [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())]
@@ -2791,10 +2824,29 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                     args = {}
                 args = args if isinstance(args, dict) else {}
                 status = "blocked" if args.get("status") == "blocked" else "done"
+                missing = plan_step_missing_files(session["plan_ctx"]) if status == "done" else []
+                if missing:
+                    # Saying "done" isn't enough: the step's files must exist
+                    messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": (
+                        f"Not accepted: these files of the step don't exist yet: {', '.join(missing)}. Write them "
+                        "now with commands, then call finish_step again; if you can't, call it with status "
+                        "\"blocked\" and say why.")})
+                    continue
                 session["step_finish"] = {"status": status, "result": str(args.get("result") or ""),
                                           "details": str(args.get("details") or "")}
                 finished = True
                 messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": "Step recorded."})
+            elif tc_name == "finish_check" and (session.get("plan_ctx") or {}).get("step") == plans_lib.CHECK_STEP \
+                    and not finished:
+                try:
+                    args = json.loads(tc_args_str or "{}")
+                except (ValueError, TypeError):
+                    args = {}
+                args = args if isinstance(args, dict) else {}
+                verdict = args.get("verdict") if args.get("verdict") in plans_lib.CHECK_VERDICTS else "not_verified"
+                session["step_finish"] = {"status": verdict, "result": str(args.get("reason") or "")[:300]}
+                finished = True
+                messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": "Check recorded."})
             elif finished:
                 messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name,
                                  "content": "Not run: the step was already finished."})
@@ -3246,7 +3298,7 @@ async def handle_escalate(websocket: WebSocket, session: dict) -> None:
 
 
 KNOWN_TOOLS = {t["function"]["name"] for t in TOOLS + workspace.WORKSPACE_TOOLS + [skills_lib.LOAD_SKILL_TOOL,
-                                                                                    FINISH_STEP_TOOL]}
+                                                                                    FINISH_STEP_TOOL, FINISH_CHECK_TOOL]}
 
 
 def parse_text_tool_call(text: str):
