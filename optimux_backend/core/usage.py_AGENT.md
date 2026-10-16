@@ -25,3 +25,5 @@
 - **Plans (v0.4):** `record(..., plan_id=None, step=None)` ties a call to a plan and its step (`COLUMNS` includes both; empty outside plans).
 - **Skills:** `record(..., skill=None)` stores the active skill. `summary()` adds `by_skill` (calls made while using a skill) and `skill_drafts` ("Save as skill" drafting calls, role `skill_draft`), so creating and using a skill are counted separately.
 - **Memory updates:** `summary()` also adds `memory_updates`, the curator's calls (role `curator`) per project, so the cost of automatic memory updates is visible on its own; they are still counted under `by_role` too.
+
+- `plan_spent(plan_id, role=None)`: calls, known cost and unpriced calls recorded for one plan (the plan card's planning cost).

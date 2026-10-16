@@ -1735,8 +1735,16 @@ def plan_skip_reason(session: dict, role: str, routing: dict) -> str:
 
 def public_plan(plan: dict) -> dict:
     """The plan as the page shows it."""
-    return {k: plan[k] for k in ("id", "goal", "status", "steps", "check", "note", "interrupted", "created")
-            } | {"total_cost": plans_lib.total_cost(plan), "check_cost": plan.get("check_cost", 0.0)}
+    out = {k: plan[k] for k in ("id", "goal", "status", "steps", "check", "note", "interrupted", "created")
+           } | {"total_cost": plans_lib.total_cost(plan), "check_cost": plan.get("check_cost", 0.0)}
+    try:
+        out["planned_cost"] = usage_meter.plan_spent(plan["id"], "planner")["cost"]
+        if plan["status"] in ("waiting", "paused"):
+            averages = {t: (usage_meter.recent_average(t) or {}).get("avg") for t in ("simple", "complex")}
+            out["estimate"] = plans_lib.estimate(plan, averages)
+    except Exception as e:
+        print(f"[Optimux] plan estimate failed: {e}")
+    return out
 
 
 def cancel_waiting_plans(session: dict, why: str) -> None:
@@ -1896,7 +1904,7 @@ async def run_plan_step(websocket: WebSocket, session: dict, routing: dict, plan
     plans_lib.update_step(pid, sid, status="running", started=time.time(), model=model, result="")
     await send_plan(websocket, pid)
     await send(websocket, "system", f"Step {sid} of {len(plan['steps'])}: {step['title']} on {model} ({role})",
-               tier=role, model=model)
+               tier=role, model=model, plan_step=sid, step_title=step["title"])
     session.update(plan_ctx={"plan_id": pid, "step": sid}, step_tools=TOOLS + [FINISH_STEP_TOOL], step_finish=None)
     try:
         outcome, model, role = await run_in_step(websocket, session, routing, pid, sid, model, role, messages)
@@ -1936,7 +1944,8 @@ async def run_final_check(websocket: WebSocket, session: dict, routing: dict, pi
     results, details = plans_lib.earlier_work(plan, 10 ** 6)
     messages = build_messages(get_memory_context(), [], get_step_prompt(plan, None, results, details), model,
                               current_workdir())
-    await send(websocket, "system", f"Final check on {model} ({role}): {plan['check']}", tier=role, model=model)
+    await send(websocket, "system", f"Final check on {model} ({role}): {plan['check']}", tier=role, model=model,
+               plan_step=plans_lib.CHECK_STEP, step_title="Final check")
     session.update(plan_ctx={"plan_id": pid, "step": plans_lib.CHECK_STEP}, step_tools=TOOLS, step_finish=None)
     try:
         outcome, model, role = await run_in_step(websocket, session, routing, pid, plans_lib.CHECK_STEP,
@@ -2009,6 +2018,22 @@ async def run_plan(websocket: WebSocket, session: dict, pid: str) -> None:
             plans_lib.update_step(pid, current, status="pending")
         await pause_plan(websocket, session, pid, f"Something went wrong: {providers.classify(e).summary}. "
                                                   "Resume to try again.")
+
+
+class PlanEditPayload(BaseModel):
+    tiers: dict[str, str] = {}
+    remove: list[int] = []
+
+
+@app.post("/api/plans/{pid}/edit")
+async def edit_plan(pid: str, payload: PlanEditPayload):
+    """Before Run (the card's Edit): change steps' tiers and remove steps. The plan
+    must keep 2 steps and one Simple step; the reason is shown when it can't."""
+    try:
+        plan = plans_lib.edit_waiting(pid, tiers=payload.tiers, remove=payload.remove)
+    except plans_lib.PlanError as e:
+        raise ValidationError(str(e))
+    return public_plan(plan)
 
 
 async def handle_plan_action(websocket: WebSocket, session: dict, payload: dict) -> None:

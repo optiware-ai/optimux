@@ -1812,7 +1812,14 @@
                     <!-- Replies with blocks: text, commands and notes in the order they happened -->
                     <div v-if="msg.blocks && msg.blocks.length" class="space-y-3">
                         <template v-for="(blk, bIdx) in msg.blocks" :key="bIdx">
-                            <div v-if="blk.kind === 'text'" class="prose prose-invert prose-blue max-w-none leading-relaxed" v-html="renderMarkdown(blk.text)"></div>
+                            <button v-if="blk.kind === 'stephead'" @click="blk.open = !blk.open" class="w-full flex items-center gap-2 text-left text-[13px] font-mono border-t border-gray-800 pt-2 text-gray-400 hover:text-gray-200" :title="blk.open ? 'Fold this step' : 'Show what this step did'">
+                                <span>{{ blk.open ? '▾' : '▸' }}</span>
+                                <span class="text-gray-200">{{ blk.step ? 'Step ' + blk.step : 'Final check' }}<template v-if="blk.step">: {{ blk.title }}</template></span>
+                                <span class="text-gray-500 truncate">{{ blk.model ? modelName(blk.model) : '' }}</span>
+                                <span v-if="!blk.open && stepItems(msg, bIdx)" class="ml-auto text-gray-600">{{ stepItems(msg, bIdx) }} item{{ stepItems(msg, bIdx) === 1 ? '' : 's' }}</span>
+                            </button>
+                            <template v-else-if="stepFolded(msg, bIdx)"></template>
+                            <div v-else-if="blk.kind === 'text'" class="prose prose-invert prose-blue max-w-none leading-relaxed" v-html="renderMarkdown(blk.text)"></div>
                             <div v-else-if="blk.kind === 'cmd'" class="bg-black/80 rounded-lg border border-gray-700/80 overflow-hidden font-mono text-xs">
                                 <div class="bg-gray-800/80 px-3 py-2 flex items-start justify-between gap-3 text-gray-300 border-b border-gray-700/60">
                                     <div class="flex items-start gap-2 min-w-0 flex-1"><span class="text-green-400 font-bold flex-shrink-0">$</span><span class="whitespace-pre-wrap break-all max-h-40 overflow-y-auto min-w-0">{{ blk.command }}</span></div>
@@ -1833,6 +1840,11 @@
                                     <div class="min-w-0">
                                         <div class="text-[11px] uppercase tracking-wide text-gray-500">Plan · {{ blk.plan.steps.length }} steps<span v-if="blk.plan.total_cost" class="normal-case tracking-normal"> · {{ fmtCost(blk.plan.total_cost) }} so far</span></div>
                                         <div class="text-[15px] text-gray-100 font-medium leading-snug">{{ blk.plan.goal }}</div>
+                                        <div v-if="blk.plan.estimate && (blk.plan.status === 'waiting' || blk.plan.status === 'paused')" class="mt-1 text-[13px] text-gray-400" :title="'From the average cost of your last calls on each tier: ' + 'Simple steps 2–4 calls, Complex steps 1–3, the check 1–3. Steps start from a small context, so the real cost is usually lower.'">
+                                            <template v-if="blk.plan.estimate.high !== null">{{ blk.plan.status === 'paused' ? 'The rest' : 'Estimate' }}: <span class="text-gray-200 font-mono">{{ fmtCost(blk.plan.estimate.low) }}–{{ fmtCost(blk.plan.estimate.high) }}</span></template>
+                                            <template v-else>No estimate yet: no priced {{ blk.plan.estimate.missing.join(' or ') }} call so far.</template>
+                                            <span v-if="blk.plan.planned_cost" class="text-gray-500"> · planning cost {{ fmtCost(blk.plan.planned_cost) }}</span>
+                                        </div>
                                     </div>
                                     <span :class="['flex-shrink-0 text-[11px] font-mono rounded px-1.5 py-0.5 border', blk.plan.status === 'running' ? 'text-blue-300 border-blue-800' : (blk.plan.status === 'paused' ? 'text-amber-300 border-amber-800' : (blk.plan.status === 'done' ? 'text-green-300 border-green-900' : 'text-gray-300 border-gray-700'))]">{{ blk.plan.status }}</span>
                                 </div>
@@ -1843,6 +1855,10 @@
                                             <div class="flex items-center gap-2 flex-wrap">
                                                 <span :class="['text-[14px] font-medium', s.status === 'skipped' ? 'text-gray-500 line-through' : 'text-gray-100']">{{ s.title }}</span>
                                                 <span :class="['text-[11px] font-mono rounded px-1.5 py-0.5 border', s.tier === 'complex' ? 'text-purple-300 border-purple-800 bg-purple-950/40' : 'text-green-300 border-green-900 bg-green-950/40']" :title="s.tier === 'complex' ? 'Runs on the Complex model' : 'Runs on the Simple (cheaper) model'">{{ s.tier }}</span>
+                                                <template v-if="blk.editing && blk.plan.status === 'waiting'">
+                                                    <button @click="planEdit(blk, { tiers: { [s.id]: s.tier === 'complex' ? 'simple' : 'complex' } })" class="text-[12px] px-2 py-0.5 rounded border border-gray-700 text-gray-300 hover:bg-gray-800">Make it {{ s.tier === 'complex' ? 'simple' : 'complex' }}</button>
+                                                    <button @click="planEdit(blk, { remove: [s.id] })" class="text-[12px] px-2 py-0.5 rounded border border-gray-700 text-red-300 hover:bg-red-950/40" :title="'Remove step ' + s.id + '. Later steps that mention it keep their text.'">Remove</button>
+                                                </template>
                                             </div>
                                             <div class="text-[14px] text-gray-300 leading-relaxed">{{ s.do }}</div>
                                             <div class="text-[13px] text-gray-400"><span class="text-gray-500">Done when:</span> {{ s.done_when }}</div>
@@ -1858,6 +1874,7 @@
                                 <div v-if="blk.plan.status === 'waiting' || blk.plan.status === 'paused'" class="px-4 py-3 border-t border-gray-800 flex flex-wrap items-center gap-2">
                                     <template v-if="blk.plan.status === 'waiting'">
                                         <button @click="planAction(blk.plan, 'run')" :disabled="isGenerating" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-[14px]">Run</button>
+                                        <button @click="blk.editing = !blk.editing" :disabled="isGenerating" :class="['px-3 py-1.5 rounded-lg border disabled:opacity-40 text-[14px]', blk.editing ? 'border-blue-700 bg-blue-950/40 text-blue-200' : 'border-gray-700 hover:bg-gray-800 text-gray-300']">{{ blk.editing ? 'Done editing' : 'Edit' }}</button>
                                         <button @click="planAction(blk.plan, 'cancel')" :disabled="isGenerating" class="px-3 py-1.5 rounded-lg border border-gray-700 hover:bg-gray-800 disabled:opacity-40 text-gray-300 text-[14px]">Cancel</button>
                                         <span class="text-[12px] text-gray-500">Risky changes? Take a Workspace snapshot first (Dashboard → Backups).</span>
                                     </template>

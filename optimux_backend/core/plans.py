@@ -352,3 +352,31 @@ def last_words(text: str, n: int = 150) -> str:
     """A step that ends with plain text: its last n words become its result note."""
     words = (text or "").split()
     return ("... " if len(words) > n else "") + " ".join(words[-n:])
+
+
+# Typical model calls per step, low and high: a step reads, acts and reports (finish_step).
+# Steps start from a small context, so a call usually costs less than a chat call of the
+# same tier; the estimate is from recent calls of that tier, so it leans high.
+STEP_CALLS = {"simple": (2, 4), "complex": (1, 3)}
+CHECK_CALLS = (1, 3)
+
+
+def estimate(plan: dict, averages: dict) -> dict:
+    """A cost range for the steps still to run (and the check), from the average
+    cost of a recent call per tier: {"low", "high", "missing": [tiers without an
+    average]}. low/high are None when a needed tier has no priced call yet."""
+    need = {"simple": [0, 0], "complex": [0, 0]}
+    for s in plan["steps"]:
+        if s["status"] in ("pending", "running", "blocked"):
+            lo, hi = STEP_CALLS[s["tier"]]
+            need[s["tier"]][0] += lo
+            need[s["tier"]][1] += hi
+    if plan.get("check"):
+        need["simple"][0] += CHECK_CALLS[0]
+        need["simple"][1] += CHECK_CALLS[1]
+    missing = [t for t, (lo, hi) in need.items() if hi and not averages.get(t)]
+    if missing:
+        return {"low": None, "high": None, "missing": missing}
+    low = sum(lo * averages[t] for t, (lo, hi) in need.items() if hi)
+    high = sum(hi * averages[t] for t, (lo, hi) in need.items() if hi)
+    return {"low": round(low, 6), "high": round(high, 6), "missing": []}

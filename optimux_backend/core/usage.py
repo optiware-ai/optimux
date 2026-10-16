@@ -285,6 +285,22 @@ def recent_average(role: str, n: int = 5) -> dict | None:
     return {"avg": sum(r["cost"] for r in rows) / len(rows), "n": len(rows), "model": rows[0]["model"]}
 
 
+def plan_spent(plan_id: str, role: str | None = None) -> dict:
+    """Calls and known cost recorded for one plan (optionally one role, e.g. planner)."""
+    sql = ("SELECT COUNT(*) AS calls, COALESCE(SUM(cost), 0) AS cost, "
+           "SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END) AS unpriced FROM usage WHERE plan_id = ?")
+    args = [plan_id]
+    if role:
+        sql += " AND role = ?"
+        args.append(role)
+    conn = _connect()
+    try:
+        row = conn.execute(sql, args).fetchone()
+    finally:
+        conn.close()
+    return {"calls": row["calls"], "cost": float(row["cost"]), "unpriced": row["unpriced"] or 0}
+
+
 def role_totals(role: str, since: float = 0) -> dict:
     """Calls and known cost for one role since a time (all projects)."""
     conn = _connect()

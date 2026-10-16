@@ -105,6 +105,7 @@ def client(mocker, tmp_path):
     real = main.get_settings
     mode = {"plan_mode": "ask", "active_project": "alpha"}
     mocker.patch.object(main, "get_settings", lambda: {**real(), **mode})
+    mocker.patch.object(main, "plan_mode", lambda: mode["plan_mode"])
     c.mode = mode
     return c
 

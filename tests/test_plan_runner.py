@@ -58,6 +58,7 @@ def client(mocker, tmp_path):
     real = main.get_settings
     mode = {"plan_mode": "ask", "active_project": "alpha"}
     mocker.patch.object(main, "get_settings", lambda: {**real(), **mode})
+    mocker.patch.object(main, "plan_mode", lambda: mode["plan_mode"])
     c.mode = mode
     return c
 
@@ -369,3 +370,62 @@ def test_no_model_for_a_tier_pauses_with_the_reason(mocker, client):
     p = plans.get(pid)
     assert p["status"] == "paused" and p["note"] == "the simple model is not set in Routing. Resume to try again."
     assert p["steps"][0]["status"] == "pending" and not model.step_calls()
+
+
+# ------------------------------------------------------------------ the plan card (commit 4)
+
+def test_estimate_ranges_by_tier_and_says_what_is_missing():
+    p = plans.create("c-est", "", PLAN)                      # 2 simple steps, 1 complex, a check
+    est = plans.estimate(p, {"simple": 0.001, "complex": 0.01})
+    # low: simple (2+2) + check 1 = 5 x 0.001, complex 1 x 0.01; high: simple 4+4+3 = 11, complex 3
+    assert est == {"low": 0.015, "high": 0.041, "missing": []}
+    assert plans.estimate(p, {"simple": 0.001, "complex": None}) == {"low": None, "high": None,
+                                                                     "missing": ["complex"]}
+    plans.update_step(p["id"], 1, status="done")
+    plans.update_step(p["id"], 2, status="done")
+    rest = plans.estimate(plans.get(p["id"]), {"simple": 0.001, "complex": None})   # only simple left
+    assert rest == {"low": 0.003, "high": 0.007, "missing": []}
+
+
+def test_a_waiting_plan_carries_its_estimate_and_planning_cost(mocker, client):
+    mocker.patch.object(main.usage_meter, "recent_average",
+                        side_effect=lambda role, n=5: {"avg": {"simple": 0.001, "complex": 0.01}[role], "n": 5,
+                                                       "model": role})
+    mocker.patch.object(main.usage_meter, "plan_spent", return_value={"calls": 1, "cost": 0.011, "unpriced": 0})
+    model = Model(answer(json.dumps(PLAN)))
+    chat = Conversation(client)
+    conductor_says(mocker, "complex", True)
+    mocker.patch("litellm.acompletion", side_effect=model)
+    card = [m for m in chat.prompt("write tests for the parser") if m["type"] == "plan"][-1]["plan"]
+    chat.close()
+    assert card["estimate"] == {"low": 0.015, "high": 0.041, "missing": []} and card["planned_cost"] == 0.011
+
+
+def test_edit_before_run_changes_a_tier_and_removes_a_step(mocker, client):
+    model = Model(answer(json.dumps(PLAN)))
+    chat = Conversation(client)
+    pid = make_plan(mocker, chat, model)
+    chat.close()
+    r = client.post(f"/api/plans/{pid}/edit", json={"tiers": {"2": "simple"}, "remove": [1]},
+                    headers={"Authorization": "Bearer test-token"})
+    assert r.status_code == 200
+    assert [(s["id"], s["tier"]) for s in r.json()["steps"]] == [(1, "simple"), (2, "simple")]
+    refused = client.post(f"/api/plans/{pid}/edit", json={"remove": [1]}, headers={"Authorization": "Bearer test-token"})
+    assert refused.status_code == 400 and "at least 2" in refused.json()["detail"]
+    assert client.post(f"/api/plans/{pid}/edit", json={"remove": [1]}).status_code == 401
+
+
+def test_each_step_is_marked_so_the_page_can_fold_it(mocker, client):
+    model = Model(answer(json.dumps(PLAN)), finish("a"), finish("b"), finish("c"), say("ok"))
+    chat = Conversation(client)
+    pid = make_plan(mocker, chat, model)
+    msgs = act(chat, pid, "run")
+    chat.close()
+    marks = [(m["plan_step"], m["step_title"]) for m in msgs if m["type"] == "system" and "plan_step" in m]
+    assert marks == [(1, "List the functions"), (2, "Choose the tricky cases"), (3, "Write the tests"),
+                     (plans.CHECK_STEP, "Final check")]
+
+
+def test_ask_first_is_the_default():
+    from optimux_backend.core.config_manager import SettingsPayload
+    assert SettingsPayload().plan_mode == "ask"

@@ -365,12 +365,12 @@ A **turn** is one request and its reply. A **step** is one model call inside it:
 
 ### Plan big tasks
 
-*New in v0.4, still being finished: the cost estimate before Run and editing a plan come next.*
+*New in v0.4. Its savings are still being measured on real tasks; the numbers will be added here.*
 
 A big task usually mixes hard thinking with routine work: reading files, writing code to a clear spec, running tests. Without a plan, the Complex model pays for all of it. With **Plan big tasks** (in **Dashboard → Routing**), the Complex model first writes a short plan of 2 to 8 steps, and each step runs on the tier it needs: routine steps on Simple, only the hard ones on Complex.
 
-- **Off** (for now the default): never plan. `/plan <task>` still plans one task.
-- **Ask first**: show each plan and wait until you press **Run** (or **Cancel**).
+- **Off**: never plan. `/plan <task>` still plans one task.
+- **Ask first** (the default): show each plan and wait until you press **Run** (or **Cancel**).
 - **Automatic**: show each plan and start it at once; you can still stop it.
 
 The Conductor decides which tasks are worth a plan: a request to do work now, in separate phases, with routine parts. Nothing is planned for creating, switching or archiving a project (Optimux has its own tools for that), or for a request too vague to act on without asking you first; the planner itself can also decline ("Not planned: …"). Nothing is planned either when you picked a model by hand, when a skill runs, when no project is active, or when Simple and Complex are the same model or one of them is unavailable. `/plan <task>` plans anyway (it says why when it can't), and `/noplan <task>` never plans.
@@ -379,11 +379,17 @@ Planning costs one Complex call (two if its first answer can't be used); it is s
 
 The chat shows the whole plan as a card: for each step, what it will do (**Do**), how it knows it is finished (**Done when**) and the files it touches, then the final **Check**. Read the steps before you run them: a cheap model will work from these instructions alone. When the planner model shares its thinking (Claude does; Gemini keeps it hidden), you can open it above the plan. For risky changes, take a Workspace snapshot first (**Dashboard → Backups**).
 
+Before you run it, the card shows:
+
+- **An estimate**: a cost range for the steps (and the check), from the average cost of your recent calls on each tier: 2 to 4 calls for a Simple step, 1 to 3 for a Complex step and for the check. Steps start from a small context, so the real cost is usually lower. With no priced call on a tier yet, it says so instead of guessing. A paused plan shows the estimate for what is left.
+- **The planning cost**: what the planner's call cost.
+- **Edit**: change a step's tier (**Make it simple** / **Make it complex**) or **Remove** a step. Each change is saved at once. A plan keeps at least 2 steps and one Simple step; for anything else, **Cancel** and ask again. A removed step's number is used by the next step, but later steps that mention it keep their text, so read them again.
+
 **How a plan runs.** The steps run one after another, each on its own tier and in a **fresh, small context**: the usual instructions, the goal, the step itself, and what the earlier steps handed over, never their whole conversation. That is where the savings come from.
 
 - A step ends by reporting a short **result** (what it did, the files it changed) for the next steps. A step that decides something longer the next steps must follow, such as a design or a list of test cases, also leaves **notes**; the card shows them under the step. Results and notes are kept in Optimux's database (in `~/.optimux`), never in your project.
 - Every command still needs your approval and runs in the sandbox when it is on; the budget is checked before every model call.
-- The card updates live: each step's status, model, number of calls and cost, and the plan's cost so far.
+- The card updates live: each step's status, model, number of calls and cost, and the plan's cost so far. In the reply below it, each step has a heading with what it did (commands, output, text) under it; a finished step folds, and a click opens it again.
 - At the end, the plan's **check** runs as a last Simple step (for example, running the tests) and writes the reply. A plan without a check gets a summary of the step results, with no model call.
 - The chat history keeps a short record of the plan (each step's tier, model and result) and the reply, so a follow-up question knows what happened without paying for every step again.
 

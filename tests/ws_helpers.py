@@ -37,6 +37,8 @@ def make_client(mocker, tmp_path, tier="simple", routing=None):
     mocker.patch.object(main, "get_memory_context", return_value="MEMORY")
     mocker.patch.object(main, "get_routing_config", return_value=routing or dict(ROUTING))
     mocker.patch.object(main, "RETRY_DELAY", 0)
+    # Plan mode (default Ask first) is off for chat tests; the plan tests turn it on themselves
+    mocker.patch.object(main, "plan_mode", return_value="off")
     main._test_conductor = mocker.patch.object(main, "route_model_with_usage", return_value=(
         tier, "conductor-model", {"prompt_tokens": 50, "completion_tokens": 5}, 12))
     return TestClient(main.app)

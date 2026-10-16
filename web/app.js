@@ -2358,6 +2358,12 @@ createApp({
                 }
                 if (data.type === "system") {
                     if (lastMsg.role !== 'agent') return;
+                    if (data.plan_step !== undefined && lastMsg.blocks) {
+                        lastMsg.blocks.forEach(b => { if (b.kind === 'stephead') b.open = false; });
+                        lastMsg.blocks.push({ kind: 'stephead', step: data.plan_step, title: data.step_title || '', model: data.model || '', open: true });
+                        if (data.tier) { lastMsg.tier = data.tier; lastMsg.model = data.model; }
+                        return;
+                    }
                     if (data.content.startsWith('Execution finished (LLM loop gracefully aborted)')) lastMsg.interrupted = 'aborted';
                     const isSwitch = /^(Escalated|Fell back|Skipping|Conductor:)/.test(data.content);
                     const kind = data.tier ? 'route' : (isSwitch ? 'switch' : 'info');
@@ -2643,6 +2649,7 @@ createApp({
                 if (b.kind === 'text') { lines.push(b.text, ''); return; }
                 if (b.kind === 'note') { lines.push(`*↪ ${b.text}*`, ''); return; }
                 if (b.kind === 'plan') { lines.push(...planLines(b.plan), ''); return; }
+                if (b.kind === 'stephead') { lines.push(`#### ${b.step ? 'Step ' + b.step + ': ' + b.title : 'Final check'}${b.model ? ' (' + b.model + ')' : ''}`, ''); return; }
                 if (b.kind === 'thinking' && !b.text) { lines.push(`*Thinking: ${b.tokens} tokens (text not shared by the model)*`, ''); return; }
                 if (b.kind === 'thinking') { lines.push('<details><summary>Thinking</summary>', '', b.text.trim(), '', '</details>', ''); return; }
                 const output = (b.output || '').replace(/\n+$/, '');
@@ -2669,6 +2676,25 @@ createApp({
         const PLAN_STEP_MARK = { done: '✓', running: '▸', blocked: '!', skipped: '–', failed: '✗' };
         const planStepMark = (s) => PLAN_STEP_MARK[s.status] || String(s.id);
         const planStuckStep = (p) => p.status === 'paused' ? (p.steps || []).find(s => s.status === 'blocked') : null;
+        // Edit before Run: each change is saved at once and the card shows the result
+        const planEdit = async (blk, body) => {
+            try {
+                const res = await fetch(`/api/plans/${encodeURIComponent(blk.plan.id)}/edit`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                if (res.ok) blk.plan = await res.json();
+            } catch (_) { /* a refusal is shown by boot.js */ }
+        };
+        // Step headings in a plan's reply: each folds what its step did
+        const stepHeadBefore = (msg, bIdx) => {
+            for (let i = bIdx - 1; i >= 0; i--) if (msg.blocks[i].kind === 'stephead') return msg.blocks[i];
+            return null;
+        };
+        const stepFolded = (msg, bIdx) => { const h = stepHeadBefore(msg, bIdx); return !!(h && !h.open); };
+        const stepItems = (msg, bIdx) => {
+            let n = 0;
+            for (let i = bIdx + 1; i < msg.blocks.length && msg.blocks[i].kind !== 'stephead'; i++) n++;
+            return n;
+        };
         const planAction = (plan, action) => {
             if (isGenerating.value || !ws.value || ws.value.readyState !== WebSocket.OPEN) return;
             messages.value.push({ role: 'agent', content: '', events: [], commands: [], blocks: [], planRun: true });
@@ -2783,7 +2809,7 @@ createApp({
             usageData, usagePeriod, cooldowns, fetchUsage, sessionUsage, clearCooldown,
             fmtTokens, fmtCost, fmtMs, modelName,
             newChat, canEscalate, escalate, continueTurn, pendingOutside, pendingWorkdir,
-            planAction, planStepMark, planStuckStep, projectOffer, openOfferedProject,
+            planAction, planStepMark, planStuckStep, projectOffer, openOfferedProject, planEdit, stepFolded, stepItems,
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
             setThinking, copyThinking, storageInfo, fmtBytes,

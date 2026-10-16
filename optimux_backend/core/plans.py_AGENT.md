@@ -26,3 +26,5 @@
 ## Links & Dependencies
 - `store.py` (migration 8: `plans`, and `usage.plan_id` / `usage.step`). `usage.record(..., plan_id=None, step=None)` ties a call to a plan and step.
 - Used by `main.py` at start (`mark_interrupted`). Tests: `tests/test_plans.py`.
+
+- **Estimate (commit 4):** `estimate(plan, averages)` gives `{low, high, missing}` for the steps still pending, running or blocked plus the check: `STEP_CALLS` simple (2, 4), complex (1, 3), `CHECK_CALLS` (1, 3) times the tier's average call cost; `low`/`high` are None and `missing` names the tiers without a priced call.

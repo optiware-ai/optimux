@@ -146,7 +146,7 @@ class SettingsPayload(BaseModel):
     snapshot_recipient: str = ""      # a public key remembered for encrypted downloads
     online_catalog: bool = False      # may the Models screen ask providers and GitHub (on Refresh only)
     # v0.4 plan mode: off | ask (show the plan, wait for Run) | auto (show it and start)
-    plan_mode: str = "off"
+    plan_mode: str = "ask"
 
 
 DEFAULT_MAX_STEPS = {"simple": 8, "complex": 25}
