@@ -112,6 +112,7 @@ def test_the_push_commits_as_the_dashboard_identity(root, tmp_path, monkeypatch)
     for k in ("AUTHOR", "COMMITTER"):
         monkeypatch.delenv(f"GIT_{k}_NAME"); monkeypatch.delenv(f"GIT_{k}_EMAIL")
     monkeypatch.setenv("HOME", str(tmp_path / "empty-home"))          # no ~/.gitconfig
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty-home" / ".config"))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.setenv("EMAIL", "")
     without = ws.git_commands("who")

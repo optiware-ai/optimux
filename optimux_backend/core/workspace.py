@@ -176,7 +176,9 @@ def git_commands(name: str) -> dict:
     ident = git_identity_env(get_settings())
     who = (f"-c user.name={q(ident['GIT_AUTHOR_NAME'])} -c user.email={q(ident['GIT_AUTHOR_EMAIL'])} "
            if ident else "")
-    if not ident and out["changes"] and not git_has_identity():
+    # Asked in the project itself: its own .git/config, the user's and the system's
+    known = _run(["git", "config", "--get", "user.email"], path, timeout=5)
+    if not ident and out["changes"] and not (known["ok"] and known["output"].strip()):
         out["warning"] = ("Git has no name and email to commit with. Set them in Dashboard → GitHub "
                           "(Who commits), then open this again.")
     commit = f"git add -A && (git diff --cached --quiet || git {who}commit -m {q(MANUAL_COMMIT_MESSAGE)})"
