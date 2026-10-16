@@ -2610,7 +2610,7 @@ createApp({
             });
             if (m.usage) {
                 const u = m.usage;
-                lines.push(`_${callsLabel(u)} · ${u.estimated ? '≈' : ''}${fmtTokens(u.tokens)} tokens${u.reasoning ? ' (' + fmtTokens(u.reasoning) + ' thinking)' : ''} · ${u.costKnown ? fmtCost(u.cost) : 'cost unknown'} · ${fmtMs(u.ms)}_`, '');
+                lines.push(`_${callsLabel(u)} · ${u.estimated ? '≈' : ''}${fmtTokens(u.tokens)} tokens${u.reasoning ? ' (' + fmtTokens(u.reasoning) + ' thinking)' : ''} · ${u.costKnown ? fmtCost(u.cost) : (u.cost > 0 ? fmtCost(u.cost) + '+' : 'cost unknown')} · ${fmtMs(u.ms)}_`, '');
             }
             return lines;
         };

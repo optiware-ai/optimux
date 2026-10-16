@@ -113,6 +113,8 @@ def get_planner_prompt() -> str:
         "- tier \"simple\" for routine work: reading or listing files, writing boilerplate or code that follows "
         "a clear spec, running commands and tests, small fixes. tier \"complex\" only for design decisions, "
         "tricky reasoning, or code whose approach is not obvious. At least one step must be simple.\n"
+        "- Order steps so each one can check its own work: set up and install what is needed before the steps "
+        "that use it. Merge small steps that work on the same files; fewer steps cost less.\n"
         "- do: the step's instructions, at most 600 characters. done_when: how the step knows it is finished. "
         "files: the files the step will read or change, if known.\n"
         "- check: a final check run as the last step, for example running the tests; it also writes the reply "

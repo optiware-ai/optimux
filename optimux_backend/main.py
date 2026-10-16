@@ -1750,6 +1750,8 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
         ratelimits.record_error(model, e)
         await send(websocket, "system", f"Couldn't make a plan ({info.summary}); doing the task the usual way.")
         return False
+    if result.get("thinking"):
+        await send(websocket, "thinking", result["thinking"])
     plan = None
     if result["plan"]:
         cancel_waiting_plans(session, "Replaced by a newer request.")
@@ -1762,7 +1764,7 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
         return False
     record = plans_lib.summary_for_history(plan)
     await send(websocket, "plan", plan=public_plan(plan))
-    await send(websocket, "system", record + "\n\nPlan mode preview: this version shows the plan but doesn't run it "
+    await send(websocket, "system", plans_lib.details_text(plan) + "\n\nPlan mode preview: this version shows the plan but doesn't run it "
                                     "yet. To do the task now, send it again starting with /noplan.")
     session["history"] = trim_history(session["history"] + [{"role": "user", "content": user_message},
                                                             {"role": "assistant", "content": record}])

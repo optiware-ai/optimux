@@ -14,9 +14,10 @@ from tests.ws_helpers import Conversation, chunk, fake_stream, make_client
 DONE = {"prompt_tokens": 10, "completion_tokens": 2}
 
 
-def answer(text, usage=None):
+def answer(text, usage=None, thinking=None):
     """A non-streamed completion, as the planner gets it."""
-    return NS(choices=[NS(message=NS(content=text))], usage=usage or {"prompt_tokens": 900, "completion_tokens": 300})
+    message = NS(content=text, reasoning_content=thinking) if thinking else NS(content=text)
+    return NS(choices=[NS(message=message)], usage=usage or {"prompt_tokens": 900, "completion_tokens": 300})
 
 
 # ------------------------------------------------------------------ the Conductor
@@ -68,6 +69,12 @@ def test_file_list_is_capped(tmp_path):
     assert len(files) == planner.MAX_FILES_LISTED and total == planner.MAX_FILES_LISTED + 25
     msgs = planner.build_messages("do it", "memo", files, total)
     assert "(and 25 more not listed)" in msgs[1]["content"] and msgs[0]["content"] == agents.get_planner_prompt()
+
+
+def test_planner_prompt_orders_setup_first():
+    prompt = agents.get_planner_prompt()
+    assert "set up and install what is needed before the steps that use it" in prompt
+    assert "Merge small steps" in prompt
 
 
 def test_make_plan_retries_once_with_the_reason(tmp_path):
@@ -134,7 +141,8 @@ def test_a_big_task_gets_a_plan_shown_and_nothing_runs(mocker, client):
     assert len(seen) == 1 and seen[0]["model"] == "complex-model" and "tools" not in seen[0]
     shown = [m for m in msgs if m["type"] == "plan"]
     assert len(shown) == 1 and shown[0]["plan"]["status"] == "waiting" and len(shown[0]["plan"]["steps"]) == 3
-    assert any("[Plan] Tests for src/parser.py" in n for n in notes(msgs))
+    preview = [n for n in notes(msgs) if "[Plan] Tests for src/parser.py" in n]
+    assert preview and "Do: List every public function." in preview[0] and "Check: pytest -q passes" in preview[0]
     pid = shown[0]["plan"]["id"]
     conn = store.connect()
     rows = [tuple(r) for r in conn.execute("SELECT role, plan_id FROM usage WHERE role IN ('planner', 'conductor')")]
@@ -220,3 +228,24 @@ def test_the_setting_is_checked():
     from optimux_backend.core.config_manager import SettingsPayload, save_settings, ValidationError
     with pytest.raises(ValidationError, match="plan_mode"):
         save_settings(SettingsPayload(plan_mode="sometimes"))
+
+
+def test_the_planner_thinking_is_shown(mocker, client):
+    conductor_says(mocker, "complex", True)
+    calls_by(mocker, [answer(json.dumps(PLAN), thinking="The parser has two entry points, so ...")])
+    chat = Conversation(client)
+    msgs = chat.prompt("write tests for the parser")
+    chat.close()
+    thought = [m["content"] for m in msgs if m["type"] == "thinking"]
+    assert thought == ["The parser has two entry points, so ..."]
+    kinds = [m["type"] for m in msgs]
+    assert kinds.index("thinking") < kinds.index("plan")
+
+
+def test_make_plan_keeps_the_thinking_of_both_tries(tmp_path):
+    replies = [answer('{"goal": "x", "steps": []}', thinking="first"), answer(json.dumps(PLAN), thinking="second")]
+
+    async def call(**kwargs):
+        return replies.pop(0)
+    result = asyncio.run(planner.make_plan("x", "m", "", str(tmp_path), call=call))
+    assert result["plan"] and result["thinking"] == "first\n\nsecond"

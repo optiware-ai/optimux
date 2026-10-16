@@ -117,6 +117,15 @@ def test_history_record_is_compact():
     text = plans.summary_for_history(plans.get(p["id"]))
     assert text.splitlines()[0] == "[Plan] Tests for src/parser.py, run with pytest (waiting)"
     assert "1. List the functions [simple, gemini/x, done]" in text and "Found parse()" in text
+    assert text.splitlines()[-1] == "Check: pytest -q passes"
+    assert "Do:" not in text                                         # the history stays compact
+
+
+def test_details_show_what_each_step_will_do():
+    text = plans.details_text(plans.create("chat-7", "", PLAN))
+    assert "   Do: List every public function." in text and "   Done when: A list of functions" in text
+    assert "   Files: src/parser.py" in text and text.splitlines()[-1] == "Check: pytest -q passes"
+    assert "Check: (none)" in plans.details_text(plans.create("chat-8", "", dict(PLAN, check="")))
 
 
 def test_usage_rows_carry_the_plan_and_step():

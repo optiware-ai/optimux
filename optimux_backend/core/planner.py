@@ -53,27 +53,32 @@ def build_messages(request: str, memory: str, files: list[str], total: int) -> l
 
 async def make_plan(request: str, model: str, memory: str, workdir: str, call=None) -> dict:
     """Ask the planner for a plan. Returns {"plan": checked plan or None, "calls":
-    [(response usage, duration_ms)], "error": reason or ""}. Provider errors are
+    [(response usage, duration_ms)], "error": reason or "", "thinking": the
+    model's thinking text when the provider shares it}. Provider errors are
     raised (the caller handles cooldowns and fallback like any call)."""
     import litellm
     from optimux_backend.core.config_manager import litellm_key_kwargs, thinking_kwargs
     call = call or litellm.acompletion
     files, total = file_list(workdir)
     messages = build_messages(request, memory, files, total)
-    calls, error = [], ""
+    calls, error, thinking = [], "", []
     for attempt in range(2):
         started = time.monotonic()
         kwargs = {"model": model, "messages": messages, "timeout": PLANNER_TIMEOUT,
                   **litellm_key_kwargs(model), **thinking_kwargs(model)}
         response = await call(**kwargs)
         calls.append((getattr(response, "usage", None), int((time.monotonic() - started) * 1000)))
-        text = response.choices[0].message.content or ""
+        message = response.choices[0].message
+        text = message.content or ""
+        reasoning = getattr(message, "reasoning_content", None)
+        if isinstance(reasoning, str) and reasoning.strip():
+            thinking.append(reasoning.strip())
         try:
-            return {"plan": plans.validate(text), "calls": calls, "error": ""}
+            return {"plan": plans.validate(text), "calls": calls, "error": "", "thinking": "\n\n".join(thinking)}
         except plans.PlanError as e:
             error = str(e)
             if attempt == 0:
                 messages = messages + [{"role": "assistant", "content": text},
                                        {"role": "user", "content": f"That plan can't be used: {error} "
                                                                    "Reply with the corrected plan, JSON only."}]
-    return {"plan": None, "calls": calls, "error": error}
+    return {"plan": None, "calls": calls, "error": error, "thinking": "\n\n".join(thinking)}

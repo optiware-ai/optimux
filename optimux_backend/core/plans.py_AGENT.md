@@ -20,7 +20,8 @@
 - `edit_waiting(pid, tiers={id: tier}, remove=[ids])`: the MVP's Edit before Run. Only a `waiting` plan; at least 2 steps and one Simple step must remain; ids renumbered.
 - `next_step(plan)`: the first step pending, running (cut) or blocked. `total_cost(plan)`.
 - `mark_interrupted()`: called at start by `main.py`; a plan left `running` becomes `paused` with `interrupted: true` and its running step back to `pending`, so Resume continues there.
-- `summary_for_history(plan)`: the compact record for chat history (goal, each step's tier, model, status and result note; never a step's transcript).
+- `summary_for_history(plan)`: the compact record for chat history (goal, each step's tier, model, status and result note, then `Check: …`; never a step's transcript).
+- `details_text(plan)`: the whole plan for the user before Run: each step's `Do`, `Done when` and `Files`, and the check (`Check: (none)` when empty). Shown in the chat; the history keeps the summary.
 
 ## Links & Dependencies
 - `store.py` (migration 8: `plans`, and `usage.plan_id` / `usage.step`). `usage.record(..., plan_id=None, step=None)` ties a call to a plan and step.
