@@ -29,7 +29,7 @@ from optimux_backend.core.config_manager import (
 )
 from optimux_backend.core.executor import run_shell_command, get_active_cwd
 import litellm
-from optimux_backend.core.llm_client import route_model_with_usage, TOOLS
+from optimux_backend.core.llm_client import route_model_with_usage, TOOLS, FINISH_STEP_TOOL
 from optimux_backend.core import usage as usage_meter
 from optimux_backend.core import providers
 from optimux_backend.core import ratelimits
@@ -47,7 +47,7 @@ from optimux_backend.core import auth
 from optimux_backend.core import sessions as chat_store
 from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
 from optimux_backend.core.memory_manager import init_memory, log_command_to_session, get_memory_context, update_memory
-from optimux_backend.core.agents import get_executor_prompt
+from optimux_backend.core.agents import get_executor_prompt, get_step_prompt
 from optimux_backend.core.security import (
     GITHUB_TOKEN_ENV, ScopeError, ValidationError, bearer_from_header, check_token,
     get_or_create_token, origin_allowed, paths_outside_scope, resolve_project_dir, rotate_token, validate_project_name,
@@ -1725,7 +1725,7 @@ def plan_skip_reason(session: dict, role: str, routing: dict) -> str:
 def public_plan(plan: dict) -> dict:
     """The plan as the page shows it."""
     return {k: plan[k] for k in ("id", "goal", "status", "steps", "check", "note", "interrupted", "created")
-            } | {"total_cost": plans_lib.total_cost(plan)}
+            } | {"total_cost": plans_lib.total_cost(plan), "check_cost": plan.get("check_cost", 0.0)}
 
 
 def cancel_waiting_plans(session: dict, why: str) -> None:
@@ -1764,12 +1764,278 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
         return False
     record = plans_lib.summary_for_history(plan)
     await send(websocket, "plan", plan=public_plan(plan))
-    await send(websocket, "system", f"Plan ready: {len(plan['steps'])} steps. Plan mode preview: this version shows the "
-                                    "plan but doesn't run it yet. To do the task now, send it again starting with /noplan.")
     session["history"] = trim_history(session["history"] + [{"role": "user", "content": user_message},
                                                             {"role": "assistant", "content": record}])
     session["last_turn_ok"] = True
+    if plan_mode() == "auto":
+        await send(websocket, "system", f"Plan ready: {len(plan['steps'])} steps. Running it now (Plan big tasks: "
+                                        "Automatic); Stop pauses it.")
+        await run_plan(websocket, session, plan["id"])
+    else:
+        await send(websocket, "system", f"Plan ready: {len(plan['steps'])} steps. Check them, then press Run, "
+                                        "or Cancel. Nothing runs until then.")
     return True
+
+
+# ------------------------------------------------------------------ running a plan (v0.4)
+
+PLAN_ACTIONS = ("run", "resume", "skip", "cancel")
+
+
+def plan_history_record(session: dict, plan: dict, reply: str = "") -> None:
+    """Keep the chat history compact: the plan's record (each step's tier, model and
+    result note) and the final reply replace the record written when the plan was
+    made, so a follow-up sees what happened without any step's transcript."""
+    record = plans_lib.summary_for_history(plan) + (f"\n\n{reply.strip()}" if reply and reply.strip() else "")
+    prefix = f"[Plan] {plan['goal']} ("
+    history = session["history"]
+    for i in range(len(history) - 1, -1, -1):
+        m = history[i]
+        if m.get("role") == "assistant" and isinstance(m.get("content"), str) and m["content"].startswith(prefix):
+            history[i] = {"role": "assistant", "content": record}
+            return
+    session["history"] = trim_history(history + [{"role": "user", "content": plan.get("request") or plan["goal"]},
+                                                 {"role": "assistant", "content": record}])
+
+
+async def send_plan(websocket: WebSocket, pid: str) -> dict:
+    plan = plans_lib.get(pid)
+    await send(websocket, "plan", plan=public_plan(plan))
+    return plan
+
+
+async def pause_plan(websocket: WebSocket, session: dict, pid: str, note: str) -> None:
+    plan = plans_lib.set_status(pid, "paused", note=note)
+    await send(websocket, "plan", plan=public_plan(plan))
+    await send(websocket, "system", f"Plan paused. {note}")
+    plan_history_record(session, plan)
+    session["last_turn_ok"] = False
+
+
+def stuck_reason(outcome: str, role: str) -> str:
+    return (f"step limit ({max_steps_for(role)}) reached" if outcome == "loop_limit"
+            else "the model repeated the same tool call")
+
+
+async def run_in_step(websocket: WebSocket, session: dict, routing: dict, pid: str, step_no: int,
+                      model: str, role: str, messages: list) -> tuple[str, str, str]:
+    """One step's agent loop, with the usual escalation and fallback but for this
+    step only: a Simple step that gets stuck continues on Complex from its own
+    messages, and a provider failure moves to the other tier once. The chat's
+    own tier never changes. Returns (outcome of run_turn, model, role); a second
+    provider failure raises."""
+    try:
+        outcome = await run_turn(websocket, session, model, role, messages, max_loops=max_steps_for(role))
+    except (ProviderFailure, ModelUnavailable) as e:
+        alt = fallback_for(role, model, routing)
+        if not alt:
+            raise
+        await send(websocket, "system", f"Fell back to {alt[1]}: {model} {e.info.summary}")
+        role, model = alt
+        if step_no != plans_lib.CHECK_STEP:
+            plans_lib.update_step(pid, step_no, model=model)
+        return await run_turn(websocket, session, model, role, messages, max_loops=max_steps_for(role)), model, role
+    if outcome in ("loop_limit", "aborted") and role == "simple":
+        alt = fallback_for(role, model, routing)
+        if alt:
+            await send(websocket, "system", f"Escalated this step to {alt[1]}: {stuck_reason(outcome, role)}")
+            role, model = alt
+            if step_no != plans_lib.CHECK_STEP:
+                plans_lib.update_step(pid, step_no, model=model, escalated=True)
+            outcome = await run_turn(websocket, session, model, role, messages, max_loops=max_steps_for(role))
+    return outcome, model, role
+
+
+def step_model(routing: dict, tier: str) -> tuple[str, str]:
+    """The model for a tier, or the other tier's when it is missing or cooling down."""
+    model = routing.get(f"{tier}_model", "")
+    if model and providers.is_available(model):
+        return model, tier
+    alt = fallback_for(tier, model or "-", routing)
+    if alt:
+        return alt[1], alt[0]
+    info = (providers.cooldown(model) if model else None) or providers.ProviderError(
+        "fatal", "is unavailable" if model else "is not set in Routing", None, None)
+    raise ModelUnavailable(model or f"the {tier} model", info)
+
+
+def last_reply(messages: list) -> str:
+    for m in reversed(messages):
+        if m.get("role") == "assistant" and isinstance(m.get("content"), str) and m["content"].strip():
+            return m["content"]
+    return ""
+
+
+async def run_plan_step(websocket: WebSocket, session: dict, routing: dict, plan: dict, step: dict) -> tuple[str, str]:
+    """Run one step in a fresh, small context. Returns (outcome, reason): 'done',
+    'blocked' (the step said it can't), or 'stuck' (step limit or a repeated
+    call, also after escalation)."""
+    pid, sid = plan["id"], step["id"]
+    retry = step["status"] == "blocked"
+    tier = "complex" if retry and step.get("escalated") else step["tier"]
+    model, role = step_model(routing, tier)
+    results, details = plans_lib.earlier_work(plan, sid)
+    prompt = get_step_prompt(plan, step, results, details)
+    if retry and step.get("result"):
+        prompt += f"\n\nAn earlier try of this step ended with: {step['result']}"
+    messages = build_messages(get_memory_context(), [], prompt, model, current_workdir())
+    plans_lib.update_step(pid, sid, status="running", started=time.time(), model=model, result="")
+    await send_plan(websocket, pid)
+    await send(websocket, "system", f"Step {sid} of {len(plan['steps'])}: {step['title']} on {model} ({role})",
+               tier=role, model=model)
+    session.update(plan_ctx={"plan_id": pid, "step": sid}, step_tools=TOOLS + [FINISH_STEP_TOOL], step_finish=None)
+    try:
+        outcome, model, role = await run_in_step(websocket, session, routing, pid, sid, model, role, messages)
+    finally:
+        session["plan_ctx"] = session["step_tools"] = None
+    finish = session.pop("step_finish", None)
+    if outcome == "finished" and finish:
+        if finish["status"] == "blocked":
+            plans_lib.update_step(pid, sid, status="blocked", result=finish["result"] or "No reason given.",
+                                  finished=time.time())
+            return "blocked", finish["result"] or "no reason given"
+        plans_lib.update_step(pid, sid, status="done", result=finish["result"], details=finish["details"],
+                              finished=time.time())
+        return "done", ""
+    if outcome in ("ok", "finished"):
+        plans_lib.update_step(pid, sid, status="done", result=plans_lib.last_words(last_reply(messages)),
+                              finished=time.time())
+        return "done", ""
+    reason = stuck_reason(outcome, role)
+    plans_lib.update_step(pid, sid, status="blocked", result=f"Stuck: {reason}.", finished=time.time())
+    return "stuck", reason
+
+
+async def run_final_check(websocket: WebSocket, session: dict, routing: dict, pid: str) -> str | None:
+    """The plan's check as a last Simple step that writes the reply. Without a
+    check, Optimux writes the summary itself (no model call). None = paused."""
+    plan = plans_lib.get(pid)
+    if not plan.get("check"):
+        lines = [f"Plan done: {plan['goal']}", ""]
+        for s in plan["steps"]:
+            lines.append(f"{s['id']}. {s['title']}: " + ("skipped." if s["status"] == "skipped"
+                                                          else (s.get("result") or "done.")))
+        reply = "\n".join(lines)
+        await send(websocket, "token", reply)
+        return reply
+    model, role = step_model(routing, "simple")
+    results, details = plans_lib.earlier_work(plan, 10 ** 6)
+    messages = build_messages(get_memory_context(), [], get_step_prompt(plan, None, results, details), model,
+                              current_workdir())
+    await send(websocket, "system", f"Final check on {model} ({role}): {plan['check']}", tier=role, model=model)
+    session.update(plan_ctx={"plan_id": pid, "step": plans_lib.CHECK_STEP}, step_tools=TOOLS, step_finish=None)
+    try:
+        outcome, model, role = await run_in_step(websocket, session, routing, pid, plans_lib.CHECK_STEP,
+                                                 model, role, messages)
+    finally:
+        session["plan_ctx"] = session["step_tools"] = None
+        session.pop("step_finish", None)
+    if outcome not in ("ok", "finished"):
+        await pause_plan(websocket, session, pid, f"The final check got stuck ({stuck_reason(outcome, role)}). "
+                                                  "Resume to run it again.")
+        return None
+    return last_reply(messages)
+
+
+async def run_plan(websocket: WebSocket, session: dict, pid: str) -> None:
+    """Run a plan's remaining steps one after another, then the final check.
+    The plan is saved after every change, so a stop, a budget pause, an error or
+    a restart leaves it paused at a known step, ready to resume."""
+    routing = get_routing_config()
+    plan = plans_lib.set_status(pid, "running", note="")
+    await send(websocket, "plan", plan=public_plan(plan))
+    current = None
+    try:
+        while (step := plans_lib.next_step(plan := plans_lib.get(pid))) is not None:
+            current = step["id"]
+            outcome, reason = await run_plan_step(websocket, session, routing, plan, step)
+            await send_plan(websocket, pid)
+            if outcome == "blocked":
+                await pause_plan(websocket, session, pid, f"Step {current} is blocked: {reason} "
+                                                          "Try it again, skip it, or stop the plan.")
+                return
+            if outcome == "stuck":
+                await pause_plan(websocket, session, pid, f"Step {current} got stuck ({reason}). Try it again "
+                                                          "(on the Complex model), skip it, or stop the plan.")
+                return
+        current = plans_lib.CHECK_STEP
+        reply = await run_final_check(websocket, session, routing, pid)
+        if reply is None:
+            return
+        plan = plans_lib.set_status(pid, "done", note="")
+        await send(websocket, "plan", plan=public_plan(plan))
+        plan_history_record(session, plan, reply)
+        session["last_turn_ok"] = True
+    except asyncio.CancelledError:
+        if current and current != plans_lib.CHECK_STEP:
+            plans_lib.update_step(pid, current, status="pending")
+        where = ("during the final check" if current == plans_lib.CHECK_STEP
+                 else f"at step {current}" if current else "")
+        plan = plans_lib.set_status(pid, "paused", note=f"Stopped by you {where}. Resume to do it again."
+                                    if where else "Stopped by you. Resume to go on.")
+        plan_history_record(session, plan)
+        session["last_turn_ok"] = False
+        try:
+            await send(websocket, "plan", plan=public_plan(plan))
+        except Exception:
+            pass
+        raise
+    except BudgetExceeded as e:
+        if current and current != plans_lib.CHECK_STEP:
+            plans_lib.update_step(pid, current, status="pending")
+        await notify_budget_pause(websocket, e.status)
+        await pause_plan(websocket, session, pid, "The project's budget is used up. Raise it, then resume.")
+    except (ProviderFailure, ModelUnavailable) as e:
+        if current and current != plans_lib.CHECK_STEP:
+            plans_lib.update_step(pid, current, status="pending")
+        await pause_plan(websocket, session, pid, f"{e.model} {e.info.summary}. Resume to try again.")
+    except Exception as e:
+        traceback.print_exc()
+        if current and current != plans_lib.CHECK_STEP:
+            plans_lib.update_step(pid, current, status="pending")
+        await pause_plan(websocket, session, pid, f"Something went wrong: {providers.classify(e).summary}. "
+                                                  "Resume to try again.")
+
+
+async def handle_plan_action(websocket: WebSocket, session: dict, payload: dict) -> None:
+    """The plan card's buttons: run (a waiting plan), resume (a paused one, which
+    also retries a blocked step), skip (the paused step, then go on) and cancel."""
+    action, pid = payload.get("action"), str(payload.get("plan_id", ""))
+    if action not in PLAN_ACTIONS:
+        await send(websocket, "error", f"Unknown plan action: {action}")
+        return
+    try:
+        plan = plans_lib.get(pid)
+    except plans_lib.PlanError:
+        await send(websocket, "error", "That plan no longer exists.")
+        return
+    if plan["session"] != session.get("chat_id"):
+        await send(websocket, "error", "That plan belongs to another chat; open that chat to use it.")
+        return
+    allowed = {"run": ("waiting",), "resume": ("paused",), "skip": ("paused",), "cancel": ("waiting", "paused")}
+    if plan["status"] not in allowed[action]:
+        await send(websocket, "system", f"This plan is {plan['status']}, so {action.capitalize()} doesn't apply now.")
+        return
+    if action == "cancel":
+        plan = plans_lib.set_status(pid, "cancelled", note="Cancelled by you.")
+        await send(websocket, "plan", plan=public_plan(plan))
+        await send(websocket, "system", "Plan cancelled. Nothing more of it will run.")
+        plan_history_record(session, plan)
+        return
+    if (plan["project"] or "") != active_project():
+        await send(websocket, "error", f"This plan works in the project {plan['project'] or '(none)'}; "
+                                       "switch to it first.")
+        return
+    if not await check_budget_before_request(websocket, session):
+        return
+    if action == "skip":
+        step = plans_lib.next_step(plan)
+        if step is not None:
+            plans_lib.update_step(pid, step["id"], status="skipped", finished=time.time())
+            await send(websocket, "system", f"Skipped step {step['id']}: {step['title']}.")
+    else:
+        await send(websocket, "system", "Running the plan." if action == "run" else "Resuming the plan.")
+    await run_plan(websocket, session, pid)
 
 
 def parse_tier_command(text: str) -> tuple[str | None, str]:
@@ -1841,10 +2107,20 @@ def build_messages(context: str, history: list, user_message: str | None, model:
 
 async def meter(websocket: WebSocket, session: dict, role: str, model: str, usage, duration_ms: int | None = None,
                 plan_id: str | None = None, step: int | None = None) -> None:
-    """Record one LLM call and push it, with session totals, to the UI."""
+    """Record one LLM call and push it, with session totals, to the UI. Inside a
+    plan step (session["plan_ctx"]) the call carries the plan and step and counts
+    toward the step's cost on the plan card."""
+    ctx = session.get("plan_ctx") if plan_id is None else None
+    if ctx:
+        plan_id, step = ctx["plan_id"], ctx["step"]
     entry = usage_meter.record(session.get("chat_id") or session["id"], role, model, usage, duration_ms,
                                project=get_settings().get("active_project", ""),
                                skill=(session.get("skill") or {}).get("name"), plan_id=plan_id, step=step)
+    if ctx:
+        try:
+            plans_lib.add_cost(plan_id, step, entry["cost"], model)
+        except plans_lib.PlanError:
+            pass
     session["tokens"] += entry["prompt_tokens"] + entry["completion_tokens"]
     if entry["cost"] is None:
         session["cost_complete"] = False
@@ -1938,14 +2214,14 @@ def offered_tools(skills: dict | None = None) -> list:
 
 
 async def stream_once(websocket: WebSocket, model: str, messages: list, r: StreamResult,
-                      thinking: str | None = None) -> StreamResult:
+                      thinking: str | None = None, tools: list | None = None) -> StreamResult:
     """One streamed completion into `r`. Text is forwarded to the UI as it
     arrives, except output that looks like a JSON tool call, which is held
     back. `r` is passed in so the caller can see what was streamed on error."""
     stream = await litellm.acompletion(
         model=model,
         messages=prepare_messages(messages, model),
-        tools=offered_tools(),
+        tools=tools if tools is not None else offered_tools(),
         stream=True,
         stream_options={"include_usage": True},
         timeout=120,
@@ -2058,7 +2334,8 @@ async def call_model(websocket: WebSocket, session: dict, role: str, model: str,
         session["current_stream"] = r
         started = time.monotonic()
         try:
-            await stream_once(websocket, model, messages, r, (session.get("skill") or {}).get("thinking"))
+            await stream_once(websocket, model, messages, r, (session.get("skill") or {}).get("thinking"),
+                              session.get("step_tools"))
         except asyncio.CancelledError:
             # Stopped by the user: tokens were still spent, so record an estimate
             duration = int((time.monotonic() - started) * 1000)
@@ -2381,8 +2658,9 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                    max_loops: int | None = None) -> str:
     """Agent loop for one user request. Mutates `messages`.
 
-    Returns 'ok', 'aborted' (model repeated the same tool call) or
-    'loop_limit'. Provider errors propagate to the caller.
+    Returns 'ok', 'aborted' (model repeated the same tool call),
+    'loop_limit', or 'finished' (a plan step called finish_step; its arguments
+    are in session["step_finish"]). Provider errors propagate to the caller.
     """
     last_tool_calls_str = ""
     max_loops = max_loops or (session.get("skill") or {}).get("max_steps") or max_steps_for(role)
@@ -2436,12 +2714,27 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
         messages.append(with_thinking(
             {"role": "assistant", "content": full_text_response or None, "tool_calls": tool_calls_list}, r))
 
+        finished = False
         for tool_call_dict in tool_calls_list:
             tc_id = tool_call_dict["id"]
             tc_name = tool_call_dict["function"]["name"]
             tc_args_str = tool_call_dict["function"]["arguments"]
 
-            if tc_name == "load_skill":
+            if tc_name == "finish_step" and session.get("plan_ctx") and not finished:
+                try:
+                    args = json.loads(tc_args_str or "{}")
+                except (ValueError, TypeError):
+                    args = {}
+                args = args if isinstance(args, dict) else {}
+                status = "blocked" if args.get("status") == "blocked" else "done"
+                session["step_finish"] = {"status": status, "result": str(args.get("result") or ""),
+                                          "details": str(args.get("details") or "")}
+                finished = True
+                messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": "Step recorded."})
+            elif finished:
+                messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name,
+                                 "content": "Not run: the step was already finished."})
+            elif tc_name == "load_skill":
                 try:
                     sname = json.loads(tc_args_str or "{}").get("name", "")
                     if session.get("skill") and session["skill"]["name"] == sname:
@@ -2493,6 +2786,8 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                 messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": (
                     f"Error: no tool named '{tc_name}' exists. Answer directly using the CURRENT PROJECT CONTEXT."
                 )})
+        if finished:
+            return "finished"
     return "loop_limit"
 
 
@@ -2857,7 +3152,8 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
         "tier_pinned": data["tier_pinned"], "last_turn_ok": data["last_turn_ok"],
     })
     session["budget_notes"] = set()
-    await send(websocket, "session_loaded", session=summary, events=data["events"], active_project_changed=switched)
+    await send(websocket, "session_loaded", session=summary, events=data["events"], active_project_changed=switched,
+               plans=[public_plan(p) for p in plans_lib.for_session(data["id"])])
 
 
 async def handle_escalate(websocket: WebSocket, session: dict) -> None:
@@ -2885,7 +3181,8 @@ async def handle_escalate(websocket: WebSocket, session: dict) -> None:
     await run_with_fallback(websocket, session, routing, model, "complex", user_message, prior=prior)
 
 
-KNOWN_TOOLS = {t["function"]["name"] for t in TOOLS + workspace.WORKSPACE_TOOLS + [skills_lib.LOAD_SKILL_TOOL]}
+KNOWN_TOOLS = {t["function"]["name"] for t in TOOLS + workspace.WORKSPACE_TOOLS + [skills_lib.LOAD_SKILL_TOOL,
+                                                                                    FINISH_STEP_TOOL]}
 
 
 def parse_text_tool_call(text: str):
@@ -2970,6 +3267,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 recorder.add({"type": "escalate"})
                 turns_added = 1
                 await handle_escalate(websocket, session)
+            elif kind == "plan_action":
+                recorder.add({"type": "plan_action", "action": payload.get("action")})
+                turns_added = 1
+                await handle_plan_action(websocket, session, payload)
             else:
                 prompt = payload.get("prompt", "")
                 if prompt.strip().lower() != NEW_CHAT_COMMAND:
@@ -3020,7 +3321,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 if approval is not None and not approval.done():
                     approval.set_result(payload)
                 continue  # otherwise a stray click after the turn ended
-            if kind not in ("new_chat", "escalate", "open_session") and not payload.get("prompt", ""):
+            if kind not in ("new_chat", "escalate", "open_session", "plan_action") and not payload.get("prompt", ""):
                 continue
             if busy:
                 await send(websocket, "system", "Still working on the previous request. Stop it first.")

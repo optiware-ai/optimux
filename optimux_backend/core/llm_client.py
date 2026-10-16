@@ -9,6 +9,29 @@ from optimux_backend.core.agents import get_router_prompt
 from optimux_backend.core import providers, ratelimits
 
 CONDUCTOR_OFF = "off"
+
+# Offered only inside a plan step (v0.4): how a step says it is finished
+FINISH_STEP_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "finish_step",
+        "description": "End the current plan step. Call it once the step is done, or when you can't do it.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "enum": ["done", "blocked"],
+                           "description": "done, or blocked when the step can't be done"},
+                "result": {"type": "string",
+                           "description": "At most 150 words for the next steps: what you did, files changed, "
+                                          "facts they need; or, when blocked, why"},
+                "details": {"type": "string",
+                            "description": "Optional, at most 6000 characters: something longer later steps must "
+                                           "follow, such as a design or a list of test cases"},
+            },
+            "required": ["status", "result"],
+        },
+    },
+}
 CONDUCTOR_TIMEOUT = 10  # seconds; on timeout the request starts on the simple tier
 TIERS = ("simple", "complex")
 

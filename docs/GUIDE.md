@@ -365,19 +365,41 @@ A **turn** is one request and its reply. A **step** is one model call inside it:
 
 ### Plan big tasks
 
-*Being built (v0.4). This version shows plans; running them comes in the next updates.*
+*New in v0.4, still being finished: the cost estimate before Run and editing a plan come next.*
 
 A big task usually mixes hard thinking with routine work: reading files, writing code to a clear spec, running tests. Without a plan, the Complex model pays for all of it. With **Plan big tasks** (in **Dashboard → Routing**), the Complex model first writes a short plan of 2 to 8 steps, and each step runs on the tier it needs: routine steps on Simple, only the hard ones on Complex.
 
 - **Off** (for now the default): never plan. `/plan <task>` still plans one task.
-- **Ask first**: show each plan, with a cost estimate, and wait until you press **Run**.
+- **Ask first**: show each plan and wait until you press **Run** (or **Cancel**).
 - **Automatic**: show each plan and start it at once; you can still stop it.
 
 The Conductor decides which tasks are worth a plan: a request to do work now, in separate phases, with routine parts. Nothing is planned when you picked a model by hand, when a skill runs, when no project is active, or when Simple and Complex are the same model or one of them is unavailable. `/plan <task>` plans anyway (it says why when it can't), and `/noplan <task>` never plans.
 
 Planning costs one Complex call (two if its first answer can't be used); it is shown in Usage with the role **planner**. The planner gets your request, the project memory and the list of the project's files (up to 300 paths). It doesn't open files or run anything. If it can't make a usable plan, the task is done the usual way, and the chat says so. A new request replaces a plan that hasn't started.
 
-The chat shows the whole plan as a card: for each step, what it will do (**Do**), how it knows it is finished (**Done when**) and the files it touches, then the final **Check**. Read the steps before you run them: a cheap model will work from these instructions alone. When the planner model shares its thinking (Claude does; Gemini keeps it hidden), you can open it above the plan.
+The chat shows the whole plan as a card: for each step, what it will do (**Do**), how it knows it is finished (**Done when**) and the files it touches, then the final **Check**. Read the steps before you run them: a cheap model will work from these instructions alone. When the planner model shares its thinking (Claude does; Gemini keeps it hidden), you can open it above the plan. For risky changes, take a Workspace snapshot first (**Dashboard → Backups**).
+
+**How a plan runs.** The steps run one after another, each on its own tier and in a **fresh, small context**: the usual instructions, the goal, the step itself, and what the earlier steps handed over, never their whole conversation. That is where the savings come from.
+
+- A step ends by reporting a short **result** (what it did, the files it changed) for the next steps. A step that decides something longer the next steps must follow, such as a design or a list of test cases, also leaves **notes**; the card shows them under the step. Results and notes are kept in Optimux's database (in `~/.optimux`), never in your project.
+- Every command still needs your approval and runs in the sandbox when it is on; the budget is checked before every model call.
+- The card updates live: each step's status, model, number of calls and cost, and the plan's cost so far.
+- At the end, the plan's **check** runs as a last Simple step (for example, running the tests) and writes the reply. A plan without a check gets a summary of the step results, with no model call.
+- The chat history keeps a short record of the plan (each step's tier, model and result) and the reply, so a follow-up question knows what happened without paying for every step again.
+
+**When a step has trouble:**
+
+| What happens | What Optimux does |
+| --- | --- |
+| A Simple step reaches its step limit or repeats the same call | That step only continues on Complex (escalation); the next steps keep their tier, and the chat doesn't move to Complex |
+| It is still stuck on Complex | The plan pauses: **Try step N again** (on Complex), **Skip step N**, or **Stop the plan** |
+| A step says it can't be done (blocked) | The plan pauses with its reason, with the same three buttons |
+| A model fails (outage, quota) | The step moves to the other tier once; if that fails too, the plan pauses |
+| You press **Stop** | The plan pauses; **Resume** does the cut step again |
+| The budget blocks | The plan pauses; raise the budget, then **Resume** |
+| Optimux restarts mid-plan | The plan shows "Interrupted by a restart at step N" with **Resume** |
+
+Nothing is undone automatically: a step that stops halfway may leave files changed, which its result and the reply list. Usage counts each step's calls under the Simple or Complex role, with the plan and step they belong to.
 
 ## Models
 

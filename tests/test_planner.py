@@ -144,7 +144,7 @@ def test_a_big_task_gets_a_plan_shown_and_nothing_runs(mocker, client):
     card = shown[0]["plan"]
     assert card["steps"][0]["do"] == "List every public function." and card["steps"][0]["files"] == ["src/parser.py"]
     assert card["check"] == "pytest -q passes"
-    assert any(n.startswith("Plan ready: 3 steps. Plan mode preview") for n in notes(msgs))
+    assert any(n.startswith("Plan ready: 3 steps. Check them, then press Run") for n in notes(msgs))
     pid = shown[0]["plan"]["id"]
     conn = store.connect()
     rows = [tuple(r) for r in conn.execute("SELECT role, plan_id FROM usage WHERE role IN ('planner', 'conductor')")]

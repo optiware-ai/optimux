@@ -128,3 +128,5 @@
 
 ## v0.4: plan mode
 - **Dashboard → Routing → Plan big tasks**: a three-button switch (Off, Ask first, Automatic) for `appSettings.plan_mode`, saved at once with `saveSettings`, with a one-line meaning under it. `SLASH_COMMANDS` adds `/plan` and `/noplan`. The chat ignores the `plan` event for now (the plan card comes in commit 4); the plan shows as a system message.
+
+- **Plan card (v0.4):** per-step status mark (✓ done, ▸ running, ! blocked, – skipped), model, calls, cost, result and folded "Notes for the next steps"; the plan's cost so far, the pause note, and buttons by status: waiting → Run, Cancel (with a snapshot tip); paused → Resume or "Try step N again" (a blocked step), "Skip step N", "Stop the plan". `planAction` pushes a new reply marked `planRun` (no Escalate under a plan run) and sends `plan_action`.

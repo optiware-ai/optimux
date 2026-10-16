@@ -124,3 +124,33 @@ def get_planner_prompt() -> str:
         '{"goal": "<one line>", "steps": [{"id": 1, "title": "<short>", "tier": "simple" or "complex", '
         '"do": "<instructions>", "done_when": "<when finished>", "files": ["<path>"]}], "check": "<final check>"}'
     )
+
+
+def get_step_prompt(plan: dict, step: dict | None, results: list[str], details: list[str]) -> str:
+    """The user message that starts one plan step (v0.4) in a fresh context: the
+    goal, this step, and what earlier steps handed over. step=None is the final
+    check, which writes the reply to the user. The system prompt stays the usual
+    executor prompt, so the provider can cache it across steps."""
+    head = [f"You are doing one step of a larger plan. The user asked: {plan.get('request') or plan['goal']}",
+            f"Goal of the whole plan: {plan['goal']}", ""]
+    earlier = (["Results so far:", *results, ""] if results else []) + [d + "\n" for d in details]
+    if step is None:
+        return "\n".join(head + earlier + [
+            f"Final check: {plan.get('check') or 'Look over the work of the steps above.'}",
+            "",
+            "Do the check (for example, run the tests). Then write the reply to the user: what was done, step by "
+            "step, which files changed, the check's result, and anything the user should look at. Reply in plain "
+            "text; don't call finish_step."])
+    total = len(plan["steps"])
+    files = f"Files: {', '.join(step['files'])} (read what you need yourself)" if step.get("files") else ""
+    return "\n".join(head + earlier + [
+        f"Your step: {step['id']} of {total}: {step['title']}",
+        f"Do: {step['do']}",
+        f"Done when: {step['done_when']}",
+        *([files] if files else []),
+        "",
+        "Do only this step; later steps do the rest. When it is done, call finish_step with status \"done\" and a "
+        "result of at most 150 words for the next steps: what you did, the files you changed, facts they need. "
+        "If later steps must follow something longer (a design, a list of test cases), put it in details, at "
+        "most 6000 characters. If you can't do the step, call finish_step with status \"blocked\" and say why "
+        "in result."])

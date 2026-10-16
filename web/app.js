@@ -2117,8 +2117,9 @@ createApp({
             isGenerating.value = true;
             ws.value.send(JSON.stringify({ type: 'new_chat' }));
         };
+        // A plan's steps escalate on their own; re-running the whole request would bypass the plan
         const canEscalate = (msg, index) =>
-            msg.role === 'agent' && index === messages.value.length - 1 && msg.tier === 'simple'
+            msg.role === 'agent' && index === messages.value.length - 1 && msg.tier === 'simple' && !msg.planRun
             && !isGenerating.value && !pendingApproval.value && !!routingConfig.value.complex_model;
         const escalate = async () => {
             if (appSettings.value.confirm_escalate !== false) {
@@ -2358,10 +2359,12 @@ createApp({
                     if (data.role !== 'conductor') lastMsg.model = data.model;
                 }
                 else if (data.type === "plan") {
-                    // v0.4: a plan card; a later event for the same plan updates it in place
-                    if (lastMsg.role !== 'agent' || !lastMsg.blocks || !data.plan) return;
-                    const old = lastMsg.blocks.find(b => b.kind === 'plan' && b.plan.id === data.plan.id);
-                    if (old) old.plan = data.plan; else lastMsg.blocks.push({ kind: 'plan', plan: data.plan });
+                    // v0.4: a plan card; a later event for the same plan updates it in place, in any message
+                    if (!data.plan) return;
+                    if (lastMsg.role === 'agent') lastMsg.planRun = true;   // e.g. Automatic: the plan runs in this reply
+                    if (updatePlanCard(data.plan)) return;
+                    if (lastMsg.role !== 'agent' || !lastMsg.blocks) return;
+                    lastMsg.blocks.push({ kind: 'plan', plan: data.plan });
                 }
                 else if (data.type === "thinking") {
                     if (lastMsg.role !== 'agent' || !lastMsg.blocks) return;
@@ -2493,15 +2496,17 @@ createApp({
                 messages.value = rebuilt;
                 for (const ev of data.events) {
                     const last = messages.value[messages.value.length - 1];
-                    if (ev.type === 'prompt' || ev.type === 'escalate') {
+                    if (ev.type === 'prompt' || ev.type === 'escalate' || ev.type === 'plan_action') {
                         if (last && last.role === 'agent') finalizeReply(last);
                         if (ev.type === 'prompt') messages.value.push({ role: 'user', content: ev.content });
-                        messages.value.push({ role: 'agent', content: '', events: [], commands: [], blocks: [] });
+                        messages.value.push({ role: 'agent', content: '', events: [], commands: [], blocks: [],
+                                              planRun: ev.type === 'plan_action' });
                     } else {
                         handleMessage(ev, true);
                     }
                 }
                 finalizeReply(messages.value[messages.value.length - 1]);
+                (data.plans || []).forEach(updatePlanCard);   // as they are now, not as they were when shown
                 if (!data.active_project_changed && !readOnlyChat.value && data.session.project && data.session.project !== appSettings.value.active_project) {
                     fetchConfig();  // the server switched to the session's project
                 }
@@ -2622,14 +2627,37 @@ createApp({
             return lines;
         };
 
+        // ---- Plan cards (v0.4)
+        const updatePlanCard = (plan) => {
+            for (const m of messages.value) {
+                const b = (m.blocks || []).find(x => x.kind === 'plan' && x.plan.id === plan.id);
+                if (b) { b.plan = plan; return true; }
+            }
+            return false;
+        };
+        const PLAN_STEP_MARK = { done: '✓', running: '▸', blocked: '!', skipped: '–', failed: '✗' };
+        const planStepMark = (s) => PLAN_STEP_MARK[s.status] || String(s.id);
+        const planStuckStep = (p) => p.status === 'paused' ? (p.steps || []).find(s => s.status === 'blocked') : null;
+        const planAction = (plan, action) => {
+            if (isGenerating.value || !ws.value || ws.value.readyState !== WebSocket.OPEN) return;
+            messages.value.push({ role: 'agent', content: '', events: [], commands: [], blocks: [], planRun: true });
+            isGenerating.value = true;
+            ws.value.send(JSON.stringify({ type: 'plan_action', action, plan_id: plan.id }));
+            scrollToBottom();
+        };
+
         // A plan card as Markdown (chat export)
         const planLines = (p) => {
             const out = [`**Plan: ${p.goal}** (${p.status})`, ''];
             (p.steps || []).forEach(s => {
-                out.push(`${s.id}. **${s.title}** [${s.tier}]`, `   - Do: ${s.do}`, `   - Done when: ${s.done_when}`);
+                const ran = s.status !== 'pending' ? `, ${s.status}${s.model ? ', ' + s.model : ''}${s.cost ? ', ' + fmtCost(s.cost) : ''}` : '';
+                out.push(`${s.id}. **${s.title}** [${s.tier}${ran}]`, `   - Do: ${s.do}`, `   - Done when: ${s.done_when}`);
+                if (s.result) out.push(`   - Result: ${s.result}`);
                 if (s.files && s.files.length) out.push(`   - Files: ${s.files.map(f => '`' + f + '`').join(', ')}`);
             });
             if (p.check) out.push('', `Final check: ${p.check}`);
+            if (p.note) out.push('', `_${p.note}_`);
+            if (p.total_cost) out.push('', `Plan cost so far: ${fmtCost(p.total_cost)}`);
             return out;
         };
 
@@ -2724,6 +2752,7 @@ createApp({
             usageData, usagePeriod, cooldowns, fetchUsage, sessionUsage, clearCooldown,
             fmtTokens, fmtCost, fmtMs, modelName,
             newChat, canEscalate, escalate, continueTurn, pendingOutside, pendingWorkdir,
+            planAction, planStepMark, planStuckStep,
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
             setThinking, copyThinking, storageInfo, fmtBytes,

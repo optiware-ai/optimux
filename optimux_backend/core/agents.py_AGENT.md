@@ -20,3 +20,5 @@
 ## fix24b
 - In a project, the prompt names `create_project` for new projects ("never mkdir, git init, gh repo create or scripts").
 - `sandboxed=True` adds: only the working folder can be changed, other paths are hidden or read-only (a missing file outside isn't proof it doesn't exist), don't work around it, tell the user what they'd need to do.
+
+- **Plan steps (v0.4):** `get_step_prompt(plan, step, results, details)` is the user message that starts a step in a fresh context: what the user asked, the goal, "Results so far", earlier steps' details, then the step (`Do`, `Done when`, files) and how to end it with `finish_step` (done with a result of at most 150 words and optional details, or blocked with the reason). `step=None` is the final check, which writes the reply in plain text. The system prompt stays the executor prompt, so it is cached across steps.

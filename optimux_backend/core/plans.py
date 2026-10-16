@@ -27,6 +27,8 @@ MAX_CHECK = 600
 MAX_FILES = 20
 MAX_FILE = 300
 MAX_RESULT = 1500            # a step's result note, as kept (the prompt asks for 150 words)
+MAX_DETAILS = 6000           # a step's longer notes for later steps (a design, a list of cases)
+MAX_DETAILS_IN_CONTEXT = 12000   # all earlier details given to one step, at most
 
 # Plan statuses: waiting (shown, not started) · running · paused (stopped, stuck, interrupted,
 # budget) · done · cancelled. Step statuses: pending · running · done · blocked · skipped · failed.
@@ -115,7 +117,7 @@ def validate(raw) -> dict:
 # ------------------------------------------------------------------ storing
 
 def _new_step_state(step: dict) -> dict:
-    return {**step, "status": "pending", "result": "", "model": None, "cost": 0.0, "calls": 0,
+    return {**step, "status": "pending", "result": "", "details": "", "model": None, "cost": 0.0, "calls": 0,
             "started": None, "finished": None, "escalated": False}
 
 
@@ -130,7 +132,7 @@ def create(session: str, project: str, plan: dict, request: str = "") -> dict:
     plan = validate(plan)
     now = time.time()
     body = {"steps": [_new_step_state(s) for s in plan["steps"]], "check": plan["check"],
-            "request": (request or "")[:2000], "note": "", "interrupted": False}
+            "request": (request or "")[:2000], "note": "", "interrupted": False, "check_cost": 0.0, "check_calls": 0}
     pid = secrets.token_urlsafe(12)
     conn = store.connect()
     try:
@@ -176,6 +178,8 @@ def open_plan(session: str) -> dict | None:
 
 def _save(plan: dict) -> dict:
     body = {k: plan[k] for k in ("steps", "check", "request", "note", "interrupted")}
+    body["check_cost"] = plan.get("check_cost", 0.0)
+    body["check_calls"] = plan.get("check_calls", 0)
     plan["updated"] = time.time()
     conn = store.connect()
     try:
@@ -199,7 +203,7 @@ def set_status(pid: str, status: str, note: str | None = None) -> dict:
     return _save(plan)
 
 
-STEP_FIELDS = ("status", "result", "model", "cost", "calls", "started", "finished", "escalated", "tier")
+STEP_FIELDS = ("status", "result", "details", "model", "cost", "calls", "started", "finished", "escalated", "tier")
 
 
 def update_step(pid: str, step_id: int, **fields) -> dict:
@@ -213,6 +217,8 @@ def update_step(pid: str, step_id: int, **fields) -> dict:
         raise PlanError("A step's tier is simple or complex.")
     if "result" in fields:
         fields["result"] = (fields["result"] or "")[:MAX_RESULT]
+    if "details" in fields:
+        fields["details"] = (fields["details"] or "")[:MAX_DETAILS]
     plan = get(pid)
     step = next((s for s in plan["steps"] if s["id"] == step_id), None)
     if step is None:
@@ -221,9 +227,17 @@ def update_step(pid: str, step_id: int, **fields) -> dict:
     return _save(plan)
 
 
+CHECK_STEP = 0               # the step number of the final check, in usage rows and add_cost
+
+
 def add_cost(pid: str, step_id: int, cost: float | None, model: str | None = None) -> dict:
-    """Count one metered call in a step (cost may be unknown)."""
+    """Count one metered call in a step (cost may be unknown); CHECK_STEP is the final check."""
     plan = get(pid)
+    if step_id == CHECK_STEP:
+        plan["check_calls"] = plan.get("check_calls", 0) + 1
+        if isinstance(cost, (int, float)):
+            plan["check_cost"] = round(plan.get("check_cost", 0.0) + cost, 8)
+        return _save(plan)
     step = next((s for s in plan["steps"] if s["id"] == step_id), None)
     if step is None:
         raise PlanError(f"The plan has no step {step_id}.")
@@ -268,7 +282,8 @@ def next_step(plan: dict) -> dict | None:
 
 
 def total_cost(plan: dict) -> float:
-    return round(sum(s.get("cost") or 0.0 for s in plan["steps"]), 8)
+    """Steps and final check (the planner's own call is in Usage with the plan's id)."""
+    return round(sum(s.get("cost") or 0.0 for s in plan["steps"]) + (plan.get("check_cost") or 0.0), 8)
 
 
 def mark_interrupted() -> int:
@@ -281,11 +296,14 @@ def mark_interrupted() -> int:
         conn.close()
     for r in rows:
         plan = _row(r)
+        cut = next((s for s in plan["steps"] if s["status"] == "running"), None)
         for s in plan["steps"]:
             if s["status"] == "running":
                 s["status"] = "pending"
         plan["status"] = "paused"
         plan["interrupted"] = True
+        plan["note"] = (f"Interrupted by a restart at step {cut['id']}. Resume to do it again."
+                        if cut else "Interrupted by a restart. Resume to go on.")
         _save(plan)
     return len(rows)
 
@@ -303,3 +321,34 @@ def summary_for_history(plan: dict) -> str:
         lines.append(f"Check: {plan['check']}")
     return "\n".join(lines)
 
+
+
+def earlier_work(plan: dict, step_id: int) -> tuple[list[str], list[str]]:
+    """What the steps before `step_id` hand over: one result line per finished
+    or skipped step, and their longer details (newest kept first when they
+    don't all fit in MAX_DETAILS_IN_CONTEXT)."""
+    results, details = [], []
+    for s in plan["steps"]:
+        if s["id"] >= step_id:
+            break
+        if s["status"] == "done":
+            results.append(f"- Step {s['id']} ({s['title']}): {s.get('result') or 'done, no note.'}")
+            if s.get("details"):
+                details.append(f"Details from step {s['id']} ({s['title']}):\n{s['details']}")
+        elif s["status"] == "skipped":
+            results.append(f"- Step {s['id']} ({s['title']}): skipped by the user.")
+    kept, room = [], MAX_DETAILS_IN_CONTEXT
+    for d in reversed(details):
+        if len(d) > room:
+            if room > 200:
+                kept.append(d[:room] + "\n[cut: too long to pass on in full]")
+            break
+        kept.append(d)
+        room -= len(d)
+    return results, list(reversed(kept))
+
+
+def last_words(text: str, n: int = 150) -> str:
+    """A step that ends with plain text: its last n words become its result note."""
+    words = (text or "").split()
+    return ("... " if len(words) > n else "") + " ".join(words[-n:])
