@@ -153,7 +153,7 @@ def git_commands(name: str) -> dict:
         raise WorkspaceError(f"There's no project called {name} in the Workspace folder.")
     out = {"project": name, "path": path, "git": os.path.isdir(os.path.join(path, ".git")),
            "remote": None, "branch": None, "changes": 0, "push": None, "pull": None, "pull_ssh": None,
-           "server": server_mode(), "commit_message": MANUAL_COMMIT_MESSAGE, "problem": None}
+           "server": server_mode(), "commit_message": MANUAL_COMMIT_MESSAGE, "problem": None, "warning": None}
     if not out["git"]:
         out["problem"] = "This project isn't a git repository."
         return out
@@ -171,7 +171,15 @@ def git_commands(name: str) -> dict:
     m = _GITHUB_REMOTE.match(remote)
     use_token = bool(m) and remote.startswith("https://") and bool(os.environ.get(GITHUB_TOKEN_ENV))
     q = shlex.quote
-    commit = f"git add -A && (git diff --cached --quiet || git commit -m {q(MANUAL_COMMIT_MESSAGE)})"
+    # Optimux commits with the name and email from Dashboard → GitHub (as
+    # environment variables), so git's own config may have none: pass them on.
+    ident = git_identity_env(get_settings())
+    who = (f"-c user.name={q(ident['GIT_AUTHOR_NAME'])} -c user.email={q(ident['GIT_AUTHOR_EMAIL'])} "
+           if ident else "")
+    if not ident and out["changes"] and not git_has_identity():
+        out["warning"] = ("Git has no name and email to commit with. Set them in Dashboard → GitHub "
+                          "(Who commits), then open this again.")
+    commit = f"git add -A && (git diff --cached --quiet || git {who}commit -m {q(MANUAL_COMMIT_MESSAGE)})"
     if use_token:
         push = ("GH_TOKEN=\"$" + GITHUB_TOKEN_ENV + "\" git -c credential.helper= "
                 "-c 'credential.helper=!gh auth git-credential' push -u origin HEAD")

@@ -10,11 +10,16 @@ from optimux_backend.core import paths
 from optimux_backend.core.security import GITHUB_TOKEN_ENV
 
 
+SETTINGS = {}
+
+
 @pytest.fixture
 def root(mocker, tmp_path, monkeypatch):
     r = tmp_path / "projects"
     (r / "plain").mkdir(parents=True)
-    mocker.patch.object(ws, "get_settings", side_effect=lambda: {"projects_root": str(r), "active_project": ""})
+    SETTINGS.clear()
+    SETTINGS.update({"projects_root": str(r), "active_project": ""})
+    mocker.patch.object(ws, "get_settings", side_effect=lambda: dict(SETTINGS))
     for k in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{k}_NAME", "T"); monkeypatch.setenv(f"GIT_{k}_EMAIL", "t@example.com")
     monkeypatch.delenv(GITHUB_TOKEN_ENV, raising=False)
@@ -95,3 +100,26 @@ def test_odd_names_and_paths_are_quoted(root):
         out("a;b")
     with pytest.raises(ws.WorkspaceError):
         out("missing")
+
+
+def test_the_push_commits_as_the_dashboard_identity(root, tmp_path, monkeypatch):
+    """Optimux's user often has no git identity on a server (Optimux passes the
+    Dashboard → GitHub name as environment variables), so the command must too."""
+    bare = tmp_path / "remote" / "who.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
+    p = repo(root, "who", str(bare))
+    (p / "c.txt").write_text("c\n")
+    for k in ("AUTHOR", "COMMITTER"):
+        monkeypatch.delenv(f"GIT_{k}_NAME"); monkeypatch.delenv(f"GIT_{k}_EMAIL")
+    monkeypatch.setenv("HOME", str(tmp_path / "empty-home"))          # no ~/.gitconfig
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("EMAIL", "")
+    without = ws.git_commands("who")
+    assert without["warning"].startswith("Git has no name and email")
+    assert subprocess.run(without["push"], shell=True, capture_output=True).returncode != 0   # the reported failure
+    SETTINGS.update(git_name="Masoud O'Brien", git_email="m@example.com")
+    out = ws.git_commands("who")
+    assert out["warning"] is None and "-c user.name='Masoud O'\"'\"'Brien' -c user.email=m@example.com commit" in out["push"]
+    subprocess.run(out["push"], shell=True, check=True, capture_output=True)
+    who = subprocess.run(["git", "-C", str(bare), "log", "-1", "--format=%an <%ae>"], capture_output=True, text=True).stdout
+    assert who.strip() == "Masoud O'Brien <m@example.com>"

@@ -252,6 +252,7 @@
                             <template v-else-if="gitBox.data">
                                 <p v-if="gitBox.data.problem" class="text-yellow-300">{{ gitBox.data.problem }}</p>
                                 <template v-else>
+                                    <p v-if="gitBox.kind === 'push' && gitBox.data.warning" class="text-yellow-300 mb-2">{{ gitBox.data.warning }}</p>
                                     <p v-if="gitBox.kind === 'push'" class="text-gray-400 mb-2">
                                         Run it in a terminal on {{ gitBox.data.server ? 'this server (it acts as the Optimux user through sudo)' : 'this computer' }}.
                                         <template v-if="gitBox.data.changes">It first commits {{ gitBox.data.changes }} changed file{{ gitBox.data.changes === 1 ? '' : 's' }} as <span class="font-mono text-gray-300">"{{ gitBox.data.commit_message }}"</span> (edit the message if you like), then</template><template v-else>Nothing to commit, so it only</template>
