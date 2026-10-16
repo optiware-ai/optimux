@@ -113,10 +113,12 @@ def model_id(p: dict, key: str) -> str:
 def _row(p: dict, key: str, info: dict) -> dict:
     inp, out = _per_mtok(info.get("input_cost_per_token")), _per_mtok(info.get("output_cost_per_token"))
     cached = _per_mtok(info.get("cache_read_input_token_cost"))
-    # A cloud model listed at 0 in and 0 out has no price in the list (often an
-    # experimental model the provider has switched off), it isn't free. Cost
-    # metering reads it the same way (config_manager.price_source: "unknown").
-    # Local models (no key) and OpenRouter's ":free" models really cost nothing.
+    # A cloud model at 0 in and 0 out is ambiguous: a model the provider really
+    # serves for free (Google's Gemma models) or an experimental one it has switched
+    # off. Until the provider's own list says the key can use it (models()), it is
+    # shown without a price ("unpriced"), last. Local models (no key) and
+    # OpenRouter's ":free" models really cost nothing.
+    zero_listed = inp == 0 and out == 0
     unpriced = p["env"] is not None and not inp and not out and not key.endswith(":free")
     if unpriced:
         inp = out = cached = None
@@ -126,6 +128,7 @@ def _row(p: dict, key: str, info: dict) -> dict:
         "output": out,
         "cached": cached,
         "unpriced": unpriced,
+        "zero_listed": zero_listed,
         "context": info.get("max_input_tokens") or info.get("max_tokens"),
         "max_output": info.get("max_output_tokens"),
         "tools": bool(info.get("supports_function_calling")),
@@ -168,6 +171,9 @@ def models(pid: str) -> dict:
         seen = set(live_ids)
         for r in rows.values():
             r["available"] = r["id"] in seen
+            if r["available"] and r["unpriced"] and r["zero_listed"]:
+                # listed at $0 and served to this key: a free model
+                r.update(input=0.0, output=0.0, cached=0.0, unpriced=False, free=True)
         for mid in live_ids:
             if mid not in rows:
                 extra = (live.get("prices") or {}).get(mid) or {}

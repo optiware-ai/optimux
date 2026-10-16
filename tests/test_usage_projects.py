@@ -47,6 +47,7 @@ def test_price_source():
     assert price_source("ollama/phi3", {}) == "local"
     assert price_source("gpt-4o", {}) == "litellm"
     assert price_source("made-up/model-zzz", {}) == "unknown"
+    assert price_source("gemini/gemini-exp-1206", {}) == "zero"            # listed at $0
 
 
 def test_meter_records_active_project_and_api_filters(mocker, tmp_path):

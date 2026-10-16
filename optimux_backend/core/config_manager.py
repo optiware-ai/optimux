@@ -383,7 +383,7 @@ def litellm_key_kwargs(model_id: str) -> dict:
 
 
 def price_source(model_id: str, details: dict) -> str:
-    """Where cost figures for this model come from: custom | litellm | local | unknown."""
+    """Where cost figures for this model come from: custom | litellm | local | zero | unknown."""
     if details.get("input_cost_per_mtok") is not None and details.get("output_cost_per_mtok") is not None:
         return "custom"
     if model_id.startswith(("ollama/", "ollama_chat/")):
@@ -392,7 +392,12 @@ def price_source(model_id: str, details: dict) -> str:
         import litellm
         prompt_cost, completion_cost = litellm.cost_per_token(
             model=model_id, prompt_tokens=1_000_000, completion_tokens=1_000_000)
-        return "litellm" if (prompt_cost + completion_cost) > 0 else "unknown"
+        if (prompt_cost + completion_cost) > 0:
+            return "litellm"
+        info = litellm.get_model_info(model_id)
+        if info.get("input_cost_per_token") == 0 and info.get("output_cost_per_token") == 0:
+            return "zero"       # listed at $0: a free model, or one with no price known
+        return "unknown"
     except Exception:
         return "unknown"
 

@@ -13,7 +13,7 @@
   - `set_thinking` changes it (validated).
   - `save_model` keeps the current level unless one is given.
   - `supports_thinking` returns True, False or None (unknown to LiteLLM) and is reported in `get_models_config`, together with `thinking`.
-- **Price status (`price_source`):** `custom` (prices set in the UI), `litellm` (LiteLLM's price list has the model), `local` (Ollama: no per-token cost) or `unknown`.
+- **Price status (`price_source`):** `custom` (prices set in the UI), `litellm` (LiteLLM's price list has the model), `local` (Ollama: no per-token cost), `zero` (LiteLLM lists it at $0 in and out: a free model, or one with no price known) or `unknown`.
 - **Validation:** `model_id_problem(id)` uses `litellm.get_llm_provider` to reject IDs LiteLLM can't route (for example a missing provider prefix); `save_model` raises `ValidationError` on it. `save_routing_config` rejects models that aren't configured (`conductor_model` may be `"off"`).
 - **Secret names (`get_secret_env_keys`):** Returns every provider env-key name from the legacy and stored models. `executor.py` removes these from the shell environment.
 - **Routing:** `get_routing_config` / `save_routing_config` persist `conductor_model` (a model ID, or `"off"` to skip the Conductor), `simple_model` and `complex_model` in `.optimux/routing.json`. The retired `tool_model` key is ignored if present.

@@ -248,7 +248,29 @@ def test_a_zero_price_is_not_listed_not_free(cat):
     assert exp["unpriced"] and exp["input"] is None and exp["output"] is None
     assert rows.index(exp) > max(i for i, r in enumerate(rows) if r["input"] is not None)
     from optimux_backend.core.config_manager import price_source
-    assert price_source("gemini/gemini-exp-test", {}) == "unknown"
+    assert price_source("gemini/gemini-exp-test", {}) == "zero"      # card: "$0 in the price list"
+    assert exp["zero_listed"]
     free = next(r for r in catalog.offline_models("openrouter") if r["id"] == "openrouter/acme/model:free")
     assert free["input"] == 0 and not free["unpriced"]                # really free
     assert all(r["input"] == 0 and not r["unpriced"] for r in catalog.offline_models("ollama"))   # local
+
+
+def test_a_zero_price_model_the_key_can_use_is_free(cat, monkeypatch):
+    """Google serves some models (Gemma) for free: listed at $0 AND in the
+    provider's own list for the key, the model shows as free, first."""
+    import litellm
+    for k in ("gemini/gemma-test-it", "gemini/gemini-exp-dead"):
+        litellm.model_cost[k] = {"litellm_provider": "gemini", "mode": "chat", "supports_function_calling": True,
+                                 "input_cost_per_token": 0, "output_cost_per_token": 0}
+    monkeypatch.setattr(catalog, "online_allowed", lambda: True)
+    monkeypatch.setenv("GEMINI_API_KEY", "g-key")
+    fake_get(monkeypatch, cat, Resp(data={"models": [
+        {"name": "models/gemma-test-it", "supportedGenerationMethods": ["generateContent"]},
+        {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]}]}))
+    catalog.refresh_models("gemini")
+    rows = catalog.models("gemini")["models"]
+    m = {r["id"]: r for r in rows}
+    assert m["gemini/gemma-test-it"]["free"] and m["gemini/gemma-test-it"]["input"] == 0
+    assert not m["gemini/gemma-test-it"]["unpriced"] and rows[0]["id"] == "gemini/gemma-test-it"
+    dead = m["gemini/gemini-exp-dead"]
+    assert dead["unpriced"] and dead["available"] is False and not dead.get("free")
