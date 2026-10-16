@@ -65,7 +65,7 @@
                 <button v-if="projectUsage" @click="openSettings(budgetStatus ? 'budgets' : 'overview')"
                         :class="['text-xs font-mono px-2 py-1 rounded-lg hidden md:inline-block transition', budgetStatus && budgetStatus.state === 'over' ? 'text-red-300 bg-red-900/30' : (budgetStatus && budgetStatus.state === 'warning' ? 'text-yellow-300 bg-yellow-900/20' : 'text-gray-400 hover:text-gray-200')]"
                         :title="headerCostTitle">
-                    {{ budgetStatus ? fmtCost(budgetStatus.spent) + ' / ' + fmtCost(budgetStatus.monthly_usd) : fmtCost(projectUsage.month.cost) }} this month{{ (budgetStatus ? budgetStatus.calls_without_cost : projectUsage.month.calls_without_cost) ? '+' : '' }}
+                    <odo-text :text="budgetStatus ? fmtCost(budgetStatus.spent) + ' / ' + fmtCost(budgetStatus.monthly_usd) : fmtCost(projectUsage.month.cost)"></odo-text> this month{{ (budgetStatus ? budgetStatus.calls_without_cost : projectUsage.month.calls_without_cost) ? '+' : '' }}
                 </button>
             </div>
             <div class="flex items-center gap-2 flex-shrink-0">

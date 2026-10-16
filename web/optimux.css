@@ -60,3 +60,11 @@
 .cm-toast-move { transition: transform .3s; }
 @keyframes cm-pop { from { transform: scale(.96) translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 .cm-pop { animation: cm-pop .18s ease-out; }
+/* Mechanical cost counter (odo-text): each digit rolls on a strip */
+.cm-odo { display: inline-flex; align-items: baseline; }
+.cm-odo-cell { display: inline-block; height: 1.25em; line-height: 1.25em; overflow: hidden; vertical-align: bottom; }
+.cm-odo-strip { display: block; }
+.cm-odo-strip > span { display: block; height: 1.25em; text-align: center; }
+.cm-odo-rolling { transition: transform .65s cubic-bezier(.3, .7, .2, 1); }
+.cm-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: reduce) { .cm-odo-rolling { transition: none; } }

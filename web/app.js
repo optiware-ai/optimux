@@ -181,6 +181,46 @@ const RouteTrail = {
     template: `<svg ref="svg" width="64" height="22" viewBox="0 0 64 22" overflow="visible" role="img" aria-label="Working"></svg>`,
 };
 
+// A mechanical counter: each digit sits on a strip 0-9 (three times over) and
+// rolls to its new value; up when the amount grows, down when it shrinks.
+// The strip rests on the middle copy, so a roll never runs off either end.
+const ODO_ROLL_MS = 650;
+const OdoDigit = {
+    props: { d: { type: Number, required: true }, up: { type: Boolean, default: true } },
+    data() { return { pos: 10 + this.d, rolling: false }; },
+    watch: {
+        d(n) {
+            const at = this.pos % 10;
+            if (n === at) return;
+            clearTimeout(this.timer);
+            this.rolling = true;
+            this.pos = this.up ? this.pos + (n - at + 10) % 10 : this.pos - (at - n + 10) % 10;
+            this.timer = setTimeout(() => { this.rolling = false; this.pos = 10 + n; }, ODO_ROLL_MS + 50);
+        },
+    },
+    beforeUnmount() { clearTimeout(this.timer); },
+    template: `<span class="cm-odo-cell"><span :class="['cm-odo-strip', rolling && 'cm-odo-rolling']" :style="{ transform: 'translateY(' + (-pos * 1.25) + 'em)' }"><span v-for="i in 30" :key="i">{{ (i - 1) % 10 }}</span></span></span>`,
+};
+
+const OdoText = {
+    props: { text: { type: String, default: '' } },
+    data() { return { up: true }; },
+    computed: {
+        // Keyed from the right, so the cents stay the same cells as the number grows.
+        cells() {
+            const n = this.text.length;
+            return [...this.text].map((ch, i) => ({ key: n - i, ch, digit: /[0-9]/.test(ch) }));
+        },
+    },
+    watch: {
+        text(now, before) {
+            const num = (s) => parseFloat(String(s).replace(/^[^0-9]*/, '')) || 0;     // the first amount: what was spent
+            this.up = num(now) >= num(before);
+        },
+    },
+    template: `<span class="cm-odo"><span class="cm-sr-only">{{ text }}</span><span aria-hidden="true"><template v-for="c in cells" :key="c.key"><odo-digit v-if="c.digit" :d="+c.ch" :up="up"></odo-digit><span v-else>{{ c.ch }}</span></template></span></span>`,
+};
+
 const ProjectForm = {
     props: {
         initial: { type: Object, default: () => ({}) },
@@ -2990,4 +3030,4 @@ createApp({
             projectLabel, viewer, viewerLanguages, openCmdViewer, onChatClick, closeViewer, rehighlightViewer, copyViewerSection
         };
     }
-}).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).mount('#app');
+}).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).mount('#app');
