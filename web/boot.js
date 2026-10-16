@@ -24,7 +24,8 @@
             // throw so the caller's catch skips its "Saved" message.
             let msg = 'Request rejected by the server.';
             try { msg = (await res.clone().json()).detail || msg; } catch (_) {}
-            alert(msg);
+            // The app shows it as a notice; before the app has started, a plain alert
+            if (typeof window.optimuxShowError === 'function') window.optimuxShowError(msg); else alert(msg);
             throw new Error(msg);
         }
         return res;

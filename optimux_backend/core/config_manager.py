@@ -234,12 +234,34 @@ def save_settings(payload: SettingsPayload):
             if is_private_home_path(str(root)):
                 raise ValidationError("The Workspace folder can't be Optimux's own data folder (or a part of it that "
                                       "holds keys and chats). Pick a folder for your projects, for example ~/projects.")
+            if not os.access(root, os.W_OK | os.X_OK):
+                raise ValidationError(workspace_not_writable(root))
+            if payload.active_project and not (root / payload.active_project).is_dir():
+                payload.active_project = ""     # not in the new folder: back to the Workspace itself
     if payload.active_project:
         resolve_project_dir(payload.projects_root, payload.active_project)
     settings_file = SETTINGS_FILE
     os.makedirs(os.path.dirname(settings_file), exist_ok=True)
     with open(settings_file, "w") as f:
         json.dump(payload.model_dump(), f, indent=4)
+
+def workspace_not_writable(root) -> str:
+    """Why a Workspace folder is refused when Optimux can't write in it."""
+    import pwd
+    try:
+        user = pwd.getpwuid(os.geteuid()).pw_name
+    except KeyError:
+        user = str(os.geteuid())
+    text = f"Optimux can't write in {root} (it runs as the user {user})."
+    from optimux_backend.core.auth import server_mode
+    if server_mode():
+        text += (" On a server, the service may only write inside its own folder: use a folder there owned by "
+                 f"{user}, for example /var/lib/{user}/projects (sudo install -d -m 750 -o {user} -g {user} "
+                 f"/var/lib/{user}/projects).")
+    else:
+        text += f" Give {user} write access to it, or pick another folder."
+    return text
+
 
 # Set from Dashboard → GitHub (or the installer) only; a generic settings save keeps them
 GITHUB_FIELDS = ("git_name", "git_email", "github_login")

@@ -1396,8 +1396,13 @@ async def save_app_settings(payload: SettingsPayload):
     stored = _read_settings()
     for field in GITHUB_FIELDS:
         setattr(payload, field, stored.get(field, "") or "")
+    asked = payload.active_project
     save_settings(payload)
-    return {"status": "success"}
+    if asked and not payload.active_project:
+        # A new Workspace folder without that project: the Workspace itself is now active
+        return {"status": "success", "active_project": "",
+                "note": f"{asked} isn't in the new Workspace folder, so no project is selected now."}
+    return {"status": "success", "active_project": payload.active_project}
 
 @app.get("/api/projects")
 async def get_projects():

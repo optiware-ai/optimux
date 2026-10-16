@@ -192,6 +192,8 @@ createApp({
             toasts.value.push({ id, kind: 'success', text: '', ...t });
             setTimeout(() => dismissToast(id), t.timeout || (t.kind === 'warn' ? 12000 : 6000));
         };
+        // boot.js passes the server's 400 messages (a bad path, a bad key...) here
+        window.optimuxShowError = (msg) => pushToast({ kind: 'warn', title: "That didn't work", text: msg, timeout: 15000 });
         const projectCreatedToast = (name, ok, url) => pushToast(ok
             ? { kind: 'success', title: `Project created · ${name}`, text: url ? 'Its GitHub repository is ready.' : '', link: url || '', linkLabel: 'Open on GitHub' }
             : { kind: 'warn', title: `${name} created, with problems`, text: 'The folder is there, but some steps failed; the details are in the chat.' });
@@ -448,11 +450,21 @@ createApp({
 
         const saveSettings = async () => {
             try {
-                await fetch('/api/settings', {
+                const res = await fetch('/api/settings', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(appSettings.value)
                 });
+                const data = await res.json().catch(() => ({}));
+                if (data.note) {
+                    // A new Workspace folder without the active project: the Workspace is active now
+                    appSettings.value.active_project = data.active_project || '';
+                    pushToast({ kind: 'info', title: 'Workspace folder changed', text: data.note, timeout: 10000 });
+                    if (!isGenerating.value && !pendingApproval.value && ws.value) {
+                        isGenerating.value = true;
+                        ws.value.send(JSON.stringify({ type: 'open_session', id: 'latest' }));
+                    }
+                }
                 showSettingsSaved.value = true;
                 fetchProjectUsage();
                 setTimeout(() => { showSettingsSaved.value = false; }, 2000);
