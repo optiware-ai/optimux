@@ -304,9 +304,70 @@ To create GitHub repositories, Optimux needs two things **on the machine it runs
 
 Instead of a token, Optimux also uses `gh auth login` if it was done by the user Optimux runs as (common on your own computer).
 
-The token is kept in `secrets.env` with the other keys, and only the two steps that talk to GitHub use it (`gh repo create`, and the push, which goes over HTTPS through `gh` as git's credential helper, so the token is never written to a git config or shown on a command line). **Commands the model runs don't get it**, and with the **sandbox** on they can't read `secrets.env` either, so the model can't push or change your GitHub account. With the sandbox off, an approved command runs with Optimux's permissions and could read it (or use `gh`'s own sign-in): review commands, or turn the sandbox on. Pushing later is up to you.
+The token is kept in `secrets.env` with the other keys, and only the two steps that talk to GitHub use it (`gh repo create`, and the push, which goes over HTTPS through `gh` as git's credential helper, so the token is never written to a git config or shown on a command line). **Commands the model runs don't get it**, and with the **sandbox** on they can't read `secrets.env` either, so the model can't push or change your GitHub account. With the sandbox off, an approved command runs with Optimux's permissions and could read it (or use `gh`'s own sign-in): review commands, or turn the sandbox on. Pushing later is up to you (see **Pushing and cloning by hand** below).
 
 **Who commits.** The first commit (and commits the model makes, when you approve them) use git's own name and email. Set a different **name and email** in Dashboard → GitHub (saved on their own, with their own **Save**). On a server the Optimux user usually has none, so saving a token fills them in with your GitHub account and its private `…@users.noreply.github.com` address when git has nothing set.
+
+### Pushing and cloning by hand
+
+The model can commit (when you approve the command) but **can't push**: its commands don't get the GitHub token, and on a server the sandbox has no network either. A push it tries fails with *Could not resolve host* or asks for a username. Push yourself, from a terminal on the machine Optimux runs on.
+
+**On your own computer**, where Optimux runs as you and `gh auth login` is usually done, a plain push works:
+
+```bash
+cd ~/git/myproject          # the project folder (Dashboard → Projects shows the path)
+git status                  # anything not committed yet?
+git add -A && git commit -m "Describe the change"
+git push origin HEAD
+```
+
+If git asks for a username, use the token Optimux keeps, for this one command only:
+
+```bash
+set -a; . ~/.optimux/secrets.env; set +a
+GH_TOKEN=$OPTIMUX_GITHUB_TOKEN git -c credential.helper= \
+  -c 'credential.helper=!gh auth git-credential' push origin HEAD
+```
+
+**On a server**, the project belongs to the `optimux` user and its data is in `/var/lib/optimux/.optimux`. Run git as that user, with the token for this one command:
+
+```bash
+P=/var/lib/optimux/workspace/myproject
+S=/var/lib/optimux/.optimux/secrets.env
+sudo -u optimux git -C $P status
+sudo -u optimux git -C $P add -A
+sudo -u optimux git -C $P commit -m "Describe the change"
+sudo -u optimux bash -c "set -a; . $S; set +a; GH_TOKEN=\$OPTIMUX_GITHUB_TOKEN \
+  git -C $P -c credential.helper= -c 'credential.helper=!gh auth git-credential' push origin HEAD"
+```
+
+- Don't type the token at git's *Username* prompt and don't save it with `git config credential.helper store`: a stored login would let every command the model runs push too. Press Ctrl+C at the prompt instead.
+- `gh` must be installed for all users (`gh --version` as the optimux user), and the token needs **Contents: Read and write** on the repository.
+- If `secrets.env` isn't there, find it with `sudo find /var/lib /opt /home -name secrets.env -path '*optimux*'`.
+- A project without a GitHub repository has no `origin` (`git remote -v` prints nothing). Create the repository on GitHub, then `git remote add origin https://github.com/<owner>/<name>.git` and push as above.
+
+**Cloning it on another computer.** Once it's on GitHub, clone it where you want to work or look at it:
+
+```bash
+git clone https://github.com/<owner>/<name>.git                # public, or private after gh auth login
+git clone git@github.com:<owner>/<name>.git                    # with an SSH key added to GitHub
+```
+
+A private repository needs a sign-in on that computer: `gh auth login` (then the HTTPS address works), or an SSH key: `ssh-keygen -t ed25519`, add `~/.ssh/id_ed25519.pub` in github.com → Settings → **SSH and GPG keys**, and test with `ssh -T git@github.com`. With several GitHub accounts, give each key a host alias in `~/.ssh/config` and use it in the address:
+
+```
+Host github-work
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519_work
+    IdentitiesOnly yes
+```
+
+```bash
+git clone git@github-work:<owner>/<name>.git
+```
+
+Later changes come over with `git pull` in that folder. To bring a repository **into** Optimux, use **Clone from GitHub** (above) instead: it needs no terminal.
 
 ### Dashboard → Projects
 
