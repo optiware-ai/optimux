@@ -657,6 +657,26 @@ createApp({
             headerSync = setTimeout(fetchProjectUsage, 1500);
         };
 
+        // Plan mode on the chat page: a chip next to New chat shows it; a click
+        // moves to the next mode and saves it (the same setting as Dashboard → Routing).
+        const PLAN_MODES = [['off', 'Off'], ['ask', 'Ask first'], ['auto', 'Automatic']];
+        const planModeNow = Vue.computed(() => {
+            const id = appSettings.value.plan_mode || 'off';
+            return PLAN_MODES.find((m) => m[0] === id) || PLAN_MODES[0];
+        });
+        const planModeTitle = Vue.computed(() => {
+            const [id, label] = planModeNow.value;
+            const what = ({ off: 'never plans (/plan still works)', ask: 'shows a plan for big tasks; nothing runs until you press Run', auto: 'plans big tasks and starts them at once' })[id];
+            const next = PLAN_MODES[(PLAN_MODES.findIndex((m) => m[0] === id) + 1) % PLAN_MODES.length][1];
+            const idle = selectedModel.value !== 'auto' ? '\nNot used now: a hand-picked model never plans.' : '';
+            return `Plan big tasks: ${label}. Optimux ${what}.${idle}\nClick to switch to ${next}. Also in Dashboard → Routing.`;
+        });
+        const cyclePlanMode = () => {
+            const i = PLAN_MODES.findIndex((m) => m[0] === planModeNow.value[0]);
+            appSettings.value.plan_mode = PLAN_MODES[(i + 1) % PLAN_MODES.length][0];
+            saveSettings();
+        };
+
         const saveSettings = async () => {
             try {
                 const res = await fetch('/api/settings', {
@@ -3062,6 +3082,7 @@ createApp({
             planAction, planStepMark, planStuckStep, projectOffer, openOfferedProject, planEdit, stepFolded, stepItems,
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
+            planModeNow, planModeTitle, cyclePlanMode,
             setThinking, copyThinking, storageInfo, fmtBytes,
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,

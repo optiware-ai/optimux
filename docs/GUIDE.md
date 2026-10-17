@@ -135,6 +135,7 @@ From left to right:
 - **The logo and the name** take you back to your **most recent chat**, in whichever project it is (the project menu follows), or to the **Workspace** when there is no chat yet. In the Dashboard, the logo at the top of the sidebar does the same and closes the Dashboard. Chats of archived or deleted projects are skipped.
 - **The project menu** chooses the active project, or **Workspace** (no project). Switching opens that project's latest chat.
 - **+** next to it creates a **new project** with a form (no model involved, so it costs nothing; see *Creating a project*).
+- **The Plan chip**, next to *New chat* under the message box, shows the plan mode (*Plan: Off*, *Ask first* or *Automatic*; see **Plan big tasks**). Click it to switch to the next mode; it's the same setting as in Dashboard → Routing. It's dimmed when you picked a model by hand, because then nothing is planned.
 - **The cost button** shows this month's cost for the active project, or *spent / budget* when it has a budget (yellow from 80%, red from 100%). Hover it for today, this month, all time and this browser session; click it to open Budgets or the Overview.
 - **The memory pill** appears briefly while project memory is being updated in the background ("Updating memory…", then "✓ Memory updated" or "Memory: nothing new").
 - **History** opens the list of past chats; **Dashboard** opens the settings and reports.
