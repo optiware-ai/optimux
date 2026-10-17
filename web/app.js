@@ -181,47 +181,97 @@ const RouteTrail = {
     template: `<svg ref="svg" width="64" height="22" viewBox="0 0 64 22" overflow="visible" role="img" aria-label="Working"></svg>`,
 };
 
-// A mechanical counter: each digit sits on a strip 0-9 (three times over) and
-// rolls to its new value; up when the amount grows, down when it shrinks.
-// The strip rests on the middle copy, so a roll never runs off either end.
-const ODO_ROLL_MS = 650;
+// A mechanical counter. Each digit sits on a strip 0-9 (three times over) and
+// rolls one place at a time, up when the amount grows, down when it shrinks.
+// OdoText counts like a real odometer: the last digit turns step by step, and
+// the digit to its left turns only as the last one passes 9 -> 0 (0 -> 9 down).
+const ODO_ROLL_MS = 650;           // one direct roll (a change the counter can't count)
+const ODO_STEP_MAX_MS = 220;       // one counting step: slow for a few steps...
+const ODO_STEP_MIN_MS = 45;        // ...and fast for many
+const ODO_TOTAL_MS = 1400;         // what a count aims to take in all
+const ODO_MAX_STEPS = 60;          // more than this: roll straight to 60 steps before, then count
+const odoStill = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 const OdoDigit = {
-    props: { d: { type: Number, required: true }, up: { type: Boolean, default: true } },
-    data() { return { pos: 10 + this.d, rolling: false, lit: false }; },
+    props: { d: { type: Number, required: true }, up: { type: Boolean, default: true }, ms: { type: Number, default: ODO_ROLL_MS } },
+    data() { return { lit: false }; },
+    mounted() { this.pos = 10 + this.d; this.place(false); },
     watch: {
         d(n) {
-            const at = this.pos % 10;
+            const at = ((this.pos % 10) + 10) % 10;
             if (n === at) return;
-            clearTimeout(this.timer);
+            this.pos = 10 + at;          // start from the middle copy, at once, so a long count never runs off the strip
+            this.place(false);
+            this.pos += this.up ? (n - at + 10) % 10 : -((at - n + 10) % 10);
+            this.place(!odoStill());
             clearTimeout(this.glow);
-            this.rolling = true;
-            this.lit = true;            // green with a soft glow while it rolls, then it fades back
-            this.glow = setTimeout(() => { this.lit = false; }, ODO_ROLL_MS);
-            this.pos = this.up ? this.pos + (n - at + 10) % 10 : this.pos - (at - n + 10) % 10;
-            this.timer = setTimeout(() => { this.rolling = false; this.pos = 10 + n; }, ODO_ROLL_MS + 50);
+            this.lit = true;             // green with a soft glow while it turns, then it fades back
+            this.glow = setTimeout(() => { this.lit = false; }, Math.max(this.ms, 300));
         },
     },
-    beforeUnmount() { clearTimeout(this.timer); clearTimeout(this.glow); },
-    template: `<span :class="['cm-odo-cell', lit && 'cm-odo-lit']"><span :class="['cm-odo-strip', rolling && 'cm-odo-rolling']" :style="{ transform: 'translateY(' + (-pos * 1.25) + 'em)' }"><span v-for="i in 30" :key="i">{{ (i - 1) % 10 }}</span></span></span>`,
+    methods: {
+        place(animate) {
+            const el = this.$refs.strip;
+            if (!el) return;
+            el.style.transition = animate ? `transform ${this.ms}ms ${this.ms < ODO_ROLL_MS ? 'ease-in-out' : 'cubic-bezier(.3, .7, .2, 1)'}` : 'none';
+            el.style.transform = `translateY(${-this.pos * 1.25}em)`;
+            if (!animate) void el.offsetHeight;          // apply the jump before the next roll starts
+        },
+    },
+    beforeUnmount() { clearTimeout(this.glow); },
+    template: `<span :class="['cm-odo-cell', lit && 'cm-odo-lit']"><span ref="strip" class="cm-odo-strip"><span v-for="i in 30" :key="i">{{ (i - 1) % 10 }}</span></span></span>`,
+};
+
+// The first amount in the text is counted; the rest (" / $5.00") must stay the same.
+const odoParse = (t) => {
+    const m = /\d+(?:\.(\d+))?/.exec(t || '');
+    if (!m) return null;
+    const dec = (m[1] || '').length;
+    return { head: t.slice(0, m.index), tail: t.slice(m.index + m[0].length), dec, units: Math.round(parseFloat(m[0]) * 10 ** dec) };
 };
 
 const OdoText = {
     props: { text: { type: String, default: '' } },
-    data() { return { up: true }; },
+    data() { return { shown: this.text, up: true, ms: ODO_ROLL_MS }; },
     computed: {
         // Keyed from the right, so the cents stay the same cells as the number grows.
         cells() {
-            const n = this.text.length;
-            return [...this.text].map((ch, i) => ({ key: n - i, ch, digit: /[0-9]/.test(ch) }));
+            const n = this.shown.length;
+            return [...this.shown].map((ch, i) => ({ key: n - i, ch, digit: /[0-9]/.test(ch) }));
         },
     },
     watch: {
-        text(now, before) {
-            const num = (s) => parseFloat(String(s).replace(/^[^0-9]*/, '')) || 0;     // the first amount: what was spent
-            this.up = num(now) >= num(before);
+        text(now) {
+            clearTimeout(this.timer);
+            const a = odoParse(this.shown), b = odoParse(now);
+            // Only the same kind of number can be counted: same decimals, same text around it
+            if (!a || !b || a.dec !== b.dec || a.head !== b.head || a.tail !== b.tail || odoStill()) {
+                if (a && b) this.up = b.units / 10 ** b.dec >= a.units / 10 ** a.dec;
+                this.ms = ODO_ROLL_MS;
+                this.shown = now;
+                return;
+            }
+            this.up = b.units >= a.units;
+            const dir = this.up ? 1 : -1;
+            let at = a.units;
+            const fmt = (u) => b.head + (u / 10 ** b.dec).toFixed(b.dec) + b.tail;
+            if (Math.abs(b.units - at) > ODO_MAX_STEPS) {         // a big jump: roll there directly, count the end
+                at = b.units - dir * ODO_MAX_STEPS;
+                this.ms = ODO_ROLL_MS;
+                this.shown = fmt(at);
+            }
+            const steps = Math.abs(b.units - at);
+            const per = Math.max(ODO_STEP_MIN_MS, Math.min(ODO_STEP_MAX_MS, Math.round(ODO_TOTAL_MS / steps)));
+            const tick = () => {
+                at += dir;
+                this.ms = Math.round(per * 0.9);
+                this.shown = at === b.units ? now : fmt(at);
+                if (at !== b.units) this.timer = setTimeout(tick, per);
+            };
+            this.timer = setTimeout(tick, this.shown === fmt(a.units) ? 0 : ODO_ROLL_MS);
         },
     },
-    template: `<span class="cm-odo"><span class="cm-sr-only">{{ text }}</span><span aria-hidden="true"><template v-for="c in cells" :key="c.key"><odo-digit v-if="c.digit" :d="+c.ch" :up="up"></odo-digit><span v-else>{{ c.ch }}</span></template></span></span>`,
+    beforeUnmount() { clearTimeout(this.timer); },
+    template: `<span class="cm-odo"><span class="cm-sr-only">{{ text }}</span><span aria-hidden="true"><template v-for="c in cells" :key="c.key"><odo-digit v-if="c.digit" :d="+c.ch" :up="up" :ms="ms"></odo-digit><span v-else>{{ c.ch }}</span></template></span></span>`,
 };
 
 const ProjectForm = {
