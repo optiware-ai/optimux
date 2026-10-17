@@ -125,3 +125,52 @@ def test_the_push_commits_as_the_dashboard_identity(root, tmp_path, monkeypatch)
     subprocess.run(out["push"], shell=True, check=True, capture_output=True)
     who = subprocess.run(["git", "-C", str(bare), "log", "-1", "--format=%an <%ae>"], capture_output=True, text=True).stdout
     assert who.strip() == "Masoud O'Brien <m@example.com>"
+
+
+def test_copies_push_to_their_own_branch(root, tmp_path, monkeypatch):
+    """Two copies of one repository (Clone from GitHub, again) both push, each to
+    a branch named after its folder; the original's main is never touched."""
+    bare = tmp_path / "remote" / "makerhub2.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
+    orig = repo(root, "makerhub2", str(bare))
+    subprocess.run(["git", "-C", str(orig), "push", "-q", "origin", "main"], check=True)
+    head = subprocess.run(["git", "-C", str(bare), "rev-parse", "main"], capture_output=True, text=True).stdout
+    for name in ("t3-off", "t3-plan"):
+        subprocess.run(["git", "clone", "-q", str(bare), str(root / name)], check=True)
+        (root / name / f"{name}.txt").write_text(name + "\n")
+    out = ws.git_commands("t3-off")
+    assert out["copy_of"] == "makerhub2" and out["push_branch"] == "t3-off"
+    assert out["push"].endswith("git push -u origin HEAD:t3-off")
+    for name in ("t3-off", "t3-plan"):
+        subprocess.run(ws.git_commands(name)["push"], shell=True, check=True, capture_output=True)
+    def show(ref, path):
+        return subprocess.run(["git", "-C", str(bare), "show", f"{ref}:{path}"], capture_output=True, text=True)
+    assert show("t3-off", "t3-off.txt").stdout == "t3-off\n"
+    assert show("t3-plan", "t3-plan.txt").stdout == "t3-plan\n"
+    assert subprocess.run(["git", "-C", str(bare), "rev-parse", "main"], capture_output=True, text=True).stdout == head
+    # The original still pushes its own branch, as before
+    plain = ws.git_commands("makerhub2")
+    assert plain["copy_of"] is None and plain["push"].endswith("git push -u origin HEAD")
+    # Pull on another computer: the copy's branch, in a folder named like the copy
+    elsewhere = tmp_path / "laptop"
+    elsewhere.mkdir()
+    subprocess.run(out["pull"], shell=True, check=True, cwd=elsewhere, capture_output=True)
+    assert (elsewhere / "t3-off" / "t3-off.txt").read_text() == "t3-off\n"
+    subprocess.run(out["pull"], shell=True, check=True, cwd=elsewhere, capture_output=True)   # then: pull
+
+
+def test_github_copy_one_liners(root, monkeypatch):
+    repo(root, "T3-Off", "https://github.com/optiware-ai/makerhub2.git")
+    repo(root, "Makerhub2", "https://github.com/optiware-ai/makerhub2.git")      # same name, other case
+    monkeypatch.setenv(GITHUB_TOKEN_ENV, "SECRET")
+    out = ws.git_commands("T3-Off")
+    assert out["push"].endswith("push -u origin HEAD:T3-Off'")
+    assert out["pull"] == ("if [ -d T3-Off/.git ]; then git -C T3-Off pull; "
+                           "else git clone -b T3-Off https://github.com/optiware-ai/makerhub2.git T3-Off; fi")
+    assert ws.git_commands("Makerhub2")["copy_of"] is None
+
+
+def test_a_folder_that_cant_be_a_branch_pushes_as_before(root):
+    repo(root, "copy..1", "git@github.com:me/tool.git")         # '..' is not allowed in a branch name
+    out = ws.git_commands("copy..1")
+    assert out["copy_of"] is None and out["push"].endswith("git push -u origin HEAD")

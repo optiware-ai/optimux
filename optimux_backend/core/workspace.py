@@ -153,7 +153,8 @@ def git_commands(name: str) -> dict:
         raise WorkspaceError(f"There's no project called {name} in the Workspace folder.")
     out = {"project": name, "path": path, "git": os.path.isdir(os.path.join(path, ".git")),
            "remote": None, "branch": None, "changes": 0, "push": None, "pull": None, "pull_ssh": None,
-           "server": server_mode(), "commit_message": MANUAL_COMMIT_MESSAGE, "problem": None, "warning": None}
+           "server": server_mode(), "commit_message": MANUAL_COMMIT_MESSAGE, "problem": None, "warning": None,
+           "copy_of": None, "push_branch": None}
     if not out["git"]:
         out["problem"] = "This project isn't a git repository."
         return out
@@ -181,13 +182,21 @@ def git_commands(name: str) -> dict:
     if not ident and out["changes"] and not (known["ok"] and known["output"].strip()):
         out["warning"] = ("Git has no name and email to commit with. Set them in Dashboard → GitHub "
                           "(Who commits), then open this again.")
+    folder = m.group(2) if m else re.sub(r"\.git$", "", remote.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]) or name
+    # A copy (its folder isn't named like its repository, e.g. t3-off from
+    # makerhub2) shares the repository with the original and other copies:
+    # it pushes to its own branch, named after the folder, never to theirs.
+    target = "HEAD"
+    if folder.lower() != name.lower() and _run(["git", "check-ref-format", "--branch", name], path, timeout=5)["ok"]:
+        target = f"HEAD:{name}"
+        out["copy_of"], out["push_branch"] = folder, name
     commit = f"git add -A && (git diff --cached --quiet || git {who}commit -m {q(MANUAL_COMMIT_MESSAGE)})"
     if use_token:
         push = ("GH_TOKEN=\"$" + GITHUB_TOKEN_ENV + "\" git -c credential.helper= "
-                "-c 'credential.helper=!gh auth git-credential' push -u origin HEAD")
+                f"-c 'credential.helper=!gh auth git-credential' push -u origin {q(target)}")
         inner = f"set -a && . {q(os.path.abspath(paths.SECRETS_FILE))} && set +a && cd {q(path)} && {commit} && {push}"
     else:
-        inner = f"cd {q(path)} && {commit} && git push -u origin HEAD"
+        inner = f"cd {q(path)} && {commit} && git push -u origin {q(target)}"
     if out["server"]:
         out["push"] = f"sudo -u {q(getpass.getuser())} bash -c {q(inner)}"
     elif use_token:
@@ -195,8 +204,10 @@ def git_commands(name: str) -> dict:
     else:
         out["push"] = inner
 
-    folder = m.group(2) if m else re.sub(r"\.git$", "", remote.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]) or name
     def pull(url: str) -> str:
+        if out["copy_of"]:       # the copy's own branch, in a folder named like the copy
+            f = q(name)
+            return f"if [ -d {f}/.git ]; then git -C {f} pull; else git clone -b {f} {q(url)} {f}; fi"
         f = q(folder)
         return f"if [ -d {f}/.git ]; then git -C {f} pull; else git clone {q(url)} {f}; fi"
     if m:

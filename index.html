@@ -253,13 +253,16 @@
                                 <p v-if="gitBox.data.problem" class="text-yellow-300">{{ gitBox.data.problem }}</p>
                                 <template v-else>
                                     <p v-if="gitBox.kind === 'push' && gitBox.data.warning" class="text-yellow-300 mb-2">{{ gitBox.data.warning }}</p>
-                                    <p v-if="gitBox.kind === 'push'" class="text-gray-400 mb-2">
+                                    <template v-if="gitBox.kind === 'push'">
+                                    <p class="text-gray-400 mb-2">
                                         Run it in a terminal on {{ gitBox.data.server ? 'this server (it acts as the Optimux user through sudo)' : 'this computer' }}.
                                         <template v-if="gitBox.data.changes">It first commits {{ gitBox.data.changes }} changed file{{ gitBox.data.changes === 1 ? '' : 's' }} as <span class="font-mono text-gray-300">"{{ gitBox.data.commit_message }}"</span> (edit the message if you like), then</template><template v-else>Nothing to commit, so it only</template>
-                                        pushes <span class="font-mono text-gray-300">{{ gitBox.data.branch }}</span> to <span class="font-mono text-gray-300 break-all">{{ gitBox.data.remote }}</span>.
+                                        pushes <span class="font-mono text-gray-300">{{ gitBox.data.branch }}</span> to <span class="font-mono text-gray-300 break-all">{{ gitBox.data.remote }}</span><template v-if="gitBox.data.push_branch">, as the branch <span class="font-mono text-gray-300">{{ gitBox.data.push_branch }}</span></template>.
                                     </p>
+                                    <p v-if="gitBox.data.copy_of" class="text-gray-400 mb-2">This is a copy of <span class="font-mono text-gray-300">{{ gitBox.data.copy_of }}</span>, so it pushes to its own branch and never changes the branches of <span class="font-mono text-gray-300">{{ gitBox.data.copy_of }}</span> or its other copies. To push to <span class="font-mono text-gray-300">{{ gitBox.data.branch }}</span> instead, change <span class="font-mono text-gray-300">HEAD:{{ gitBox.data.push_branch }}</span> to <span class="font-mono text-gray-300">HEAD</span> at the end.</p>
+                                    </template>
                                     <template v-else>
-                                        <p class="text-gray-400 mb-2">Run it on the other computer, in the folder where you keep your projects: the first time it clones <span class="font-mono text-gray-300">{{ gitFolder }}</span>, after that it pulls. A private repository needs <span class="font-mono">gh auth login</span> there (HTTPS) or an SSH key.</p>
+                                        <p class="text-gray-400 mb-2">Run it on the other computer, in the folder where you keep your projects: the first time it clones <span class="font-mono text-gray-300">{{ gitFolder }}</span><template v-if="gitBox.data.copy_of"> (the branch <span class="font-mono text-gray-300">{{ gitBox.data.push_branch }}</span> of <span class="font-mono text-gray-300">{{ gitBox.data.copy_of }}</span>, so push it from here first)</template>, after that it pulls. A private repository needs <span class="font-mono">gh auth login</span> there (HTTPS) or an SSH key.</p>
                                         <div v-if="gitBox.data.pull_ssh" class="flex flex-wrap items-center gap-2 mb-2">
                                             <button @click="gitBox.ssh = false" :class="['px-2 py-0.5 rounded border', !gitBox.ssh ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-400']">HTTPS</button>
                                             <button @click="gitBox.ssh = true" :class="['px-2 py-0.5 rounded border', gitBox.ssh ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-400']">SSH</button>
