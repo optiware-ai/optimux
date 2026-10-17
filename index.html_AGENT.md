@@ -140,3 +140,4 @@
 
 - **Notes inside a plan run (v0.4-4c):** once a reply has a step heading, system notes without a tier (escalation, fallback, a rejected command, a stuck loop) are added as note blocks under the current step instead of the list at the top, and a stuck loop inside a step no longer marks the reply interrupted. "Plan paused/cancelled" stays at the top.
 - **Check verdict (v0.4-5a):** the plan card's status badge reads *done · check failed* (red) or *done · not verified* (amber) from `plan.check_verdict`, with `check_note` as its title; under **Final check** a line shows ✓ Passed / ✗ Failed / ? Not verified and the note.
+- **Clone again (v0.4-5d):** a repository already in the Workspace (`r.local`) can be picked again: `pickRepo` proposes the first free name (`name-2`, `name-3`…) and the clone box warns that it's a separate copy from GitHub without the unpushed changes of the first. The server never refused it; only the list did.

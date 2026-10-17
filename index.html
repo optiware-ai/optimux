@@ -1665,8 +1665,8 @@
                         <div class="border border-gray-800 rounded-lg max-h-72 overflow-y-auto divide-y divide-gray-800/70">
                             <div v-if="ghImport.loading" class="px-3 py-6 text-center text-gray-500 flex items-center justify-center gap-2"><span class="w-3.5 h-3.5 rounded-full border-2 border-gray-600 border-t-blue-400 animate-spin"></span>Loading your repositories…</div>
                             <div v-else-if="ghImport.repos && !filteredRepos.length" class="px-3 py-6 text-center text-gray-500">{{ ghImport.query ? 'No repository matches.' : 'No repositories found for this sign-in.' }}</div>
-                            <button v-for="r in shownRepos" :key="r.full_name" type="button" @click="pickRepo(r)" :disabled="!!r.local"
-                                    :class="['w-full text-left px-3 py-2 flex items-start gap-3 transition', ghImport.picked && ghImport.picked.full_name === r.full_name ? 'bg-blue-950/50' : (r.local ? 'opacity-50 cursor-default' : 'hover:bg-gray-800/50')]">
+                            <button v-for="r in shownRepos" :key="r.full_name" type="button" @click="pickRepo(r)"
+                                    :class="['w-full text-left px-3 py-2 flex items-start gap-3 transition', ghImport.picked && ghImport.picked.full_name === r.full_name ? 'bg-blue-950/50' : 'hover:bg-gray-800/50']">
                                 <span class="min-w-0 flex-1">
                                     <span class="font-mono"><span class="text-gray-500">{{ r.full_name.split('/')[0] }}/</span><span class="text-gray-100">{{ r.name }}</span></span>
                                     <span :class="['ml-2 text-[10px] uppercase tracking-wider px-1 py-px rounded border', r.private ? 'text-yellow-300/90 border-yellow-900/70' : 'text-gray-400 border-gray-700']">{{ r.private ? 'private' : 'public' }}</span>
@@ -1681,6 +1681,7 @@
 
                         <div v-if="ghImport.picked" class="rounded-lg border border-blue-800 bg-blue-950/20 p-3 space-y-3">
                             <div class="text-gray-300">Clone <span class="font-mono text-gray-100">{{ ghImport.picked.full_name }}</span> into</div>
+                            <div v-if="ghImport.picked.local" class="text-xs text-yellow-300/90">Already in your Workspace as <span class="font-mono">{{ ghImport.picked.local }}</span>: this makes another, separate copy from GitHub. Changes not pushed from {{ ghImport.picked.local }} aren't in it.</div>
                             <div class="flex items-center gap-2 font-mono">
                                 <span class="text-gray-500 truncate max-w-[45%]" :title="workspacePath">{{ workspacePath }}/</span>
                                 <input v-model="ghImport.name" :disabled="ghImport.job && ghImport.job.state === 'running'" maxlength="100" spellcheck="false" autocomplete="off"

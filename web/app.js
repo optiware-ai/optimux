@@ -1415,8 +1415,13 @@ createApp({
         });
         const shownRepos = Vue.computed(() => filteredRepos.value.slice(0, 300));
         const pickRepo = (repo) => {
-            if (repo.local || (ghImport.value.job && ghImport.value.job.state === 'running')) return;
-            Object.assign(ghImport.value, { picked: repo, name: repo.name.replace(/^[.-]+/, '').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 100), error: '' });
+            if (ghImport.value.job && ghImport.value.job.state === 'running') return;
+            // Already in the Workspace? Cloning again makes another copy, under a free name (name-2, name-3...)
+            const base = repo.name.replace(/^[.-]+/, '').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 96);
+            const taken = new Set(projectsList.value || []);
+            let name = base;
+            for (let i = 2; taken.has(name) && i < 1000; i++) name = base + '-' + i;
+            Object.assign(ghImport.value, { picked: repo, name, error: '' });
         };
         const importNameProblem = Vue.computed(() => {
             const n = ghImport.value.name.trim();

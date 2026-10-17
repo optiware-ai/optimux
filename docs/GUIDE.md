@@ -267,7 +267,7 @@ Nothing is created until you press **Create project**, and the server checks eve
 
 ### Cloning a project from GitHub
 
-**+ New project → From GitHub** (or **Clone from GitHub** on the Projects page) lists the repositories your GitHub sign-in can see (Dashboard → GitHub): yours, those you collaborate on, and your organizations', newest first, with search. Repositories already in your Workspace are marked *in your Workspace as …* and can't be picked again.
+**+ New project → From GitHub** (or **Clone from GitHub** on the Projects page) lists the repositories your GitHub sign-in can see (Dashboard → GitHub): yours, those you collaborate on, and your organizations', newest first, with search. Repositories already in your Workspace are marked *in your Workspace as …*; you can still clone them again, as a separate copy (for example to try two approaches side by side): the folder name then starts as *name-2*, *name-3*…, and the copy comes from GitHub, so changes you haven't pushed from the first copy aren't in it.
 
 Pick one, check the folder name, and press **Clone**. The clone runs on the Optimux machine in the background, with its progress shown and a **Cancel** button; it keeps going if you close the window, and a notification says when it's done. *Open it when it's ready* switches to it.
 
