@@ -44,6 +44,6 @@
 - v0.3 C: `snapshot_recipient` (default empty): a public key remembered for encrypted snapshot downloads, validated with `exports.parse_recipient` (a secret key is refused).
 - v0.3 C: a new `projects_root` (only when it changes) is refused when it is the data folder or inside its private parts (`snapshots.is_private_home_path`): those hold keys and chats and must never look like projects.
 - v0.3: `online_catalog` (default false): whether the Models screen's Refresh may contact providers (with the user's key) and GitHub (LiteLLM's price list). Even when on, nothing happens without a click.
-- v0.4: `plan_mode` (`PLAN_MODES`: off | ask | auto; default off until the plan card ships): whether big tasks are planned. `save_settings` refuses other values.
+- v0.4: `plan_mode` (`PLAN_MODES`: off | ask | auto; default off: it was ask from v0.4 commit 4 to 5g, and v0.4-5h made it off again after the plan-mode measurement; settings.json files already saved keep their value): whether big tasks are planned. `save_settings` refuses other values.
 
 - **Changing the Workspace folder:** a new `projects_root` must also be writable (`os.access` W_OK|X_OK; a read-only mount, as under systemd `ProtectSystem=strict`, fails it), else `workspace_not_writable` explains it, with the `/var/lib/<user>/projects` command on a server. An `active_project` that isn't in the new folder is cleared instead of refused; `main.save_app_settings` then returns `active_project: ""` and a `note`, and the page shows it and reopens the Workspace chat.

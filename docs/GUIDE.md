@@ -429,12 +429,12 @@ A **turn** is one request and its reply. A **step** is one model call inside it:
 
 ### Plan big tasks
 
-*New in v0.4. Its savings are still being measured on real tasks; the numbers will be added here.*
+*New in v0.4, off by default.* We measured it on six everyday tasks (a landing page, a small API, a theme switch, a small fix, a command-line tool with tests, CI setup), each done once with plans and once without. Plans never gave a better result, and cost about 18% more in total. Splitting closely connected work between models lost details (tests written by one model didn't match the code written by another), and a step whose tool couldn't run stopped the whole plan. So the Conductor doesn't offer plans unless you turn it on. Try `/plan` for a large task with clearly separate, routine parts.
 
 A big task usually mixes hard thinking with routine work: reading files, writing code to a clear spec, running tests. Without a plan, the Complex model pays for all of it. With **Plan big tasks** (in **Dashboard → Routing**), the Complex model first writes a short plan of 2 to 8 steps, and each step runs on the tier it needs: routine steps on Simple, only the hard ones on Complex.
 
-- **Off**: never plan. `/plan <task>` still plans one task.
-- **Ask first** (the default): show each plan and wait until you press **Run** (or **Cancel**).
+- **Off** (the default): never plan. `/plan <task>` still plans one task.
+- **Ask first**: show each plan and wait until you press **Run** (or **Cancel**).
 - **Automatic**: show each plan and start it at once; you can still stop it.
 
 The Conductor decides which tasks are worth a plan: a request to do work now, in separate phases, with routine parts. Nothing is planned for creating, switching or archiving a project (Optimux has its own tools for that), or for a request too vague to act on without asking you first; the planner itself can also decline ("Not planned: …"). Nothing is planned either when you picked a model by hand, when a skill runs, when no project is active, or when Simple and Complex are the same model or one of them is unavailable. `/plan <task>` plans anyway (it says why when it can't), and `/noplan <task>` never plans.

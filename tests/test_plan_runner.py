@@ -436,9 +436,9 @@ def test_each_step_is_marked_so_the_page_can_fold_it(mocker, client):
                      (plans.CHECK_STEP, "Final check")]
 
 
-def test_ask_first_is_the_default():
+def test_off_is_the_default():
     from optimux_backend.core.config_manager import SettingsPayload
-    assert SettingsPayload().plan_mode == "ask"
+    assert SettingsPayload().plan_mode == "off"
 
 
 def test_prompts_keep_handover_notes_out_of_the_project_and_run_the_check():
