@@ -16,7 +16,7 @@ It isn't limited to code: you can ask it anything you would ask a chat AI, and i
 [![LiteLLM](https://img.shields.io/badge/LiteLLM-100%2B_providers-6E56CF)](https://github.com/BerriAI/litellm)
 [![Tests](https://github.com/optiware-ai/optimux/actions/workflows/tests.yml/badge.svg)](https://github.com/optiware-ai/optimux/actions/workflows/tests.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL_v3-blue.svg)](LICENSE)
-[![Status: beta](https://img.shields.io/badge/status-beta_v0.1-orange.svg)](#project-status)
+[![Status: beta](https://img.shields.io/badge/status-beta_v0.4-orange.svg)](#project-status)
 
 [Website](https://optimux.si) · [Features](#features) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Documentation](docs/GUIDE.md) · [Security](#security) · [Contributing](CONTRIBUTING.md)
 
@@ -50,7 +50,7 @@ It sends simple requests to cheap models, hands hard work to stronger models, tr
 ---
 
 > ### Project status
-> **Optimux is in beta (v0.1).** It is used every day on Linux and has a large test suite, but some paths have had little real-world use yet: server installs, macOS, and creating GitHub repositories from the app. Expect rough edges, and please [open an issue](https://github.com/optiware-ai/optimux/issues) when something breaks.
+> **Optimux is in beta (v0.4).** It is used every day on Linux and has a large test suite, but some paths have had little real-world use yet: server installs, macOS, and creating GitHub repositories from the app. Expect rough edges, and please [open an issue](https://github.com/optiware-ai/optimux/issues) when something breaks. What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
 ## Table of contents
 
