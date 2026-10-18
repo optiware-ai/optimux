@@ -48,6 +48,7 @@ from optimux_backend.core import sessions as chat_store
 from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
 from optimux_backend.core.memory_manager import init_memory, log_command_to_session, get_memory_context, update_memory
 from optimux_backend.core.agents import get_executor_prompt, get_step_prompt
+from optimux_backend.core import files as files_lib
 from optimux_backend.core.security import (
     GITHUB_TOKEN_ENV, ScopeError, ValidationError, bearer_from_header, check_token,
     get_or_create_token, origin_allowed, paths_outside_scope, resolve_project_dir, rotate_token, validate_project_name,
@@ -1916,7 +1917,7 @@ async def run_plan_step(websocket: WebSocket, session: dict, routing: dict, plan
     await send_plan(websocket, pid)
     await send(websocket, "system", f"Step {sid} of {len(plan['steps'])}: {step['title']} on {model} ({role})",
                tier=role, model=model, plan_step=sid, step_title=step["title"])
-    session.update(plan_ctx={"plan_id": pid, "step": sid}, step_tools=TOOLS + [FINISH_STEP_TOOL], step_finish=None)
+    session.update(plan_ctx={"plan_id": pid, "step": sid}, step_tools=TOOLS + files_lib.FILE_TOOLS + [FINISH_STEP_TOOL], step_finish=None)
     try:
         outcome, model, role = await run_in_step(websocket, session, routing, pid, sid, model, role, messages)
     finally:
@@ -1957,7 +1958,7 @@ async def run_final_check(websocket: WebSocket, session: dict, routing: dict, pi
                               current_workdir())
     await send(websocket, "system", f"Final check on {model} ({role}): {plan['check']}", tier=role, model=model,
                plan_step=plans_lib.CHECK_STEP, step_title="Final check")
-    session.update(plan_ctx={"plan_id": pid, "step": plans_lib.CHECK_STEP}, step_tools=TOOLS + [FINISH_CHECK_TOOL],
+    session.update(plan_ctx={"plan_id": pid, "step": plans_lib.CHECK_STEP}, step_tools=TOOLS + files_lib.FILE_TOOLS + [FINISH_CHECK_TOOL],
                    step_finish=None)
     try:
         outcome, model, role = await run_in_step(websocket, session, routing, pid, plans_lib.CHECK_STEP,
@@ -2265,7 +2266,9 @@ def listed_skills(found: dict | None = None) -> dict:
 
 def offered_tools(skills: dict | None = None) -> list:
     skills = listed_skills() if skills is None else skills
-    return TOOLS + workspace.tools_for(active_project()) + ([skills_lib.LOAD_SKILL_TOOL] if skills else [])
+    project = active_project()
+    return (TOOLS + (files_lib.FILE_TOOLS if project else []) + workspace.tools_for(project)
+            + ([skills_lib.LOAD_SKILL_TOOL] if skills else []))
 
 
 async def stream_once(websocket: WebSocket, model: str, messages: list, r: StreamResult,
@@ -2574,6 +2577,53 @@ async def ask_approval(websocket: WebSocket, session: dict, tc_id: str, command:
     return (await wait_for_answer(websocket, session, tc_id, command, **extra))["approved"] is True
 
 
+async def run_file_tool(websocket: WebSocket, session: dict, name: str, args_str: str, tc_id: str) -> dict:
+    """write_file / edit_file (v0.4-5i): check and compute the change, show it for
+    approval with its diff, then write it atomically. A refused check is shown in
+    the chat too (exit 1), so a silent miss like a wrong old_text is visible."""
+    try:
+        args = json.loads(args_str or "{}")
+        if not isinstance(args, dict):
+            raise ValueError
+    except Exception:
+        return {"ok": False, "error": "The tool arguments weren't valid JSON."}
+    project = active_project()
+    workdir = current_workdir()
+    path = str(args.get("path", ""))
+    verb = "write" if name == "write_file" else "edit"
+    if not project or not workdir:
+        return {"ok": False, "error": "No project is active, so no file can be written. Ask the user to open one."}
+    try:
+        if name == "write_file":
+            change = await asyncio.to_thread(files_lib.prepare_write, workdir, path, args.get("content"))
+        else:
+            change = await asyncio.to_thread(files_lib.prepare_edit, workdir, path, args.get("old_text"),
+                                             args.get("new_text"))
+    except (files_lib.FileToolError, OSError) as e:
+        label = f"✎ {verb} {path or '(no path)'}"
+        info = {"path": path, "op": verb}
+        await send(websocket, "command_start", command=label, file=info)
+        await send(websocket, "command_output", command=label, output=f"✗ {e}", exit_code=1, file=info)
+        return {"ok": False, "error": str(e)}
+    label = files_lib.describe(change)
+    info = files_lib.public(change)
+    if not await ask_approval(websocket, session, tc_id, label, file_change={**info, "diff": change["diff"]},
+                              workdir=workdir):
+        await send(websocket, "system", f"Change to {change['path']} rejected.")
+        return {"ok": False, "declined": True, "note": "The user declined this change. Don't retry it; briefly "
+                "say what you intended and ask how they'd like to proceed."}
+    await send(websocket, "command_start", command=label, file=info)
+    try:
+        result = await asyncio.to_thread(files_lib.apply, change)
+    except (files_lib.FileToolError, OSError) as e:
+        await send(websocket, "command_output", command=label, output=f"✗ {e}", exit_code=1, file=info)
+        return {"ok": False, "error": str(e)}
+    log_command_to_session(label, 0)
+    await send(websocket, "command_output", command=label, output=change["diff"], exit_code=0, file=info)
+    result["note"] = f"{result['path']}: {result['lines_before']} -> {result['lines_after']} lines."
+    return result
+
+
 def create_problem(form: dict) -> str:
     """Why this create form can't be carried out, or ''."""
     try:
@@ -2866,6 +2916,9 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                 messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": json.dumps(result)})
             elif tc_name in workspace_tool_names():
                 result = await run_workspace_tool(websocket, session, tc_name, tc_args_str, tc_id)
+                messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": json.dumps(result)})
+            elif tc_name in files_lib.FILE_TOOL_NAMES:
+                result = await run_file_tool(websocket, session, tc_name, tc_args_str, tc_id)
                 messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": json.dumps(result)})
             elif tc_name == "execute_bash":
                 try:
@@ -3297,7 +3350,7 @@ async def handle_escalate(websocket: WebSocket, session: dict) -> None:
     await run_with_fallback(websocket, session, routing, model, "complex", user_message, prior=prior)
 
 
-KNOWN_TOOLS = {t["function"]["name"] for t in TOOLS + workspace.WORKSPACE_TOOLS + [skills_lib.LOAD_SKILL_TOOL,
+KNOWN_TOOLS = {t["function"]["name"] for t in TOOLS + files_lib.FILE_TOOLS + workspace.WORKSPACE_TOOLS + [skills_lib.LOAD_SKILL_TOOL,
                                                                                     FINISH_STEP_TOOL, FINISH_CHECK_TOOL]}
 
 

@@ -181,6 +181,7 @@ Before a command runs you see **Approval Required** with the full command:
 - **Always Approve** runs it and turns on auto-approve for all future commands (you can turn it off in **Dashboard → Execution**).
 - A red **Outside the project** box appears when the command touches paths outside the active project. These are never auto-approved, and *Always Approve* is hidden.
 - Creating a project shows a **form** instead (see *Creating a project*); creating and archiving always wait for you, even with auto-approve on.
+- A **file change** (marked **✎ project file**) shows the file and its diff: removed lines in red, added lines in green. Nothing is written before you press **Approve**. See *Writing files*.
 
 ### When a reply stops early
 
@@ -520,6 +521,15 @@ Ollama models (`ollama/...`) cost nothing per token. They work for simple chat, 
 ### What the model can do
 
 The model has a terminal tool: it proposes a shell command, you approve it, Optimux runs it in the active project and gives the output back to the model. Commands time out after **30 seconds**, so very long builds or servers should be started by you.
+
+### Writing files
+
+To create or change a file, the model uses two file tools instead of shell commands, so a file is never left half-written or emptied, and no quotes get lost on the way:
+
+- **write_file** creates a file or replaces a whole file.
+- **edit_file** replaces one exact piece of text. It must appear exactly once in the file; if the model copied it wrong (0 matches) or too short (several matches), nothing changes, and you see the refusal in red in the chat, so a missed edit can't pass as done.
+
+You approve each change with its diff, like a command (auto-approve applies the same way). Optimux writes the file itself: only inside the active project (never in `.git`, never through a link that leads outside), only UTF-8 text up to 1 MB, and in one step (a temporary file renamed over the old one). A file keeps its permissions. If the file changed after you were asked, nothing is written and the model is told to read it again. In the chat a change shows as one line, like `✎ edit site/index.html (+1 −1)`, with its diff below. The tools are offered only when a project is active.
 
 ### Scope
 

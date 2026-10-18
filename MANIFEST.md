@@ -14,7 +14,7 @@ Optimux is a self-hosted AI coding workspace that routes each task to the cheape
 1. **The Conductor**, one small and cheap call per message, decides whether the request is simple or complex.
 2. **The Simple model** handles most work. **The Complex model** takes over for hard tasks, or when the Simple one gets stuck (escalation).
 3. Models are reached through **LiteLLM** (Gemini, Claude, OpenAI, local models and more), with fallback and cooldowns when a provider fails.
-4. The executor model can call **tools**: a shell command (after approval, in a bubblewrap **sandbox** that can change only the active project), memory updates, skills, and Workspace actions (create, switch, archive projects).
+4. The executor model can call **tools**: a shell command (after approval, in a bubblewrap **sandbox** that can change only the active project), file writes and exact edits (after approval, with a diff, only inside the active project), memory updates, skills, and Workspace actions (create, switch, archive projects).
 5. Every call is **metered** (tokens, cache, thinking, cost, time) and checked against the project's **budget**.
 
 ## The product

@@ -1857,11 +1857,13 @@
                             <div v-else-if="blk.kind === 'text'" class="prose prose-invert prose-blue max-w-none leading-relaxed" v-html="renderMarkdown(blk.text)"></div>
                             <div v-else-if="blk.kind === 'cmd'" class="bg-black/80 rounded-lg border border-gray-700/80 overflow-hidden font-mono text-xs">
                                 <div class="bg-gray-800/80 px-3 py-2 flex items-start justify-between gap-3 text-gray-300 border-b border-gray-700/60">
-                                    <div class="flex items-start gap-2 min-w-0 flex-1"><span class="text-green-400 font-bold flex-shrink-0">$</span><span class="whitespace-pre-wrap break-all max-h-40 overflow-y-auto min-w-0">{{ blk.command }}</span></div>
+                                    <div class="flex items-start gap-2 min-w-0 flex-1"><span class="text-green-400 font-bold flex-shrink-0">{{ blk.file ? '✎' : '$' }}</span><span class="whitespace-pre-wrap break-all max-h-40 overflow-y-auto min-w-0">{{ blk.file ? blk.command.replace(/^✎ /, '') : blk.command }}</span></div>
                                     <span v-if="blk.exit_code !== undefined" :class="['flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border', blk.exit_code === 0 ? 'text-green-400 border-green-900/60 bg-green-950/40' : 'text-red-400 border-red-900/60 bg-red-950/40']">exit {{ blk.exit_code }}</span>
                                     <span v-else class="flex-shrink-0 whitespace-nowrap text-yellow-400 animate-pulse">running...</span>
                                 </div>
-                                <pre class="p-3 text-gray-300 overflow-x-auto whitespace-pre-wrap max-h-60">{{ blk.output }}</pre>
+                                <pre v-if="blk.file && blk.exit_code === 0" class="p-3 overflow-x-auto whitespace-pre max-h-60"><span v-for="(l, i) in (blk.output || '').split('\n')" :key="i" :class="diffLineClass(l)">{{ l }}
+</span></pre>
+                                <pre v-else class="p-3 text-gray-300 overflow-x-auto whitespace-pre-wrap max-h-60">{{ blk.output }}</pre>
                                 <div class="px-3 py-1 border-t border-gray-800 flex justify-end">
                                     <button @click="openCmdViewer(blk)" class="text-[11px] text-gray-500 hover:text-gray-200 flex items-center gap-1" title="Open the command and its output in a side panel with syntax highlighting">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"></path></svg>
@@ -2040,10 +2042,13 @@
                     <svg class="w-6 h-6 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                     <div>
                         <h3 class="text-yellow-400 font-bold mb-1 flex items-center gap-2">Approval Required
-                            <span v-if="!pendingAction && pendingSandboxProblem" class="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border text-red-300 border-red-800 bg-red-950/40" :title="pendingSandboxProblem">⚠ sandbox broken: will be refused</span>
+                            <span v-if="!pendingAction && !pendingFile && pendingSandboxProblem" class="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border text-red-300 border-red-800 bg-red-950/40" :title="pendingSandboxProblem">⚠ sandbox broken: will be refused</span>
+                            <span v-else-if="pendingFile" class="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border text-green-300 border-green-800 bg-green-950/40" title="Optimux writes it itself, only inside the active project (never .git), and replaces the file in one step">✎ project file</span>
                             <span v-else-if="!pendingAction" :class="['text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border', pendingSandboxed ? 'text-green-300 border-green-800 bg-green-950/40' : 'text-gray-400 border-gray-700']" :title="pendingSandboxed ? 'Runs in the sandbox: it can only change the working folder' : 'The sandbox is off: the command runs with all your permissions'">{{ pendingSandboxed ? '🔒 sandboxed' : 'not sandboxed' }}</span></h3>
-                        <p class="text-sm text-gray-300 mb-2">{{ pendingAction ? 'The assistant wants to do this (always asked, even with auto-approve on):' : 'The assistant wants to run this command on your machine:' }}</p>
+                        <p class="text-sm text-gray-300 mb-2">{{ pendingAction ? 'The assistant wants to do this (always asked, even with auto-approve on):' : (pendingFile ? 'The assistant wants to change this file in the project:' : 'The assistant wants to run this command on your machine:') }}</p>
                         <div class="bg-black/60 p-3 rounded font-mono text-sm text-yellow-200 whitespace-pre-wrap break-all max-h-96 overflow-y-auto">{{ pendingCommand }}</div>
+                        <pre v-if="pendingFile && pendingFile.diff" class="mt-2 bg-black/60 p-3 rounded font-mono text-xs whitespace-pre overflow-auto max-h-96"><span v-for="(l, i) in pendingFile.diff.split('\n')" :key="i" :class="diffLineClass(l)">{{ l }}
+</span></pre>
                         <div v-if="pendingOutside.length" class="mt-3 p-3 rounded border border-red-700 bg-red-900/30 text-sm text-red-300">
                             <div class="font-bold">⚠ Outside the project</div>
                             <div class="text-xs mt-1">This command refers to paths outside <span class="font-mono">{{ pendingWorkdir }}</span>:
@@ -2053,7 +2058,7 @@
                 </div>
                 <div class="flex justify-end gap-3 mt-2">
                     <button @click="sendApprovalResponse(false)" class="px-5 py-2 bg-gray-800 hover:bg-gray-700 text-red-400 font-bold rounded transition border border-red-900/50 text-sm">Reject</button>
-                    <button v-if="!pendingOutside.length && !pendingAction && !sandboxInfo.server_mode" @click="sendApprovalResponse(true, true)" class="px-5 py-2 bg-green-900/30 hover:bg-green-800/50 text-green-400 font-bold rounded transition border border-green-800 text-sm">Always Approve</button>
+                    <button v-if="!pendingOutside.length && !pendingAction && !pendingFile && !sandboxInfo.server_mode" @click="sendApprovalResponse(true, true)" class="px-5 py-2 bg-green-900/30 hover:bg-green-800/50 text-green-400 font-bold rounded transition border border-green-800 text-sm">Always Approve</button>
                     <button @click="sendApprovalResponse(true)" class="px-5 py-2 bg-green-700 hover:bg-green-600 text-white font-bold rounded transition shadow-lg shadow-green-900/20 text-sm">Approve</button>
                 </div>
             </div>

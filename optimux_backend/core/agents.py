@@ -54,6 +54,10 @@ def get_executor_prompt(context_str: str, workdir: str = "", workspace: bool = F
         "Tools:\n"
         "- execute_bash: run a shell command in the active project. The user approves each command. "
         "Use it when the answer depends on the user's files or machine.\n"
+        "- write_file / edit_file (when a project is active): create or replace a file, or replace one exact "
+        "piece of an existing file. Always use them to write files, never shell here-docs, echo or scripts that "
+        "write files; use execute_bash to read files and to run things. For edit_file, copy old_text exactly "
+        "from the file as you last read it.\n"
         "- update_markdown_memory: SAVE a new or changed preference, rule, or project fact. "
         "Do not use it to read memory; memory is already included below.\n\n"
         "Guidelines:\n"
@@ -169,7 +173,7 @@ def get_step_prompt(plan: dict, step: dict | None, results: list[str], details: 
         "",
         "The user already approved this plan and approves each command, so do the work now: never ask for "
         "confirmation, show a file instead of writing it, or offer options in text. Write the step's files "
-        "yourself; a step whose files don't exist isn't accepted.",
+        "yourself, with write_file or edit_file; a step whose files don't exist isn't accepted.",
         "Do only this step; later steps do the rest. When it is done, call finish_step with status \"done\" and a "
         "result of at most 150 words for the next steps: what you did, the files you changed, facts they need. "
         "If later steps must follow something longer (a design, a list of test cases), put it in details, at "

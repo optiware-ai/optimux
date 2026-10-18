@@ -487,6 +487,7 @@ createApp({
 
         const pendingApproval = ref(false);
         const pendingCommand = ref('');
+        const pendingFile = ref(null);    // write_file / edit_file: path, op, counts and the diff (v0.4-5i)
         const pendingOutside = ref([]);
         const pendingWorkdir = ref('');
         const pendingSandboxed = ref(false);
@@ -907,6 +908,9 @@ createApp({
             fetchProjectsOverview();
         };
         // Push / Pull manually on a project card: one-liners for the user's own terminal
+        // A unified-diff line's color: added green, removed red, hunk headers blue
+        const diffLineClass = (l) => l.startsWith('+') ? 'text-green-300' : l.startsWith('-') ? 'text-red-300'
+            : l.startsWith('@@') ? 'text-blue-300' : 'text-gray-400';
         const gitBox = Vue.reactive({ project: '', kind: '', data: null, error: '', loading: false, ssh: false, copied: false });
         let savedSshHost = 'github.com';
         try { savedSshHost = localStorage.getItem('optimux.sshHost') || 'github.com'; } catch (_) {}
@@ -1566,7 +1570,7 @@ createApp({
             ws.value.send(JSON.stringify({ type: 'approval_response', approved: true, form }));
             pendingApproval.value = false;
             pendingForm.value = null;
-            pendingCommand.value = '';
+            pendingCommand.value = ''; pendingFile.value = null;
         };
         const signinNotice = ref(null);
         // "Firefox on Linux" from a user-agent string (good enough to recognise your own browsers)
@@ -2749,6 +2753,7 @@ createApp({
                     pendingSandboxProblem.value = data.sandbox_problem || '';
                     pendingWorkdir.value = data.workdir || '';
                     pendingAction.value = data.action || '';  // project actions always ask
+                    pendingFile.value = data.file_change || null;
                     pendingForm.value = data.form ? { form: data.form, error: data.error || '', github: data.github || {},
                                                       active_project: data.active_project || '', key: ++formSeq } : null;
                     if (appSettings.value.auto_approve && pendingOutside.value.length === 0 && !data.always_ask) {
@@ -2794,7 +2799,7 @@ createApp({
                 }
                 else if (data.type === "command_start") {
                     if (!lastMsg.commands) lastMsg.commands = [];
-                    const cmd = { kind: 'cmd', command: data.command, output: "" };
+                    const cmd = { kind: 'cmd', command: data.command, output: "", file: data.file || null };
                     lastMsg.commands.push(cmd);
                     if (lastMsg.blocks) lastMsg.blocks.push(cmd);  // same object: output updates both
                     scrollToBottom();
@@ -2820,7 +2825,7 @@ createApp({
                     isStopping.value = false;
                     pendingApproval.value = false;
                     pendingForm.value = null;
-                    pendingCommand.value = '';
+                    pendingCommand.value = ''; pendingFile.value = null;
                     if (!replay && moveChatTo !== null && ws.value) {
                         // The model switched projects: the reply is done, so continue in the
                         // new project's own chat (this one stays in History under the old project)
@@ -2880,7 +2885,7 @@ createApp({
             isStopping.value = true;
             pendingApproval.value = false;
             pendingForm.value = null;
-            pendingCommand.value = '';
+            pendingCommand.value = ''; pendingFile.value = null;
             try { ws.value.send(JSON.stringify({ type: 'stop' })); } catch (_) {}
             // The server answers with "done" almost at once; release the
             // input anyway if it doesn't (e.g. the connection dropped).
@@ -2909,7 +2914,7 @@ createApp({
             ws.value.send(JSON.stringify({ type: 'approval_response', approved: isApproved }));
             pendingApproval.value = false;
             pendingForm.value = null;
-            pendingCommand.value = '';
+            pendingCommand.value = ''; pendingFile.value = null;
             pendingOutside.value = [];
         };
 
@@ -2974,6 +2979,12 @@ createApp({
                 if (b.kind === 'thinking') { lines.push('<details><summary>Thinking</summary>', '', b.text.trim(), '', '</details>', ''); return; }
                 const output = (b.output || '').replace(/\n+$/, '');
                 const fence = fenceFor(b.command + '\n' + output);
+                if (b.file) {      // write_file / edit_file: the label, then the diff
+                    lines.push(`**${b.command}**`, '');
+                    if (output) lines.push(fence + (b.exit_code === 0 ? 'diff' : ''), output, fence);
+                    lines.push(b.exit_code !== undefined ? `_exit ${b.exit_code}_` : '_not finished_', '');
+                    return;
+                }
                 lines.push(fence + 'bash', `$ ${b.command}`);
                 if (output) lines.push(output);
                 lines.push(fence, b.exit_code !== undefined ? `_exit ${b.exit_code}_` : '_not finished_', '');
@@ -3116,7 +3127,7 @@ createApp({
             selectedModel, availableModels, setupModels, handleModelChange,
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
-            pendingApproval, pendingCommand, sendApprovalResponse,
+            pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse,
 					renderMarkdown,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,
