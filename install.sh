@@ -1365,6 +1365,18 @@ cli_start()   { svc start; }
 cli_stop()    { svc stop; ok "Stopped"; }
 cli_restart() { svc restart; ok "Restarted"; }
 
+# What an install runs: the release from VERSION and the exact commit, like
+# "v0.4.0 (5e0673b)" (installs are shallow clones, so git has no tags to show).
+# The same format as the System page (snapshots.optimux_version).
+app_version() {
+  local dir="$1" v="" c=""
+  [[ -r "$dir/VERSION" ]] && v="$(tr -d '[:space:]' < "$dir/VERSION")"
+  c="$(git -c safe.directory="$dir" -C "$dir" describe --always --dirty --abbrev=7 --exclude='*' 2>/dev/null || true)"
+  if [[ -n "$v" && -n "$c" ]]; then echo "v$v ($c)"
+  elif [[ -n "$v" ]]; then echo "v$v"
+  else echo "${c:-unknown}"; fi
+}
+
 cli_status() {
   if svc is-active >/dev/null 2>&1; then ok "Running ${CM}(${M[SERVICE]})${C0}"; else warn "Not running. Start it with: optimux start"; fi
   if [[ "${M[MODE]}" == server && -n "${M[DOMAIN]:-}" ]]; then
@@ -1378,7 +1390,7 @@ cli_status() {
     else info "Open:    it listens on 127.0.0.1:${M[PORT]} (no SSH server here, see below)"; fi
     if [[ -n "$CM_TUNNEL_NOTE" ]]; then note "$CM_TUNNEL_NOTE"; fi
   else info "Open:    ${M[URL]}"; fi
-  info "Program: ${M[APP_DIR]}  ($(git -C "${M[APP_DIR]}" describe --always 2>/dev/null || echo '?'))"
+  info "Program: ${M[APP_DIR]}  ($(app_version "${M[APP_DIR]}"))"
   info "Data:    ${M[DATA_DIR]}"
 }
 
@@ -1422,7 +1434,7 @@ cli_update() {
     fi
   fi
   run "Restarting" svc restart
-  ok "Updated to $(git -C "${M[APP_DIR]}" describe --always 2>/dev/null)"
+  ok "Updated to $(app_version "${M[APP_DIR]}")"
 }
 
 cli_password() {

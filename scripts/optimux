@@ -50,7 +50,7 @@ main_cli() {
     token) cli_token ;;
     github) cli_github ;;
     uninstall) cli_uninstall ;;
-    version) git -C "${M[APP_DIR]}" describe --always --tags 2>/dev/null || echo unknown ;;
+    version) app_version "${M[APP_DIR]}" ;;
     help|-h|--help) help ;;
     *) err "Unknown command: $1"; help; exit 2 ;;
   esac

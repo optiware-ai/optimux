@@ -500,19 +500,64 @@ def _git(*args, cwd):
                         "GIT_COMMITTER_EMAIL": "t@x"})
 
 
-def test_version_names_the_tag_and_commit(tmp_path, monkeypatch):
-    app = tmp_path / "app"
-    app.mkdir()
-    _git("init", "-q", cwd=app)
-    (app / "a.txt").write_text("a")
-    _git("add", "-A", cwd=app)
-    _git("commit", "-qm", "one", cwd=app)
-    _git("tag", "v0.1.0", cwd=app)                      # a lightweight tag, like the published one
-    (app / "b.txt").write_text("b")
-    _git("add", "-A", cwd=app)
-    _git("commit", "-qm", "two", cwd=app)
+def _repo(path, version=None):
+    path.mkdir()
+    _git("init", "-q", cwd=path)
+    (path / "a.txt").write_text("a")
+    if version is not None:
+        (path / "VERSION").write_text(version + "\n")
+    _git("add", "-A", cwd=path)
+    _git("commit", "-qm", "one", cwd=path)
+    _git("tag", "v0.1.0", cwd=path)          # tags never show: VERSION is the release
+    return path
+
+
+def test_version_is_the_release_and_the_commit(tmp_path, monkeypatch):
+    app = _repo(tmp_path / "app", "0.4.0")
     monkeypatch.setattr(snapshots, "APP_DIR", str(app))
-    assert re.fullmatch(r"v0\.1\.0-1-g[0-9a-f]+", snapshots.optimux_version())
+    assert re.fullmatch(r"v0\.4\.0 \([0-9a-f]{7}\)", snapshots.optimux_version())
+    (app / "a.txt").write_text("changed")
+    assert re.fullmatch(r"v0\.4\.0 \([0-9a-f]{7}-dirty\)", snapshots.optimux_version())
+
+
+def test_version_on_a_shallow_clone_like_the_installer_makes(tmp_path, monkeypatch):
+    src = _repo(tmp_path / "src", "0.4.0")
+    (src / "b.txt").write_text("b")
+    _git("add", "-A", cwd=src)
+    _git("commit", "-qm", "two", cwd=src)
+    _git("clone", "-q", "--depth", "1", f"file://{src}", str(tmp_path / "app"), cwd=tmp_path)
+    monkeypatch.setattr(snapshots, "APP_DIR", str(tmp_path / "app"))
+    assert re.fullmatch(r"v0\.4\.0 \([0-9a-f]{7}\)", snapshots.optimux_version())
+
+
+def test_version_parts_alone_and_a_bad_version_file(tmp_path, monkeypatch):
+    app = _repo(tmp_path / "app")
+    monkeypatch.setattr(snapshots, "APP_DIR", str(app))
+    assert re.fullmatch(r"[0-9a-f]{7}", snapshots.optimux_version())        # no VERSION: the commit
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    (plain / "VERSION").write_text("0.4.0\n")
+    monkeypatch.setattr(snapshots, "APP_DIR", str(plain))
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    assert snapshots.optimux_version() == "v0.4.0"                           # no git: the release
+    (plain / "VERSION").write_text("four\n")
+    assert snapshots.optimux_version() == "unknown"
+
+
+def test_the_shell_helper_says_the_same(tmp_path, monkeypatch):
+    import subprocess
+    app = _repo(tmp_path / "app", "0.4.0")
+    monkeypatch.setattr(snapshots, "APP_DIR", str(app))
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = subprocess.run(["bash", "-c", f'OPTIMUX_LIB_ONLY=1 source "{root}/install.sh"; app_version "{app}"'],
+                         capture_output=True, text=True, check=True).stdout.strip()
+    assert out == snapshots.optimux_version()
+
+
+def test_the_repository_has_a_valid_version_file():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "VERSION")) as f:
+        assert re.fullmatch(r"\d+\.\d+\.\d+\n", f.read())
 
 
 @pytest.mark.skipif(os.geteuid() != 0, reason="needs root to give the folder to another user")
@@ -530,7 +575,7 @@ def test_version_works_when_root_owns_the_program_folder(tmp_path, monkeypatch):
     plain = subprocess.run(["git", "describe", "--always"], cwd=app, capture_output=True, text=True)
     assert plain.returncode != 0 and "dubious ownership" in plain.stderr
     monkeypatch.setattr(snapshots, "APP_DIR", str(app))
-    assert re.fullmatch(r"[0-9a-f]{7,}", snapshots.optimux_version())
+    assert re.fullmatch(r"[0-9a-f]{7}", snapshots.optimux_version())
 
 
 def test_version_without_git_is_unknown(tmp_path, monkeypatch):

@@ -37,6 +37,24 @@ These are the rules the project itself follows (and that outside pull requests w
 5. **Update the docs**: user-visible changes belong in [`docs/GUIDE.md`](docs/GUIDE.md). `tests/test_guide.py` checks that defaults quoted there match the code.
 6. **Write the commit message** with [`commit-template.txt`](commit-template.txt): `[ TYPE ] Scope: Description`, the files changed, then motivation, changes, validation and deployment notes.
 
+## Versions and releases
+
+The version is in the [`VERSION`](VERSION) file, as `MAJOR.MINOR.PATCH`. Optimux shows it with the exact commit, like `v0.4.0 (5e0673b)`: on Dashboard → System, in snapshots, and with `optimux version`. Between releases the number stays the same and only the commit changes, so you always know precisely what runs. Git tags are not used to find the version: installs are shallow clones and have no tags.
+
+| Digit | Goes up when an update… | Examples |
+|---|---|---|
+| **MAJOR** | needs the user to act, or removes something: a reinstall, a manual data step, a removed feature, a changed setting format. Rare. | — |
+| **MINOR** | adds features or changes behaviour without any action from the user (automatic data upgrades count here). | new model tools; a changed default |
+| **PATCH** | only fixes things; there is nothing new to learn. | a wrong label; a layout bug |
+
+When MINOR goes up, PATCH goes back to 0; when MAJOR goes up, both do. Before 1.0.0, Optimux is in beta. 1.0.0 is kept for the moment it is announced as stable.
+
+**Making a release:**
+
+1. Decide that the commits since the last release are ready (daily commits don't change the version).
+2. One last commit, `[ CHORE ] Release: vX.Y.Z`, sets `VERSION` and adds an entry at the top of [`CHANGELOG.md`](CHANGELOG.md): what's new, what's fixed, and what users must do, if anything. Update the version in the README badge.
+3. Push it, then tag it: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
 ## Design principles
 
 When in doubt, these guide decisions in Optimux:

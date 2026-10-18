@@ -318,18 +318,38 @@ def preview(kind: str, projects: list[str] | None = None, skip_rebuildable: bool
 APP_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def optimux_version() -> str:
-    """The installed version, like `optimux version`: the nearest tag, commits
-    since and the commit (v0.1.0-45-g3abf7d4), or just the commit. On a server
-    the program folder belongs to root and the service runs as its own user, so
-    git would refuse it ("dubious ownership"): this one folder is trusted for
-    this one call (it's read-only for the service anyway)."""
+def _release() -> str:
+    """The release number from the VERSION file (e.g. "0.4.0"), or ""."""
     try:
-        out = subprocess.run(["git", "-c", f"safe.directory={APP_DIR}", "describe", "--always", "--tags", "--dirty"],
-                             capture_output=True, text=True, timeout=3, cwd=APP_DIR).stdout.strip()
-        return out or "unknown"
+        with open(os.path.join(APP_DIR, "VERSION"), encoding="utf-8") as f:
+            v = f.read().strip()
+        return v if re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", v) else ""
+    except OSError:
+        return ""
+
+
+def _commit() -> str:
+    """The installed commit (7 characters), with -dirty for local changes, or "".
+    On a server the program folder belongs to root and the service runs as its
+    own user, so git would refuse it ("dubious ownership"): this one folder is
+    trusted for this one call (it's read-only for the service anyway). Server
+    installs are shallow clones, so there are no tags to describe."""
+    try:
+        return subprocess.run(["git", "-c", f"safe.directory={APP_DIR}", "describe", "--always", "--dirty",
+                               "--abbrev=7", "--exclude=*"],
+                              capture_output=True, text=True, timeout=3, cwd=APP_DIR).stdout.strip()
     except Exception:
-        return "unknown"
+        return ""
+
+
+def optimux_version() -> str:
+    """What runs: the release from VERSION and the exact commit, like
+    "v0.4.0 (5e0673b)"; either alone when the other is missing; "unknown"
+    when there is neither. Same format as `optimux version`."""
+    release, commit = _release(), _commit()
+    if release and commit:
+        return f"v{release} ({commit})"
+    return f"v{release}" if release else (commit or "unknown")
 
 
 def _fmt(n: int) -> str:

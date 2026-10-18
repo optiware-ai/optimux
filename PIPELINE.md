@@ -12,6 +12,7 @@ Optimux relies heavily on decentralized context to feed different LLMs.
 - **`docs/GUIDE.md`**: The user guide (also shown in the app).
 - **`SECURITY.md`**: How to report a vulnerability.
 - **`commit-template.txt`**: **[CRITICAL]** The strict convention for Optimux commits.
+- **`VERSION`**: The release number (`MAJOR.MINOR.PATCH`); the rules are in `CONTRIBUTING.md`. **`CHANGELOG.md`**: What each release changed.
 
 ### Application Layer (Code & Agent Sidecars)
 Optimux pairs every core file with an `_AGENT.md` file containing its context.

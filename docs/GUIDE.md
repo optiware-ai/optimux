@@ -62,6 +62,7 @@ The installer adds an `optimux` command (on a server, run it with `sudo`):
 | `optimux logs` | Follow the server's log (Ctrl+C to leave) |
 | `optimux open` | The address, opened in your browser when there is one (on a server without a domain: the SSH tunnel command to run on your computer) |
 | `optimux update` | Download the latest version, update its packages, restart |
+| `optimux version` | The installed version and commit, like `v0.4.0 (5e0673b)`; the same as Dashboard → System |
 | `optimux password` | Choose a new password (signs every browser out) |
 | `optimux reset-password` | Forget the password and two-step codes |
 | `optimux token` | Show the access token |
@@ -882,7 +883,7 @@ Choosing Data only or Workspace only shows a yellow note saying what will **not*
 
 **Show what goes in** lists every part with its size, what is skipped and what is left out, and says whether it fits. **Take snapshot** runs in the background; the list shows *taking…* until it is ready. Add a note (for example "before trying the new routing") so you know later why you took it.
 
-Each row names its projects (or counts them when there are more than three); **Details** shows the projects, every part with its size, what was skipped or left out, the file's full path (with **Copy**), the Optimux version that took it, and **Read the README**, which shows `BACKUP-README.md` from inside the file, formatted, without unpacking it; each command has a **Copy** button. The version is a release such as `v0.3.0`, or between releases the git commit of your Optimux code (`-dirty` means it had uncommitted changes). **Delete** asks inside the row before removing the file, and a message confirms it. The folder is shown above the list, with **Copy** and a **?** explaining the files.
+Each row names its projects (or counts them when there are more than three); **Details** shows the projects, every part with its size, what was skipped or left out, the file's full path (with **Copy**), the Optimux version that took it, and **Read the README**, which shows `BACKUP-README.md` from inside the file, formatted, without unpacking it; each command has a **Copy** button. The version is the release and the exact commit, such as `v0.4.0 (5e0673b)` (`-dirty` means the Optimux code had uncommitted changes). **Delete** asks inside the row before removing the file, and a message confirms it. The folder is shown above the list, with **Copy** and a **?** explaining the files.
 
 Each snapshot is one `.tar.gz` file in `~/.optimux/snapshots/`, readable only by you (on a server installed with the installer, that is the `optimux` user, so use `sudo`). Inside, `BACKUP-README.md` (Markdown, easy to read in a terminal too) explains the contents and how to restore by hand, `manifest.json` describes it for Optimux, and `SHA256SUMS` holds a checksum of every file (after unpacking, `sha256sum -c SHA256SUMS` checks them).
 
