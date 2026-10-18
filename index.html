@@ -1824,14 +1824,25 @@
         </div>
 
         <!-- Current chat title -->
-        <div v-if="currentSession" class="pt-3 -mb-3 flex items-center gap-2 text-xs text-gray-500 font-mono">
+        <div v-if="currentSession" class="pt-3 flex items-center gap-2 text-xs text-gray-500 font-mono">
             <span class="truncate" :title="currentSession.title">{{ currentSession.title || 'Untitled chat' }}</span>
             <button @click="renameSession(currentSession)" class="text-gray-600 hover:text-gray-300" title="Rename this chat">✎</button>
         </div>
 
-        <div class="flex-1 overflow-y-auto py-6 pl-1 pr-4 space-y-6 scroll-smooth" id="chat-container" @click="onChatClick">
+        <!-- The prompt of the reply on screen, once its bubble scrolled away (v0.4-5k) -->
+        <div class="relative h-0 z-20">
+            <div v-if="pinnedPrompt" class="absolute top-2 left-1 right-4 bg-gray-950/95 backdrop-blur border border-blue-800/60 rounded-lg shadow-lg text-[13px] text-gray-200">
+                <div class="flex items-start gap-2 px-3 py-1.5">
+                    <span class="text-blue-300 font-mono flex-shrink-0 select-none">You:</span>
+                    <div :class="['flex-1 min-w-0', pinnedOpen ? 'whitespace-pre-wrap break-words max-h-60 overflow-y-auto' : 'truncate']">{{ pinnedPrompt.text }}</div>
+                    <button @click="pinnedOpen = !pinnedOpen" class="flex-shrink-0 text-[12px] font-mono text-gray-400 hover:text-gray-100" :title="pinnedOpen ? 'Show one line' : 'Show the whole prompt'">{{ pinnedOpen ? 'Less ▴' : 'More ▾' }}</button>
+                    <button @click="jumpToPinned" class="flex-shrink-0 text-[12px] font-mono text-gray-400 hover:text-gray-100" title="Scroll up to this prompt">↑</button>
+                </div>
+            </div>
+        </div>
+        <div class="flex-1 overflow-y-auto py-6 pl-1 pr-4 space-y-6 scroll-smooth" id="chat-container" @click="onChatClick" @scroll.passive="updatePinned">
             <div v-for="(msg, index) in messages" :key="index" :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
-                <div :class="['max-w-[90%] rounded-xl p-5 shadow-sm', msg.role === 'user' ? 'bg-blue-900/40 border border-blue-800/50 text-gray-100' : 'bg-gray-900 border border-gray-800 text-gray-300 w-full']">
+                <div :data-user-msg="msg.role === 'user' ? index : null" :class="['max-w-[90%] rounded-xl p-5 shadow-sm', msg.role === 'user' ? 'bg-blue-900/40 border border-blue-800/50 text-gray-100' : 'bg-gray-900 border border-gray-800 text-gray-300 w-full']">
                     
                     <div v-if="msg.role === 'agent' && msg.events && msg.events.length" class="text-xs font-mono mb-3 pb-2 border-b border-gray-800 space-y-1">
                         <div v-for="(ev, eIdx) in msg.events" :key="eIdx" :class="['flex items-start gap-2', ev.kind === 'route' ? 'text-blue-400' : (ev.kind === 'switch' ? 'text-amber-400' : 'text-gray-500')]">
@@ -1986,10 +1997,10 @@
                     
                     <!-- Feature 18: running total while the reply is still working -->
                     <div v-if="msg.role === 'agent' && msg.usage && isGenerating && index === messages.length - 1" class="mt-3 pt-2 border-t border-gray-800 flex items-center gap-2 text-[11px] font-mono text-gray-500" title="Updated after every model call; commands themselves are free">
-                        <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
                         <span>So far: {{ callsLabel(msg.usage) }} · {{ fmtTokens(msg.usage.tokens) }} tok · {{ msg.usage.costKnown ? fmtCost(msg.usage.cost) : (msg.usage.cost > 0 ? fmtCost(msg.usage.cost) + '+' : 'cost ?') }}</span>
                     </div>
-                    <div v-if="msg.role === 'agent' && isGenerating && index === messages.length - 1 && !msg.content && (!msg.commands || msg.commands.length === 0)" class="mt-2" title="Working…">
+                    <div v-if="showTrail(msg, index)" class="mt-2" title="Working…">
                         <route-trail></route-trail>
                     </div>
                 </div>

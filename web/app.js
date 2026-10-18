@@ -401,6 +401,16 @@ createApp({
         const chatInputRef = ref(null);
         const messages = ref([{ role: 'agent', content: 'Optimux initialized. Configuration loaded. New here? Open the **Guide** with the **?** in the header.', system_note: 'System', commands: [] }]);
         const isGenerating = ref(false);
+        // The routing trail shows whenever Optimux waits for a model: before the first
+        // output and between tool rounds (nothing arrived for TRAIL_QUIET_MS), v0.4-5k.
+        const TRAIL_QUIET_MS = 800;
+        let lastWsAt = 0;
+        const nowTick = ref(Date.now());
+        let tickTimer = null;
+        Vue.watch(isGenerating, (on) => {
+            clearInterval(tickTimer);
+            if (on) { lastWsAt = Date.now(); tickTimer = setInterval(() => { nowTick.value = Date.now(); }, 250); }
+        });
         
         const selectedModel = ref('auto');
         const availableModels = ref([]);
@@ -862,10 +872,52 @@ createApp({
             isSavingKey.value = false;
         };
 
+        // Show the trail under the live reply when no output has come yet, or when the
+        // stream went quiet and no command is running (the model is thinking or routing)
+        const showTrail = (msg, index) => {
+            if (msg.role !== 'agent' || !isGenerating.value || pendingApproval.value || index !== messages.value.length - 1) return false;
+            const blocks = msg.blocks || [];
+            const last = blocks[blocks.length - 1];
+            if (last && last.kind === 'cmd' && last.exit_code === undefined) return false;   // a command is running
+            if (!msg.content && !(msg.commands || []).length) return true;
+            return nowTick.value - lastWsAt > TRAIL_QUIET_MS;
+        };
+
+        // The prompt of the reply being read, pinned above the chat once its bubble has
+        // scrolled out of view (v0.4-5k); it can be opened in full or jumped to
+        const pinnedPrompt = ref(null);     // { index, text }
+        const pinnedOpen = ref(false);
+        let pinRaf = 0;
+        const updatePinned = () => {
+            if (pinRaf) return;
+            pinRaf = requestAnimationFrame(() => {
+                pinRaf = 0;
+                const c = document.getElementById('chat-container');
+                if (!c) return;
+                const top = c.getBoundingClientRect().top;
+                let found = null;
+                for (const el of c.querySelectorAll('[data-user-msg]')) {
+                    if (el.getBoundingClientRect().bottom < top + 4) found = el; else break;
+                }
+                const index = found ? +found.dataset.userMsg : -1;
+                const msg = index >= 0 ? messages.value[index] : null;
+                if (!msg) { pinnedPrompt.value = null; pinnedOpen.value = false; return; }
+                if (!pinnedPrompt.value || pinnedPrompt.value.index !== index) pinnedOpen.value = false;
+                pinnedPrompt.value = { index, text: msg.content || '' };
+            });
+        };
+        const jumpToPinned = () => {
+            const c = document.getElementById('chat-container');
+            const el = pinnedPrompt.value && c && c.querySelector(`[data-user-msg="${pinnedPrompt.value.index}"]`);
+            if (el) c.scrollTop += el.getBoundingClientRect().top - c.getBoundingClientRect().top - 8;
+        };
+        Vue.watch(() => messages.value.length, () => nextTick(updatePinned));
+
         const scrollToBottom = async () => {
             await nextTick();
             const container = document.getElementById('chat-container');
             container.scrollTop = container.scrollHeight;
+            updatePinned();
         };
 
         // ---- Dashboard data (Overview, Projects, History page, System)
@@ -2612,6 +2664,7 @@ createApp({
                 sock.onmessage = (event) => {
                     const data = JSON.parse(event.data);
                     if (data.type === 'auth_ok') { wsState.value = 'connected'; retryDelay = 1000; }
+                    lastWsAt = Date.now();
                     handleMessage(data);
                 };
             };
@@ -2826,6 +2879,7 @@ createApp({
                     pendingApproval.value = false;
                     pendingForm.value = null;
                     pendingCommand.value = ''; pendingFile.value = null;
+                    scrollToBottom();     // the usage line and "Copy session" appear only now
                     if (!replay && moveChatTo !== null && ws.value) {
                         // The model switched projects: the reply is done, so continue in the
                         // new project's own chat (this one stays in History under the old project)
@@ -3127,7 +3181,8 @@ createApp({
             selectedModel, availableModels, setupModels, handleModelChange,
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
-            pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse,
+            pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, showTrail,
+            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned,
 					renderMarkdown,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,
