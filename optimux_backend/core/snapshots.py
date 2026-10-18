@@ -315,10 +315,18 @@ def preview(kind: str, projects: list[str] | None = None, skip_rebuildable: bool
 
 # ------------------------------------------------------------------ the archive
 
+APP_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
 def optimux_version() -> str:
+    """The installed version, like `optimux version`: the nearest tag, commits
+    since and the commit (v0.1.0-45-g3abf7d4), or just the commit. On a server
+    the program folder belongs to root and the service runs as its own user, so
+    git would refuse it ("dubious ownership"): this one folder is trusted for
+    this one call (it's read-only for the service anyway)."""
     try:
-        out = subprocess.run(["git", "describe", "--always", "--dirty"], capture_output=True, text=True,
-                             timeout=3, cwd=os.path.dirname(os.path.abspath(__file__))).stdout.strip()
+        out = subprocess.run(["git", "-c", f"safe.directory={APP_DIR}", "describe", "--always", "--tags", "--dirty"],
+                             capture_output=True, text=True, timeout=3, cwd=APP_DIR).stdout.strip()
         return out or "unknown"
     except Exception:
         return "unknown"

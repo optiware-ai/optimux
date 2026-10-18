@@ -1,6 +1,7 @@
 """v0.3: snapshots of the data and of the Workspace, kept on this machine."""
 import json
 import os
+import re
 import sqlite3
 import stat
 import tarfile
@@ -490,3 +491,49 @@ def test_a_failure_is_recorded_before_the_snapshot_stops_counting_as_running(hom
         time.sleep(0.02)
     assert seen and seen[0] == "failed"           # already failed when it left _running
     assert snapshots.get(sid)["error"] == "The Workspace folder changed."
+
+
+def _git(*args, cwd):
+    import subprocess
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True,
+                   env={**os.environ, "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@x", "GIT_COMMITTER_NAME": "T",
+                        "GIT_COMMITTER_EMAIL": "t@x"})
+
+
+def test_version_names_the_tag_and_commit(tmp_path, monkeypatch):
+    app = tmp_path / "app"
+    app.mkdir()
+    _git("init", "-q", cwd=app)
+    (app / "a.txt").write_text("a")
+    _git("add", "-A", cwd=app)
+    _git("commit", "-qm", "one", cwd=app)
+    _git("tag", "v0.1.0", cwd=app)                      # a lightweight tag, like the published one
+    (app / "b.txt").write_text("b")
+    _git("add", "-A", cwd=app)
+    _git("commit", "-qm", "two", cwd=app)
+    monkeypatch.setattr(snapshots, "APP_DIR", str(app))
+    assert re.fullmatch(r"v0\.1\.0-1-g[0-9a-f]+", snapshots.optimux_version())
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="needs root to give the folder to another user")
+def test_version_works_when_root_owns_the_program_folder(tmp_path, monkeypatch):
+    """The server case: the folder belongs to another user than the one running
+    Optimux. Plain git refuses it ("dubious ownership"), so the page said unknown."""
+    import subprocess
+    app = tmp_path / "app"
+    app.mkdir()
+    _git("init", "-q", cwd=app)
+    (app / "a.txt").write_text("a")
+    _git("add", "-A", cwd=app)
+    _git("commit", "-qm", "one", cwd=app)
+    subprocess.run(["chown", "-R", "nobody", str(app)], check=True)
+    plain = subprocess.run(["git", "describe", "--always"], cwd=app, capture_output=True, text=True)
+    assert plain.returncode != 0 and "dubious ownership" in plain.stderr
+    monkeypatch.setattr(snapshots, "APP_DIR", str(app))
+    assert re.fullmatch(r"[0-9a-f]{7,}", snapshots.optimux_version())
+
+
+def test_version_without_git_is_unknown(tmp_path, monkeypatch):
+    monkeypatch.setattr(snapshots, "APP_DIR", str(tmp_path))
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    assert snapshots.optimux_version() == "unknown"

@@ -617,15 +617,6 @@ async def delete_project_api(folder: str, payload: DeleteProjectPayload):
         return JSONResponse({"detail": str(e)}, status_code=422)
 
 
-def _version(cmd: list[str]) -> str:
-    import subprocess
-    try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=3,
-                              cwd=os.path.dirname(os.path.abspath(__file__))).stdout.strip() or "unknown"
-    except Exception:
-        return "unknown"
-
-
 @app.get("/api/system")
 async def system_info():
     """Versions and storage, for the System section."""
@@ -636,7 +627,7 @@ async def system_info():
     except Exception:
         litellm_version = "unknown"
     return {
-        "optimux": _version(["git", "describe", "--always", "--dirty"]),
+        "optimux": await asyncio.to_thread(snapshots.optimux_version),
         "litellm": litellm_version,
         "python": platform.python_version(),
         "storage": store.info(),

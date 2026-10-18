@@ -31,7 +31,7 @@
 - **`list_snapshots()`:** newest first, with `size_bytes`. A `running` snapshot this process isn't taking (the server stopped) and a `ready` one whose archive is gone are shown as `failed`.
 - **`read_head_member(sid, name)`:** `manifest.json` or the README (`BACKUP-README.md` or `.txt`; only these, at most 1 MB) read by streaming the start of the archive (only its first two members are looked at). **`read_readme(sid)`** returns `{text, format}` (`md`, or `txt` for older snapshots). `list_snapshots` uses it once for a snapshot whose description lacks `items` (`_backfill`, written back so the archive isn't opened again).
 - **`get(sid)`**, **`delete(sid)`** (refuses while it is being taken; also removes a left-over `.partial`), **`summary()`** (list, used, limit, free disk, folder, running).
-- **`optimux_version()`:** `git describe` of the install, or `unknown`.
+- **`optimux_version()`:** `git describe --always --tags --dirty` of the install (`APP_DIR`, the repository root), or `unknown`; also used by `/api/system`. It passes `-c safe.directory=APP_DIR`, because on a server the program folder is owned by root and the service user's git would refuse it as "dubious ownership" (v0.4-5j; that was why the System page said unknown).
 
 ## Links & Dependencies
 - `paths.py` (folders and the database path), `workspace.py` (`projects_root`, `project_names`), `config_manager.py` (`snapshot_limit_gb`).
