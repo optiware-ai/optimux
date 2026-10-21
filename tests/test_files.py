@@ -181,6 +181,37 @@ def test_long_diffs_are_cut(proj, monkeypatch):
     assert change["diff"].splitlines()[-1].startswith("… ") and change["added"] == 50
 
 
+# ---------- mangled text and whole-file rewrites (t9)
+
+def test_control_characters_the_file_did_not_have_are_refused(proj):
+    with pytest.raises(FileToolError, match=r"control characters \(U\+0014, first on line 2\)"):
+        files.prepare_write(str(proj), "site/index.html", "<footer>\n\x14 2026 MakerHub</footer>\n")
+    with pytest.raises(FileToolError, match="U\\+0000"):
+        files.prepare_edit(str(proj), "site/index.html", "© 2024", "\x00 2026")
+    (proj / "term.log").write_text("\x1b[31mred\x1b[0m\n")              # already there: fine
+    files.prepare_edit(str(proj), "term.log", "red", "\x1b[1mbold red")
+    files.prepare_write(str(proj), "tabs.txt", "a\tb\r\n\x0cpage\n")   # tab, CR, form feed: normal
+
+
+def test_emoji_escape_codes_and_broken_emoji_are_refused(proj):
+    with pytest.raises(FileToolError, match="escape codes"):
+        files.prepare_edit(str(proj), "site/index.html", "© 2024", "\\ud83d\\udce1 2026")
+    with pytest.raises(FileToolError, match="broken character"):
+        files.prepare_write(str(proj), "x.txt", "half \ud83d of an emoji\n")
+    files.prepare_edit(str(proj), "site/index.html", "© 2024", "📡 — © 2026")   # the real characters
+
+
+def test_write_file_may_not_cut_a_long_file_to_half(proj):
+    css = proj / "style.css"
+    css.write_text("".join(f".c{i} {{}}\n" for i in range(790)))
+    with pytest.raises(FileToolError, match="has 790 lines and this would leave 270. .*Use edit_file"):
+        files.prepare_write(str(proj), "style.css", "".join(f".c{i} {{}}\n" for i in range(270)))
+    files.prepare_write(str(proj), "style.css", "".join(f".c{i} {{}}\n" for i in range(400)))    # more than half
+    small = proj / "small.txt"
+    small.write_text("a\nb\nc\n")
+    files.prepare_write(str(proj), "small.txt", "")                                            # short file: fine
+
+
 # ---------- through the WebSocket
 
 def _tool(name, args):

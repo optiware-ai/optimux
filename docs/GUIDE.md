@@ -536,6 +536,11 @@ To create or change a file, the model uses two file tools instead of shell comma
 - **write_file** creates a file or replaces a whole file.
 - **edit_file** replaces one exact piece of text. It must appear exactly once in the file; if the model copied it wrong (0 matches) or too short (several matches), nothing changes, and you see the refusal in red in the chat, so a missed edit can't pass as done.
 
+Two more checks catch a model that garbles a file before you are even asked:
+
+- **write_file can't cut a long file in half.** Replacing a file of 20 lines or more with half its lines or fewer is refused; the model is told to use edit_file. A small model once rewrote a 783-line stylesheet from memory and kept 296 lines.
+- **Mangled characters are refused.** New text with control characters or emoji escape codes (like `\ud83d`) that the file didn't have is refused. Small models sometimes escape special characters (—, ©, emoji) wrongly, and the file would get garbage.
+
 You approve each change with its diff, like a command (auto-approve applies the same way). Optimux writes the file itself: only inside the active project (never in `.git`, never through a link that leads outside), only UTF-8 text up to 1 MB, and in one step (a temporary file renamed over the old one). A file keeps its permissions. If the file changed after you were asked, nothing is written and the model is told to read it again. In the chat a change shows as one line, like `✎ edit site/index.html (+1 −1)`, with its diff below. The tools are offered only when a project is active.
 
 ### Scope

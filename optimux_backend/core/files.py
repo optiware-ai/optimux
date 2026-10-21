@@ -17,10 +17,17 @@ that the file didn't change in the meantime.
 import difflib
 import hashlib
 import os
+import re
 import tempfile
 
 MAX_BYTES = 1_000_000          # a file larger than this isn't written or edited
 DIFF_LINES = 400               # diff lines shown in the approval and the chat
+SHRINK_MIN_LINES = 20          # write_file may not cut a file this long to half its lines or less
+
+# Control characters a text file normally has: tab, newline, carriage return, form feed.
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0e-\x1f\x7f]")
+# A JSON escape for half of an emoji (\ud83d) written into the file as text.
+_SURROGATE_ESCAPE = re.compile(r"\\u[dD][89a-fA-F][0-9a-fA-F]{2}")
 
 # The process umask, read once at import (single-threaded then), so a new file
 # gets the same permissions a shell redirect would give it.
@@ -84,7 +91,32 @@ def _digest(text: str | None) -> str | None:
     return None if text is None else hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _check_text(rel: str, before: str | None, after: str) -> None:
+    """Refuse new text that was mangled on the way: control characters or
+    emoji escape codes that the file didn't have before. Small models
+    sometimes escape special characters (—, ©, emoji) wrongly in the tool
+    call, and the file would silently get garbage (t9: "©" became a control
+    character, emoji became "\\ud83d\\udce1")."""
+    try:
+        after.encode("utf-8")
+    except UnicodeEncodeError:
+        raise FileToolError("the new text has a broken character (half of an emoji). Write special "
+                            "characters (—, ©, emoji) as themselves, not as escape codes.")
+    old = before or ""
+    bad = sorted({c for c in _CONTROL.findall(after)} - set(_CONTROL.findall(old)))
+    if bad:
+        line = next(i for i, l in enumerate(after.split("\n"), 1) if any(c in l for c in bad))
+        codes = ", ".join(f"U+{ord(c):04X}" for c in bad[:3])
+        raise FileToolError(f"the new text for {rel} has control characters ({codes}, first on line {line}) "
+                            "that the file didn't have. Special characters were probably escaped wrongly: "
+                            "write them as themselves (—, ©, emoji), not as escape codes.")
+    if len(_SURROGATE_ESCAPE.findall(after)) > len(_SURROGATE_ESCAPE.findall(old)):
+        raise FileToolError(f"the new text for {rel} has emoji escape codes such as \\ud83d written as text. "
+                            "Write emoji and other special characters as themselves.")
+
+
 def _change(real: str, rel: str, op: str, before: str | None, after: str) -> dict:
+    _check_text(rel, before, after)
     if len(after.encode("utf-8")) > MAX_BYTES:
         raise FileToolError(f"the new content is over {MAX_BYTES} bytes.")
     diff = list(difflib.unified_diff((before or "").splitlines(), after.splitlines(),
@@ -107,6 +139,14 @@ def prepare_write(project: str, path: str, content) -> dict:
     before = _read_text(real, rel) if os.path.exists(real) else None
     if before is not None and before == content:
         raise FileToolError(f"{rel} already has exactly this content; nothing to change.")
+    if before is not None:
+        n_before, n_after = _lines(before), _lines(content)
+        if n_before >= SHRINK_MIN_LINES and n_after * 2 <= n_before:
+            # t9: a small model rewrote a 783-line stylesheet from memory and kept 296 lines
+            raise FileToolError(
+                f"{rel} has {n_before} lines and this would leave {n_after}. write_file replaces the whole "
+                "file, so the rest would be lost. Use edit_file to change part of the file, or to remove a "
+                "part on purpose.")
     return _change(real, rel, "create" if before is None else "replace", before, content)
 
 
@@ -183,8 +223,9 @@ WRITE_FILE_TOOL = {
         "name": "write_file",
         "description": (
             "Create a file, or replace a whole file, in the active project. Use it for new files and for "
-            "small files you rewrite completely. To change part of an existing file, use edit_file instead. "
-            "The user approves each change. Never write files with shell here-docs or echo."),
+            "small files you rewrite completely. To change part of an existing file, use edit_file instead: "
+            "write_file can't cut a file to half its lines or less. Write special characters (—, ©, emoji) "
+            "as themselves. The user approves each change. Never write files with shell here-docs or echo."),
         "parameters": {
             "type": "object",
             "properties": {
@@ -204,7 +245,7 @@ EDIT_FILE_TOOL = {
             "Change part of an existing file in the active project: replace old_text with new_text. old_text "
             "must appear exactly once in the file, copied exactly (spaces, quotes, special characters); "
             "include a few surrounding lines to make it unique. To make several changes, call it once per "
-            "change. The user approves each change."),
+            "change. Write special characters (—, ©, emoji) as themselves. The user approves each change."),
         "parameters": {
             "type": "object",
             "properties": {

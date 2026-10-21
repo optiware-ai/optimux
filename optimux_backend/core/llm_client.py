@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 
 import litellm  # its price list stays local: see optimux_backend/__init__.py
@@ -131,6 +132,10 @@ def _parse_skill(content: str, skills: dict):
     return name if isinstance(name, str) and name in skills else None
 
 
+# OpenAI's first gpt-5 models, whose lowest thinking level is "minimal" (later ones use "none")
+_GPT5_MINIMAL = re.compile(r"gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$")
+
+
 def conductor_thinking(model: str) -> dict:
     """The Conductor only classifies, so keep thinking as low as the model allows.
     Gemini 3 thinks by default (hidden, billed); "minimal" is its lowest level.
@@ -138,6 +143,9 @@ def conductor_thinking(model: str) -> dict:
     Gemma models are served under gemini/ too but don't think, and Google
     refuses the setting for them ("Thinking budget is not supported")."""
     if model.startswith("gemini/") and "gemma" not in model.lower():
+        return {"reasoning_effort": "minimal"}
+    if _GPT5_MINIMAL.match(model.rsplit("/", 1)[-1].lower()):
+        # gpt-5, -mini and -nano think at "medium" unless told: slow and billed for a yes/no choice
         return {"reasoning_effort": "minimal"}
     return {}
 
@@ -188,6 +196,9 @@ async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_m
             {"role": "user", "content": prompt},
         ],
         "temperature": 0,
+        # Models that refuse temperature 0 (gpt-5 while it thinks) get the call
+        # without it instead of failing: the Conductor's answer is a short JSON either way
+        "drop_params": True,
         "timeout": CONDUCTOR_TIMEOUT,
         **conductor_thinking(conductor_model),
         **litellm_key_kwargs(conductor_model),

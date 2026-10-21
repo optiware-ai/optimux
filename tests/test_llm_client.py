@@ -137,6 +137,30 @@ def test_gemma_gets_no_thinking_level():
     assert llm.conductor_thinking("anthropic/claude-haiku-4-5") == {}
 
 
+def test_the_first_gpt5_models_think_minimally_as_conductor():
+    """t9: gpt-5-nano as Conductor thinks at "medium" unless told."""
+    for m in ("openai/gpt-5-nano", "gpt-5-mini", "openai/gpt-5", "openai/gpt-5-nano-2025-08-07"):
+        assert llm.conductor_thinking(m) == {"reasoning_effort": "minimal"}
+    for m in ("openai/gpt-5.1", "openai/gpt-5-codex", "openai/gpt-4o-mini"):
+        assert llm.conductor_thinking(m) == {}
+
+
+@pytest.mark.asyncio
+async def test_unsupported_settings_are_dropped_not_failed(mocker, conductor):
+    """t9: gpt-5-nano refused temperature=0 and the Conductor gave up. drop_params
+    lets LiteLLM leave out what a model doesn't accept."""
+    conductor["conductor_model"] = "openai/gpt-5-nano"
+    call = mocker.patch.object(llm, "acompletion", return_value=create_mock_response('{"complexity": "simple"}'))
+    tier, *_, note = await route_model_with_usage("hi")
+    assert (tier, note) == ("simple", "")
+    kw = call.call_args.kwargs
+    assert kw["drop_params"] is True and kw["reasoning_effort"] == "minimal"
+    from litellm.utils import get_optional_params
+    params = get_optional_params(model="gpt-5-nano", custom_llm_provider="openai", temperature=0,
+                                 reasoning_effort="minimal", drop_params=True)
+    assert "temperature" not in params and params["reasoning_effort"] == "minimal"
+
+
 @pytest.mark.asyncio
 async def test_a_refused_request_is_tried_again_without_the_extras(mocker, conductor):
     conductor["conductor_model"] = "gemini/gemini-2.5-flash"
