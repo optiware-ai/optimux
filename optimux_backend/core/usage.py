@@ -69,12 +69,23 @@ def _custom_prices(model: str) -> dict | None:
     return info
 
 
+def _via_base_url(model: str) -> bool:
+    """True for a model sent to its own server (a proxy or reseller)."""
+    try:
+        from optimux_backend.core.config_manager import get_all_models
+        return bool(get_all_models().get(model, {}).get("api_base"))
+    except Exception:
+        return False
+
+
 def cost_for(model: str, tokens: dict) -> float | None:
     """USD cost of one call, or None when no price is known for the model."""
     p, c, cached = tokens["prompt_tokens"], tokens["completion_tokens"], tokens["cached_tokens"]
     prices = _custom_prices(model)
     if prices is None and is_local(model):
         return 0.0
+    if prices is None and _via_base_url(model):
+        return None     # another server's prices: LiteLLM's list is for the model's maker (v0.4-5o)
     if prices:
         cached_rate = prices.get("cached_input_cost_per_mtok")
         if cached_rate is None:

@@ -90,7 +90,8 @@ def cmd_add_model(args) -> None:
     from optimux_backend.core.config_manager import ModelPayload, save_model
     from optimux_backend.core.security import ValidationError
     try:
-        save_model(ModelPayload(id=args.id, name=args.name, env_key=args.env_key or ""))
+        save_model(ModelPayload(id=args.id, name=args.name, env_key=args.env_key or "",
+                                api_base=args.base_url))
     except ValidationError as e:
         raise SystemExit(str(e))
     _out(f"Model {args.id} added.")
@@ -211,6 +212,7 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_set_key)
     s = sub.add_parser("add-model", help="add or update a model")
     s.add_argument("id"); s.add_argument("name"); s.add_argument("env_key", nargs="?", default="")
+    s.add_argument("--base-url", default=None, help="send this model's calls to this server (a proxy or reseller)")
     s.set_defaults(fn=cmd_add_model)
     s = sub.add_parser("set-routing", help="Conductor, Simple and Complex models")
     s.add_argument("conductor"); s.add_argument("simple"); s.add_argument("complex")

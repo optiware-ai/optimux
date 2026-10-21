@@ -580,7 +580,7 @@
                         </template>
 
                         <div v-if="catPid === 'other'">
-                            <p class="text-[13px] text-gray-400 mb-3">Any model LiteLLM can route, with its provider prefix (e.g. <code>together_ai/…</code>, <code>bedrock/…</code>). Prices are optional: without them, Optimux uses LiteLLM's list, or shows the cost as unknown.</p>
+                            <p class="text-[13px] text-gray-400 mb-3">Any model LiteLLM can route, with its provider prefix (e.g. <code>together_ai/…</code>, <code>bedrock/…</code>). Prices are optional: without them, Optimux uses LiteLLM's list, or shows the cost as unknown. For a provider that isn't listed (a proxy, a reseller, your own server), add its <b>Base URL</b>: see <i>Providers that aren't listed</i> in the Guide.</p>
                         <form @submit.prevent="addCustomModel" class="flex flex-col gap-4">
                             <div class="flex gap-3">
                                 <div class="flex-1">
@@ -592,15 +592,34 @@
                                     <input v-model="newModelName" type="text" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none" required>
                                 </div>
                             </div>
+                            <div>
+                                <label class="text-[13px] text-gray-400 block mb-1">Base URL <span class="text-gray-500">(optional: only for a server that isn't the model's maker, e.g. https://api.example.com/v1)</span></label>
+                                <input v-model="newModelBase" type="text" placeholder="empty = the provider's own server" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none font-mono">
+                                <div v-if="newModelBase.trim() && !newModelHost" class="text-[12px] text-red-400 mt-1">This isn't a web address: start with https:// and name a host.</div>
+                            </div>
                             <div class="flex gap-3">
                                 <div class="flex-1">
                                     <label class="text-[13px] text-gray-400 block mb-1">Key variable <span class="text-gray-500">(empty for local models that need no key)</span></label>
-                                    <input v-model="newModelEnvKey" type="text" placeholder="e.g. GROQ_API_KEY" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none font-mono uppercase">
+                                    <input v-model="newModelEnvKey" @input="onEnvKeyInput" type="text" placeholder="e.g. GROQ_API_KEY" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none font-mono uppercase">
                                 </div>
                                 <div class="flex-1" :class="{'opacity-50 pointer-events-none': !newModelEnvKey}">
                                     <label class="text-[13px] text-gray-400 block mb-1">API key <span class="text-gray-500">(needed once per provider; empty if already saved)</span></label>
                                     <input v-model="newModelApiKey" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true" data-bwignore placeholder="sk-..." class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
                                 </div>
+                            </div>
+                            <div v-if="newModelKeyUsers.length" class="text-[12px] text-gray-400">
+                                <code>{{ newModelEnvKey.trim().toUpperCase() }}</code> is already the key of {{ newModelKeyUsers.join(', ') }}<template v-if="newModelKeySaved">, and it is saved. Leave API key empty to share it; typing a key here <span class="text-yellow-300">replaces it for those models too</span>.</template><template v-else>.</template>
+                            </div>
+                            <div v-if="newModelHost" :class="['rounded-lg border px-3 py-3 text-[13px] flex flex-col gap-2', newModelHostLocal ? 'border-gray-700 bg-gray-900/60 text-gray-300' : 'border-yellow-700 bg-yellow-900/20 text-yellow-100']">
+                                <template v-if="!newModelHostLocal">
+                                    <div class="font-bold text-yellow-300">⚠ This model's calls go to {{ newModelHost }}, not to the model's maker</div>
+                                    <div><b>Privacy:</b> everything you send this model passes through {{ newModelHost }}: your prompts, project files, command output and memory. Optimux can't see or limit what they keep. Only use a service you trust with that code.</div>
+                                    <div><b>Reliability:</b> a reseller can be slower, change or stop the service, or serve a different model than its name says. Some resold access may not be allowed by the model maker's terms.</div>
+                                </template>
+                                <div v-else class="font-bold text-gray-200">A server on your own machine or network: {{ newModelHost }}</div>
+                                <div><b>Cost:</b> Optimux can't know what {{ newModelHost }} charges, so it doesn't use LiteLLM's price list for this model. <template v-if="newModelPricesSet">Your prices below are used.</template><template v-else><span class="text-yellow-300">Without prices, its cost shows as unknown and budgets can't count it.</span> Enter their prices below (0 and 0 for a free allowance or your own server).</template></div>
+                                <div v-if="newModelHost && newModelBase.trim().startsWith('http://') && !newModelHostLocal" class="text-red-300"><b>http://</b> sends your key and code unencrypted over the internet. Use https:// if the service offers it.</div>
+                                <label v-if="!newModelHostLocal" class="flex items-center gap-2 text-yellow-200"><input type="checkbox" v-model="newModelAck" class="w-3.5 h-3.5"> I understand: my code goes to {{ newModelHost }}</label>
                             </div>
                             <div>
                                 <label class="text-[13px] text-gray-400 block mb-1">Prices in USD per million tokens <span class="text-gray-500">(only to override LiteLLM's list)</span></label>
@@ -610,7 +629,10 @@
                                     <input v-model="newModelPrices.cached_input_cost_per_mtok" type="number" min="0" step="any" placeholder="Cached input" class="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
                                 </div>
                             </div>
-                            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-[15px] font-bold transition self-end">Add Model</button>
+                            <div class="flex items-center gap-3 self-end">
+                                <span v-if="newModelMsg" :class="['text-[13px]', newModelMsg.ok ? 'text-green-400' : 'text-red-400']">{{ newModelMsg.text }}</span>
+                                <button type="submit" :disabled="(newModelNeedsAck && !newModelAck) || (newModelBase.trim() && !newModelHost)" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-[15px] font-bold transition disabled:opacity-50">Add Model</button>
+                            </div>
                         </form>
                         </div>
                     </div>
@@ -691,6 +713,7 @@
                                             <span v-else-if="model.env_key" class="text-[11px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded border border-green-800 uppercase tracking-wider font-bold">Key Configured</span>
                                         </div>
                                         <div class="text-[13px] text-gray-400 font-mono mt-1">{{ model.id }}</div>
+                                        <div v-if="model.api_base" class="text-[13px] text-yellow-300 font-mono mt-1" :title="'Calls go to ' + model.api_base + ', not to the model\'s maker: your prompts and code pass through that server.'">↪ via {{ model.api_host }}</div>
                                         <div v-if="model.env_key" class="text-[13px] text-gray-500 font-mono mt-1 flex items-center gap-1">
                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
                                             {{ model.env_key }}
@@ -733,6 +756,7 @@
                                     <span v-if="model.input_cost_per_mtok != null">${{ model.input_cost_per_mtok }} in / ${{ model.output_cost_per_mtok }} out<span v-if="model.cached_input_cost_per_mtok != null"> / ${{ model.cached_input_cost_per_mtok }} cached</span> per M tokens</span>
                                     <span v-else-if="model.price_source === 'litellm'">Prices: known (LiteLLM)</span>
                                     <span v-else-if="model.price_source === 'local'">Local model: no per-token cost</span>
+                                    <span v-else-if="model.price_source === 'proxy'" class="text-yellow-400" :title="'Optimux can\'t know what ' + model.api_host + ' charges, so LiteLLM\'s price list isn\'t used for this model.'">⚠ Price unknown ({{ model.api_host }}): set it to track cost</span>
                                     <span v-else-if="model.price_source === 'zero'" title="LiteLLM's price list has this model at $0: a free model (often with tighter rate limits), or one whose price nobody listed. Your provider's billing page has the final word.">Prices: $0 in the price list (free, or not priced)</span>
                                     <span v-else class="text-yellow-400">⚠ Price unknown: set it to track cost</span>
                                     <button @click="togglePriceEdit(model)" class="text-blue-400 hover:text-blue-300">{{ editingPrices[model.id] ? 'cancel' : 'edit' }}</button>

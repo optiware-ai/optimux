@@ -54,6 +54,9 @@ class ModelPayload(BaseModel):
     cached_input_cost_per_mtok: float | None = None
     # None keeps the model's current thinking level
     thinking: str | None = None
+    # Optional server to send this model's calls to (a proxy, reseller or your own
+    # server); None keeps the current one, "" removes it (v0.4-5o)
+    api_base: str | None = None
 
 PRICE_FIELDS = ("input_cost_per_mtok", "output_cost_per_mtok", "cached_input_cost_per_mtok")
 
@@ -397,6 +400,89 @@ def model_id_problem(model_id: str) -> str | None:
                 "Add a provider prefix, e.g. anthropic/..., gemini/..., openai/... or ollama/....")
 
 
+# Providers that run on your own machine or server: no key by default
+_LOCAL_PROVIDERS = {"ollama", "ollama_chat", "lm_studio", "hosted_vllm", "llamafile", "vllm"}
+# LiteLLM's own names where they don't follow PROVIDER_API_KEY
+_KEY_NAMES = {"together_ai": "TOGETHERAI_API_KEY", "gemini": "GEMINI_API_KEY", "azure": "AZURE_API_KEY",
+              "fireworks_ai": "FIREWORKS_AI_API_KEY", "nvidia_nim": "NVIDIA_NIM_API_KEY"}
+
+
+def validate_api_base(url: str) -> str:
+    """A server address for a model: http(s), a host, no user:password, no
+    query. Returns it without a trailing slash; "" stays "" (no server)."""
+    from urllib.parse import urlsplit
+    url = (url or "").strip()
+    if not url:
+        return ""
+    if len(url) > 300 or any(c.isspace() for c in url):
+        raise ValidationError("The base URL is too long or has spaces.")
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise ValidationError("The base URL must start with https:// (or http:// for a server on your network) "
+                              "and name a host, e.g. https://api.example.com/v1.")
+    if parts.username or parts.password:
+        raise ValidationError("Don't put a user name or password in the base URL; the key goes in the API key field.")
+    if parts.query or parts.fragment:
+        raise ValidationError("The base URL can't have ?query or #fragment parts.")
+    return url.rstrip("/")
+
+
+def api_base_for(model_id: str) -> str:
+    return get_all_models().get(model_id, {}).get("api_base", "")
+
+
+def api_host(api_base: str) -> str:
+    from urllib.parse import urlsplit
+    try:
+        return urlsplit(api_base).hostname or ""
+    except ValueError:
+        return ""
+
+
+def suggested_env_key(model_id: str, api_base: str = "") -> str:
+    """The key variable to propose for a new model: for a model behind a base URL,
+    a name from the host (api.apmix.ai -> APMIX_API_KEY), so it never shares the
+    provider's own key; otherwise LiteLLM's usual name for the provider
+    (groq/... -> GROQ_API_KEY). "" for local servers and models without a prefix."""
+    if api_base:
+        host = api_host(api_base).lower()
+        if host in ("localhost", "::1") or host.startswith("127."):
+            return ""
+        labels = [l for l in host.split(".") if l]
+        if len(labels) > 1 and labels[0] in ("api", "www", "llm", "gateway", "openai", "inference"):
+            labels = labels[1:]
+        name = re.sub(r"[^A-Z0-9]+", "_", (labels[0] if labels else "").upper()).strip("_")
+        if not name:
+            return ""
+        return (name if name[0].isalpha() else "API_" + name)[:50] + "_API_KEY"
+    try:
+        import litellm
+        provider = litellm.get_llm_provider(model_id)[1]
+    except Exception:
+        return ""
+    if provider in _LOCAL_PROVIDERS:
+        return ""
+    return _KEY_NAMES.get(provider) or re.sub(r"[^A-Z0-9_]", "_", provider.upper()) + "_API_KEY"
+
+
+def _key_conflict(model_id: str, env_key: str, api_base: str) -> str | None:
+    """Why this key variable can't be used here, or None. A key is only shared by
+    models that go to the same server: otherwise one provider's key would be
+    sent to another server (e.g. the Anthropic key to a reseller)."""
+    if not env_key:
+        return None
+    for other_id, d in get_all_models().items():
+        if other_id == model_id or d.get("env_key") != env_key or d.get("api_base", "") == api_base:
+            continue
+        mine = api_host(api_base) or "its provider directly"
+        theirs = api_host(d.get("api_base", "")) or "its provider directly"
+        proposal = suggested_env_key(model_id, api_base) if api_base else ""
+        hint = f" Use a separate name, e.g. {proposal}." if proposal and proposal != env_key else " Use a separate name."
+        return (f"{env_key} is already the key of {d.get('name', other_id)} ({other_id}), which goes to {theirs}. "
+                f"This model goes to {mine}, so sharing the name would send that key there.{hint}")
+    return None
+
+
 def api_key_for(model_id: str) -> str | None:
     """The API key from the model's own env key variable, so any variable name
     (e.g. CLAUDE_API_KEY) works. None when the model has no env key or it is
@@ -406,7 +492,13 @@ def api_key_for(model_id: str) -> str | None:
 
 
 def litellm_key_kwargs(model_id: str) -> dict:
+    """The key, and the server when the model has its own base URL. A model behind
+    a base URL never falls back to LiteLLM's default variable for the provider:
+    that would send, say, the Anthropic key to someone else's server."""
     key = api_key_for(model_id)
+    base = api_base_for(model_id)
+    if base:
+        return {"api_base": base, "api_key": key or "none"}
     return {"api_key": key} if key else {}
 
 
@@ -416,6 +508,8 @@ def price_source(model_id: str, details: dict) -> str:
         return "custom"
     if model_id.startswith(("ollama/", "ollama_chat/")):
         return "local"
+    if details.get("api_base"):
+        return "proxy"      # another server's prices: LiteLLM's list is for the model's maker
     try:
         import litellm
         prompt_cost, completion_cost = litellm.cost_per_token(
@@ -453,6 +547,8 @@ def get_models_config() -> dict:
             "thinking": details.get("thinking", "default"),
             "supports_thinking": supports_thinking(model_id),
             "limits": _limits(model_id),
+            "api_base": details.get("api_base", ""),
+            "api_host": api_host(details.get("api_base", "")),
         }
         for field in PRICE_FIELDS:
             entry[field] = details.get(field)
@@ -476,13 +572,20 @@ def save_model(payload: ModelPayload):
     if payload.thinking is not None:
         validate_thinking(payload.thinking)
     models = get_all_models()
-    previous_thinking = models.get(payload.id, {}).get("thinking", "default")
+    previous = models.get(payload.id, {})
+    api_base = previous.get("api_base", "") if payload.api_base is None else validate_api_base(payload.api_base)
+    conflict = _key_conflict(payload.id, payload.env_key, api_base)
+    if conflict:
+        raise ValidationError(conflict)
+    previous_thinking = previous.get("thinking", "default")
     models[payload.id] = {
         "name": payload.name,
         "env_key": payload.env_key,
         "instructions": payload.instructions,
         "thinking": payload.thinking if payload.thinking is not None else previous_thinking,
     }
+    if api_base:
+        models[payload.id]["api_base"] = api_base
     for field in PRICE_FIELDS:
         if getattr(payload, field) is not None:
             models[payload.id][field] = getattr(payload, field)

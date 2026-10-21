@@ -491,7 +491,26 @@ In **Dashboard → Models → Add a model**:
 
 Below the form, **Prices** lists every model of the provider in a table you can sort by input or output price, context size or name.
 
-**Other** keeps the free form for any model LiteLLM can route (`together_ai/…`, `bedrock/…`): the model ID with its provider prefix, the key variable (empty for local models), the key (needed once per provider), and prices only to override LiteLLM's list.
+**Other** keeps the free form for any model LiteLLM can route (`together_ai/…`, `bedrock/…`): the model ID with its provider prefix, an optional **Base URL** (below), the key variable, the key, and prices only to override LiteLLM's list.
+
+The **key variable** is the name your key is saved under in `~/.optimux/secrets.env` (`GROQ_API_KEY=…`). Optimux fills it in from the model ID (`groq/…` → `GROQ_API_KEY`) or from the Base URL (`https://api.apmix.ai` → `APMIX_API_KEY`); you can change it. Models with the same key variable share one key: type it once, and leave the API key empty for the next model. A second name (`GROQ_KEY_2`) gives a model its own key, for example from a second account. Leave it empty only for local models that need no key.
+
+### Providers that aren't listed (proxies, resellers, your own server)
+
+Some services sell access to known models through their own server: OpenRouter-style gateways, resellers, a company proxy, or your own vLLM or LM Studio server. They give you a key and a **base URL**. In **Other**:
+
+1. **Model ID**: the model name the service uses, with the prefix of the format it speaks. A base URL ending in `/v1` usually speaks the OpenAI format: `openai/<their model name>`. A service that offers an "Anthropic base URL" speaks Anthropic's format: `anthropic/<their model name>`.
+2. **Base URL**: the address they give you, for example `https://api.apmix.ai/v1` (with `openai/…`) or `https://api.apmix.ai` (with `anthropic/…`).
+3. **Key variable**: proposed from the host (`APMIX_API_KEY`). A key is never shared between different servers: Optimux refuses `ANTHROPIC_API_KEY` for a model behind another server, because that would send your Anthropic key there. A model with a base URL also never falls back to the provider's default key.
+4. **Prices**: their prices per million tokens, or 0 and 0 for a free allowance or your own server.
+
+Before you add a model behind someone else's server, the form shows what that means, and asks you to confirm:
+
+- **Privacy:** everything you send this model passes through that server: prompts, project files, command output, memory. Optimux can't see or limit what they keep. Use a service you trust with that code.
+- **Reliability:** a reseller can be slower, change or stop the service, or serve a different model than its name says; some resold access may not be allowed by the model maker's terms.
+- **Cost:** Optimux can't know what that server charges, so it never uses LiteLLM's price list for it. Without your prices, the cost shows as **unknown** and budgets can't count it.
+
+The model card shows **↪ via <host>**, so you always see which models go elsewhere. A server on your own machine or network (`localhost`, `192.168.…`) gets only the note about prices. `http://` to a server on the internet sends your key and code unencrypted: use `https://`.
 
 ### Where the prices come from, and the online catalog
 

@@ -485,6 +485,18 @@ createApp({
         const newModelName = ref('');
         const newModelEnvKey = ref('');
         const newModelApiKey = ref('');
+        // v0.4-5o: a model behind its own server (proxy, reseller, own server)
+        const newModelBase = ref('');
+        const newModelAck = ref(false);
+        const newModelMsg = ref(null);
+        let envKeyTouched = false;      // the user typed a key variable: stop proposing one
+        const onEnvKeyInput = () => { envKeyTouched = newModelEnvKey.value.trim() !== ''; };
+        const hostOf = (url) => {
+            const u = (url || '').trim();
+            if (!/^https?:\/\/[^\s]+$/i.test(u)) return '';
+            try { return new URL(u).hostname; } catch (_) { return ''; }
+        };
+        const isLocalHost = (h) => /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?$)/.test(h) || h.endsWith('.local') || (!!h && !h.includes('.') && !h.includes(':'));
         const editingKeys = ref({});
 
         const appSettings = ref({ projects_root: '', active_project: '', auto_approve: false, max_steps_simple: 8, max_steps_complex: 25 });
@@ -2170,6 +2182,36 @@ createApp({
             for (const m of [...availableModels.value, ...setupModels.value]) { ids.add(m.id); ids.add(bareId(m.id)); }
             return ids;
         });
+        const newModelHost = Vue.computed(() => hostOf(newModelBase.value));
+        const newModelHostLocal = Vue.computed(() => isLocalHost(newModelHost.value));
+        const newModelNeedsAck = Vue.computed(() => !!newModelHost.value && !newModelHostLocal.value);
+        const newModelPricesSet = Vue.computed(() => {
+            const p = newModelPrices.value;
+            return p.input_cost_per_mtok !== '' && p.output_cost_per_mtok !== '';
+        });
+        const newModelKeyUsers = Vue.computed(() => {
+            const k = newModelEnvKey.value.trim().toUpperCase();
+            if (!k) return [];
+            return [...availableModels.value, ...setupModels.value]
+                .filter(m => m.env_key === k && m.id !== newModelId.value.trim()).map(m => m.name || m.id);
+        });
+        const newModelKeySaved = Vue.computed(() => {
+            const k = newModelEnvKey.value.trim().toUpperCase();
+            return !!k && availableModels.value.some(m => m.env_key === k);
+        });
+        let suggestTimer = null;
+        Vue.watch(() => [newModelId.value, newModelBase.value], ([id, base]) => {
+            clearTimeout(suggestTimer);
+            if (!base.trim()) newModelAck.value = false;
+            suggestTimer = setTimeout(async () => {
+                if (envKeyTouched) return;
+                if (!id.trim()) { newModelEnvKey.value = ''; return; }
+                try {
+                    const r = await fetch(`/api/models/key-suggestion?id=${encodeURIComponent(id.trim())}&base=${encodeURIComponent(base.trim())}`);
+                    if (r.ok && !envKeyTouched) newModelEnvKey.value = (await r.json()).env_key || '';
+                } catch (_) { /* keep what's there */ }
+            }, 300);
+        });
         const fetchCatalog = async () => {
             try { const r = await fetch('/api/catalog'); if (r.ok) cat.value = await r.json(); }
             catch (error) { console.error('Failed to load the model catalog', error); }
@@ -2287,18 +2329,22 @@ createApp({
         };
         const addCustomModel = async () => {
             if (!newModelId.value || !newModelName.value) return;
+            if (newModelNeedsAck.value && !newModelAck.value) return;
+            newModelMsg.value = null;
             try {
                 const envKey = newModelEnvKey.value ? newModelEnvKey.value.trim().toUpperCase() : "";
-                await fetch('/api/models', {
+                const saved = await fetch('/api/models', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         id: newModelId.value.trim(), 
                         name: newModelName.value,
                         env_key: envKey,
+                        api_base: newModelBase.value.trim(),
                         ...pricePayload(newModelPrices.value)
                     })
                 });
+                if (!saved.ok) return;      // boot.js shows the server's reason (e.g. a shared key) as a notice
                 
                 if (envKey && newModelApiKey.value) {
                     const resp = await fetch('/api/keys', {
@@ -2314,6 +2360,10 @@ createApp({
                 newModelName.value = '';
                 newModelEnvKey.value = '';
                 newModelApiKey.value = '';
+                newModelBase.value = '';
+                newModelAck.value = false;
+                envKeyTouched = false;
+                newModelMsg.value = { ok: true, text: 'Model added.' };
                 await fetchConfig();
             } catch (error) {
                 console.error("Failed to add model", error);
@@ -3210,6 +3260,8 @@ createApp({
 					renderMarkdown,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,
+            newModelBase, newModelAck, newModelMsg, onEnvKeyInput, newModelHost, newModelHostLocal, newModelNeedsAck,
+            newModelPricesSet, newModelKeyUsers, newModelKeySaved,
             editingKeys, routingConfig, saveRouting, showRoutingSaved,
             appSettings, projectsList, saveSettings, showSettingsSaved,
             memoryTab, memoryContent, fetchMemory, saveMemory, showMemorySaved,

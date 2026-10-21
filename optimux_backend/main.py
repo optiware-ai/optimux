@@ -252,6 +252,19 @@ async def create_model(payload: ModelPayload):
     save_model(payload)
     return {"status": "success"}
 
+
+@app.get("/api/models/key-suggestion")
+async def key_suggestion(id: str = "", base: str = ""):
+    """For the "Other" model form (v0.4-5o): the key variable to propose for this
+    model ID and base URL, and which models already use that variable."""
+    from optimux_backend.core.config_manager import suggested_env_key, validate_api_base
+    try:
+        base = validate_api_base(base)
+    except ValidationError:
+        base = ""
+    env_key = suggested_env_key(id.strip(), base) if id.strip() else ""
+    return {"env_key": env_key}
+
 from pydantic import BaseModel
 import os
 

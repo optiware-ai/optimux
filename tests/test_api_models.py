@@ -132,3 +132,13 @@ def test_clear_endpoint(client):
     assert client.post("/api/cooldowns/clear", json={}, headers=H).json() == {"cleared": ["x/b"]}
     assert providers.active_cooldowns() == {}
     assert client.post("/api/cooldowns/clear", json={}).status_code == 401
+
+
+def test_key_suggestion_endpoint(client):
+    r = client.get("/api/models/key-suggestion", params={"id": "groq/llama"}, headers=H).json()
+    assert r == {"env_key": "GROQ_API_KEY"}
+    r = client.get("/api/models/key-suggestion", params={"id": "openai/x", "base": "https://api.apmix.ai/v1"},
+                   headers=H).json()
+    assert r == {"env_key": "APMIX_API_KEY"}
+    r = client.get("/api/models/key-suggestion", params={"id": "openai/x", "base": "not a url"}, headers=H).json()
+    assert r == {"env_key": "OPENAI_API_KEY"}

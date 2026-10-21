@@ -136,3 +136,82 @@ def test_api_key_for_uses_the_models_own_env_key(mocker, tmp_path):
     assert api_key_for("ollama/phi3") is None          # no env key: LiteLLM default
     assert litellm_key_kwargs("gemini/x") == {}         # env key unset: LiteLLM default
     assert litellm_key_kwargs("unknown/model") == {}
+
+
+# ---------- models behind their own server: proxies, resellers, own servers (v0.4-5o)
+
+@pytest.fixture
+def models_file(mocker, tmp_path):
+    f = tmp_path / "models.json"
+    f.write_text(json.dumps({"anthropic/claude-sonnet-5": {"name": "Sonnet", "env_key": "ANTHROPIC_API_KEY"}}))
+    mocker.patch.object(config_manager, 'MODELS_FILE', str(f))
+    mocker.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "real-anthropic", "APMIX_API_KEY": "apx"}, clear=True)
+    return f
+
+
+def test_a_base_url_is_saved_and_sent_with_the_models_own_key(models_file):
+    save_model(ModelPayload(id="anthropic/claude-sonnet-4-6-free", name="Apmix", env_key="APMIX_API_KEY",
+                            api_base=" https://api.apmix.ai/ "))
+    saved = json.loads(models_file.read_text())["anthropic/claude-sonnet-4-6-free"]
+    assert saved["api_base"] == "https://api.apmix.ai"
+    assert litellm_key_kwargs("anthropic/claude-sonnet-4-6-free") == {"api_base": "https://api.apmix.ai",
+                                                                     "api_key": "apx"}
+    assert litellm_key_kwargs("anthropic/claude-sonnet-5") == {"api_key": "real-anthropic"}   # unchanged
+    entry = [m for m in get_models_config()["available"] if m["id"] == "anthropic/claude-sonnet-4-6-free"][0]
+    assert entry["api_host"] == "api.apmix.ai" and entry["price_source"] == "proxy"
+
+
+def test_a_model_behind_a_base_url_never_gets_the_providers_default_key(models_file):
+    """Without its own key, LiteLLM would fall back to ANTHROPIC_API_KEY and send
+    the real Anthropic key to the other server."""
+    save_model(ModelPayload(id="openai/my-local", name="Local", env_key="", api_base="http://192.168.1.5:8000/v1"))
+    assert litellm_key_kwargs("openai/my-local") == {"api_base": "http://192.168.1.5:8000/v1", "api_key": "none"}
+
+
+def test_a_key_is_never_shared_between_different_servers(models_file):
+    with pytest.raises(ValidationError, match=r"ANTHROPIC_API_KEY is already the key of Sonnet .*APMIX_API_KEY"):
+        save_model(ModelPayload(id="anthropic/claude-sonnet-4-6-free", name="Apmix", env_key="ANTHROPIC_API_KEY",
+                                api_base="https://api.apmix.ai"))
+    save_model(ModelPayload(id="anthropic/a", name="A", env_key="APMIX_API_KEY", api_base="https://api.apmix.ai"))
+    save_model(ModelPayload(id="anthropic/b", name="B", env_key="APMIX_API_KEY", api_base="https://api.apmix.ai"))
+    with pytest.raises(ValidationError, match="goes to api.apmix.ai"):        # and the other way round
+        save_model(ModelPayload(id="anthropic/c", name="C", env_key="APMIX_API_KEY"))
+
+
+def test_other_saves_keep_the_base_url_and_empty_removes_it(models_file):
+    save_model(ModelPayload(id="openai/x", name="X", env_key="APMIX_API_KEY", api_base="https://api.apmix.ai/v1"))
+    save_model(ModelPayload(id="openai/x", name="X", env_key="APMIX_API_KEY", input_cost_per_mtok=0,
+                            output_cost_per_mtok=0))                       # a price edit sends no api_base
+    assert json.loads(models_file.read_text())["openai/x"]["api_base"] == "https://api.apmix.ai/v1"
+    save_model(ModelPayload(id="openai/x", name="X", env_key="", api_base=""))
+    assert "api_base" not in json.loads(models_file.read_text())["openai/x"]
+
+
+@pytest.mark.parametrize("bad", ["api.apmix.ai", "ftp://x.y", "https://user:pw@x.y", "https://x.y/v1?k=1",
+                                 "https://x y.z", "https://"])
+def test_bad_base_urls_are_refused(models_file, bad):
+    with pytest.raises(ValidationError):
+        save_model(ModelPayload(id="openai/x", name="X", env_key="X_API_KEY", api_base=bad))
+
+
+def test_suggested_key_names():
+    s = config_manager.suggested_env_key
+    assert s("groq/llama-3.3-70b") == "GROQ_API_KEY"
+    assert s("together_ai/meta-llama/x") == "TOGETHERAI_API_KEY"
+    assert s("anthropic/claude-sonnet-5") == "ANTHROPIC_API_KEY"
+    assert s("ollama/phi3") == ""
+    assert s("anthropic/claude-sonnet-4-6-free", "https://api.apmix.ai") == "APMIX_API_KEY"
+    assert s("openai/x", "https://openrouter.ai/api/v1") == "OPENROUTER_API_KEY"
+    assert s("openai/x", "http://localhost:1234/v1") == ""
+    assert s("not-a-provider-id") == ""
+
+
+def test_prices_of_a_proxied_model_are_never_litellms(mocker, models_file):
+    import optimux_backend.core.usage as usage
+    save_model(ModelPayload(id="anthropic/claude-sonnet-5-5", name="via", env_key="APMIX_API_KEY",
+                            api_base="https://api.apmix.ai"))
+    tokens = {"prompt_tokens": 1000, "completion_tokens": 100, "cached_tokens": 0}
+    assert usage.cost_for("anthropic/claude-sonnet-5-5", tokens) is None
+    save_model(ModelPayload(id="anthropic/claude-sonnet-5-5", name="via", env_key="APMIX_API_KEY",
+                            input_cost_per_mtok=1, output_cost_per_mtok=10))
+    assert usage.cost_for("anthropic/claude-sonnet-5-5", tokens) == pytest.approx(0.002)
