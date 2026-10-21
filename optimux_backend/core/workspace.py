@@ -138,6 +138,18 @@ def _clean_remote(remote: str) -> str:
     return re.sub(r"^(https?://)[^@/]+@", r"\1", remote or "")
 
 
+def copy_target(name: str, path: str, remote: str) -> tuple[str, str | None, str | None]:
+    """(repository folder name, copy_of, push_branch). A copy (its folder isn't
+    named like its repository, e.g. t3-off from makerhub2) shares the
+    repository with the original and other copies: it pushes to its own
+    branch, named after the folder, never to theirs."""
+    m = _GITHUB_REMOTE.match(remote or "")
+    folder = m.group(2) if m else re.sub(r"\.git$", "", (remote or "").rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]) or name
+    if folder.lower() != name.lower() and _run(["git", "check-ref-format", "--branch", name], path, timeout=5)["ok"]:
+        return folder, folder, name
+    return folder, None, None
+
+
 def git_commands(name: str) -> dict:
     """Push (here) and pull (on another computer) one-liners for a project.
     The push commits every change first, runs as the user Optimux runs as on a
@@ -182,14 +194,8 @@ def git_commands(name: str) -> dict:
     if not ident and out["changes"] and not (known["ok"] and known["output"].strip()):
         out["warning"] = ("Git has no name and email to commit with. Set them in Dashboard → GitHub "
                           "(Who commits), then open this again.")
-    folder = m.group(2) if m else re.sub(r"\.git$", "", remote.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]) or name
-    # A copy (its folder isn't named like its repository, e.g. t3-off from
-    # makerhub2) shares the repository with the original and other copies:
-    # it pushes to its own branch, named after the folder, never to theirs.
-    target = "HEAD"
-    if folder.lower() != name.lower() and _run(["git", "check-ref-format", "--branch", name], path, timeout=5)["ok"]:
-        target = f"HEAD:{name}"
-        out["copy_of"], out["push_branch"] = folder, name
+    folder, out["copy_of"], out["push_branch"] = copy_target(name, path, remote)
+    target = f"HEAD:{name}" if out["copy_of"] else "HEAD"
     commit = f"git add -A && (git diff --cached --quiet || git {who}commit -m {q(MANUAL_COMMIT_MESSAGE)})"
     if use_token:
         push = ("GH_TOKEN=\"$" + GITHUB_TOKEN_ENV + "\" git -c credential.helper= "

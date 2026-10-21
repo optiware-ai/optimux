@@ -37,7 +37,7 @@ def _tree(top: str) -> str:
         index = os.path.join(tmp, "index")
         real = os.path.join(git_dir, "index")
         if os.path.isfile(real):
-            shutil.copyfile(real, index)
+            shutil.copy2(real, index)       # keep its mtime: git's check for racily clean entries needs it
         env["GIT_INDEX_FILE"] = index
         add = _git(["add", "-A", "--", "."], top, env)
         if add.returncode != 0:

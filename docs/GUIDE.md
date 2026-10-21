@@ -313,6 +313,23 @@ The token is kept in `secrets.env` with the other keys, and only the two steps t
 
 **Who commits.** The first commit (and commits the model makes, when you approve them) use git's own name and email. Set a different **name and email** in Dashboard → GitHub (saved on their own, with their own **Save**). On a server the Optimux user usually has none, so saving a token fills them in with your GitHub account and its private `…@users.noreply.github.com` address when git has nothing set.
 
+### Push and Update from GitHub
+
+On each project's card in **Dashboard → Projects**, **Push…** and **Update…** do the git work for you, after you check it. Under a reply that changed files, the *Files changed* box has a **Push…** link too. The model never gets these: only your click pushes.
+
+**Push…** opens a window that shows, before anything changes: the branch and repository it pushes to (a copy uses its own branch, see below), every file it will commit with its +/− counts (a deleted or halved file in red), and a box for the commit message. **✨ Write it** asks the Simple model to write the message: it reads the project's commit template if there is one (`commit-template.txt`, `.gitmessage`, or git's `commit.template` inside the project), the last few commit titles and the changes, and fills the box. It's one small paid call, shown with its cost, and you can edit the result. **Commit and push** then commits everything shown (`git add -A`) and pushes. It stops, with the reason, when:
+
+- **GitHub has commits this project doesn't** ("Update first"). Optimux never forces a push.
+- **A file contains one of your saved keys** (an API key, the GitHub token): the file and the key's name are shown, never the key. Such a file is never sent to a model to write the message either.
+- Git has **no name and email** to commit with (Dashboard → GitHub).
+- A **request is running** in the project, or the files changed after the window opened (open it again).
+
+Files named like secrets (`.env`, `*.pem`) and files over 50 MB are warnings: you tick "I checked the warnings" to go on.
+
+**Update…** fetches from GitHub and shows the new commits (title, author) and the files they change. **Update** then moves the project to them, **fast-forward only**: if you changed a file the update also changes, or this project has commits GitHub doesn't (the histories went apart), it stops and tells you what to do. It never merges, resets or stashes your work. A copy updates from its own branch.
+
+Both use the saved GitHub token for that one call only (never in a URL or a git config), and git hooks don't run.
+
 ### Pushing and cloning by hand
 
 The model can commit (when you approve the command) but **can't push**: its commands don't get the GitHub token, and on a server the sandbox has no network either. A push it tries fails with *Could not resolve host* or asks for a username. Push yourself, from a terminal on the machine Optimux runs on.

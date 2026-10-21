@@ -57,6 +57,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── files.py_AGENT.md
 │       ├── exports.py_AGENT.md
 │       ├── executor.py_AGENT.md
+│       ├── gitsync.py           (Push and Update from GitHub, on the user's click)
+│       ├── gitsync.py_AGENT.md
 │       ├── llm_client.py        (LiteLLM router & Tool schemas)
 │       ├── llm_client.py_AGENT.md
 │       ├── memory_manager.py    (Decoupled state saved to ~/.optimux)

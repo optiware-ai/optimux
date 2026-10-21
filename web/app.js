@@ -1046,6 +1046,54 @@ createApp({
         const copyGitLine = async () => {
             if (await writeClipboard(gitLine.value)) { gitBox.copied = true; setTimeout(() => { gitBox.copied = false; }, 1500); }
         };
+        // ---- Push / Update from GitHub (v0.4-5t): prepare (nothing changes), then run on confirm
+        const syncBox = Vue.reactive({ open: false, kind: '', project: '', loading: false, data: null, error: '',
+            message: '', confirmed: false, busy: false, writing: false, writeNote: '', result: null });
+        const chatProject = Vue.computed(() => (currentSession.value && currentSession.value.project) || appSettings.value.active_project || '');
+        const openSync = async (project, kind) => {
+            Object.assign(syncBox, { open: true, kind, project, loading: true, data: null, error: '', message: '',
+                confirmed: false, busy: false, writing: false, writeNote: '', result: null });
+            try {
+                const r = await fetch(`/api/projects/${encodeURIComponent(project)}/${kind}`);
+                const d = await r.json();
+                if (!syncBox.open || syncBox.project !== project) return;
+                if (!r.ok) syncBox.error = d.detail || 'Could not read the project.';
+                else { syncBox.data = d; if (kind === 'push') syncBox.message = d.default_message || ''; }
+            } catch (_) { syncBox.error = 'Could not reach Optimux.'; }
+            syncBox.loading = false;
+        };
+        const closeSync = () => { if (!syncBox.busy) syncBox.open = false; };
+        const syncReady = Vue.computed(() => {
+            const d = syncBox.data;
+            if (!d || d.problems.length) return false;
+            if ((d.warnings || []).length && !syncBox.confirmed) return false;
+            if (syncBox.kind === 'push' && d.files.length && !syncBox.message.trim()) return false;
+            return true;
+        });
+        const writeCommitMessage = async () => {
+            syncBox.writing = true; syncBox.writeNote = '';
+            try {
+                const d = await postJson(`/api/projects/${encodeURIComponent(syncBox.project)}/commit-message`, {});
+                syncBox.message = d.message;
+                syncBox.writeNote = `Written by ${d.model}${d.template ? ', following the commit template' : ''} · ${d.cost != null ? fmtCost(d.cost) : 'cost unknown'}. Check it before pushing.`;
+            } catch (e) { syncBox.writeNote = e.message; }
+            syncBox.writing = false;
+        };
+        const runSync = async () => {
+            if (!syncReady.value || syncBox.busy) return;
+            syncBox.busy = true;
+            const body = syncBox.kind === 'push'
+                ? { message: syncBox.message, tree: syncBox.data.tree, confirmed: syncBox.confirmed }
+                : { sha: syncBox.data.sha };
+            try {
+                syncBox.result = await postJson(`/api/projects/${encodeURIComponent(syncBox.project)}/${syncBox.kind}`, body);
+                pushToast(syncBox.kind === 'push'
+                    ? { title: `Pushed · ${syncBox.project}`, text: `${syncBox.result.branch} · ${syncBox.result.commit}`, link: syncBox.result.url || '', linkLabel: 'Open on GitHub' }
+                    : { title: `Updated · ${syncBox.project}`, text: `${syncBox.result.commits} new commit${syncBox.result.commits === 1 ? '' : 's'}` });
+                if (showSettingsModal.value && settingsTab.value === 'projects') fetchProjectsOverview();
+            } catch (e) { syncBox.error = e.message; }
+            syncBox.busy = false;
+        };
         const archiveFromDashboard = async (name) => {
             if (!await askConfirm({ title: `Archive ${name}?`, text: "Its folder moves to the Workspace's .archive folder. Its chats, costs and memory are kept, and you can restore it from this page.", ok: 'Archive' })) return;
             try {
@@ -3348,6 +3396,7 @@ createApp({
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
+            syncBox, chatProject, openSync, closeSync, syncReady, writeCommitMessage, runSync,
             startClone, cancelClone, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, copyPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,
             removeSkill, saveAsSkill, skillDialog, confirmSkillDialog,

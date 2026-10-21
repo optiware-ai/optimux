@@ -220,3 +220,21 @@ def test_a_project_without_git_says_so(mocker, client, tmp_path, monkeypatch):
     msgs = collect(chat.ws)
     chat.close()
     assert [m for m in msgs if m["type"] == "changes"] == [{"type": "changes", "git": False}]
+
+
+def test_a_same_size_edit_right_after_a_clone_is_seen(repo, tmp_path):
+    """Racily clean entries (5t found it: '<p>2024</p>' -> '<p>2026</p>' was
+    missed now and then right after a clone). The clone writes the index and
+    the file is edited, at the same size, in the same second; the snapshot runs
+    in the next second. A copy of the index with a new mtime made git trust the
+    stale stat data; the copy now keeps the index's mtime."""
+    import time
+    for i in range(3):
+        while time.time() % 1 > 0.2:                              # start early in a second
+            time.sleep(0.01)
+        dest = tmp_path / f"clone{i}"
+        git("clone", "-q", str(repo), str(dest), cwd=tmp_path)
+        head = git("rev-parse", "HEAD^{tree}", cwd=dest).strip()
+        (dest / "old.txt").write_text("bey\n")                 # same size as "bye\n"
+        time.sleep(1.05 - time.time() % 1)                      # the snapshot in the next second
+        assert changes._tree(str(dest)) != head, f"missed on round {i}"

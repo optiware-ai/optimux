@@ -242,6 +242,8 @@
                             <button @click="historyPage.project = p.project; openSettings('history')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Chats</button>
                             <button @click="memoryTab = 'project'; memoryProject = p.project; openSettings('memory'); fetchMemory()" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Memory</button>
                             <button v-if="!p.deleted || p.exists" @click="openSettings('budgets')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Budget</button>
+                            <button v-if="p.exists" @click="openSync(p.project, 'push')" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600" title="Commit and push this project to GitHub, after you check what goes">Push…</button>
+                            <button v-if="p.exists" @click="openSync(p.project, 'update')" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600" title="Bring in GitHub's new commits (fast-forward only)">Update…</button>
                             <button v-if="p.exists" @click="openGitBox(p.project, 'push')" :class="['px-2 py-1 rounded border hover:border-gray-500', gitBox.project === p.project && gitBox.kind === 'push' ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-300']" title="A one-line command to commit and push this project from a terminal">Push manually</button>
                             <button v-if="p.exists" @click="openGitBox(p.project, 'pull')" :class="['px-2 py-1 rounded border hover:border-gray-500', gitBox.project === p.project && gitBox.kind === 'pull' ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-300']" title="A one-line command to get this project on another computer">Pull manually</button>
                             <button v-if="p.exists" @click="archiveFromDashboard(p.project)" :disabled="p.active && (isGenerating || pendingApproval)" class="px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-yellow-700 hover:text-yellow-300 disabled:opacity-40 ml-auto" title="Move its folder to .archive/ (chats and costs are kept)">Archive</button>
@@ -1782,6 +1784,71 @@
             </div>
         </div>
 
+        <!-- Push / Update from GitHub (v0.4-5t): shown first, runs only on confirm -->
+        <div v-if="syncBox.open" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="closeSync">
+            <div class="w-full max-w-2xl max-h-[75vh] overflow-y-auto bg-gray-900 border border-gray-700 rounded-xl p-5 shadow-2xl text-sm">
+                <div class="flex items-start gap-3 mb-3">
+                    <h3 class="text-gray-100 font-bold flex-1">{{ syncBox.kind === 'push' ? 'Push' : 'Update from GitHub' }} · {{ syncBox.project }}</h3>
+                    <button @click="closeSync" class="text-gray-500 hover:text-gray-200" title="Close">✕</button>
+                </div>
+                <div v-if="syncBox.loading" class="text-gray-400">Checking the project and GitHub…</div>
+                <div v-else-if="syncBox.error" class="text-red-300 whitespace-pre-wrap break-words">{{ syncBox.error }}</div>
+                <div v-else-if="syncBox.result" class="text-green-300">
+                    <template v-if="syncBox.kind === 'push'">✓ Pushed {{ syncBox.result.commits }} commit{{ syncBox.result.commits === 1 ? '' : 's' }} to <span class="font-mono">{{ syncBox.result.branch }}</span> · <span class="font-mono">{{ syncBox.result.commit }}</span>. <a v-if="syncBox.result.url" :href="syncBox.result.url" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">Open on GitHub ↗</a></template>
+                    <template v-else>✓ Updated: {{ syncBox.result.commits }} new commit{{ syncBox.result.commits === 1 ? '' : 's' }}, {{ syncBox.result.files }} file{{ syncBox.result.files === 1 ? '' : 's' }} changed. Now at <span class="font-mono">{{ syncBox.result.head }}</span>.</template>
+                </div>
+                <template v-else-if="syncBox.data">
+                    <p class="text-gray-400 mb-3">
+                        <template v-if="syncBox.kind === 'push'">Commits every change shown below and pushes</template><template v-else>Brings in GitHub's new commits for</template>
+                        the branch <span class="font-mono text-gray-200">{{ syncBox.data.target || syncBox.data.branch }}</span>
+                        <template v-if="syncBox.data.remote"> of <span class="font-mono text-gray-200 break-all">{{ syncBox.data.remote }}</span></template>.
+                        <template v-if="syncBox.data.copy_of"> This is a copy of <span class="font-mono text-gray-200">{{ syncBox.data.copy_of }}</span>, so it uses its own branch and never changes {{ syncBox.data.copy_of }}'s.</template>
+                    </p>
+                    <div v-for="(pr, i) in syncBox.data.problems" :key="'p' + i" class="mb-2 rounded-lg border border-red-900/70 bg-red-950/30 text-red-200 px-3 py-2">⛔ {{ pr }}</div>
+                    <div v-for="(w, i) in (syncBox.data.warnings || [])" :key="'w' + i" class="mb-2 rounded-lg border border-yellow-800 bg-yellow-900/20 text-yellow-100 px-3 py-2">⚠ {{ w }}</div>
+
+                    <template v-if="syncBox.kind === 'push'">
+                        <div v-if="syncBox.data.files.length" class="mt-3 border border-gray-800 rounded-lg bg-gray-950/60 px-3 py-2 text-[12px] font-mono">
+                            <div class="text-gray-500 mb-1">Files to commit ({{ syncBox.data.files.length + (syncBox.data.more || 0) }})</div>
+                            <div v-for="f in syncBox.data.files" :key="f.path" :class="['flex items-baseline gap-3', f.warn ? 'text-red-300' : 'text-gray-300']" :title="changeTitle(f)">
+                                <span class="truncate flex-1">{{ f.path }}</span><span class="flex-shrink-0">{{ changeLabel(f) }}</span>
+                            </div>
+                            <div v-if="syncBox.data.more" class="text-gray-500">and {{ syncBox.data.more }} more</div>
+                        </div>
+                        <div v-else-if="syncBox.data.ahead" class="text-gray-400 mt-2">No new changes; {{ syncBox.data.ahead }} commit{{ syncBox.data.ahead === 1 ? '' : 's' }} not on GitHub yet will be pushed.</div>
+                        <div v-if="syncBox.data.files.length && !syncBox.data.problems.length" class="mt-3">
+                            <div class="flex items-center gap-2 mb-1">
+                                <label class="text-gray-400 flex-1">Commit message <span v-if="syncBox.data.template" class="text-gray-500">(this project has a commit template)</span></label>
+                                <button @click="writeCommitMessage" :disabled="syncBox.writing || syncBox.busy" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-purple-300 hover:border-gray-500 disabled:opacity-50" :title="'The Simple model reads ' + (syncBox.data.template ? 'the commit template and ' : '') + 'the changes and writes the message (one small paid call)'">{{ syncBox.writing ? 'Writing…' : '✨ Write it' }}</button>
+                            </div>
+                            <textarea v-model="syncBox.message" rows="6" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-[13px] text-gray-100 outline-none focus:border-blue-500"></textarea>
+                            <div v-if="syncBox.writeNote" class="text-[12px] text-purple-300 font-mono mt-1">{{ syncBox.writeNote }}</div>
+                        </div>
+                    </template>
+                    <template v-else>
+                        <div v-if="syncBox.data.commits.length" class="mt-3 border border-gray-800 rounded-lg bg-gray-950/60 px-3 py-2 text-[12px] font-mono">
+                            <div class="text-gray-500 mb-1">New on GitHub ({{ syncBox.data.behind }} commit{{ syncBox.data.behind === 1 ? '' : 's' }})</div>
+                            <div v-for="c in syncBox.data.commits" :key="c.sha" class="flex items-baseline gap-3 text-gray-300">
+                                <span class="text-gray-500 flex-shrink-0">{{ c.sha }}</span><span class="truncate flex-1">{{ c.subject }}</span><span class="text-gray-500 flex-shrink-0">{{ c.author }}</span>
+                            </div>
+                            <div v-if="syncBox.data.more_commits" class="text-gray-500">and {{ syncBox.data.more_commits }} more</div>
+                        </div>
+                        <div v-if="syncBox.data.files.length" class="mt-3 border border-gray-800 rounded-lg bg-gray-950/60 px-3 py-2 text-[12px] font-mono">
+                            <div class="text-gray-500 mb-1">Files it changes ({{ syncBox.data.files.length }})</div>
+                            <div v-for="f in syncBox.data.files.slice(0, 30)" :key="f.path" class="flex items-baseline gap-3 text-gray-300"><span class="truncate flex-1">{{ f.path }}</span><span class="flex-shrink-0 text-gray-500">{{ f.status }}</span></div>
+                        </div>
+                    </template>
+
+                    <label v-if="(syncBox.data.warnings || []).length && !syncBox.data.problems.length" class="flex items-center gap-2 text-yellow-200 mt-3"><input type="checkbox" v-model="syncBox.confirmed" class="w-3.5 h-3.5"> I checked the warnings above</label>
+                    <p class="text-[12px] text-gray-500 mt-3">{{ syncBox.kind === 'push' ? 'Never forced: if GitHub has newer commits, Optimux stops and asks you to update first.' : 'Fast-forward only: your changes are never merged, overwritten or reset.' }}</p>
+                </template>
+                <div class="flex justify-end gap-3 mt-4">
+                    <button @click="closeSync" class="px-4 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">{{ syncBox.result ? 'Close' : 'Cancel' }}</button>
+                    <button v-if="syncBox.data && !syncBox.result && !syncBox.loading" @click="runSync" :disabled="!syncReady || syncBox.busy" class="px-4 py-1.5 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50">{{ syncBox.busy ? (syncBox.kind === 'push' ? 'Pushing…' : 'Updating…') : (syncBox.kind === 'push' ? 'Commit and push' : 'Update') }}</button>
+                </div>
+            </div>
+        </div>
+
         <!-- In-app confirmation (replaces the browser's native confirm boxes) -->
         <div v-if="confirmBox" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="answerConfirm(false)">
             <div class="w-full max-w-md bg-gray-900 border border-gray-700 rounded-xl p-5 shadow-2xl">
@@ -2017,6 +2084,9 @@
                                 <span class="flex-shrink-0 whitespace-nowrap">{{ changeLabel(f) }}</span>
                             </div>
                             <div v-if="msg.changes.more" class="text-gray-500">and {{ msg.changes.more }} more</div>
+                            <div v-if="msg.changes.files && msg.changes.files.length && chatProject && !readOnlyChat && !isGenerating" class="mt-1.5 text-right">
+                                <button @click="openSync(chatProject, 'push')" class="text-blue-400 hover:text-blue-300" title="Commit and push this project to GitHub, after you check what goes">Push…</button>
+                            </div>
                         </template>
                     </div>
                     <div v-if="msg.role === 'agent' && !(index === 0 && msg.system_note === 'System') && !(isGenerating && index === messages.length - 1)" class="mt-3 pt-2 border-t border-gray-800 flex items-center justify-between gap-3 text-[11px] font-mono text-gray-500">

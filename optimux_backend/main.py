@@ -50,6 +50,7 @@ from optimux_backend.core.memory_manager import init_memory, log_command_to_sess
 from optimux_backend.core.agents import get_executor_prompt, get_step_prompt
 from optimux_backend.core import files as files_lib
 from optimux_backend.core import changes as changes_lib
+from optimux_backend.core import gitsync
 from optimux_backend.core.security import (
     GITHUB_TOKEN_ENV, ScopeError, ValidationError, bearer_from_header, check_token,
     get_or_create_token, origin_allowed, paths_outside_scope, resolve_project_dir, rotate_token, validate_project_name,
@@ -578,6 +579,92 @@ async def project_git_commands(name: str):
         return await asyncio.to_thread(workspace.git_commands, name)
     except workspace.WorkspaceError as e:
         return JSONResponse({"detail": str(e)}, status_code=422)
+
+
+# ---- Push and Update from GitHub (v0.4-5t): the user's buttons only, never a model tool
+
+class PushPayload(BaseModel):
+    message: str = ""
+    tree: str | None = None
+    confirmed: bool = False
+
+
+class UpdatePayload(BaseModel):
+    sha: str | None = None
+
+
+def _git_busy(name: str) -> JSONResponse | None:
+    if BUSY_PROJECTS.get(name):
+        return JSONResponse({"detail": f"A request is running in '{name}'. Wait for it to finish (or stop it), "
+                                       "so half-done work isn't pushed or overwritten."}, status_code=422)
+    return None
+
+
+async def _gitsync(fn, *args):
+    try:
+        return await asyncio.to_thread(fn, *args)
+    except (workspace.WorkspaceError, gitsync.GitSyncError) as e:
+        return JSONResponse({"detail": str(e)}, status_code=422)
+
+
+@app.get("/api/projects/{name}/push")
+async def project_push_prepare(name: str):
+    """What Push would commit and push. Nothing changes."""
+    result = await _gitsync(gitsync.push_prepare, name)
+    if isinstance(result, dict) and BUSY_PROJECTS.get(name):
+        result["problems"].insert(0, "A request is running in this project. Wait for it to finish first.")
+    return result
+
+
+@app.post("/api/projects/{name}/push")
+async def project_push(name: str, payload: PushPayload):
+    return _git_busy(name) or await _gitsync(gitsync.push_run, name, payload.message, payload.tree, payload.confirmed)
+
+
+@app.get("/api/projects/{name}/update")
+async def project_update_prepare(name: str):
+    """What Update would bring in from GitHub. Nothing changes."""
+    result = await _gitsync(gitsync.update_prepare, name)
+    if isinstance(result, dict) and BUSY_PROJECTS.get(name):
+        result["problems"].insert(0, "A request is running in this project. Wait for it to finish first.")
+    return result
+
+
+@app.post("/api/projects/{name}/update")
+async def project_update(name: str, payload: UpdatePayload):
+    return _git_busy(name) or await _gitsync(gitsync.update_run, name, payload.sha)
+
+
+@app.post("/api/projects/{name}/commit-message")
+async def project_commit_message(name: str):
+    """The Simple model writes the commit message for what Push would commit,
+    following the project's commit template if it has one. One paid call."""
+    model = get_routing_config().get("simple_model", "")
+    if not model:
+        return JSONResponse({"detail": "No Simple model is configured (Dashboard → Routing)."}, status_code=422)
+    if (b := budgets.blocks(name)):
+        return JSONResponse({"detail": budget_text(b) + " New model calls are blocked until you raise it."},
+                            status_code=422)
+    material = await _gitsync(gitsync.message_material, name)
+    if not isinstance(material, dict):
+        return material
+    started = time.monotonic()
+    try:
+        response = await litellm.acompletion(
+            model=model, messages=[{"role": "user", "content": gitsync.message_prompt(material)}],
+            timeout=60, **litellm_key_kwargs(model), **thinking_kwargs(model))
+    except Exception as e:
+        ratelimits.record_error(model, e)
+        return JSONResponse({"detail": "The model couldn't write it: " + providers.classify(e).summary},
+                            status_code=502)
+    ratelimits.record_response(model, response)
+    entry = usage_meter.record("", "commit_message", model, getattr(response, "usage", None),
+                               int((time.monotonic() - started) * 1000), project=name)
+    message = gitsync.clean_message(response.choices[0].message.content or "")
+    if not message:
+        return JSONResponse({"detail": "The model returned an empty message. Try again, or write it yourself."},
+                            status_code=502)
+    return {"message": message, "model": model, "cost": entry.get("cost"), "template": bool(material["template"])}
 
 
 @app.post("/api/projects/{name}/archive")
