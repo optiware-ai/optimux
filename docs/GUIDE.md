@@ -493,7 +493,7 @@ Below the form, **Prices** lists every model of the provider in a table you can 
 
 **Other** keeps the free form for any model LiteLLM can route (`together_ai/…`, `bedrock/…`): the model ID with its provider prefix, an optional **Base URL** (below), the key variable, the key, and prices only to override LiteLLM's list.
 
-The **key variable** is the name your key is saved under in `~/.optimux/secrets.env` (`GROQ_API_KEY=…`). Optimux fills it in from the model ID (`groq/…` → `GROQ_API_KEY`) or from the Base URL (`https://api.apmix.ai` → `APMIX_API_KEY`); you can change it. Models with the same key variable share one key: type it once, and leave the API key empty for the next model. A second name (`GROQ_KEY_2`) gives a model its own key, for example from a second account. Leave it empty only for local models that need no key.
+The **key variable** is the name your key is saved under in `~/.optimux/secrets.env` (`GROQ_API_KEY=…`). Optimux fills it in from the model ID (`groq/…` → `GROQ_API_KEY`) or from the Base URL (`https://api.apmix.ai` → `APMIX_API_KEY`); you can change it. Models with the same key variable share one key: type it once, and leave the API key empty for the next model. A different name gives a model its own key, for example from a second account: `GROQ2_API_KEY` (a name must end in `_API_KEY`, `_KEY` or `_TOKEN`, so `GROQ_API_KEY_2` isn't accepted). The form says which models already use the name you typed. Leave it empty only for local models that need no key.
 
 ### Providers that aren't listed (proxies, resellers, your own server)
 

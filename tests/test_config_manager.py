@@ -215,3 +215,15 @@ def test_prices_of_a_proxied_model_are_never_litellms(mocker, models_file):
     save_model(ModelPayload(id="anthropic/claude-sonnet-5-5", name="via", env_key="APMIX_API_KEY",
                             input_cost_per_mtok=1, output_cost_per_mtok=10))
     assert usage.cost_for("anthropic/claude-sonnet-5-5", tokens) == pytest.approx(0.002)
+
+
+def test_cards_show_litellms_prices_as_numbers(mocker, tmp_path):
+    f = tmp_path / "models.json"
+    f.write_text(json.dumps({"gpt-5-nano": {"name": "nano", "env_key": "OPENAI_API_KEY"},
+                             "openai/x": {"name": "x", "env_key": "", "input_cost_per_mtok": 1,
+                                          "output_cost_per_mtok": 2}}))
+    mocker.patch.object(config_manager, 'MODELS_FILE', str(f))
+    mocker.patch.dict(os.environ, {"OPENAI_API_KEY": "k"}, clear=True)
+    cards = {m["id"]: m for m in get_models_config()["available"]}
+    assert cards["gpt-5-nano"]["list_prices"] == {"input": 0.05, "output": 0.4, "cached": 0.005}
+    assert cards["openai/x"]["list_prices"] is None            # own prices: shown from the model's fields

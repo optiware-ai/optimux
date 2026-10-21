@@ -2195,6 +2195,33 @@ createApp({
             return [...availableModels.value, ...setupModels.value]
                 .filter(m => m.env_key === k && m.id !== newModelId.value.trim()).map(m => m.name || m.id);
         });
+        const normBase = (b) => (b || '').trim().replace(/\/+$/, '');
+        // Models that use this key variable but go to another server: sharing would send the key there (5o)
+        const newModelKeyConflict = Vue.computed(() => {
+            const k = newModelEnvKey.value.trim().toUpperCase();
+            if (!k) return '';
+            const mine = normBase(newModelBase.value);
+            const other = [...availableModels.value, ...setupModels.value]
+                .find(m => m.env_key === k && m.id !== newModelId.value.trim() && normBase(m.api_base) !== mine);
+            return other ? (other.name || other.id) : '';
+        });
+        const newModelKeyValid = Vue.computed(() => /^[A-Z][A-Z0-9_]{0,62}$/.test(newModelEnvKey.value.trim().toUpperCase())
+            && /(_API_KEY|_KEY|_TOKEN)$/.test(newModelEnvKey.value.trim().toUpperCase()));
+        // A name to propose: the host's for a model behind another server, else a second name
+        // for the same provider (PREFIX2_API_KEY: valid, unlike ..._API_KEY_2)
+        const newModelKeyExample = Vue.computed(() => {
+            const h = newModelHost.value;
+            if (newModelKeyConflict.value && h) {
+                const stem = (h.split('.').filter(x => !['api', 'www'].includes(x))[0] || 'MY').toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+                return stem + '_API_KEY';
+            }
+            const k = newModelEnvKey.value.trim().toUpperCase();
+            // ANTHROPIC_API_KEY_NEW -> ANTHROPIC_NEW_API_KEY: the extra part moves before the ending
+            const moved = k.match(/^([A-Z][A-Z0-9_]*?)(_API_KEY|_KEY|_TOKEN)_+([A-Z0-9_]+)$/);
+            if (moved) return `${moved[1]}_${moved[3]}${moved[2]}`;
+            const m = k.match(/^([A-Z][A-Z0-9_]*?)(_API_KEY|_KEY|_TOKEN)$/);
+            return (m ? m[1] : 'MY') + '2_API_KEY';
+        });
         const newModelKeySaved = Vue.computed(() => {
             const k = newModelEnvKey.value.trim().toUpperCase();
             return !!k && availableModels.value.some(m => m.env_key === k);
@@ -2253,6 +2280,7 @@ createApp({
         const catSortBy = (key) => {
             catSort.value = catSort.value.key === key ? { key, desc: !catSort.value.desc } : { key, desc: false };
         };
+        const fmtPrice = (v) => v == null ? '?' : String(+Number(v).toPrecision(4));
         const fmtMtok = (v) => v == null ? '—' : v === 0 ? 'free' : '$' + (v < 0.1 ? v.toFixed(3) : v < 10 ? v.toFixed(2) : v.toFixed(1));
         const fmtCtx = (n) => !n ? '—' : n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`;
         const fmtWhen = (ts) => ts ? new Date(ts * 1000).toLocaleString() : 'never';
@@ -3261,7 +3289,8 @@ createApp({
             showSettingsModal, openSettings, closeSettings, settingsTab, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,
             newModelBase, newModelAck, newModelMsg, onEnvKeyInput, newModelHost, newModelHostLocal, newModelNeedsAck,
-            newModelPricesSet, newModelKeyUsers, newModelKeySaved,
+            newModelPricesSet, newModelKeyUsers, newModelKeySaved, newModelKeyConflict, newModelKeyValid,
+            newModelKeyExample, fmtPrice,
             editingKeys, routingConfig, saveRouting, showRoutingSaved,
             appSettings, projectsList, saveSettings, showSettingsSaved,
             memoryTab, memoryContent, fetchMemory, saveMemory, showMemorySaved,

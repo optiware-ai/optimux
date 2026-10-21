@@ -524,6 +524,21 @@ def price_source(model_id: str, details: dict) -> str:
         return "unknown"
 
 
+def list_prices(model_id: str) -> dict | None:
+    """LiteLLM's prices for a model, in USD per million tokens (input, output,
+    cached input), so the card can show the numbers, not just "known"."""
+    try:
+        import litellm
+        info = litellm.get_model_info(model_id)
+    except Exception:
+        return None
+    def per_m(v):
+        return None if v is None else round(v * 1_000_000, 6)
+    out = {"input": per_m(info.get("input_cost_per_token")), "output": per_m(info.get("output_cost_per_token")),
+           "cached": per_m(info.get("cache_read_input_token_cost"))}
+    return out if out["input"] is not None and out["output"] is not None else None
+
+
 def _limits(model_id: str) -> dict | None:
     from optimux_backend.core import ratelimits
     return ratelimits.get(model_id)
@@ -548,10 +563,13 @@ def get_models_config() -> dict:
             "supports_thinking": supports_thinking(model_id),
             "limits": _limits(model_id),
             "api_base": details.get("api_base", ""),
+            "list_prices": None,
             "api_host": api_host(details.get("api_base", "")),
         }
         for field in PRICE_FIELDS:
             entry[field] = details.get(field)
+        if entry["price_source"] == "litellm":
+            entry["list_prices"] = list_prices(model_id)
         if not env_key or os.environ.get(env_key):
             available.append(entry)
         else:

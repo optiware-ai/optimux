@@ -607,8 +607,12 @@
                                     <input v-model="newModelApiKey" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true" data-bwignore placeholder="sk-..." class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none">
                                 </div>
                             </div>
-                            <div v-if="newModelKeyUsers.length" class="text-[12px] text-gray-400">
-                                <code>{{ newModelEnvKey.trim().toUpperCase() }}</code> is already the key of {{ newModelKeyUsers.join(', ') }}<template v-if="newModelKeySaved">, and it is saved. Leave API key empty to share it; typing a key here <span class="text-yellow-300">replaces it for those models too</span>.</template><template v-else>.</template>
+                            <div v-if="newModelEnvKey.trim() && !newModelKeyValid" class="text-[12px] text-red-400">A key variable is UPPER_SNAKE_CASE and ends in _API_KEY, _KEY or _TOKEN, e.g. {{ newModelKeyExample }}.</div>
+                            <div v-else-if="newModelKeyConflict" class="text-[12px] text-red-400">
+                                <code>{{ newModelEnvKey.trim().toUpperCase() }}</code> is the key of {{ newModelKeyConflict }}, which goes to a different server. This model needs its own name, e.g. <code>{{ newModelKeyExample }}</code>, so that key is never sent to {{ newModelHost || 'this model\'s provider' }}.
+                            </div>
+                            <div v-else-if="newModelKeyUsers.length" class="text-[12px] text-gray-400">
+                                One name holds one key. <code>{{ newModelEnvKey.trim().toUpperCase() }}</code> already belongs to {{ newModelKeyUsers.join(', ') }}<template v-if="newModelKeySaved">: leave API key empty and this model uses the same key. <span class="text-yellow-300">A key typed here is saved under that name, so it would replace the key of {{ newModelKeyUsers.join(', ') }} too.</span> For a separate key, choose another name, e.g. <code>{{ newModelKeyExample }}</code>.</template><template v-else>.</template>
                             </div>
                             <div v-if="newModelHost" :class="['rounded-lg border px-3 py-3 text-[13px] flex flex-col gap-2', newModelHostLocal ? 'border-gray-700 bg-gray-900/60 text-gray-300' : 'border-yellow-700 bg-yellow-900/20 text-yellow-100']">
                                 <template v-if="!newModelHostLocal">
@@ -631,7 +635,7 @@
                             </div>
                             <div class="flex items-center gap-3 self-end">
                                 <span v-if="newModelMsg" :class="['text-[13px]', newModelMsg.ok ? 'text-green-400' : 'text-red-400']">{{ newModelMsg.text }}</span>
-                                <button type="submit" :disabled="(newModelNeedsAck && !newModelAck) || (newModelBase.trim() && !newModelHost)" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-[15px] font-bold transition disabled:opacity-50">Add Model</button>
+                                <button type="submit" :disabled="(newModelNeedsAck && !newModelAck) || (newModelBase.trim() && !newModelHost) || !!newModelKeyConflict || (newModelEnvKey.trim() && !newModelKeyValid)" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-[15px] font-bold transition disabled:opacity-50">Add Model</button>
                             </div>
                         </form>
                         </div>
@@ -754,6 +758,7 @@
                                 </div>
                                 <div class="mt-2 text-[13px] text-gray-500 font-mono flex items-center gap-2 flex-wrap">
                                     <span v-if="model.input_cost_per_mtok != null">${{ model.input_cost_per_mtok }} in / ${{ model.output_cost_per_mtok }} out<span v-if="model.cached_input_cost_per_mtok != null"> / ${{ model.cached_input_cost_per_mtok }} cached</span> per M tokens</span>
+                                    <span v-else-if="model.price_source === 'litellm' && model.list_prices" title="From LiteLLM's price list. Edit to use your own prices instead.">${{ fmtPrice(model.list_prices.input) }} in / ${{ fmtPrice(model.list_prices.output) }} out<span v-if="model.list_prices.cached != null"> / ${{ fmtPrice(model.list_prices.cached) }} cached</span> per M tokens (LiteLLM's list)</span>
                                     <span v-else-if="model.price_source === 'litellm'">Prices: known (LiteLLM)</span>
                                     <span v-else-if="model.price_source === 'local'">Local model: no per-token cost</span>
                                     <span v-else-if="model.price_source === 'proxy'" class="text-yellow-400" :title="'Optimux can\'t know what ' + model.api_host + ' charges, so LiteLLM\'s price list isn\'t used for this model.'">⚠ Price unknown ({{ model.api_host }}): set it to track cost</span>
