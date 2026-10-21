@@ -49,6 +49,7 @@ from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
 from optimux_backend.core.memory_manager import init_memory, log_command_to_session, get_memory_context, update_memory
 from optimux_backend.core.agents import get_executor_prompt, get_step_prompt
 from optimux_backend.core import files as files_lib
+from optimux_backend.core import changes as changes_lib
 from optimux_backend.core.security import (
     GITHUB_TOKEN_ENV, ScopeError, ValidationError, bearer_from_header, check_token,
     get_or_create_token, origin_allowed, paths_outside_scope, resolve_project_dir, rotate_token, validate_project_name,
@@ -2568,6 +2569,28 @@ async def ask_approval(websocket: WebSocket, session: dict, tc_id: str, command:
     return (await wait_for_answer(websocket, session, tc_id, command, **extra))["approved"] is True
 
 
+async def mark_changes_start(session: dict) -> None:
+    """Before the first command or file change of a request: remember the
+    project's files, so the end of the request can list what changed (v0.4-5m)."""
+    if session.get("changes_base") is not None or not active_project():
+        return
+    workdir = current_workdir()
+    if workdir:
+        session["changes_base"] = await asyncio.to_thread(changes_lib.snapshot, workdir)
+
+
+async def report_changes(websocket: WebSocket, session: dict) -> None:
+    """At the end of a request that ran commands or changed files: send the
+    changed-files summary (stored with the chat, so it comes back on replay)."""
+    base = session.pop("changes_base", None)
+    if base is None:
+        return
+    result = await asyncio.to_thread(changes_lib.compare, base)
+    if result.get("git") and not result.get("error") and not result.get("files"):
+        return                                    # nothing changed: nothing to show
+    await send(websocket, "changes", **result)
+
+
 async def run_file_tool(websocket: WebSocket, session: dict, name: str, args_str: str, tc_id: str) -> dict:
     """write_file / edit_file (v0.4-5i): check and compute the change, show it for
     approval with its diff, then write it atomically. A refused check is shown in
@@ -2603,6 +2626,7 @@ async def run_file_tool(websocket: WebSocket, session: dict, name: str, args_str
         await send(websocket, "system", f"Change to {change['path']} rejected.")
         return {"ok": False, "declined": True, "note": "The user declined this change. Don't retry it; briefly "
                 "say what you intended and ask how they'd like to proceed."}
+    await mark_changes_start(session)
     await send(websocket, "command_start", command=label, file=info)
     try:
         result = await asyncio.to_thread(files_lib.apply, change)
@@ -2921,6 +2945,7 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                 outside = [p for p in (paths_outside_scope(cmd, workdir) if workdir else [])
                            if not in_skill_folder(p)]
                 if await ask_approval(websocket, session, tc_id, cmd, outside_paths=outside, workdir=workdir):
+                    await mark_changes_start(session)
                     await send(websocket, "command_start", command=cmd)
                     exec_result = await run_shell_command(cmd)
                     out = exec_result["stdout"] or exec_result["stderr"] or "(no output)"
@@ -3418,6 +3443,7 @@ async def websocket_endpoint(websocket: WebSocket):
         recorder = session["recorder"]
         recorder.pending = []
         turns_added = 0
+        session["changes_base"] = None
         try:
             if kind in ("new_chat", "open_session") and session["chat_id"]:
                 schedule_curation(websocket, session["chat_id"])   # the chat being left is finished
@@ -3449,6 +3475,12 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception as e:
             traceback.print_exc()
             await send(websocket, "error", providers.classify(e).summary)
+        try:
+            await report_changes(websocket, session)       # also after a stop or an error
+        except WebSocketDisconnect:
+            return
+        except Exception as e:
+            print(f"[Optimux] listing changed files failed: {e}")
         if kind not in ("new_chat", "open_session"):
             try:
                 save_chat(session, turns_added)

@@ -525,6 +525,10 @@ Ollama models (`ollama/...`) cost nothing per token. They work for simple chat, 
 
 The model has a terminal tool: it proposes a shell command, you approve it, Optimux runs it in the active project and gives the output back to the model. Commands time out after **30 seconds**, so very long builds or servers should be started by you.
 
+### Files changed
+
+After a reply that ran commands or changed files, a **Files changed** box under it lists what changed, from git: `+12 −1` for an edited file, `new, 23 lines`, `deleted`. A file that was deleted, or lost half of its lines or more (for example `285 → 0 lines`), is shown first and in **red**, because that is how a broken edit usually looks, even when the reply says it's done. It costs nothing (no model call) and doesn't touch what you staged with `git add`. It compares with the files as they were just before the reply's first command, so changes you make yourself meanwhile appear too; files your `.gitignore` excludes don't. A project without git gets no list (`git init` in the project makes it possible). The list is also in the chat export.
+
 ### Writing files
 
 To create or change a file, the model uses two file tools instead of shell commands, so a file is never left half-written or emptied, and no quotes get lost on the way:

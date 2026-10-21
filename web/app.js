@@ -963,6 +963,17 @@ createApp({
         // A unified-diff line's color: added green, removed red, hunk headers blue
         const diffLineClass = (l) => l.startsWith('+') ? 'text-green-300' : l.startsWith('-') ? 'text-red-300'
             : l.startsWith('@@') ? 'text-blue-300' : 'text-gray-400';
+        // Changed-files summary (v0.4-5m): "+12 −1", "new, 23 lines", "285 → 0 lines"
+        const changeLabel = (f) => {
+            if (f.status === 'deleted') return f.lines_before ? `deleted (${f.lines_before} lines)` : 'deleted';
+            if (f.added === null) return f.status === 'new' ? 'new, binary' : 'binary';
+            if (f.status === 'new') return `new, ${f.lines_after} line${f.lines_after === 1 ? '' : 's'}`;
+            if (f.warn) return `${f.lines_before} → ${f.lines_after} lines`;
+            return `+${f.added} −${f.removed}`;
+        };
+        const changeTitle = (f) => f.warn ? (f.status === 'deleted' ? 'This file was deleted in this reply.'
+            : `This file lost ${f.lines_before - f.lines_after} of its ${f.lines_before} lines in this reply. Check it.`)
+            : (f.status === 'changed' && f.added !== null ? `${f.lines_before} → ${f.lines_after} lines` : '');
         const gitBox = Vue.reactive({ project: '', kind: '', data: null, error: '', loading: false, ssh: false, copied: false });
         let savedSshHost = 'github.com';
         try { savedSshHost = localStorage.getItem('optimux.sshHost') || 'github.com'; } catch (_) {}
@@ -2863,6 +2874,10 @@ createApp({
                     if (!replay && appSettings.value.projects_root) {
                         fetchProjectsList();
                     }
+                } else if (data.type === "changes") {
+                    const { type, ...rest } = data;
+                    lastMsg.changes = rest;
+                    scrollToBottom();
                 } else if (data.type === "token") {
                     lastMsg.content += data.content;
                     if (lastMsg.blocks) {
@@ -3043,6 +3058,15 @@ createApp({
                 if (output) lines.push(output);
                 lines.push(fence, b.exit_code !== undefined ? `_exit ${b.exit_code}_` : '_not finished_', '');
             });
+            if (m.changes) {
+                const c = m.changes;
+                lines.push('**Files changed**', '');
+                if (c.git === false) lines.push('- (no git in this project, so changed files can\'t be listed)');
+                else if (c.error) lines.push('- (couldn\'t list the changed files: git failed)');
+                else (c.files || []).forEach(f => lines.push(`- \`${f.path}\`: ${changeLabel(f)}${f.warn ? ' ⚠' : ''}`));
+                if (c.more) lines.push(`- and ${c.more} more`);
+                lines.push('');
+            }
             if (m.usage) {
                 const u = m.usage;
                 lines.push(`_${callsLabel(u)} · ${u.estimated ? '≈' : ''}${fmtTokens(u.tokens)} tokens${u.reasoning ? ' (' + fmtTokens(u.reasoning) + ' thinking)' : ''} · ${u.costKnown ? fmtCost(u.cost) : (u.cost > 0 ? fmtCost(u.cost) + '+' : 'cost unknown')} · ${fmtMs(u.ms)}_`, '');
@@ -3182,7 +3206,7 @@ createApp({
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
             pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, showTrail,
-            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned,
+            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, changeLabel, changeTitle,
 					renderMarkdown,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,

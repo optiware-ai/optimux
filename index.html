@@ -1980,6 +1980,19 @@
                         <button v-if="['blocked', 'paused'].includes(msg.interrupted)" @click="openBudgets" class="text-xs font-mono text-red-300 hover:text-red-200 border border-red-800/60 hover:border-red-600 rounded px-3 py-1" title="Open the project's budget">Raise budget</button>
                     </div>
                     
+                    <!-- v0.4-5m: what this reply changed in the project's files, from git -->
+                    <div v-if="msg.role === 'agent' && msg.changes" class="mt-3 border border-gray-800 rounded-lg bg-gray-950/60 px-3 py-2 text-[12px] font-mono">
+                        <div class="text-gray-500 mb-1">Files changed<template v-if="msg.changes.files && msg.changes.files.length"> ({{ msg.changes.files.length + (msg.changes.more || 0) }})</template></div>
+                        <div v-if="msg.changes.git === false" class="text-gray-500">This project has no git, so changed files can't be listed. <span class="text-gray-400">git init</span> in the project makes it possible.</div>
+                        <div v-else-if="msg.changes.error" class="text-gray-500" :title="msg.changes.error">Couldn't list the changed files (git failed).</div>
+                        <template v-else>
+                            <div v-for="f in msg.changes.files" :key="f.path" :class="['flex items-baseline gap-3', f.warn ? 'text-red-300' : 'text-gray-300']" :title="changeTitle(f)">
+                                <span class="truncate min-w-0 flex-1">{{ f.path }}</span>
+                                <span class="flex-shrink-0 whitespace-nowrap">{{ changeLabel(f) }}</span>
+                            </div>
+                            <div v-if="msg.changes.more" class="text-gray-500">and {{ msg.changes.more }} more</div>
+                        </template>
+                    </div>
                     <div v-if="msg.role === 'agent' && !(index === 0 && msg.system_note === 'System') && !(isGenerating && index === messages.length - 1)" class="mt-3 pt-2 border-t border-gray-800 flex items-center justify-between gap-3 text-[11px] font-mono text-gray-500">
                         <span v-if="msg.usage" :title="msg.usage.estimated ? 'Some token counts are estimates' : ''">
                             {{ callsLabel(msg.usage) }} · {{ msg.usage.estimated ? '≈' : '' }}{{ fmtTokens(msg.usage.tokens) }} tok{{ msg.usage.reasoning ? ' (' + fmtTokens(msg.usage.reasoning) + ' thinking)' : '' }} · {{ msg.usage.costKnown ? fmtCost(msg.usage.cost) : (msg.usage.cost > 0 ? fmtCost(msg.usage.cost) + '+' : 'cost ?') }} · {{ fmtMs(msg.usage.ms) }}
