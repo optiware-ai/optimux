@@ -83,7 +83,7 @@ const BusyLogo = {
 // it, so the road ahead appears as it comes and the road behind goes dark again.
 // Built with SVG attributes and SMIL only: the CSP allows no inline style.
 const TRAIL_NS = 'http://www.w3.org/2000/svg';
-const TRAIL_LIGHT = 7.5;          // radius of the light around the signal
+const TRAIL_LIGHT = 11;           // radius of the light around the signal
 const TRAIL_CYCLE = 2.6;
 const TRAIL_TRUNK = 'M3 11 L24 11';
 const TRAIL_UP = TRAIL_TRUNK + ' C32 11, 34 4, 42 4 L61 4';
@@ -897,9 +897,11 @@ createApp({
         // Show the trail under the live reply when no output has come yet, or when the
         // stream went quiet and no command is running (the model is thinking or routing)
         const showTrail = (msg, index) => {
-            if (msg.role !== 'agent' || !isGenerating.value || pendingApproval.value || index !== messages.value.length - 1) return false;
+            // Also while an approval waits: the request is still running (5s: the user asked for it)
+            if (msg.role !== 'agent' || !isGenerating.value || index !== messages.value.length - 1) return false;
             const blocks = msg.blocks || [];
             const last = blocks[blocks.length - 1];
+            if (pendingApproval.value) return true;
             if (last && last.kind === 'cmd' && last.exit_code === undefined) return false;   // a command is running
             if (!msg.content && !(msg.commands || []).length) return true;
             return nowTick.value - lastWsAt > TRAIL_QUIET_MS;
@@ -921,6 +923,7 @@ createApp({
                 for (const el of c.querySelectorAll('[data-user-msg]')) {
                     if (el.getBoundingClientRect().bottom < top + 4) found = el; else break;
                 }
+                promptAbove.value = [...c.querySelectorAll('[data-user-msg]')].some(el => el.getBoundingClientRect().top < top - 2);
                 const index = found ? +found.dataset.userMsg : -1;
                 const msg = index >= 0 ? messages.value[index] : null;
                 if (!msg) { pinnedPrompt.value = null; pinnedOpen.value = false; return; }
@@ -935,6 +938,16 @@ createApp({
             if (!t || !first) return false;
             return (first.content || '').split(/\s+/).filter(Boolean).join(' ').slice(0, 80) !== t;
         });
+        // The ↑ at the bottom right: up to the previous prompt above the view, one per click (5s)
+        const promptAbove = ref(false);
+        const hopUp = () => {
+            const c = document.getElementById('chat-container');
+            if (!c) return;
+            const top = c.getBoundingClientRect().top;
+            const above = [...c.querySelectorAll('[data-user-msg]')].filter(el => el.getBoundingClientRect().top < top - 2);
+            const el = above[above.length - 1];
+            if (el) c.scrollTop += el.getBoundingClientRect().top - top - 8;
+        };
         const jumpToPinned = () => {
             const c = document.getElementById('chat-container');
             const el = pinnedPrompt.value && c && c.querySelector(`[data-user-msg="${pinnedPrompt.value.index}"]`);
@@ -3301,7 +3314,7 @@ createApp({
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
             pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, showTrail,
-            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, chatRenamed, changeLabel, changeTitle,
+            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
 					renderMarkdown,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,
