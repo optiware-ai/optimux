@@ -1852,22 +1852,19 @@
             </div>
         </div>
 
-        <!-- Current chat title -->
-        <div v-if="currentSession" class="pt-3 flex items-center gap-2 text-xs text-gray-500 font-mono">
-            <span class="truncate" :title="currentSession.title">{{ currentSession.title || 'Untitled chat' }}</span>
-            <button @click="renameSession(currentSession)" class="text-gray-600 hover:text-gray-300" title="Rename this chat">✎</button>
-        </div>
-
-        <!-- The prompt of the reply on screen, once its bubble scrolled away (v0.4-5k) -->
-        <div class="relative h-0 z-20">
-            <div v-if="pinnedPrompt" class="absolute top-2 left-1 right-4 bg-gray-950/95 backdrop-blur border border-blue-800/60 rounded-lg shadow-lg text-[13px] text-gray-200">
+        <!-- One line above the chat (v0.4-5r): the chat's name, or, once a prompt has scrolled
+             away, that prompt; in the page's flow, so it never covers the chat -->
+        <div v-if="currentSession || pinnedPrompt" class="pt-3 pr-4 flex items-start gap-2">
+            <div v-if="pinnedPrompt" class="flex-1 min-w-0 bg-gray-950 border border-blue-800/60 rounded-lg text-[13px] text-gray-200">
                 <div class="flex items-start gap-2 px-3 py-1.5">
+                    <span v-if="chatRenamed" class="flex-shrink-0 max-w-[220px] truncate text-xs font-mono text-gray-500 border border-gray-700 rounded px-1.5" :title="'Chat: ' + currentSession.title">{{ currentSession.title }}</span>
                     <span class="text-blue-300 font-mono flex-shrink-0 select-none">You:</span>
                     <div :class="['flex-1 min-w-0', pinnedOpen ? 'whitespace-pre-wrap break-words max-h-60 overflow-y-auto' : 'truncate']">{{ pinnedPrompt.text }}</div>
                     <button @click="pinnedOpen = !pinnedOpen" class="flex-shrink-0 text-[12px] font-mono text-gray-400 hover:text-gray-100" :title="pinnedOpen ? 'Show one line' : 'Show the whole prompt'">{{ pinnedOpen ? 'Less ▴' : 'More ▾' }}</button>
-                    <button @click="jumpToPinned" class="flex-shrink-0 text-[12px] font-mono text-gray-400 hover:text-gray-100" title="Scroll up to this prompt">↑</button>
                 </div>
             </div>
+            <div v-else class="flex-1 min-w-0 px-3 py-1.5 border border-transparent text-[13px] text-gray-500 font-mono truncate" :title="(currentSession && currentSession.title) + ' (rename it in History)'">{{ (currentSession && currentSession.title) || 'Untitled chat' }}</div>
+            <button v-if="pinnedPrompt" @click="jumpToPinned" class="flex-shrink-0 text-xs font-mono text-gray-400 hover:text-gray-100 bg-gray-900 hover:bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 transition" title="Scroll up to this prompt">↑</button>
         </div>
         <div class="flex-1 overflow-y-auto py-6 pl-1 pr-4 space-y-6 scroll-smooth" id="chat-container" @click="onChatClick" @scroll.passive="updatePinned">
             <div v-for="(msg, index) in messages" :key="index" :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">

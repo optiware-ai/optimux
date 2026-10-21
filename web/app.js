@@ -928,6 +928,13 @@ createApp({
                 pinnedPrompt.value = { index, text: msg.content || '' };
             });
         };
+        // A chat named by the user (not its first prompt): the name is shown next to the pinned prompt
+        const chatRenamed = Vue.computed(() => {
+            const t = currentSession.value && currentSession.value.title;
+            const first = messages.value.find(m => m.role === 'user');
+            if (!t || !first) return false;
+            return (first.content || '').split(/\s+/).filter(Boolean).join(' ').slice(0, 80) !== t;
+        });
         const jumpToPinned = () => {
             const c = document.getElementById('chat-container');
             const el = pinnedPrompt.value && c && c.querySelector(`[data-user-msg="${pinnedPrompt.value.index}"]`);
@@ -3294,7 +3301,7 @@ createApp({
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
             pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, showTrail,
-            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, changeLabel, changeTitle,
+            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, chatRenamed, changeLabel, changeTitle,
 					renderMarkdown,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,

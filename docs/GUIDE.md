@@ -136,14 +136,14 @@ From left to right:
 - **The logo and the name** take you back to your **most recent chat**, in whichever project it is (the project menu follows), or to the **Workspace** when there is no chat yet. In the Dashboard, the logo at the top of the sidebar does the same and closes the Dashboard. Chats of archived or deleted projects are skipped.
 - **The project menu** chooses the active project, or **Workspace** (no project). Switching opens that project's latest chat.
 - **+** next to it creates a **new project** with a form (no model involved, so it costs nothing; see *Creating a project*).
-- **The prompt bar.** When you scroll down a long reply, the prompt it answers stays pinned above the chat on one line. **More ▾** shows it in full, **↑** scrolls up to it.
+- **The line above the chat** shows the chat's name. When you scroll down a long reply, it shows the prompt that reply answers instead (and the chat's name next to it, if you renamed the chat). **More ▾** shows the prompt in full; the **↑** button on its right scrolls up to it. The line sits above the chat, so it never covers the text.
 - **The green signal** under a reply, with a small light that shows the road around it, means Optimux is waiting for a model: before the first output and between steps, while the model thinks about the next one.
 - **The Plan chip**, next to *New chat* under the message box, shows the plan mode (*Plan: Off*, *Ask first* or *Automatic*; see **Plan big tasks**). Click it to switch to the next mode; it's the same setting as in Dashboard → Routing. It's dimmed when you picked a model by hand, because then nothing is planned.
 - **The cost button** shows this month's cost for the active project, or *spent / budget* when it has a budget (yellow from 80%, red from 100%). It moves with every model call and counts like a mechanical counter: the last digit turns one step at a time, and the digit to its left turns when the last one passes 9. Hover it for today, this month, all time and this browser session; click it to open Budgets or the Overview.
 - **The memory pill** appears briefly while project memory is being updated in the background ("Updating memory…", then "✓ Memory updated" or "Memory: nothing new").
 - **History** opens the list of past chats; **Dashboard** opens the settings and reports.
 
-Under the header, the **chat title** (the first message of the chat) has a ✎ to rename it.
+A chat is named after its first message; rename it in **History**.
 
 ### Writing a request
 
