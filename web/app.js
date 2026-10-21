@@ -1075,6 +1075,7 @@ createApp({
             try {
                 const d = await postJson(`/api/projects/${encodeURIComponent(syncBox.project)}/commit-message`, {});
                 syncBox.message = d.message;
+                countCallInHeader({ project: syncBox.project, cost: d.cost });   // the header counter rolls like for a chat call
                 syncBox.writeNote = `Written by ${d.model}${d.template ? ', following the commit template' : ''} · ${d.cost != null ? fmtCost(d.cost) : 'cost unknown'}. Check it before pushing.`;
             } catch (e) { syncBox.writeNote = e.message; }
             syncBox.writing = false;

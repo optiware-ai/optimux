@@ -143,7 +143,7 @@ From left to right:
 - **The memory pill** appears briefly while project memory is being updated in the background ("Updating memory…", then "✓ Memory updated" or "Memory: nothing new").
 - **History** opens the list of past chats; **Dashboard** opens the settings and reports.
 
-A chat is named after its first message; rename it in **History**.
+A chat is named after its first message. Rename it with the **✎** next to its name above the chat (at the top of the chat, before you scroll), or in **History**.
 
 ### Writing a request
 
@@ -317,7 +317,7 @@ The token is kept in `secrets.env` with the other keys, and only the two steps t
 
 On each project's card in **Dashboard → Projects**, **Push…** and **Update…** do the git work for you, after you check it. Under a reply that changed files, the *Files changed* box has a **Push…** link too. The model never gets these: only your click pushes.
 
-**Push…** opens a window that shows, before anything changes: the branch and repository it pushes to (a copy uses its own branch, see below), every file it will commit with its +/− counts (a deleted or halved file in red), and a box for the commit message. **✨ Write it** asks the Simple model to write the message: it reads the project's commit template if there is one (`commit-template.txt`, `.gitmessage`, or git's `commit.template` inside the project), the last few commit titles and the changes, and fills the box. It's one small paid call, shown with its cost, and you can edit the result. **Commit and push** then commits everything shown (`git add -A`) and pushes. It stops, with the reason, when:
+**Push…** opens a window that shows, before anything changes: the branch and repository it pushes to (a copy uses its own branch, see below), every file it will commit with its +/− counts (a deleted or halved file in red), and a box for the commit message. **✨ Write it** asks the Simple model to write the message (its cost is counted in the header like any other call): it reads the project's commit template if there is one (`commit-template.txt`, `.gitmessage`, or git's `commit.template` inside the project), the last few commit titles and the changes, and fills the box. It's one small paid call, shown with its cost, and you can edit the result. **Commit and push** then commits everything shown (`git add -A`) and pushes. It stops, with the reason, when:
 
 - **GitHub has commits this project doesn't** ("Update first"). Optimux never forces a push.
 - **A file contains one of your saved keys** (an API key, the GitHub token): the file and the key's name are shown, never the key. Such a file is never sent to a model to write the message either.
