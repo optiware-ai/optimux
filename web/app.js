@@ -76,13 +76,14 @@ const BusyLogo = {
 </svg>`,
 };
 
-// Under a reply that hasn't started: a green signal leaves a fading trail
-// and takes a route each cycle, mostly the lower (Simple) lane, sometimes the
-// upper (Complex) one, now and then an escalation (stuck, amber, climbs up).
+// Under a reply that hasn't started: a green signal takes a route each cycle,
+// mostly the lower (Simple) lane, sometimes the upper (Complex) one, now and
+// then an escalation (stuck, amber, climbs up). The routes are dark: only a
+// small light around the signal shows them, like a flashlight that moves with
+// it, so the road ahead appears as it comes and the road behind goes dark again.
 // Built with SVG attributes and SMIL only: the CSP allows no inline style.
 const TRAIL_NS = 'http://www.w3.org/2000/svg';
-const TRAIL_LAYERS = [[3, 0.95], [6, 0.5], [10, 0.3], [16, 0.18], [24, 0.09]];   // dash length, opacity
-const TRAIL_TAIL = 24;
+const TRAIL_LIGHT = 7.5;          // radius of the light around the signal
 const TRAIL_CYCLE = 2.6;
 const TRAIL_TRUNK = 'M3 11 L24 11';
 const TRAIL_UP = TRAIL_TRUNK + ' C32 11, 34 4, 42 4 L61 4';
@@ -99,46 +100,55 @@ function trailEl(name, attrs, parent) {
 }
 
 function buildRouteTrail(svg, still) {
-    const glow = 'trail-glow-' + (++trailIds);
-    const f = trailEl('filter', { id: glow, x: '-50%', y: '-50%', width: '200%', height: '200%' }, trailEl('defs', {}, svg));
+    const id = ++trailIds;
+    const defs = trailEl('defs', {}, svg);
+    const f = trailEl('filter', { id: `trail-glow-${id}`, x: '-50%', y: '-50%', width: '200%', height: '200%' }, defs);
     trailEl('feGaussianBlur', { stdDeviation: '0.9', result: 'b' }, f);
     const m = trailEl('feMerge', {}, f);
     trailEl('feMergeNode', { in: 'b' }, m); trailEl('feMergeNode', { in: 'SourceGraphic' }, m);
-    const url = `url(#${glow})`;
+    const url = `url(#trail-glow-${id})`;
+    // The light: bright in the middle, fading to nothing at its edge
+    const grad = trailEl('radialGradient', { id: `trail-light-${id}` }, defs);
+    trailEl('stop', { offset: '0', 'stop-color': '#fff', 'stop-opacity': '1' }, grad);
+    trailEl('stop', { offset: '.45', 'stop-color': '#fff', 'stop-opacity': '.85' }, grad);
+    trailEl('stop', { offset: '1', 'stop-color': '#fff', 'stop-opacity': '0' }, grad);
+    const mask = trailEl('mask', { id: `trail-mask-${id}`, maskUnits: 'userSpaceOnUse', x: '-10', y: '-10', width: '84', height: '42' }, defs);
+    const light = (attrs) => trailEl('circle', { r: TRAIL_LIGHT, fill: `url(#trail-light-${id})`, ...attrs }, mask);
     const measure = (d) => {
         const p = trailEl('path', { d }, svg); const len = p.getTotalLength(); const end = p.getPointAtLength(len); p.remove();
         return { len, end };
     };
+    // The roads and their ends, seen only where the light is
+    const roads = trailEl('g', { mask: `url(#trail-mask-${id})` }, svg);
     for (const d of [TRAIL_UP, TRAIL_DOWN, TRAIL_ESCALATE]) {
-        trailEl('path', { d, fill: 'none', stroke: '#22c55e', 'stroke-opacity': '.09', 'stroke-width': '.6' }, svg);
+        trailEl('path', { d, fill: 'none', stroke: '#22c55e', 'stroke-opacity': '.55', 'stroke-width': '.7', 'stroke-linecap': 'round' }, roads);
     }
-    for (const [x, y] of [[24, 11], [61, 4], [61, 18], [46, 18]]) trailEl('circle', { cx: x, cy: y, r: '1.1', fill: '#22c55e', opacity: '.22' }, svg);
-    if (still) { trailEl('circle', { cx: 24, cy: 11, r: '1.5', fill: '#bbf7d0', filter: url }, svg); return () => {}; }
+    for (const [x, y] of [[24, 11], [61, 4], [61, 18], [46, 18]]) trailEl('circle', { cx: x, cy: y, r: '1.1', fill: '#22c55e', opacity: '.6' }, roads);
+    if (still) {
+        light({ cx: 24, cy: 11 });
+        trailEl('circle', { cx: 24, cy: 11, r: '1.5', fill: '#bbf7d0', filter: url }, svg);
+        return () => {};
+    }
 
     const r4 = (n) => +n.toFixed(4);
-    const flow = (travel) => [[0, 0], [travel, 100 + TRAIL_TAIL], [1, 100 + TRAIL_TAIL]];
-    const holdAt = (q, reach, hold, travel) => [[0, 0], [reach, q], [reach + hold, q], [travel, 100 + TRAIL_TAIL], [1, 100 + TRAIL_TAIL]];
+    const flow = (travel) => [[0, 0], [travel, 100], [1, 100]];
+    const holdAt = (q, reach, hold, travel) => [[0, 0], [reach, q], [reach + hold, q], [travel, 100], [1, 100]];
 
     // One run along d; its animations start together when the run is picked.
-    const signal = (d, timeline, pulses = []) => {
+    const signal = (d, tl, pulses = []) => {
         const anims = [];
         const anim = (name, attrs, parent) => anims.push(trailEl(name, { dur: TRAIL_CYCLE + 's', begin: 'indefinite', ...attrs }, parent));
-        const tl = timeline.slice();
-        let arrive = 1;                                        // when the head reaches the end (100)
-        for (let i = 1; i < tl.length; i++) {
-            const [t0, p0] = tl[i - 1], [t1, p1] = tl[i];
-            if (p0 < 100 && p1 >= 100) { arrive = t0 + (t1 - t0) * (100 - p0) / (p1 - p0); if (p1 > 100) tl.splice(i, 0, [arrive, 100]); break; }
-        }
+        const arrive = tl.find(([, q]) => q >= 100)[0];          // when the signal reaches the end
         const times = tl.map(([t]) => r4(t)).join(';');
-        const g = trailEl('g', { filter: url }, svg);
-        for (const [L, op] of TRAIL_LAYERS) {
-            const p = trailEl('path', { d, pathLength: 100, fill: 'none', stroke: '#22c55e', 'stroke-width': '.8', 'stroke-linecap': 'round',
-                'stroke-opacity': op, 'stroke-dasharray': `${L} 200`, 'stroke-dashoffset': L }, g);
-            anim('animate', { attributeName: 'stroke-dashoffset', values: tl.map(([, q]) => r4(L - q)).join(';'), keyTimes: times }, p);
-        }
+        const points = tl.map(([, q]) => r4(q / 100)).join(';');
+        const shown = { attributeName: 'opacity', values: '0;1;1;0;0', keyTimes: `0;.001;${r4(arrive)};${r4(Math.min(arrive + 0.12, 0.999))};1` };
+        // The light follows the signal and fades out shortly after it arrives
+        const lamp = light({ cx: 0, cy: 0, opacity: 0 });
+        anim('animateMotion', { path: d, keyPoints: points, keyTimes: times, calcMode: 'linear' }, lamp);
+        anim('animate', shown, lamp);
         const dot = trailEl('circle', { r: '1.5', fill: '#bbf7d0', opacity: 0, filter: url }, svg);
-        anim('animateMotion', { path: d, keyPoints: tl.map(([, q]) => r4(Math.min(q, 100) / 100)).join(';'), keyTimes: times, calcMode: 'linear' }, dot);
-        anim('animate', { attributeName: 'opacity', values: '0;1;1;0;0', keyTimes: `0;.001;${r4(arrive)};${r4(Math.min(arrive + 0.01, 0.999))};1` }, dot);
+        anim('animateMotion', { path: d, keyPoints: points, keyTimes: times, calcMode: 'linear' }, dot);
+        anim('animate', { ...shown, keyTimes: `0;.001;${r4(arrive)};${r4(Math.min(arrive + 0.01, 0.999))};1` }, dot);
         const flash = (x, y, at, color, grow) => {
             const s = trailEl('circle', { cx: x, cy: y, r: '1', fill: 'none', stroke: color, 'stroke-width': '.6', opacity: 0 }, svg);
             const end = r4(Math.min(at + 0.25, 0.995));
