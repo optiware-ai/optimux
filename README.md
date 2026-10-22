@@ -114,7 +114,7 @@ Optimux runs on your own machine, works on your own repositories, and treats **c
 
 **Installing and running**
 - **One-line installer** for your computer or a VPS, with an interactive terminal interface; every question can be skipped and changed later in the web interface. On a VPS it also sets up HTTPS, a dedicated user, the firewall and **server mode**: the sandbox is required, every command needs approval, and commands have no network by default.
-- An **`optimux` command**: start, stop, status, logs, update, password and uninstall.
+- An **`optimux` command**: start, stop, status, logs, open (the SSH tunnel command, with your ports), port, update, password and uninstall.
 
 | | On your computer | On a server (VPS) |
 |---|---|---|
@@ -131,7 +131,7 @@ Optimux runs on your own machine, works on your own repositories, and treats **c
 
 Server mode is set by the installer; you only set `OPTIMUX_SERVER=1` yourself when you install on a server by hand.
 
-**A server without a domain** is reached through an SSH tunnel that you run **on your own computer**: `ssh -N -L 8000:127.0.0.1:8000 you@your-server`, then open http://localhost:8000. The installer prints the exact command, and `sudo optimux open` shows it again ([details](docs/GUIDE.md#without-a-domain-the-ssh-tunnel)).
+**A server without a domain** is reached through an SSH tunnel that you run **on your own computer**: `ssh -N -L 8000:127.0.0.1:8000 you@your-server`, then open http://localhost:8000. The installer prints the exact command, and `sudo optimux open` shows it again; `--local-port 9000` changes your computer's end if 8000 is busy there, and `sudo optimux port 8100` moves Optimux on the server ([details](docs/GUIDE.md#without-a-domain-the-ssh-tunnel)).
 
 **Memory and skills**
 - Personal, professional and per-project **memory**, sent with every request.

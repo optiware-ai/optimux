@@ -14,7 +14,8 @@ help() {
     ${CB}start${C0} | ${CB}stop${C0} | ${CB}restart${C0}   run Optimux, or stop it
     ${CB}status${C0}                  is it running, where, which version
     ${CB}logs${C0}                    follow the server's log (Ctrl+C to leave)
-    ${CB}open${C0}                    the address (and open it in the browser)
+    ${CB}open${C0}                    the address, or the SSH tunnel command (open --help)
+    ${CB}port${C0}                    the ports in use; move Optimux to another (port --help)
     ${CB}update${C0}                  download the latest version and restart
     ${CB}password${C0}                choose a new sign-in password
     ${CB}reset-password${C0}          forget the password and two-step codes
@@ -43,7 +44,8 @@ main_cli() {
     restart) cli_restart ;;
     status) cli_status ;;
     logs) cli_logs ;;
-    open|url) cli_open ;;
+    open|url|tunnel|browser) shift; cli_open "$@" ;;
+    port) shift; cli_port "$@" ;;
     update) cli_update ;;
     password) cli_password ;;
     reset-password) admin reset-password ;;

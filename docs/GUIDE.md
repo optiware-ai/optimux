@@ -60,7 +60,8 @@ The installer adds an `optimux` command (on a server, run it with `sudo`):
 | `optimux start`, `stop`, `restart` | Run Optimux, or stop it |
 | `optimux status` | Whether it runs and answers, its address, version and folders |
 | `optimux logs` | Follow the server's log (Ctrl+C to leave) |
-| `optimux open` | The address, opened in your browser when there is one (on a server without a domain: the SSH tunnel command to run on your computer) |
+| `optimux open` (also `tunnel`, `browser`) | The address, opened in your browser when there is one. On a server without a domain: the SSH tunnel command to run on your computer. Options: `--local-port N`, `--user NAME`, `--host ADDR`, `--background`, `--ssh-config`, `--quiet` (`optimux open --help`) |
+| `optimux port` | The ports in use. `optimux port N` moves Optimux to another port on this machine; `optimux port --local N` sets the port on your computer for the SSH tunnel (`optimux port --help`) |
 | `optimux update` | Download the latest version, update its packages, restart |
 | `optimux version` | The installed version and commit, like `v0.4.0 (5e0673b)`; the same as Dashboard → System |
 | `optimux password` | Choose a new password (signs every browser out) |
@@ -1039,13 +1040,19 @@ Unattended: `... | sudo bash -s -- --server --domain optimux.example.com --yes` 
 With **SSH tunnel only**, Optimux listens only inside the server (`127.0.0.1:8000`); nothing on the internet can reach it, not even you directly. You reach it through your normal SSH login, with a tunnel that **you run on your own computer**, not on the server:
 
 ```bash
-ssh -N -L 8000:127.0.0.1:8000 you@your-server-address
+ssh -N -o ExitOnForwardFailure=yes -L 8000:127.0.0.1:8000 you@your-server-address
 ```
 
 Then open **http://localhost:8000** in your browser. Keep that terminal open: the tunnel lasts as long as the SSH connection.
 
 - Use the login and address you normally use for SSH (`root@203.0.113.7`, for example). The installer's final summary prints the exact command, and `sudo optimux open` or `sudo optimux status` on the server prints it again.
-- `-L 8000:127.0.0.1:8000` means "port 8000 on my computer → port 8000 inside the server". If 8000 is taken on your computer, change the first number (`-L 8080:127.0.0.1:8000`, then open http://localhost:8080). If the installer chose another port on the server, change the second one.
+- `-L 8000:127.0.0.1:8000` means "port 8000 **on my computer** → port 8000 **inside the server**". The two numbers don't have to be the same.
+- **Port 8000 busy on your computer?** Optimux can't see your computer, so it can't check this for you. The command includes `-o ExitOnForwardFailure=yes`, so ssh stops right away with *"Address already in use"* or *"cannot listen to port"* instead of staying connected without a tunnel. Then:
+  - get the command with another port on your side: `sudo optimux open --local-port 9000`, and open http://localhost:9000;
+  - or keep that choice for every printed command: `sudo optimux port --local 9000` (`--local same` goes back);
+  - to see what uses the port on your computer: `lsof -nP -iTCP:8000 -sTCP:LISTEN` (Linux, macOS), or `netstat -ano | findstr :8000` (Windows).
+- **Port 8000 needed by something else on the server?** `sudo optimux port 8100` moves Optimux: it checks that 8100 is free (and names the program if it isn't), updates the service, restarts, checks that Optimux answers (and goes back to the old port if it doesn't), and prints the new tunnel command. Your old tunnel stops working. `optimux update` keeps the port. No firewall change is needed: Optimux only listens inside the server. With a domain, Optimux uses a socket behind Caddy, not a port, so there's nothing to move.
+- **Shorter every day:** `sudo optimux open --ssh-config` prints a block for `~/.ssh/config` on your computer; the tunnel is then just `ssh -N optimux`. `--background` gives a command that runs in the background (`ssh -f`) and keeps the connection alive. `--user` and `--host` put your own login and address (or SSH alias) in the command.
 - `-N` opens only the tunnel, without a shell. Add `-p 2222` if your SSH server listens on another port.
 - On Windows, the same command works in PowerShell (OpenSSH is built in).
 - **Behind NAT, an office network or in a container**, the address the installer finds (the one the server uses to reach the internet) may belong to the router or gateway, not to the server; the installer then adds a note with the server's own address. Use whichever address your computer can reach. On cloud servers (AWS, Google Cloud, ...) the public address is the right one.

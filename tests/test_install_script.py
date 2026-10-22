@@ -524,8 +524,8 @@ def test_final_card_says_how_to_use_the_command_in_this_terminal(tmp_path, later
 # ---------- Reaching a server without a domain (SSH tunnel)
 
 @pytest.mark.parametrize("sudo_user,ssh,expected", [
-    ("bob", "22", "ssh -N -L 8000:127.0.0.1:8000 bob@203.0.113.7"),
-    ("", "2222", "ssh -N -p 2222 -L 8000:127.0.0.1:8000 root@203.0.113.7"),
+    ("bob", "22", "ssh -N -o ExitOnForwardFailure=yes -L 8000:127.0.0.1:8000 bob@203.0.113.7"),
+    ("", "2222", "ssh -N -o ExitOnForwardFailure=yes -p 2222 -L 8000:127.0.0.1:8000 root@203.0.113.7"),
 ])
 def test_tunnel_command_uses_the_real_login_address_and_ssh_port(sudo_user, ssh, expected):
     r = lib(f'''public_ip() {{ echo 203.0.113.7; }}; ssh_ports() {{ CM_SSH_PORTS="{ssh} "; CM_SSH_SURE=1; }}
@@ -546,7 +546,7 @@ def test_behind_nat_the_command_stays_but_a_note_names_the_own_address():
     """Office network, home router or container: the public address is the gateway's."""
     out = tunnel('''public_ip() { echo 84.18.153.125; }; hostname() { echo "10.227.207.228 172.17.0.1 fd42::1"; }
                     ssh_listening() { return 0; }; tunnel_plan; echo "CMD=$CM_TUNNEL_CMD"; echo "NOTE=$CM_TUNNEL_NOTE"''')
-    assert "CMD=ssh -N -L 8000:127.0.0.1:8000 root@84.18.153.125" in out     # still right for AWS-style 1:1 NAT
+    assert "CMD=ssh -N -o ExitOnForwardFailure=yes -L 8000:127.0.0.1:8000 root@84.18.153.125" in out     # still right for AWS-style 1:1 NAT
     assert "84.18.153.125 is the address this server uses to reach the internet" in out and "(10.227.207.228, 172.17.0.1)" in out
 
 
@@ -614,7 +614,107 @@ def test_server_card_and_open_say_where_to_run_the_tunnel():
                 ssh_listening() { return 0; }; hostname() { echo "203.0.113.7"; }
                 declare -gA M=([MODE]=server [PORT]=8000 [URL]=http://127.0.0.1:8000); CM_PW_SET=1; CM_LOG=/dev/null; '''
     card = lib(common + 'finish_server', SUDO_USER="bob").stdout
-    assert "On your own computer" in card and "ssh -N -L 8000:127.0.0.1:8000 bob@203.0.113.7" in card
+    assert "On your own computer" in card and "ssh -N -o ExitOnForwardFailure=yes -L 8000:127.0.0.1:8000 bob@203.0.113.7" in card
     assert "http://localhost:8000" in card
     opened = lib(common + 'cli_open', SUDO_USER="bob").stdout
-    assert "ssh -N -L 8000:127.0.0.1:8000 bob@203.0.113.7" in opened and "http://localhost:8000" in opened
+    assert "ssh -N -o ExitOnForwardFailure=yes -L 8000:127.0.0.1:8000 bob@203.0.113.7" in opened and "http://localhost:8000" in opened
+
+
+# ---------- optimux open (tunnel options) and optimux port (5v)
+
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def tunnel_lib(tmp_path, script, domain="", service="systemd", local_port="", mode="server"):
+    """A tunnel-only server install with fake network, SSH and service functions."""
+    manifest = tmp_path / "install.env"
+    return lib(f'''CM_SUDO=""; SUDO_USER=masoud
+        public_ip() {{ echo 203.0.113.7; }}; hostname() {{ echo 203.0.113.7; }}
+        ssh_listening() {{ return 0; }}; ssh_ports() {{ CM_SSH_PORTS="22"; CM_SSH_SURE=1; }}
+        manifest_path() {{ echo "{manifest}"; }}
+        declare -gA M=([MODE]={mode} [NAME]=optimux [APP_DIR]=/opt/optimux [DATA_DIR]=/var/lib/optimux
+                       [PORT]=8000 [URL]=http://127.0.0.1:8000 [SERVICE]={service} [DOMAIN]="{domain}"
+                       [LOCAL_PORT]="{local_port}")
+        {script}''')
+
+
+def clean(r):
+    return ANSI.sub("", r.stdout + r.stderr)
+
+
+def test_open_prints_a_tunnel_that_fails_loudly_and_explains_the_local_port(tmp_path):
+    out = clean(tunnel_lib(tmp_path, "cli_open"))
+    assert "ssh -N -o ExitOnForwardFailure=yes -L 8000:127.0.0.1:8000 masoud@203.0.113.7" in out
+    assert "then open http://localhost:8000" in out
+    assert "Port 8000 must be free on your computer" in out and "--local-port 9000" in out
+    assert "lsof -nP -iTCP:8000 -sTCP:LISTEN" in out and "findstr :8000" in out
+
+
+def test_open_options(tmp_path):
+    r = tunnel_lib(tmp_path, "cli_open --local-port 9000 --user deploy --host vps --quiet")
+    assert clean(r).strip() == "ssh -N -o ExitOnForwardFailure=yes -L 9000:127.0.0.1:8000 deploy@vps"
+    r = tunnel_lib(tmp_path, "cli_open --background --quiet")
+    assert clean(r).strip().startswith("ssh -f -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes")
+    out = clean(tunnel_lib(tmp_path, "cli_open --ssh-config --local-port 9100"))
+    assert "Host optimux\n    HostName 203.0.113.7\n    User masoud\n    LocalForward 9100 127.0.0.1:8000" in out
+    assert "ssh -N optimux" in out and "http://localhost:9100" in out
+
+
+@pytest.mark.parametrize("args", ["--local-port 80", "--local-port 70000", "--local-port x", "--host 'a;rm -rf /'",
+                                  "--user 'x y'", "--nope"])
+def test_open_refuses_bad_options(tmp_path, args):
+    assert tunnel_lib(tmp_path, f"cli_open {args}").returncode != 0
+
+
+def test_open_without_a_tunnel_says_none_is_needed(tmp_path):
+    out = clean(tunnel_lib(tmp_path, "cli_open --local-port 9000 --quiet", domain="optimux.example.com"))
+    assert "No tunnel needed" in out
+
+
+def test_the_local_port_is_remembered_and_can_go_back(tmp_path):
+    out = clean(tunnel_lib(tmp_path, 'cli_port --local 9000; echo "SAVED=$(grep ^LOCAL_PORT "$(manifest_path)")"'))
+    assert "SAVED=LOCAL_PORT=9000" in out and "-L 9000:127.0.0.1:8000" in out
+    out = clean(tunnel_lib(tmp_path, "cli_open --quiet", local_port="9000"))
+    assert "-L 9000:127.0.0.1:8000" in out
+    out = clean(tunnel_lib(tmp_path, 'cli_port --local same; echo "SAVED=$(grep ^LOCAL_PORT "$(manifest_path)")"',
+                           local_port="9000"))
+    assert "SAVED=LOCAL_PORT=\n" in out + "\n" and "-L 8000:127.0.0.1:8000" in out
+
+
+FAKE_SVC = ('svc() { echo "SVC $1" >&3; }; exec 3>&1; install_server_unit() { echo "UNIT ${M[PORT]}"; }; '
+            'write_user_unit() { echo "USERUNIT ${M[PORT]}"; }; ')
+
+
+def test_port_moves_optimux_and_prints_the_new_tunnel(tmp_path):
+    out = clean(tunnel_lib(tmp_path, FAKE_SVC + 'port_free() { return 0; }; wait_http() { return 0; }; cli_port 8100; '
+                                     'grep ^PORT= "$(manifest_path)"'))
+    assert "UNIT 8100" in out and "SVC restart" in out and "now listens on 127.0.0.1:8100 (it was 8000)" in out
+    assert "-L 8100:127.0.0.1:8100" in out and "old tunnel stops working" in out and "PORT=8100" in out
+
+
+def test_a_busy_port_is_refused_with_its_owner(tmp_path):
+    r = tunnel_lib(tmp_path, FAKE_SVC + 'port_free() { return 1; }; port_owner() { echo nginx; }; cli_port 8100')
+    assert r.returncode != 0 and "Port 8100 is already used on this machine by nginx" in clean(r)
+    assert "UNIT" not in clean(r)
+
+
+def test_a_port_that_doesnt_answer_goes_back(tmp_path):
+    out = clean(tunnel_lib(tmp_path, FAKE_SVC + 'port_free() { return 0; }; wait_http() { return 1; }; '
+                                     'cli_port 8100 || true; grep ^PORT= "$(manifest_path)"'))
+    assert "going back to 8000" in out and "UNIT 8100" in out and "UNIT 8000" in out
+    assert out.rstrip().endswith("PORT=8000")
+
+
+def test_port_with_a_domain_or_a_plain_process(tmp_path):
+    r = tunnel_lib(tmp_path, FAKE_SVC + "cli_port 8100", domain="optimux.example.com")
+    assert r.returncode != 0 and "socket" in clean(r)
+    r = tunnel_lib(tmp_path, FAKE_SVC + "port_free() { return 0; }; cli_port 8100 --no-restart", service="process",
+                   mode="local")
+    assert r.returncode != 0 and "without --no-restart" in clean(r)
+    r = tunnel_lib(tmp_path, FAKE_SVC + "cli_port --local 9000", mode="local", service="process")
+    assert r.returncode != 0 and "only for an SSH tunnel" in clean(r)
+
+
+def test_cli_lists_open_and_port():
+    text = open(CLI).read()
+    assert 'open|url|tunnel|browser) shift; cli_open "$@" ;;' in text and 'port) shift; cli_port "$@" ;;' in text

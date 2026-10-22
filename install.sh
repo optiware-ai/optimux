@@ -407,7 +407,7 @@ manifest_write() {
   tmp="$(mktemp)"
   {
     echo "# Written by the Optimux installer. Read by the optimux command."
-    for k in MODE NAME APP_DIR DATA_DIR WORKSPACE PORT URL SERVICE RUN_USER DOMAIN REF REPO APPARMOR INSTALLED; do
+    for k in MODE NAME APP_DIR DATA_DIR WORKSPACE PORT LOCAL_PORT URL SERVICE RUN_USER DOMAIN REF REPO APPARMOR INSTALLED; do
       [[ "${M[$k]:-}" == *$'\n'* ]] && die "Unexpected newline in $k."
       printf '%s=%s\n' "$k" "${M[$k]:-}"      # raw value; read back by splitting at the first =
     done
@@ -925,10 +925,17 @@ public_ip() { curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null || tru
 # (empty when no SSH server runs here) and CM_TUNNEL_NOTE (advice, may be empty).
 # The command uses their login on this server (the one behind sudo), the server's
 # public address and its SSH port.
+# The port on the user's own computer: --local-port, else the one saved with
+# `optimux port --local N`, else the server's own port.
+tunnel_local_port() { echo "${CM_LOCAL_PORT:-${M[LOCAL_PORT]:-${M[PORT]}}}"; }
+
 tunnel_plan() {
-  local user="${SUDO_USER:-}" pub own host port=""
-  CM_TUNNEL_CMD=""; CM_TUNNEL_NOTE=""
+  local user="${CM_TUNNEL_USER:-${SUDO_USER:-}}" pub own host port="" lport sshopts="-N"
+  CM_TUNNEL_CMD=""; CM_TUNNEL_NOTE=""; CM_TUNNEL_HOST=""; CM_TUNNEL_SSH_PORT=""
+  lport="$(tunnel_local_port)"
+  CM_TUNNEL_URL="http://localhost:$lport"
   [[ -n "$user" ]] || user="$(id -un 2>/dev/null || echo root)"
+  CM_TUNNEL_USER_USED="$user"
   ssh_ports
   if ! ssh_listening; then
     if systemd-detect-virt -cq 2>/dev/null; then
@@ -938,19 +945,34 @@ tunnel_plan() {
     fi
     return 0
   fi
-  pub="$(public_ip)"
-  own="$(hostname -I 2>/dev/null || true)"
-  host="$pub"
-  [[ -n "$host" ]] || host="$(awk '{print $1}' <<<"$own")"
-  [[ -n "$host" ]] || host="<server-address>"
+  if [[ -n "${CM_TUNNEL_HOST_ARG:-}" ]]; then
+    host="$CM_TUNNEL_HOST_ARG"; pub=""; own=""        # the user's own address or SSH alias
+  else
+    pub="$(public_ip)"
+    own="$(hostname -I 2>/dev/null || true)"
+    host="$pub"
+    [[ -n "$host" ]] || host="$(awk '{print $1}' <<<"$own")"
+    [[ -n "$host" ]] || host="<server-address>"
+  fi
+  CM_TUNNEL_HOST="$host"
   if [[ -n "$pub" && -n "${own// }" && " $own " != *" $pub "* ]]; then
     # 1:1 NAT (AWS, Google Cloud...) still reaches this server; an office network,
     # a home router or a container host doesn't.
     CM_TUNNEL_NOTE="$pub is the address this server uses to reach the internet, not one of its own ($(own_ipv4 "$own")). On a cloud server that's fine. Behind an office or home network, or in a container, use an address your computer can reach instead."
   fi
   if [[ -n "${CM_SSH_SURE:-}" ]]; then port="${CM_SSH_PORTS%% *}"; fi
+  CM_TUNNEL_SSH_PORT="$port"
   if [[ -n "$port" && "$port" != 22 ]]; then port=" -p $port"; else port=""; fi
-  CM_TUNNEL_CMD="ssh -N${port} -L ${M[PORT]}:127.0.0.1:${M[PORT]} ${user}@${host}"
+  # ExitOnForwardFailure: if the port is busy on the user's computer, ssh stops with an
+  # error instead of staying connected without a tunnel (which looks like "it hangs")
+  [[ -n "${CM_TUNNEL_BG:-}" ]] && sshopts="-f -N -o ServerAliveInterval=30"
+  CM_TUNNEL_CMD="ssh ${sshopts} -o ExitOnForwardFailure=yes${port} -L ${lport}:127.0.0.1:${M[PORT]} ${user}@${host}"
+}
+
+# What to do when the port is busy on the user's computer (Optimux can't see it from here)
+tunnel_local_note() {
+  local lport; lport="$(tunnel_local_port)"
+  printf '%s' "Port ${lport} must be free on your computer. If ssh stops with \"Address already in use\" or \"cannot listen to port\", something there uses it: pick another, e.g. sudo optimux open --local-port $((lport == 9000 ? 9001 : 9000)), or keep one with sudo optimux port --local N. To see what uses it: lsof -nP -iTCP:${lport} -sTCP:LISTEN (Linux, macOS) or netstat -ano | findstr :${lport} (Windows)."
 }
 
 # This machine's IPv4 addresses from `hostname -I` output, comma separated
@@ -1288,7 +1310,9 @@ finish_server() {
     if [[ -n "$CM_TUNNEL_CMD" ]]; then
       open=("${CB}Open${C0}       ${CY}On your own computer${C0} (not on this server), run and keep it open:"
             "           $CM_TUNNEL_CMD"
-            "           then open ${CA}http://localhost:${M[PORT]}${C0} in your browser.")
+            "           then open ${CA}${CM_TUNNEL_URL}${C0} in your browser."
+            "           ${CY}Port $(tunnel_local_port) busy on your computer?${C0} ssh then stops with \"Address already in use\"."
+            "           Pick another: sudo optimux open --local-port 9000 (details: sudo optimux port)")
     else
       open=("${CB}Open${C0}       Optimux listens on 127.0.0.1:${M[PORT]} here. See the note below.")
     fi
@@ -1304,7 +1328,7 @@ finish_server() {
     "           commands have no network ${S_DOT} runs as the optimux user" \
     "           ${M[DOMAIN]:+HTTPS by Caddy ${S_DOT} }no open port for Optimux itself" \
     "" \
-    "${CB}Commands${C0}   sudo optimux status | logs | restart | update" \
+    "${CB}Commands${C0}   sudo optimux status | open | port | logs | restart | update" \
     "           sudo optimux password | token | uninstall" \
     "" \
     "${CB}Next${C0}       Turn on two-step codes in Dashboard → System." \
@@ -1386,7 +1410,8 @@ cli_status() {
   fi
   if [[ "${M[MODE]}" == server && -z "${M[DOMAIN]:-}" ]]; then
     tunnel_plan
-    if [[ -n "$CM_TUNNEL_CMD" ]]; then info "Open:    on your own computer: $CM_TUNNEL_CMD, then http://localhost:${M[PORT]}"
+    if [[ -n "$CM_TUNNEL_CMD" ]]; then info "Open:    on your own computer: $CM_TUNNEL_CMD, then $CM_TUNNEL_URL"
+      info "Ports:   ${M[PORT]} on this server, $(tunnel_local_port) on your computer (sudo optimux port)"
     else info "Open:    it listens on 127.0.0.1:${M[PORT]} (no SSH server here, see below)"; fi
     if [[ -n "$CM_TUNNEL_NOTE" ]]; then note "$CM_TUNNEL_NOTE"; fi
   else info "Open:    ${M[URL]}"; fi
@@ -1402,20 +1427,185 @@ cli_logs() {
   esac
 }
 
+cli_open_help() {
+  cat <<TXT
+
+  ${CB}optimux open${C0} [options]     (also: url, tunnel, browser)
+
+  Where to open Optimux. On a server without a domain: the SSH tunnel command
+  to run on your own computer.
+
+    ${CB}--local-port N${C0}    port on your computer (default: $(tunnel_local_port); keep one with: optimux port --local N)
+    ${CB}--user NAME${C0}       your SSH login on this server (default: ${SUDO_USER:-$(id -un 2>/dev/null || echo root)})
+    ${CB}--host ADDR${C0}       the address or SSH alias your computer uses for this server
+    ${CB}--background${C0}      a command that runs in the background (ssh -f) and stays alive
+    ${CB}--ssh-config${C0}      a block for ~/.ssh/config, so the tunnel is just: ssh -N optimux
+    ${CB}--quiet${C0}           only the command (or the address), for scripts
+
+TXT
+}
+
+# A port number from the command line: 1024-65535 (lower ones need root on the computer)
+valid_port() { [[ "$1" =~ ^[0-9]{4,5}$ ]] && (( 10#$1 >= 1024 && 10#$1 <= 65535 )); }
+
 cli_open() {
+  local quiet="" sshcfg=""
+  CM_LOCAL_PORT=""; CM_TUNNEL_USER=""; CM_TUNNEL_HOST_ARG=""; CM_TUNNEL_BG=""
+  while (($#)); do
+    case "$1" in
+      --local-port) valid_port "${2:-}" || die "--local-port needs a port from 1024 to 65535."; CM_LOCAL_PORT="$((10#$2))"; shift ;;
+      --user) [[ "${2:-}" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,31}$ ]] || die "--user needs a login name (letters, digits, . _ -)."; CM_TUNNEL_USER="$2"; shift ;;
+      --host) [[ "${2:-}" =~ ^[A-Za-z0-9][A-Za-z0-9.:_-]{0,252}$ ]] || die "--host needs an address or an SSH alias."; CM_TUNNEL_HOST_ARG="$2"; shift ;;
+      --background) CM_TUNNEL_BG=1 ;;
+      --ssh-config) sshcfg=1 ;;
+      --quiet|-q) quiet=1 ;;
+      -h|--help) cli_open_help; return 0 ;;
+      *) err "Unknown option: $1"; cli_open_help; return 2 ;;
+    esac
+    shift
+  done
   if [[ "${M[MODE]}" == server && -z "${M[DOMAIN]:-}" ]]; then
     tunnel_plan
-    if [[ -n "$CM_TUNNEL_CMD" ]]; then
-      say "Optimux on this server is reachable only through an SSH tunnel. On your own computer, run:"
-      say "  $CM_TUNNEL_CMD"
-      say "then open http://localhost:${M[PORT]}"
+    if [[ -z "$CM_TUNNEL_CMD" ]]; then
+      if [[ -n "$CM_TUNNEL_NOTE" ]]; then say "$CM_TUNNEL_NOTE"; fi
+      return 0
     fi
+    if [[ -n "$sshcfg" ]]; then
+      say "Add this to ~/.ssh/config on your own computer (create the file if it doesn't exist):"
+      printf '\n%s\n' "Host optimux"
+      printf '    %s\n' "HostName $CM_TUNNEL_HOST" "User $CM_TUNNEL_USER_USED"
+      [[ -n "$CM_TUNNEL_SSH_PORT" && "$CM_TUNNEL_SSH_PORT" != 22 ]] && printf '    %s\n' "Port $CM_TUNNEL_SSH_PORT"
+      printf '    %s\n' "LocalForward $(tunnel_local_port) 127.0.0.1:${M[PORT]}" "ExitOnForwardFailure yes" "ServerAliveInterval 30"
+      printf '\n'
+      say "Then the tunnel is: ssh -N optimux   (and open $CM_TUNNEL_URL)"
+      say "$(tunnel_local_note)"
+      return 0
+    fi
+    if [[ -n "$quiet" ]]; then printf '%s\n' "$CM_TUNNEL_CMD"; return 0; fi
+    say "Optimux on this server is reachable only through an SSH tunnel. On your own computer, run:"
+    say "  $CM_TUNNEL_CMD"
+    if [[ -n "$CM_TUNNEL_BG" ]]; then say "then open $CM_TUNNEL_URL (the tunnel runs in the background; stop it with: pkill -f 'L $(tunnel_local_port):127.0.0.1')"
+    else say "then open $CM_TUNNEL_URL and keep that terminal open."; fi
+    say "$(tunnel_local_note)"
     if [[ -n "$CM_TUNNEL_NOTE" ]]; then say "$CM_TUNNEL_NOTE"; fi
     return 0
   fi
+  if [[ -n "${CM_LOCAL_PORT}${CM_TUNNEL_HOST_ARG}${sshcfg}${CM_TUNNEL_BG}" ]]; then
+    note "No tunnel needed here: ${M[DOMAIN]:+Optimux is on its own address over HTTPS}${M[DOMAIN]:-Optimux runs on this computer}."
+  fi
   say "${M[URL]}"
+  [[ -n "$quiet" ]] && return 0
   if command -v xdg-open >/dev/null 2>&1 && [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then xdg-open "${M[URL]}" >/dev/null 2>&1 &
   elif [[ "$(uname -s)" == Darwin ]]; then open "${M[URL]}"; fi
+}
+
+cli_port_help() {
+  cat <<TXT
+
+  ${CB}optimux port${C0}                   the ports in use
+  ${CB}optimux port${C0} N [--no-restart]  move Optimux to port N on this machine (restarts it)
+  ${CB}optimux port --local${C0} N         the port on your computer for the SSH tunnel (remembered)
+  ${CB}optimux port --local same${C0}      back to the server's port
+
+  Optimux listens only on 127.0.0.1, so no firewall change is ever needed.
+
+TXT
+}
+
+# Who listens on a local TCP port (for "port N is busy"), or empty
+port_owner() { ss -Hltnp "sport = :$1" 2>/dev/null | grep -o 'users:(("[^"]*' | head -1 | sed 's/users:(("//' || true; }
+
+# The service with the port in its command line, for each way Optimux runs
+port_rewrite_service() {
+  case "${M[SERVICE]}" in
+    systemd) install_server_unit "" ;;
+    systemd-user) write_user_unit && systemctl --user daemon-reload >/dev/null 2>&1 || true ;;
+    *) : ;;                                         # process: the port is passed at start
+  esac
+}
+
+cli_port() {
+  local newport="" local_port="" norestart="" old answers
+  while (($#)); do
+    case "$1" in
+      --local) [[ -n "${2:-}" ]] || die "--local needs a port, or: same"; local_port="$2"; shift ;;
+      --no-restart) norestart=1 ;;
+      -h|--help) cli_port_help; return 0 ;;
+      -*) err "Unknown option: $1"; cli_port_help; return 2 ;;
+      *) [[ -z "$newport" ]] || die "Give one port."; newport="$1" ;;
+    esac
+    shift
+  done
+  local tunnel=""
+  [[ "${M[MODE]}" == server && -z "${M[DOMAIN]:-}" ]] && tunnel=1
+
+  if [[ -n "$local_port" ]]; then
+    [[ -n "$tunnel" ]] || die "The local port is only for an SSH tunnel; this install doesn't use one."
+    if [[ "$local_port" == same ]]; then M[LOCAL_PORT]=""
+    else valid_port "$local_port" || die "--local needs a port from 1024 to 65535, or: same"; M[LOCAL_PORT]="$((10#$local_port))"; fi
+    manifest_write "$(manifest_path "${M[MODE]}")"
+    ok "Your computer's end of the tunnel: port $(tunnel_local_port)"
+    tunnel_plan
+    [[ -n "$CM_TUNNEL_CMD" ]] && say "The tunnel command is now:" && say "  $CM_TUNNEL_CMD" && say "then open $CM_TUNNEL_URL"
+    [[ -z "$newport" ]] && return 0
+  fi
+
+  if [[ -z "$newport" ]]; then
+    if [[ -n "${M[DOMAIN]:-}" ]]; then
+      info "Optimux is reached at ${M[URL]}; Caddy talks to it through $(server_socket), so it uses no TCP port."
+      return 0
+    fi
+    if wait_http "http://127.0.0.1:${M[PORT]}/auth/status" "" 1; then answers="answers"; else answers="doesn't answer"; fi
+    info "This machine:   127.0.0.1:${M[PORT]} ($answers)"
+    if [[ -n "$tunnel" ]]; then
+      info "Your computer:  $(tunnel_local_port)$([[ -z "${M[LOCAL_PORT]:-}" ]] && echo " (the same as the server's)") for the SSH tunnel"
+      note "$(tunnel_local_note)"
+    fi
+    note "Change them with: optimux port N   ·   optimux port --local N   (optimux port --help)"
+    return 0
+  fi
+
+  [[ -z "${M[DOMAIN]:-}" ]] || die "With a domain, Caddy reaches Optimux through a socket, not a port: there's nothing to change."
+  valid_port "$newport" || die "Give a port from 1024 to 65535."
+  newport="$((10#$newport))"
+  if [[ "$newport" == "${M[PORT]}" ]]; then ok "Optimux already uses port $newport."; return 0; fi
+  if ! port_free "$newport"; then
+    local who; who="$(port_owner "$newport")"
+    die "Port $newport is already used on this machine${who:+ by $who}. Choose another one."
+  fi
+  if [[ "${M[SERVICE]}" == process && -n "$norestart" ]]; then
+    die "This install runs Optimux as a plain process, so the port changes with a restart: run it without --no-restart."
+  fi
+  old="${M[PORT]}"
+  [[ "${M[SERVICE]}" == process ]] && svc stop >/dev/null 2>&1       # it's found by its port: stop it first
+  M[PORT]="$newport"; M[URL]="http://127.0.0.1:$newport"
+  manifest_write "$(manifest_path "${M[MODE]}")"
+  port_rewrite_service
+  if [[ -n "$norestart" ]]; then
+    ok "Saved: Optimux moves to port $newport at its next restart (sudo optimux restart)."
+  else
+    svc restart >/dev/null 2>&1 || svc start >/dev/null 2>&1 || true
+    if wait_http "http://127.0.0.1:$newport/auth/status" "" 30; then
+      ok "Optimux now listens on 127.0.0.1:$newport (it was $old)"
+    else
+      warn "Optimux didn't answer on port $newport; going back to $old. The log says why: optimux logs"
+      [[ "${M[SERVICE]}" == process ]] && svc stop >/dev/null 2>&1
+      M[PORT]="$old"; M[URL]="http://127.0.0.1:$old"
+      manifest_write "$(manifest_path "${M[MODE]}")"
+      port_rewrite_service
+      svc restart >/dev/null 2>&1 || svc start >/dev/null 2>&1 || true
+      return 1
+    fi
+  fi
+  if [[ -n "$tunnel" ]]; then
+    tunnel_plan
+    say "Your old tunnel stops working. The new one, on your own computer:"
+    say "  $CM_TUNNEL_CMD"
+    say "then open $CM_TUNNEL_URL"
+    [[ -z "${M[LOCAL_PORT]:-}" ]] && note "Your computer's end follows the server's port ($newport). To keep another one: sudo optimux port --local N"
+  else
+    say "Open: ${M[URL]}"
+  fi
 }
 
 cli_update() {
