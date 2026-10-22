@@ -299,7 +299,7 @@ def test_github_token_refused_then_skipped(tmp_path):
 
 def test_cli_lists_github():
     text = open(CLI).read()
-    assert "github) cli_github ;;" in text and "${CB}github${C0}" in text
+    assert "github) cli_github ;;" in text and 'row "github"' in text
 
 
 @pytest.mark.parametrize("policy,adds_repo", [("gh:\n  Installed: (none)\n  Candidate: 2.45.0-1ubuntu0.3\n", False),
@@ -645,8 +645,10 @@ def clean(r):
 def test_open_prints_a_tunnel_that_fails_loudly_and_explains_the_local_port(tmp_path):
     out = clean(tunnel_lib(tmp_path, "cli_open"))
     assert "ssh -N -o ExitOnForwardFailure=yes -L 8000:127.0.0.1:8000 masoud@203.0.113.7" in out
-    assert "then open http://localhost:8000" in out
-    assert "Port 8000 must be free on your computer" in out and "--local-port 9000" in out
+    assert "\n        ssh -N -o ExitOnForwardFailure=yes -L 8000:127.0.0.1:8000 masoud@203.0.113.7\n" in out
+    assert "Then open http://localhost:8000" in out
+    assert "Port 8000 busy on your computer?" in out and "open --local-port 9000" in out
+    assert "this server     8000" in out and "your computer   8000" in out
     assert "lsof -nP -iTCP:8000 -sTCP:LISTEN" in out and "findstr :8000" in out
 
 
@@ -656,7 +658,8 @@ def test_open_options(tmp_path):
     r = tunnel_lib(tmp_path, "cli_open --background --quiet")
     assert clean(r).strip().startswith("ssh -f -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes")
     out = clean(tunnel_lib(tmp_path, "cli_open --ssh-config --local-port 9100"))
-    assert "Host optimux\n    HostName 203.0.113.7\n    User masoud\n    LocalForward 9100 127.0.0.1:8000" in out
+    block = [l.strip() for l in out.splitlines() if l.startswith("        ")]
+    assert block[:4] == ["Host optimux", "HostName 203.0.113.7", "User masoud", "LocalForward 9100 127.0.0.1:8000"]
     assert "ssh -N optimux" in out and "http://localhost:9100" in out
 
 
@@ -718,3 +721,43 @@ def test_port_with_a_domain_or_a_plain_process(tmp_path):
 def test_cli_lists_open_and_port():
     text = open(CLI).read()
     assert 'open|url|tunnel|browser) shift; cli_open "$@" ;;' in text and 'port) shift; cli_port "$@" ;;' in text
+
+
+def test_port_works_without_a_log_file_and_saves_only_after_the_service(tmp_path):
+    """5v on the server: `optimux port 8100` died with "CM_LOG: unbound variable" while
+    rewriting the service, after install.env already said 8100: the tunnel then went to
+    a port nothing listened on. Now run() makes its own log, and install.env is written
+    after the service."""
+    script = ('unset CM_LOG; svc() { :; }; port_free() { return 0; }; '
+              'optimux_answers() { [[ "$1" == 8100 ]]; }; '
+              'port_rewrite_service() { run "Rewriting the service" bash -c "echo UNIT ${M[PORT]}"; }; '
+              'cli_port 8100; echo "LOG=${CM_LOG:-none}"; grep ^PORT= "$(manifest_path)"')
+    out = clean(tunnel_lib(tmp_path, script))
+    assert "unbound" not in out and "now listens on 127.0.0.1:8100" in out and "LOG=/" in out
+    assert out.rstrip().endswith("PORT=8100")
+
+
+def test_install_env_is_untouched_when_the_service_rewrite_fails(tmp_path):
+    script = ('svc() { :; }; port_free() { return 0; }; '
+              'port_rewrite_service() { die "systemctl failed"; }; '
+              'cli_port 8100 || true; grep ^PORT= "$(manifest_path)" || echo "NO MANIFEST"')
+    out = clean(tunnel_lib(tmp_path, script))
+    assert "systemctl failed" in out and "PORT=8100" not in out
+
+
+def test_a_service_that_didnt_follow_is_repaired(tmp_path):
+    """install.env says 8200 but the service still runs on 8000: `optimux port` warns,
+    and `optimux port 8200` rewrites and restarts it instead of saying "already"."""
+    out = clean(tunnel_lib(tmp_path, FAKE_SVC + 'M[PORT]=8200; service_port() { echo 8000; }; '
+                           'optimux_answers() { [[ "$1" == 8000 ]]; }; cli_port'))
+    flat = " ".join(out.split())
+    assert "The service still starts on port 8000, not 8200" in flat and "optimux port 8200" in flat
+    out = clean(tunnel_lib(tmp_path, FAKE_SVC + 'M[PORT]=8200; service_port() { echo 8000; }; '
+                           'port_free() { return 0; }; optimux_answers() { return 0; }; cli_port 8200'))
+    assert "UNIT 8200" in out and "runs on 127.0.0.1:8200 again" in out
+
+
+def test_moving_back_to_a_port_this_optimux_holds_is_allowed(tmp_path):
+    out = clean(tunnel_lib(tmp_path, FAKE_SVC + 'M[PORT]=8200; service_port() { echo 8000; }; '
+                           'port_free() { return 1; }; optimux_answers() { return 0; }; cli_port 8000'))
+    assert "already used" not in out and "UNIT 8000" in out

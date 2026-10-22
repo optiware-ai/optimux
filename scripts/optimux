@@ -7,26 +7,26 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPTIMUX_LIB_ONLY=1 source "$HERE/../install.sh"
 
 help() {
-  cat <<TXT
-
-  ${CB}optimux${C0} <command>
-
-    ${CB}start${C0} | ${CB}stop${C0} | ${CB}restart${C0}   run Optimux, or stop it
-    ${CB}status${C0}                  is it running, where, which version
-    ${CB}logs${C0}                    follow the server's log (Ctrl+C to leave)
-    ${CB}open${C0}                    the address, or the SSH tunnel command (open --help)
-    ${CB}port${C0}                    the ports in use; move Optimux to another (port --help)
-    ${CB}update${C0}                  download the latest version and restart
-    ${CB}password${C0}                choose a new sign-in password
-    ${CB}reset-password${C0}          forget the password and two-step codes
-    ${CB}token${C0}                   the access token (first sign-in, scripts)
-    ${CB}github${C0}                  install the GitHub CLI and add a GitHub token
-    ${CB}uninstall${C0}               remove Optimux (asks before deleting data)
-    ${CB}version${C0}                 the installed version
-
-  Everything else is in the web interface: Dashboard → Guide.
-
-TXT
+  local ROW_W=24
+  heading "optimux <command>"
+  subhead "Run"
+  row "start | stop | restart" "run Optimux, or stop it"
+  row "status" "is it running, where, which version"
+  row "logs" "follow the server's log (Ctrl+C to leave)"
+  subhead "Reach it"
+  row "open" "the address, or the SSH tunnel command   ${CM}(open --help)${C0}"
+  row "port" "the ports in use; move Optimux   ${CM}(port --help)${C0}"
+  subhead "Manage"
+  row "update" "download the latest version and restart"
+  row "version" "the installed version"
+  row "password" "choose a new sign-in password"
+  row "reset-password" "forget the password and two-step codes"
+  row "token" "the access token (first sign-in, scripts)"
+  row "github" "install the GitHub CLI and add a GitHub token"
+  row "uninstall" "remove Optimux (asks before deleting data)"
+  printf '\n'
+  para "Everything else is in the web interface: Dashboard → Guide."
+  printf '\n'
 }
 
 main_cli() {
