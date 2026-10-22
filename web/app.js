@@ -2293,7 +2293,7 @@ createApp({
                      maxShare: Math.max(0.0001, ...models.map(m => m.share)) };
         });
         const PERF_ROLES = { conductor: 'Conductor', simple: 'Simple', complex: 'Complex', override: 'chosen by you', curator: 'memory',
-                             skill_draft: 'skill drafts', test: 'tests', commit_message: 'commit messages' };
+                             skill_draft: 'skill drafts', test: 'tests', commit_message: 'commit messages', planner: 'Planner' };
         const perfRole = (r) => PERF_ROLES[r] || r;
         const PERF_PROVIDERS = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini', vertex_ai: 'Google Vertex AI',
                                  ollama: 'Ollama (this machine)', ollama_chat: 'Ollama (this machine)', deepseek: 'DeepSeek', mistral: 'Mistral',
@@ -3417,6 +3417,7 @@ createApp({
                         return;
                     }
                     pendingCommand.value = data.command;
+                    rejectReason.value = '';
                     pendingApproval.value = true;
                     scrollToBottom();
                 }
@@ -3567,12 +3568,17 @@ createApp({
             if (isGenerating.value || pendingApproval.value) stopGeneration();
         });
 
+        // Reject can carry a reason, sent to the model with the refusal (v0.5.1)
+        const rejectReason = ref('');
         const sendApprovalResponse = async (isApproved, alwaysApprove = false) => {
             if (alwaysApprove && isApproved) {
                 appSettings.value.auto_approve = true;
                 await saveSettings();
             }
-            ws.value.send(JSON.stringify({ type: 'approval_response', approved: isApproved }));
+            const reason = isApproved ? '' : rejectReason.value.trim().slice(0, 500);
+            rejectReason.value = '';
+            ws.value.send(JSON.stringify(reason ? { type: 'approval_response', approved: false, reason }
+                                                : { type: 'approval_response', approved: isApproved }));
             pendingApproval.value = false;
             pendingForm.value = null;
             pendingCommand.value = ''; pendingFile.value = null;
@@ -3797,7 +3803,7 @@ createApp({
             selectedModel, availableModels, setupModels, handleModelChange,
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
-            pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, showTrail,
+            pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
             pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
 					renderMarkdown,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashboardSections, dashboardGroups,

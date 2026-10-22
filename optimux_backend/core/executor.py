@@ -112,17 +112,36 @@ class _Capped:
             if len(self.tail) > self.tail_n:
                 del self.tail[:len(self.tail) - self.tail_n]
 
+    def _parts(self) -> tuple[bytes, bytes]:
+        """The kept start and end. When something was dropped, the cut falls on
+        line ends: the start ends after its last whole line and the end begins
+        with its first whole line, unless that would drop more than half of the
+        part (one very long line, e.g. a minified file)."""
+        head, tail = bytes(self.head), bytes(self.tail)
+        if self.total <= len(head) + len(tail):
+            return head, tail
+        i = head.rfind(b"\n")
+        if i >= len(head) // 2:
+            head = head[:i + 1]
+        j = tail.find(b"\n")
+        if 0 <= j < len(tail) // 2:
+            tail = tail[j + 1:]
+        return head, tail
+
     @property
     def cut(self) -> int:
-        return self.total - len(self.head) - len(self.tail)
+        head, tail = self._parts()
+        return self.total - len(head) - len(tail)
 
     def text(self) -> str:
-        if not self.cut:
-            return (bytes(self.head) + bytes(self.tail)).decode("utf-8", errors="replace")
-        return (bytes(self.head).decode("utf-8", errors="replace")
-                + f"\n\n[... {self.cut:,} bytes of output cut here by Optimux ({self.total:,} in all). "
+        head, tail = self._parts()
+        cut = self.total - len(head) - len(tail)
+        if not cut:
+            return (head + tail).decode("utf-8", errors="replace")
+        return (head.decode("utf-8", errors="replace").rstrip("\n")
+                + f"\n\n[... {cut:,} bytes of output cut here by Optimux ({self.total:,} in all). "
                   "To see a part, run the command again with grep, head, tail or sed -n. ...]\n\n"
-                + bytes(self.tail).decode("utf-8", errors="replace"))
+                + tail.decode("utf-8", errors="replace"))
 
 
 async def _drain(stream, sink: _Capped) -> None:

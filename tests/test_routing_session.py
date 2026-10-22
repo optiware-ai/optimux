@@ -392,3 +392,42 @@ def test_a_failed_conductor_is_said_in_the_chat(mocker, client):
     again = chat.prompt("hello")
     chat.close()
     assert not any("couldn't decide" in m.get("content", "") for m in again if m["type"] == "system")
+
+
+def _reject(chat, prompt, reason=None):
+    chat.ws.send_text(json.dumps({"prompt": prompt, "model": "auto"}))
+    while json.loads(chat.ws.receive_text())["type"] != "approval_request":
+        pass
+    answer = {"type": "approval_response", "approved": False}
+    if reason is not None:
+        answer["reason"] = reason
+    chat.ws.send_text(json.dumps(answer))
+    from tests.ws_helpers import collect
+    return collect(chat.ws)
+
+
+@pytest.mark.parametrize("reason,said,told", [
+    ("  WITHOUT ANY   PIPES!  ", "Command 'seq 1 9 | tail -1' rejected: “WITHOUT ANY PIPES!”",
+     'said: "WITHOUT ANY PIPES!". Follow that'),
+    (None, "Command 'seq 1 9 | tail -1' rejected.", "Don't run it again unless the user asks you to"),
+    ("", "Command 'seq 1 9 | tail -1' rejected.", "Don't run it again unless the user asks you to"),
+])
+def test_a_rejection_can_carry_a_reason(mocker, client, reason, said, told):
+    rec = Recorder(tool_reply("execute_bash", {"command": "seq 1 9 | tail -1"}), reply("OK, without pipes."))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    chat = Conversation(client)
+    msgs = _reject(chat, "run seq", reason)
+    chat.close()
+    assert said in notes(msgs)
+    tool = [m for m in rec.calls[1]["messages"] if m["role"] == "tool"][0]["content"]
+    assert told in tool and "Do not retry" not in tool
+
+
+def test_a_long_reason_is_cut(mocker, client):
+    rec = Recorder(tool_reply("execute_bash", {"command": "ls"}), reply("ok"))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    chat = Conversation(client)
+    _reject(chat, "list", "x" * 2000)
+    chat.close()
+    tool = [m for m in rec.calls[1]["messages"] if m["role"] == "tool"][0]["content"]
+    assert "x" * 500 in tool and "x" * 501 not in tool

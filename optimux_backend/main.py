@@ -1878,7 +1878,7 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
     except Exception as e:
         info = providers.record_failure(model, e)
         ratelimits.record_error(model, e)
-        analytics.record_event("error", model, "complex", info.kind)
+        analytics.record_event("error", model, "planner", info.kind)
         await send(websocket, "system", f"Couldn't make a plan ({info.summary}); doing the task the usual way.")
         return False
     if result.get("thinking"):
@@ -2671,8 +2671,27 @@ async def wait_for_answer(websocket: WebSocket, session: dict, tc_id: str, comma
     finally:
         session["approval"] = None
     if answer.get("type") != "approval_response" or answer.get("approved") is not True:
-        return {"approved": False}
+        # An optional reason typed with Reject goes to the model with the refusal
+        reason = answer.get("reason") if answer.get("type") == "approval_response" else ""
+        return {"approved": False, "reason": " ".join(str(reason or "").split())[:REJECT_REASON_CHARS]}
     return answer
+
+
+REJECT_REASON_CHARS = 500
+
+
+def declined_note(what: str, reason: str) -> str:
+    """What the model is told after a Reject (v0.5.1): with the user's reason, it
+    is to follow it; without one, not to try the same again unless asked."""
+    if reason:
+        return (f"The user declined {what} and said: \"{reason}\". Follow that: don't repeat the same thing; if it "
+                "says what to do instead, do it (it will be shown for approval again).")
+    return (f"The user declined {what}. Don't run it again unless the user asks you to; briefly say what you "
+            "intended and ask how they'd like to proceed.")
+
+
+def declined_line(base: str, reason: str) -> str:
+    return f"{base}: \u201c{reason}\u201d" if reason else f"{base}."
 
 
 async def ask_approval(websocket: WebSocket, session: dict, tc_id: str, command: str, **extra) -> bool:
@@ -2731,11 +2750,12 @@ async def run_file_tool(websocket: WebSocket, session: dict, name: str, args_str
         return {"ok": False, "error": str(e)}
     label = files_lib.describe(change)
     info = files_lib.public(change)
-    if not await ask_approval(websocket, session, tc_id, label, file_change={**info, "diff": change["diff"]},
-                              workdir=workdir):
-        await send(websocket, "system", f"Change to {change['path']} rejected.")
-        return {"ok": False, "declined": True, "note": "The user declined this change. Don't retry it; briefly "
-                "say what you intended and ask how they'd like to proceed."}
+    answer = await wait_for_answer(websocket, session, tc_id, label, file_change={**info, "diff": change["diff"]},
+                                   workdir=workdir)
+    if not answer["approved"]:
+        reason = answer.get("reason", "")
+        await send(websocket, "system", declined_line(f"Change to {change['path']} rejected", reason))
+        return {"ok": False, "declined": True, "note": declined_note("this change", reason)}
     await mark_changes_start(session)
     await send(websocket, "command_start", command=label, file=info)
     try:
@@ -2876,9 +2896,11 @@ async def run_workspace_tool(websocket: WebSocket, session: dict, name: str, arg
         if name == "archive_project":
             pname = workspace.check_archive(str(args.get("name", "")))
             label = f"Archive project '{pname}' (move its folder to .archive/; chats and costs are kept)"
-            if not await ask_approval(websocket, session, tc_id, label, action="archive_project", always_ask=True):
-                await send(websocket, "system", "Archiving declined.")
-                return {"ok": False, "declined": True, "note": "The user declined. Don't retry."}
+            answer = await wait_for_answer(websocket, session, tc_id, label, action="archive_project", always_ask=True)
+            if not answer["approved"]:
+                reason = answer.get("reason", "")
+                await send(websocket, "system", declined_line("Archiving declined", reason))
+                return {"ok": False, "declined": True, "note": declined_note("archiving this project", reason)}
             await send(websocket, "command_start", command=label)
             result = await asyncio.to_thread(workspace.archive_project, pname)
             await send(websocket, "command_output", command=label, output=f"Moved to {result['archived_to']}", exit_code=0)
@@ -3054,7 +3076,8 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                 workdir = current_workdir()
                 outside = [p for p in (paths_outside_scope(cmd, workdir) if workdir else [])
                            if not in_skill_folder(p)]
-                if await ask_approval(websocket, session, tc_id, cmd, outside_paths=outside, workdir=workdir):
+                answer = await wait_for_answer(websocket, session, tc_id, cmd, outside_paths=outside, workdir=workdir)
+                if answer["approved"]:
                     await mark_changes_start(session)
                     await send(websocket, "command_start", command=cmd)
                     exec_result = await run_shell_command(cmd)
@@ -3064,8 +3087,10 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                                cut=exec_result.get("cut", 0))
                     messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": json.dumps(exec_result)})
                 else:
-                    await send(websocket, "system", f"Command '{cmd}' rejected.")
-                    messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": "The user declined to run this command. Do not retry it. Briefly tell the user what you intended and ask how they'd like to proceed."})
+                    reason = answer.get("reason", "")
+                    await send(websocket, "system", declined_line(f"Command '{cmd}' rejected", reason))
+                    messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name,
+                                     "content": declined_note("to run this command", reason)})
 
             elif tc_name == "update_markdown_memory":
                 try:

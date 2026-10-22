@@ -286,12 +286,13 @@ def test_a_rejected_write_writes_nothing(mocker, client, proj):
     chat.ws.send_text(json.dumps({"prompt": "make a file", "model": "auto"}))
     m, _ = _until(chat.ws, "approval_request")
     assert m["command"] == "✎ create new.txt (1 lines)"
-    chat.ws.send_text(json.dumps({"type": "approval_response", "approved": False}))
-    collect(chat.ws)
+    chat.ws.send_text(json.dumps({"type": "approval_response", "approved": False, "reason": "name it notes.txt"}))
+    msgs = collect(chat.ws)
     chat.close()
     assert not (proj / "new.txt").exists()
     result = json.loads([m for m in calls[1]["messages"] if m["role"] == "tool"][-1]["content"])
-    assert result["declined"] is True
+    assert result["declined"] is True and 'said: "name it notes.txt"' in result["note"]
+    assert "Change to new.txt rejected: \u201cname it notes.txt\u201d" in [m.get("content") for m in msgs]
 
 
 def test_without_an_active_project_the_tools_are_not_offered(mocker, client):

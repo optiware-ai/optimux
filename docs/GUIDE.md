@@ -181,7 +181,8 @@ A reply can contain, from top to bottom:
 
 Before a command runs you see **Approval Required** with the full command:
 
-- **Approve** runs it once. **Reject** refuses it; the model is told and continues without it.
+- **Approve** runs it once. **Reject** refuses it; the model is told and continues without it. It won't try the same thing again unless you ask it to later in the chat.
+- **Why reject?** (optional): type a few words next to Reject, such as *no pipes* or *use pytest instead*, and press **Enter** or **Reject with reason**. The reason goes to the model together with the refusal, in the same step, so it can try again the way you want without waiting for its reply first. It works the same for file changes and for archiving a project. Leave it empty for a plain Reject.
 - **Always Approve** runs it and turns on auto-approve for all future commands (you can turn it off in **Dashboard → Execution**).
 - A red **Outside the project** box appears when the command touches paths outside the active project. These are never auto-approved, and *Always Approve* is hidden.
 - Creating a project shows a **form** instead (see *Creating a project*); creating and archiving always wait for you, even with auto-approve on.

@@ -96,3 +96,24 @@ def test_the_model_and_the_chat_get_the_capped_output(mocker, tmp_path):
     assert shown["cut"] > 1_900_000 and len(shown["output"]) < 30_000 and shown["output"].endswith("DONE\n")
     tool_msg = [m for m in rec.calls[1]["messages"] if m["role"] == "tool"][0]
     assert len(tool_msg["content"]) < 31_000 and '"cut"' in tool_msg["content"]
+
+
+@pytest.mark.asyncio
+async def test_the_cut_falls_on_whole_lines(tmp_path):
+    result = await run_shell_command("seq 1 2000000", cwd=str(tmp_path))
+    before, note, after = result["stdout"].split("\n\n")
+    first, last = before.split("\n"), after.rstrip("\n").split("\n")
+    assert first[:3] == ["1", "2", "3"] and [int(x) for x in first] == list(range(1, len(first) + 1))
+    assert last[-1] == "2000000" and [int(x) for x in last] == list(range(2000001 - len(last), 2000001))
+    # the count in the note and in "cut" is exactly what's missing
+    shown = len(before) + 1 + len(after)
+    assert result["cut"] == len(b"".join(f"{i}\n".encode() for i in range(1, 2000001))) - shown
+    assert f"{result['cut']:,} bytes of output cut here" in note
+
+
+def test_one_long_line_is_not_dropped_for_a_line_end():
+    from optimux_backend.core.executor import _Capped
+    c = _Capped(100, 100)
+    c.add(b"a\n" + b"x" * 1000 + b"\nz")
+    head, tail = c._parts()
+    assert len(head) == 100 and len(tail) == 100          # the line end is too far back: keep the bytes
