@@ -25,10 +25,9 @@ from optimux_backend.core import changes as changes_lib
 from optimux_backend.core import paths
 from optimux_backend.core.security import GITHUB_TOKEN_ENV
 from optimux_backend.core.workspace import (
-    MANUAL_COMMIT_MESSAGE, WorkspaceError, _GITHUB_REMOTE, _clean_remote, _git_remote, _run, copy_target,
+    MANUAL_COMMIT_MESSAGE, WorkspaceError, _GITHUB_REMOTE, _clean_remote, _git_remote, _run, copy_target, git_can_commit,
     projects_root, validate_name,
 )
-from optimux_backend.core.config_manager import get_settings, git_identity_env
 
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 BIG_FILE = 50 * 1024 * 1024          # GitHub refuses files over 100 MB; warn at 50
@@ -207,8 +206,7 @@ def push_prepare(name: str) -> dict:
         out["files"], out["more"] = diff.get("files", []), diff.get("more", 0)
     out["ahead"], out["behind"] = _counts(path, out["upstream"])
     out["template"] = bool(_template(path))
-    if out["files"] and not git_identity_env(get_settings()) \
-            and not _ok(_git(path, "config", "--get", "user.email", timeout=5)):
+    if out["files"] and not git_can_commit(path):
         out["identity"] = False
         out["problems"].append("Git has no name and email to commit with. Set them in Dashboard → GitHub "
                                "(Who commits).")

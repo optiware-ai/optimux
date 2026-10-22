@@ -102,6 +102,7 @@ def test_a_copy_pushes_to_its_own_branch(ws):
     git("clone", "-q", str(ws["remote"]), "t10", cwd=ws["root"])
     copy = ws["root"] / "t10"
     git("config", "user.email", "t@x", cwd=copy)
+    git("config", "user.name", "T", cwd=copy)
     (copy / "index.html").write_text("<p>copy</p>\n")
     prep = gitsync.push_prepare("t10")
     assert prep["copy_of"] == "site" and prep["target"] == "t10" and prep["upstream"] is None
@@ -202,3 +203,25 @@ def test_the_api_prepares_runs_and_writes_the_message(ws, mocker, tmp_path):
     assert r["ok"] and git("log", "-1", "--format=%s", "main", cwd=ws["remote"]) == "[ FIX ] Site: Year 2026"
     r = client.post("/api/projects/site/update", json={"sha": "nope"}, headers=H)
     assert r.status_code == 422
+
+
+@pytest.mark.parametrize("config", [
+    [],                                    # no identity at all (no guessing from the host name)
+    [("user.email", "t@x"), ("user.name", "")],   # an email but no usable name, as for an
+])                                         # account without a full name (CI's runner, a service user)
+def test_an_identity_git_cannot_commit_with_is_a_problem(ws, monkeypatch, config):
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for k in ("user.email", "user.name"):
+        subprocess.run(["git", "config", "--unset", k], cwd=ws["proj"], capture_output=True)
+    for k, v in config:
+        git("config", k, v, cwd=ws["proj"])
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    prep = gitsync.push_prepare("site")
+    assert prep["identity"] is False and any("no name and email" in p for p in prep["problems"])
+    with pytest.raises(gitsync.GitSyncError, match="no name and email"):
+        gitsync.push_run("site", "x", prep["tree"], False)
+    # the name and email from Dashboard -> GitHub are enough
+    monkeypatch.setattr("optimux_backend.core.workspace.get_settings",
+                        lambda: {"git_name": "Masoud", "git_email": "m@example.com"})
+    assert gitsync.push_prepare("site")["identity"] is True

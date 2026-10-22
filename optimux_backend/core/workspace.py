@@ -190,8 +190,7 @@ def git_commands(name: str) -> dict:
     who = (f"-c user.name={q(ident['GIT_AUTHOR_NAME'])} -c user.email={q(ident['GIT_AUTHOR_EMAIL'])} "
            if ident else "")
     # Asked in the project itself: its own .git/config, the user's and the system's
-    known = _run(["git", "config", "--get", "user.email"], path, timeout=5)
-    if not ident and out["changes"] and not (known["ok"] and known["output"].strip()):
+    if not ident and out["changes"] and not git_can_commit(path):
         out["warning"] = ("Git has no name and email to commit with. Set them in Dashboard → GitHub "
                           "(Who commits), then open this again.")
     folder, out["copy_of"], out["push_branch"] = copy_target(name, path, remote)
@@ -413,12 +412,25 @@ def noreply_email(login: str, uid) -> str:
     return f"{uid}+{login}@users.noreply.github.com" if uid else f"{login}@users.noreply.github.com"
 
 
+def git_can_commit(cwd: str | None = None) -> bool:
+    """Can git commit here with a real name and email? True with the identity
+    from the settings; otherwise git's config needs a user.email (an address
+    guessed from the host name is not one), and `git var` must give an author
+    and a committer: it fails exactly where a commit would, e.g. a user.email
+    without user.name for an account with no full name (a service account)."""
+    if git_identity_env(get_settings()):
+        return True
+    cwd = cwd or os.path.expanduser("~")
+    email = _run(["git", "config", "--get", "user.email"], cwd, timeout=5)
+    if not (email["ok"] and email["output"].strip()):
+        return False
+    return all(_run(["git", "var", v], cwd, timeout=5)["ok"] for v in ("GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"))
+
+
 def git_has_identity() -> bool:
-    """Does git already know who commits (git config user.email), for the Optimux user?"""
+    """Does git already know who commits, for the Optimux user (git_can_commit)?"""
     try:
-        p = subprocess.run(["git", "config", "--get", "user.email"], capture_output=True, text=True, timeout=5,
-                           env=scrubbed_env(get_secret_env_keys()))
-        return p.returncode == 0 and bool(p.stdout.strip())
+        return git_can_commit()
     except (OSError, subprocess.TimeoutExpired):
         return False
 
