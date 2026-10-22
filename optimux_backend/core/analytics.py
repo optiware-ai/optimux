@@ -17,8 +17,11 @@ Definitions (shown in the Guide):
   recorded (older calls have no failure records).
 - escalation rate: escalations away from the model / its calls.
 """
+import contextlib
+import io
 import time
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 from optimux_backend.core import store, usage
 
@@ -72,6 +75,31 @@ def color_order() -> list[str]:
     finally:
         conn.close()
     return [r["model"] for r in rows if r["model"]]
+
+
+def provider_of(model: str, cards: dict | None = None) -> dict:
+    """Who serves a model: the provider (from the LiteLLM route, e.g.
+    'anthropic' for 'claude-sonnet-5') and, for a model with its own Base URL,
+    that server's host. Local only: nothing is called."""
+    card = (cards or {}).get(model) or {}
+    endpoint = urlparse(card.get("api_base") or "").hostname or None
+    provider = model.split("/", 1)[0] if "/" in model else None
+    if not provider:
+        try:
+            import litellm
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                provider = litellm.get_llm_provider(model)[1]
+        except Exception:
+            provider = None
+    return {"provider": provider, "endpoint": endpoint}
+
+
+def _cards() -> dict:
+    try:
+        from optimux_backend.core.config_manager import get_all_models
+        return get_all_models()
+    except Exception:
+        return {}
 
 
 def known_projects() -> list[str]:
@@ -187,6 +215,22 @@ def analytics(days: int = 30, project: str | None = None, now: float | None = No
             "escalation_rate": (m["escalations"] / calls) if calls else None,
         })
     rows.sort(key=lambda r: (-r["cost"], -r["calls"], r["model"]))
+    cards = _cards()
+    for r in rows:
+        r.update(provider_of(r["model"], cards))
+
+    # Routing at work: calls and spending per role (Conductor, Simple, Complex...)
+    roles: dict[str, dict] = {}
+    for e in entries:
+        b = roles.setdefault(e.get("role") or "?", {"calls": 0, "cost": 0.0, "calls_without_cost": 0, "models": {}})
+        b["calls"] += 1
+        if e.get("cost") is None:
+            b["calls_without_cost"] += 1
+        else:
+            b["cost"] += e["cost"]
+        mid = e.get("model") or "?"
+        b["models"][mid] = b["models"].get(mid, 0) + 1
+    role_rows = sorted(({"role": k, **v} for k, v in roles.items()), key=lambda r: (-r["calls"], r["role"]))
 
     # Over time: per day (or week, for long ranges), cost and calls per model
     first_ts = entries[0]["ts"] if entries else now
@@ -228,5 +272,5 @@ def analytics(days: int = 30, project: str | None = None, now: float | None = No
         if (totals["calls"] + totals["errors"]) else None
     return {"days": days, "project": project, "since": since or start, "now": now, "weekly": weekly,
             "events_since": events_since, "totals": totals, "models": rows, "timeline": timeline,
-            "matrix": matrix, "top": TOP_MODELS, "color_order": color_order(),
+            "matrix": matrix, "roles": role_rows, "top": TOP_MODELS, "color_order": color_order(),
             "projects": known_projects()}

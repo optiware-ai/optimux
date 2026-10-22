@@ -1965,12 +1965,22 @@ createApp({
             const pos = t * (PERF_HEAT.length - 1), i = Math.min(Math.floor(pos), PERF_HEAT.length - 2);
             return hexMix(PERF_HEAT[i], PERF_HEAT[i + 1], pos - i);
         };
+        // The tooltip sizes itself to its text; it is placed after it rendered,
+        // flipped to the other side of the pointer when it would leave the window
+        const perfTipEl = ref(null);
         const showTip = (e, tip) => {
-            const pad = 14, w = 260;
-            let x = e.clientX + pad, y = e.clientY + pad;
-            if (x + w > window.innerWidth - 8) x = e.clientX - w - pad;
-            if (y + 40 + 22 * (tip.rows || []).length > window.innerHeight - 8) y = Math.max(8, e.clientY - pad - 40 - 22 * (tip.rows || []).length);
-            perfTip.value = { ...tip, x, y };
+            const pad = 14, mx = e.clientX, my = e.clientY;
+            const prev = perfTip.value;
+            perfTip.value = { ...tip, x: prev && prev.title === tip.title ? prev.x : mx + pad, y: prev && prev.title === tip.title ? prev.y : my + pad };
+            nextTick(() => {
+                const el = perfTipEl.value, t = perfTip.value;
+                if (!el || !t) return;
+                const w = el.offsetWidth, h = el.offsetHeight;
+                let x = mx + pad, y = my + pad;
+                if (x + w > window.innerWidth - 8) x = mx - w - pad;
+                if (y + h > window.innerHeight - 8) y = my - h - pad;
+                t.x = Math.max(8, x); t.y = Math.max(8, y);
+            });
         };
         const hideTip = () => { perfTip.value = null; };
 
@@ -1981,7 +1991,19 @@ createApp({
             const top = d.top || 8;
             const colorOf = (id) => { const i = order.indexOf(id); return i >= 0 && i < top ? PERF_COLORS[i] : PERF_OTHER; };
             const named = (id) => { const i = order.indexOf(id); return i >= 0 && i < top; };
-            const models = d.models.map(m => ({ ...m, color: colorOf(m.model), name: modelName(m.model) }));
+            // Short names: the model alone; the provider shows on hover (and in the
+            // name only when two models would otherwise read the same)
+            const base = (id) => { const card = modelName(id); return (card && card !== id ? card : id).split('/').pop(); };
+            const counts = {};
+            d.models.forEach(m => { const b = base(m.model); counts[b] = (counts[b] || 0) + 1; });
+            const models = d.models.map(m => {
+                const who = perfProvider(m.provider) + (m.endpoint ? ` via ${m.endpoint}` : '');
+                const b = base(m.model);
+                return { ...m, color: colorOf(m.model), who, title: `${who} · ${m.model}`,
+                         name: counts[b] > 1 ? `${b} · ${m.endpoint || perfProvider(m.provider)}` : b };
+            });
+            const byId = Object.fromEntries(models.map(m => [m.model, m]));
+            const labelOf = (id) => (byId[id] || {}).name || base(id);
             const t = d.totals;
             const wide = perfWidth.value >= 1000;
             const W = perfWidth.value - 34;                       // card padding
@@ -2023,11 +2045,15 @@ createApp({
                 const kind = Object.entries(failing.error_kinds).sort((a, b) => b[1] - a[1])[0][0];
                 insights.push(`${failing.name} failed ${failing.errors} time${failing.errors === 1 ? '' : 's'} (mostly ${kind}); reliability ${fmtPct(failing.reliability, 1)}${few(failing)}.`);
             }
+            const simple = (d.roles || []).find(r => r.role === 'simple');
+            const allCalls = (d.roles || []).reduce((a, r) => a + r.calls, 0);
+            if (simple && allCalls && t.cost > 0)
+                insights.push(`The Simple tier made ${fmtPct(simple.calls / allCalls)} of the calls for ${fmtPct(simple.cost / t.cost)} of the spending.`);
             if (t.calls_without_cost) insights.push(`${t.calls_without_cost} calls have no known price, so the totals are a lower bound. Add prices in Models.`);
 
             // Series for the stacked charts: up to `top` named models, the rest folded into "Other"
             const inView = models.map(m => m.model);
-            const series = order.filter(id => named(id) && inView.includes(id)).map(id => ({ id, name: modelName(id), color: colorOf(id) }));
+            const series = order.filter(id => named(id) && inView.includes(id)).map(id => ({ id, name: labelOf(id), title: (byId[id] || {}).title, color: colorOf(id) }));
             if (inView.some(id => !named(id))) series.push({ id: '__other', name: 'Other', color: PERF_OTHER });
             const sid = (id) => named(id) ? id : '__other';
 
@@ -2086,6 +2112,7 @@ createApp({
                 const dots = pts.map(m => ({
                     m, cx: X(m.cost_per_call), cy: Y(m.p50_ms / 1000), r: 5 + 11 * Math.sqrt(m.calls / maxCalls), color: m.color,
                     tip: { title: m.name, rows: [
+                        { label: 'Provider', value: m.who },
                         { label: 'Cost per call', value: fmtUsd(m.cost_per_call) }, { label: 'Median latency', value: fmtSec(m.p50_ms) },
                         { label: 'Calls', value: String(m.calls) }, { label: 'Spent', value: fmtUsd(m.cost) }] },
                 }));
@@ -2107,34 +2134,40 @@ createApp({
                          xgrid: xt.map(v => ({ x: X(v), text: fmtUsd(v) })), ygrid: yt.map(v => ({ y: Y(v), text: fmtSec(v * 1000) })) };
             })();
 
-            // 3. Latency spread: p10–p90 range with the median dot, plus speed
+            // Width of a name column that fits its longest label (SVG text at 12px)
+            const fitW = (labels, lo, hi) => Math.round(Math.min(hi, Math.max(lo, 16 + 6.8 * Math.max(0, ...labels.map(x => x.length)))));
+            const clip = (t, w) => { const n = Math.floor(w / 6.6); return t.length > n ? t.slice(0, Math.max(1, n - 1)) + '…' : t; };
+
+            // 3. Latency spread: p10–p90 range with the median dot, plus speed (full width)
             const lat = (() => {
                 const rowsM = models.filter(m => m.p50_ms !== null).sort((a, b) => a.p50_ms - b.p50_ms);
-                const nameW = Math.min(170, Math.max(110, half * 0.3)), right = 74, rowH = 30, topPad = 8, bottom = 26;
+                const nameW = fitW(rowsM.map(m => m.name), 110, 260), right = 84, rowH = 30, topPad = 8, bottom = 26;
                 const H = topPad + rowsM.length * rowH + bottom;
-                const plotW = Math.max(80, half - nameW - right);
+                const plotW = Math.max(80, W - nameW - right);
                 const max = Math.max(1, ...rowsM.map(m => m.p90_ms / 1000));
-                const ticks = niceTicks(max, 4), xmax = ticks[ticks.length - 1];
+                const ticks = niceTicks(max, Math.max(4, Math.min(8, Math.floor(plotW / 110)))), xmax = ticks[ticks.length - 1];
                 const X = (ms) => nameW + plotW * (ms / 1000) / xmax;
                 const rows = rowsM.map((m, i) => ({
                     m, y: topPad + i * rowH + rowH / 2, x10: X(m.p10_ms), x50: X(m.p50_ms), x90: X(m.p90_ms), color: m.color,
-                    name: m.name.length > 22 ? m.name.slice(0, 21) + '…' : m.name,
+                    name: clip(m.name, nameW - 8), title: m.title,
                     speed: m.speed_tps !== null ? Math.round(m.speed_tps) + ' tok/s' : '—',
                     tip: { title: m.name, rows: [
+                        { label: 'Provider', value: m.who },
                         { label: 'Fast calls (p10)', value: fmtSec(m.p10_ms) }, { label: 'Typical (median)', value: fmtSec(m.p50_ms) },
                         { label: 'Slow calls (p90)', value: fmtSec(m.p90_ms) },
-                        { label: 'Output speed', value: m.speed_tps !== null ? `${Math.round(m.speed_tps)} tokens/s (${m.speed_calls} calls)` : 'not enough long answers' },
+                        { label: 'Output speed', value: m.speed_tps !== null ? `${Math.round(m.speed_tps)} tokens/s, over ${m.speed_calls} calls` : 'not enough long answers' },
                         { label: 'Timed calls', value: String(m.timed_calls) }] },
                 }));
-                return { W: half, H, nameW, plotW, rowH, topPad, rows, grid: ticks.map(v => ({ x: nameW + plotW * v / xmax, text: fmtSec(v * 1000) })), bottom };
+                return { W, H, nameW, plotW, rowH, topPad, rows, grid: ticks.map(v => ({ x: nameW + plotW * v / xmax, text: fmtSec(v * 1000) })), bottom };
             })();
 
-            // 4. Token mix: what each model's tokens are, 100% bars
+            // 4. Token mix: what each model's tokens are, 100% bars (full width)
             const mix = (() => {
-                const nameW = Math.min(170, Math.max(110, half * 0.3)), right = 56, rowH = 26, topPad = 4;
-                const plotW = Math.max(80, half - nameW - right);
+                const list = models.filter(m => m.prompt_tokens + m.completion_tokens > 0);
+                const nameW = fitW(list.map(m => m.name), 110, 260), right = 64, rowH = 28, topPad = 4;
+                const plotW = Math.max(80, W - nameW - right);
                 const kinds = [['Cached input', PERF_TOKENS[0]], ['New input', PERF_TOKENS[1]], ['Output', PERF_TOKENS[2]], ['Thinking', PERF_TOKENS[3]]];
-                const rows = models.filter(m => m.prompt_tokens + m.completion_tokens > 0).map((m, i) => {
+                const rows = list.map((m, i) => {
                     const thinking = Math.min(m.reasoning_tokens, m.completion_tokens);
                     const vals = [m.cached_tokens, Math.max(0, m.prompt_tokens - m.cached_tokens), m.completion_tokens - thinking, thinking];
                     const total = vals.reduce((a, v) => a + v, 0);
@@ -2143,52 +2176,107 @@ createApp({
                     vals.forEach((v, k) => {
                         if (!v) return;
                         const w = plotW * v / total;
-                        segs.push({ x, w: Math.max(w - 2, 1), color: kinds[k][1], tip: { title: m.name, rows: kinds.map((kk, j) => ({ color: kk[1], label: kk[0], value: `${fmtTokens(vals[j])} · ${fmtPct(vals[j] / total)}`, strong: j === k })) } });
+                        segs.push({ x, w: Math.max(w - 2, 1), color: kinds[k][1], text: w >= 44 ? fmtPct(v / total) : '', ink: k >= 2 ? '#f9fafb' : '#0b1220',
+                                    tip: { title: m.name, rows: kinds.map((kk, j) => ({ color: kk[1], label: kk[0], value: `${fmtTokens(vals[j])} · ${fmtPct(vals[j] / total)}`, strong: j === k })) } });
                         x += w;
                     });
-                    return { m, y: topPad + i * rowH, segs, name: m.name.length > 22 ? m.name.slice(0, 21) + '…' : m.name, total: fmtTokens(total) };
+                    return { m, y: topPad + i * rowH, segs, name: clip(m.name, nameW - 8), title: m.title, total: fmtTokens(total) };
                 });
-                return { W: half, H: topPad + rows.length * rowH + 4, nameW, plotW, rowH, rows, kinds };
+                return { W, H: topPad + rows.length * rowH + 4, nameW, plotW, rowH, rows, kinds };
             })();
 
-            // 5. Where the money goes: model × project heatmap (all projects only)
+            // 5. Where the money goes: every project (rows) × every model (columns), with totals
             const heat = (() => {
                 if (!d.matrix || d.matrix.projects.length < 1) return null;
-                const projCost = {};
-                d.matrix.cells.forEach(c => { projCost[c.project] = (projCost[c.project] || 0) + c.cost; });
-                let projects = d.matrix.projects.slice(0, 6);
-                const rest = d.matrix.projects.length > 6;
-                if (rest) projects.push('Other projects');
-                const pk = (p) => projects.includes(p) && p !== 'Other projects' ? p : 'Other projects';
-                const rowIds = series.map(s => s.id);
-                const cell = {};
+                const cell = {}, projCost = {}, projCalls = {}, modelCost = {}, modelCalls = {};
                 d.matrix.cells.forEach(c => {
-                    const k = sid(c.model) + '|' + pk(c.project);
-                    const v = (cell[k] = cell[k] || { cost: 0, calls: 0 });
-                    v.cost += c.cost; v.calls += c.calls;
+                    cell[c.project + '|' + c.model] = c;
+                    projCost[c.project] = (projCost[c.project] || 0) + c.cost; projCalls[c.project] = (projCalls[c.project] || 0) + c.calls;
+                    modelCost[c.model] = (modelCost[c.model] || 0) + c.cost; modelCalls[c.model] = (modelCalls[c.model] || 0) + c.calls;
                 });
-                const max = Math.max(0, ...Object.values(cell).map(v => v.cost));
-                const nameW = Math.min(170, Math.max(110, half * 0.3)), headH = 34, rowH = 32;
-                const colW = Math.max(54, Math.min(120, (half - nameW) / projects.length));
+                const projects = [...d.matrix.projects].sort((a, b) => (projCost[b] || 0) - (projCost[a] || 0) || a.localeCompare(b));
+                const cols = models.filter(m => modelCalls[m.model]);
+                const max = Math.max(0, ...d.matrix.cells.map(c => c.cost));
+                const nameW = fitW([...projects, 'All projects'], 100, 240), rowH = 30, totW = 92;
+                // A header takes two lines when it must: broken after " · ", "-" or "/"
+                const wrap2 = (t, w) => {
+                    const n = Math.floor(w / 6.2);
+                    if (t.length <= n) return [t];
+                    let cut = -1;
+                    [' · ', '-', '/', '_', '.'].forEach(sep => { const i = t.lastIndexOf(sep, n - (sep === ' · ' ? 0 : 1)); if (i > 0 && i + sep.length > cut) cut = sep === ' · ' ? i : i + 1; });
+                    if (cut <= 0) cut = n;
+                    const second = t.slice(cut).replace(/^ · /, '');
+                    return [t.slice(0, cut), second.length > n ? second.slice(0, n - 1) + '…' : second];
+                };
+                // Columns fit their model's name; when they don't all fit, they share the
+                // width (names are then cut, the full name shows on hover), down to 72 px
+                // a column, and only then does the chart scroll sideways
+                let colWs = cols.map(m => Math.min(180, Math.max(78, 16 + 6.8 * Math.ceil(m.name.length / 2))));
+                const room = W - nameW - totW - 6, want = colWs.reduce((a, w) => a + w, 0);
+                if (want > room) colWs = colWs.map(w => Math.max(72, w * room / want));
+                else {   // room to spare: every name on one line when they all fit, otherwise share it out
+                    const full = cols.map(m => Math.min(200, Math.max(78, 16 + 6.4 * m.name.length)));
+                    const sum = full.reduce((a, w) => a + w, 0);
+                    colWs = sum <= room ? full : colWs.map(w => w * room / want);
+                }
+                colWs = colWs.map(w => Math.floor(w));
+                const lines = cols.map((m, c) => wrap2(m.name, colWs[c] - 10));
+                const headH = lines.some(l => l.length > 1) ? 44 : 30;
+                const xs = []; colWs.reduce((x, w, i) => { xs[i] = x; return x + w; }, nameW);
+                const gridW = colWs.reduce((a, w) => a + w, 0);
+                const totX = nameW + gridW + 6;
+                const all = projects.reduce((a, p) => a + (projCost[p] || 0), 0);
                 const cells = [];
-                rowIds.forEach((id, r) => projects.forEach((p, c) => {
-                    const v = cell[id + '|' + p];
-                    const s = series.find(x => x.id === id);
+                projects.forEach((p, r) => cols.forEach((m, c) => {
+                    const v = cell[p + '|' + m.model];
                     const tt = v && max ? Math.sqrt(v.cost / max) : 0;   // square root: small amounts stay visible
                     cells.push({
-                        key: id + '|' + p, x: nameW + c * colW + 1, y: headH + r * rowH + 1, w: colW - 2, h: rowH - 2,
+                        key: p + '|' + m.model, x: xs[c] + 1, y: headH + r * rowH + 1, w: colWs[c] - 2, h: rowH - 2,
                         fill: v ? heatColor(tt) : '#161e2e', ink: v && tt > 0.55 ? '#0b1220' : '#e5e7eb', has: !!v,
                         text: v ? fmtUsd(v.cost) : '',
-                        tip: v ? { title: `${s.name} · ${p}`, rows: [{ label: 'Spent', value: fmtUsd(v.cost) }, { label: 'Calls', value: String(v.calls) },
-                            { label: 'Share of the project', value: fmtPct(projCost[p] ? v.cost / (p === 'Other projects' ? Object.entries(projCost).filter(([k]) => pk(k) === p).reduce((a, [, x]) => a + x, 0) : projCost[p]) : 0) }] } : null,
+                        tip: v ? { title: `${m.name} · ${p}`, rows: [{ label: 'Provider', value: m.who }, { label: 'Spent', value: fmtUsd(v.cost) },
+                            { label: 'Calls', value: String(v.calls) }, { label: 'Share of the project', value: fmtPct(projCost[p] ? v.cost / projCost[p] : 0) },
+                            { label: 'Share of the model', value: fmtPct(modelCost[m.model] ? v.cost / modelCost[m.model] : 0) }] } : null,
                     });
                 }));
+                const footY = headH + projects.length * rowH + 4;
                 return {
-                    W: Math.min(half, nameW + colW * projects.length + 2), H: headH + rowIds.length * rowH + 2, nameW, colW, headH, rowH, cells,
-                    heads: projects.map((p, c) => ({ x: nameW + c * colW + colW / 2, text: p.length > Math.floor(colW / 7) ? p.slice(0, Math.floor(colW / 7) - 1) + '…' : p, full: p })),
-                    rows: rowIds.map((id, r) => { const s = series.find(x => x.id === id), fit = Math.floor((nameW - 22) / 6.6); return { y: headH + r * rowH + rowH / 2 + 4, name: s.name.length > fit ? s.name.slice(0, fit - 1) + '…' : s.name, full: s.name, color: s.color }; }),
+                    W: totX + totW, H: footY + rowH, nameW, headH, rowH, cells, totX, totW, footY, gridW,
+                    heads: cols.map((m, c) => ({ x: xs[c] + colWs[c] / 2, lines: lines[c], title: m.title })),
+                    rows: projects.map((p, r) => ({ y: headH + r * rowH + rowH / 2 + 4, name: clip(p, nameW - 6), full: p,
+                        total: fmtUsd(projCost[p] || 0), tip: { title: p, rows: [{ label: 'Spent', value: fmtUsd(projCost[p] || 0) }, { label: 'Calls', value: String(projCalls[p] || 0) }, { label: 'Share of all spending', value: fmtPct(all ? (projCost[p] || 0) / all : 0) }] } })),
+                    foot: cols.map((m, c) => ({ x: xs[c] + colWs[c] / 2, text: fmtUsd(modelCost[m.model] || 0) })),
+                    all: fmtUsd(all),
                     scale: [0, 0.25, 0.5, 0.75, 1].map(f => ({ color: heatColor(Math.sqrt(f)), text: fmtUsd(max * f) })),
                 };
+            })();
+
+            // 6. Who does the work: share of the calls against share of the spending, per role
+            const ROLE_ORDER = ['conductor', 'simple', 'complex', 'override'];
+            const work = (() => {
+                const list = [...(d.roles || [])].sort((a, b) => {
+                    const ia = ROLE_ORDER.indexOf(a.role), ib = ROLE_ORDER.indexOf(b.role);
+                    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || b.calls - a.calls;
+                });
+                const calls = list.reduce((a, r) => a + r.calls, 0), cost = list.reduce((a, r) => a + r.cost, 0);
+                const labels = list.map(r => perfRole(r.role));
+                const nameW = fitW(labels, 90, 170), right = 52, rowH = 40, topPad = 6, bottom = 24, barH = 12;
+                const plotW = Math.max(80, half - nameW - right);
+                const rows = list.map((r, i) => {
+                    const cs = calls ? r.calls / calls : 0, ms = cost ? r.cost / cost : 0;
+                    const y = topPad + i * rowH;
+                    const usedBy = Object.entries(r.models).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id, n]) => `${(byId[id] || {}).name || id} ${n}`).join(', ');
+                    return { role: r.role, y, label: labels[i],
+                        callsW: Math.max(cs > 0 ? 2 : 0, plotW * cs), costW: Math.max(ms > 0 ? 2 : 0, plotW * ms),
+                        callsText: fmtPct(cs), costText: fmtPct(ms) + (r.calls_without_cost ? '+' : ''),
+                        tip: { title: labels[i], rows: [
+                            { color: PERF_TOKENS[0], label: 'Calls', value: `${r.calls} · ${fmtPct(cs, 1)}` },
+                            { color: PERF_TOKENS[3], label: 'Spent', value: `${fmtUsd(r.cost)} · ${fmtPct(ms, 1)}` },
+                            { label: 'Per call', value: r.calls - r.calls_without_cost ? fmtUsd(r.cost / (r.calls - r.calls_without_cost)) : '—' },
+                            { label: 'Models', value: usedBy }] } };
+                });
+                return { W: half, H: topPad + rows.length * rowH + bottom, nameW, plotW, rowH, barH, rows, bottom,
+                         grid: [0, 0.25, 0.5, 0.75, 1].map(f => ({ x: nameW + plotW * f, text: fmtPct(f) })) };
             })();
 
             // Table: every model (not folded), sortable
@@ -2201,12 +2289,17 @@ createApp({
                 return (va < vb ? -1 : 1) * dir;
             });
             const sinceEvents = d.events_since && d.events_since > d.since ? new Date(d.events_since * 1000).toLocaleDateString() : '';
-            return { kpis, insights, series, tl, sc, lat, mix, heat, table, wide, sinceEvents, empty: !models.length,
+            return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, empty: !models.length,
                      maxShare: Math.max(0.0001, ...models.map(m => m.share)) };
         });
         const PERF_ROLES = { conductor: 'Conductor', simple: 'Simple', complex: 'Complex', override: 'chosen by you', curator: 'memory',
                              skill_draft: 'skill drafts', test: 'tests', commit_message: 'commit messages' };
         const perfRole = (r) => PERF_ROLES[r] || r;
+        const PERF_PROVIDERS = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini', vertex_ai: 'Google Vertex AI',
+                                 ollama: 'Ollama (this machine)', ollama_chat: 'Ollama (this machine)', deepseek: 'DeepSeek', mistral: 'Mistral',
+                                 groq: 'Groq', openrouter: 'OpenRouter', xai: 'xAI', together_ai: 'Together AI', bedrock: 'AWS Bedrock',
+                                 azure: 'Azure OpenAI', cohere: 'Cohere', perplexity: 'Perplexity', fireworks_ai: 'Fireworks AI', cerebras: 'Cerebras' };
+        const perfProvider = (p) => PERF_PROVIDERS[p] || p || 'unknown provider';
         const sortPerf = (key) => {
             const s = perfSort.value;
             perfSort.value = s.key === key ? { key, desc: !s.desc } : { key, desc: key !== 'model' };
@@ -3735,7 +3828,7 @@ createApp({
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
             openChatFromDashboard, switchProject, routingRole, fmtAgo, costChart, overviewKpis, writeClipboard,
-            perf, perfData, perfDays, perfProject, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
+            perf, perfData, perfDays, perfProject, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, perfTipEl, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
             historyFiltered, resetHistoryFilters, lastPromptBefore, retryFrom, interruptionLabel, wsState, headerCostTitle,
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,

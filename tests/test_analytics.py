@@ -172,3 +172,22 @@ def test_analytics_endpoint(client):
     assert body["days"] == 7 and body["models"][0]["model"] == "m1"
     assert client.get("/api/analytics?days=0&project=alpha", headers=H).json()["matrix"] is None
     assert client.get("/api/analytics").status_code == 401
+
+
+def test_provider_and_endpoint(mocker):
+    cards = {"anthropic/claude-x-free": {"api_base": "https://api.reseller.example/v1"}}
+    assert an.provider_of("claude-sonnet-5") == {"provider": "anthropic", "endpoint": None}
+    assert an.provider_of("gemini/gemma-4") == {"provider": "gemini", "endpoint": None}
+    assert an.provider_of("anthropic/claude-x-free", cards) == {"provider": "anthropic", "endpoint": "api.reseller.example"}
+    assert an.provider_of("no-such-model-xyz")["provider"] is None
+
+
+def test_roles_share():
+    add("cheap", cost=0.001, role="simple")
+    add("cheap", cost=0.001, role="simple")
+    add("strong", cost=0.05, role="complex")
+    add("nano", cost=None, role="conductor")
+    roles = {r["role"]: r for r in an.analytics(30, now=NOW)["roles"]}
+    assert roles["simple"]["calls"] == 2 and roles["simple"]["cost"] == pytest.approx(0.002)
+    assert roles["complex"]["models"] == {"strong": 1}
+    assert roles["conductor"]["calls_without_cost"] == 1
