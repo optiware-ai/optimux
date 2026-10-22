@@ -7,7 +7,7 @@ import litellm  # its price list stays local: see optimux_backend/__init__.py
 from litellm import acompletion
 from optimux_backend.core.config_manager import get_routing_config, litellm_key_kwargs
 from optimux_backend.core.agents import get_router_prompt
-from optimux_backend.core import providers, ratelimits
+from optimux_backend.core import analytics, providers, ratelimits
 
 CONDUCTOR_OFF = "off"
 
@@ -230,6 +230,7 @@ async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_m
         plan = plan_mode and _parse_plan(content)
     except Exception as e:
         info = providers.record_failure(conductor_model, e)
+        analytics.record_event("error", conductor_model, "conductor", info.kind)
         print(f"Routing failed ({info.kind}: {info.summary}): {e}")
         tier = "simple"
         skill = None

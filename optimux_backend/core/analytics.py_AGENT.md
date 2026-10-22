@@ -1,0 +1,12 @@
+# analytics.py
+
+Cost and performance per model for Dashboard → Performance (v0.5). Reads only; the one write is `record_event`. No model or network calls.
+
+- **Events:** `record_event(kind, model, role, detail, project=None)` stores a row in `model_events` (store migration 9). `project=None` means the active project from settings. It never raises (a statistics write must not break a chat). Kinds:
+  - `error`: every failed model call, detail = `providers.classify(e).kind`. Recorded in `main.call_model` (each attempt, retried transients too, fatal ones too), `main.start_plan` (planner, role `complex`) and `llm_client.route_model_with_usage` (role `conductor`).
+  - `escalation`: a model that got stuck and handed over to Complex, detail = the reason. Recorded in `main._run_with_fallback` (only `fb_role == "complex" and not provider_problem`; a provider fallback is already an error) and `main.run_in_step` (a stuck Simple plan step).
+- **`analytics(days, project, now)`:** `days=0` is all time; periods start at local midnight `days-1` days ago. Per model: calls, cost, `calls_without_cost` (unknown price, never counted as free), tokens, roles, projects, `share`, `cost_per_call` (over priced calls), `cost_per_1k_out` (only when every call is priced), `p10/p50/p90_ms` (linear-interpolated `percentile`, untimed calls skipped), `speed_tps` (median output tokens/s over calls with ≥ `MIN_SPEED_TOKENS` tokens and ≥ `MIN_SPEED_MS`), `cache_share`, `errors`/`error_kinds`, `escalations`, `reliability = calls/(calls+errors)`, `escalation_rate`. Rows sorted by cost, then calls.
+- **Also returned:** `timeline` (zero-filled days, or Monday-weeks when the range is over `MAX_DAILY_BUCKETS` days; `weekly` says which), `matrix` (project × model cost and calls, only for all projects), `totals`, `events_since` (first event ever: reliability before it is unknown), `color_order` (all models by all-time cost: the page colours the first `TOP_MODELS` so filters never repaint a model; the rest are "Other"), `projects` (every project with usage, for the filter).
+- **API:** `GET /api/analytics?days=30&project=` in main.py.
+- **Page:** `perf*` in web/app.js (geometry computed in JS, rendered as Vue SVG in index.html; tooltips are one fixed `.cm-pf-tip` div filled with text interpolation). Palettes validated with the dataviz validator on #111827: categorical `PERF_COLORS`, ordinal `PERF_TOKENS`, sequential `PERF_HEAT`; status colours only for the reliability tile. Styles in web/optimux.css (`.cm-pf-*`).
+- **Tests:** `tests/test_analytics.py`.

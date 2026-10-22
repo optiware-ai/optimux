@@ -32,6 +32,7 @@ import litellm
 from optimux_backend.core.llm_client import route_model_with_usage, TOOLS, FINISH_STEP_TOOL, FINISH_CHECK_TOOL
 from optimux_backend.core import usage as usage_meter
 from optimux_backend.core import providers
+from optimux_backend.core import analytics
 from optimux_backend.core import ratelimits
 from optimux_backend.core import budgets
 from optimux_backend.core import store
@@ -431,6 +432,12 @@ async def delete_session(sid: str, payload: SessionDelete):
 async def get_usage_daily(days: int = 30, project: str | None = None):
     """Cost and tokens per day and model for charts."""
     return usage_meter.daily(max(1, min(days, 366)), project)
+
+
+@app.get("/api/analytics")
+async def get_analytics(days: int = 30, project: str | None = None):
+    """Cost and performance per model (Dashboard → Performance). days=0 is all time."""
+    return analytics.analytics(0 if days <= 0 else min(days, 3660), project or None)
 
 
 class ProjectMemoryPayload(BaseModel):
@@ -1871,6 +1878,7 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
     except Exception as e:
         info = providers.record_failure(model, e)
         ratelimits.record_error(model, e)
+        analytics.record_event("error", model, "complex", info.kind)
         await send(websocket, "system", f"Couldn't make a plan ({info.summary}); doing the task the usual way.")
         return False
     if result.get("thinking"):
@@ -1964,6 +1972,7 @@ async def run_in_step(websocket: WebSocket, session: dict, routing: dict, pid: s
     if outcome in ("loop_limit", "aborted") and role == "simple":
         alt = fallback_for(role, model, routing)
         if alt:
+            analytics.record_event("escalation", model, role, stuck_reason(outcome, role))
             await send(websocket, "system", f"Escalated this step to {alt[1]}: {stuck_reason(outcome, role)}")
             role, model = alt
             if step_no != plans_lib.CHECK_STEP:
@@ -2505,6 +2514,7 @@ async def call_model(websocket: WebSocket, session: dict, role: str, model: str,
         except Exception as e:
             info = providers.classify(e)
             print(f"[Optimux] {model} call failed ({info.kind}): {e}")
+            analytics.record_event("error", model, role, info.kind)  # every failed call, retried ones too
             if info.kind == "transient" and attempt == 1 and not r.streamed:
                 await send(websocket, "system", f"{model} {info.summary}, retrying...")
                 await asyncio.sleep(RETRY_DELAY)
@@ -3186,6 +3196,7 @@ async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
         await send(websocket, "system", f"{verb} to {fb_model}: {reason}")
         if fb_role == "complex" and not provider_problem:
             session["tier"] = "complex"  # the task proved hard; stay on complex for this chat
+            analytics.record_event("escalation", model, role, reason)
         try:
             # Continue from the same messages so work already done (and approved) is kept
             fb_outcome = await run_turn(websocket, session, fb_model, fb_role, messages)

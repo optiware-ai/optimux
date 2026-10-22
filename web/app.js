@@ -971,7 +971,7 @@ createApp({
         const historyPageList = ref([]);
         const systemInfo = ref(null);
         const newToken = ref('');
-        const CHART_COLORS = ['#60a5fa', '#f59e0b', '#34d399', '#f472b6', '#a78bfa', '#f87171', '#2dd4bf', '#facc15'];
+        const CHART_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];  // validated for colour-blind readers on #111827
 
         const fetchDaily = async () => {
             const q = chartProject.value ? `&project=${encodeURIComponent(chartProject.value)}` : '';
@@ -1885,6 +1885,346 @@ createApp({
             ];
         });
 
+        // ---- Dashboard → Performance (v0.5): cost and performance per model.
+        // Colours: a fixed categorical order validated for colour-blind readers on the
+        // dark surface (#111827); a model keeps its colour across filters because the
+        // order comes from all-time spending (color_order), never from the current view.
+        const PERF_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
+        const PERF_OTHER = '#6b7280';
+        const PERF_TOKENS = ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab'];   // ordinal: cached, fresh input, output, thinking
+        const PERF_HEAT = ['#0d366b', '#1c5cab', '#2a78d6', '#5598e7', '#86b6ef', '#cde2fb'];  // sequential, low → high
+        const perfData = ref(null);
+        const perfDays = ref(30);
+        const perfProject = ref('');
+        const perfMetric = ref('cost');
+        const perfSort = ref({ key: 'cost', desc: true });
+        const perfTip = ref(null);
+        const perfBox = ref(null);
+        const perfWidth = ref(960);
+        const perfLoading = ref(false);
+        let perfObserver = null;
+        watch(perfBox, (el) => {
+            if (perfObserver) { perfObserver.disconnect(); perfObserver = null; }
+            if (el && window.ResizeObserver) {
+                perfObserver = new ResizeObserver(entries => { const w = entries[0].contentRect.width; if (w > 0) perfWidth.value = Math.round(w); });
+                perfObserver.observe(el);
+            }
+        });
+        const fetchPerf = async () => {
+            perfLoading.value = true;
+            const q = perfProject.value ? `&project=${encodeURIComponent(perfProject.value)}` : '';
+            try {
+                const resp = await fetch(`/api/analytics?days=${perfDays.value}${q}`);
+                if (resp.ok) perfData.value = await resp.json();
+            } catch (error) { console.error('Failed to load model performance', error); }
+            finally { perfLoading.value = false; }
+        };
+        const setPerfDays = (d) => { perfDays.value = d; fetchPerf(); };
+        const fmtUsd = (c) => {
+            if (c === null || c === undefined) return '—';
+            if (c === 0) return '$0';
+            if (c >= 1) return '$' + c.toFixed(2);
+            if (c >= 0.01) return '$' + c.toFixed(3);
+            return '$' + Number(c.toPrecision(2)).toFixed(Math.min(8, 1 - Math.floor(Math.log10(c))));
+        };
+        const fmtPct = (x, digits = 0) => (x === null || x === undefined) ? '—' : (100 * x).toFixed(digits) + '%';
+        const fmtSec = (ms) => (ms === null || ms === undefined) ? '—' : fmtMs(Math.round(ms));
+        // Round axis steps: 1, 2, 2.5, 5 × 10^n
+        const niceTicks = (max, count = 4, whole = false) => {
+            if (!(max > 0)) return [0];
+            const raw = max / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+            const step = [1, 2, 2.5, 5, 10].map(f => f * mag).find(s => s >= raw && (!whole || (s >= 1 && Number.isInteger(s))));
+            const out = [];
+            for (let v = 0; v <= max + step * 0.001; v += step) out.push(+v.toPrecision(12));
+            if (out[out.length - 1] < max) out.push(+(out[out.length - 1] + step).toPrecision(12));
+            return out;
+        };
+        const logTicks = (lo, hi) => {
+            const out = [];
+            for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) {
+                [1, 3].forEach(f => { const v = f * Math.pow(10, e); if (v >= lo * 0.999 && v <= hi * 1.001) out.push(v); });
+            }
+            return out;
+        };
+        // A bar with only its data end rounded (r px), anchored to the baseline
+        const barTop = (x, y, w, h, r) => {
+            r = Math.min(r, w / 2, h);
+            return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+        };
+        const barRight = (x, y, w, h, r) => {
+            r = Math.min(r, h / 2, w);
+            return `M${x},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h - r}Q${x + w},${y + h} ${x + w - r},${y + h}H${x}Z`;
+        };
+        const hexMix = (a, b, t) => {
+            const p = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+            const [x, y] = [p(a), p(b)];
+            return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join('');
+        };
+        const heatColor = (t) => {
+            t = Math.max(0, Math.min(1, t));
+            const pos = t * (PERF_HEAT.length - 1), i = Math.min(Math.floor(pos), PERF_HEAT.length - 2);
+            return hexMix(PERF_HEAT[i], PERF_HEAT[i + 1], pos - i);
+        };
+        const showTip = (e, tip) => {
+            const pad = 14, w = 260;
+            let x = e.clientX + pad, y = e.clientY + pad;
+            if (x + w > window.innerWidth - 8) x = e.clientX - w - pad;
+            if (y + 40 + 22 * (tip.rows || []).length > window.innerHeight - 8) y = Math.max(8, e.clientY - pad - 40 - 22 * (tip.rows || []).length);
+            perfTip.value = { ...tip, x, y };
+        };
+        const hideTip = () => { perfTip.value = null; };
+
+        const perf = Vue.computed(() => {
+            const d = perfData.value;
+            if (!d) return null;
+            const order = d.color_order || [];
+            const top = d.top || 8;
+            const colorOf = (id) => { const i = order.indexOf(id); return i >= 0 && i < top ? PERF_COLORS[i] : PERF_OTHER; };
+            const named = (id) => { const i = order.indexOf(id); return i >= 0 && i < top; };
+            const models = d.models.map(m => ({ ...m, color: colorOf(m.model), name: modelName(m.model) }));
+            const t = d.totals;
+            const wide = perfWidth.value >= 1000;
+            const W = perfWidth.value - 34;                       // card padding
+            const half = wide ? Math.floor((perfWidth.value - 24) / 2) - 34 : W;
+            const priced = models.filter(m => m.cost_per_call !== null);
+
+            // KPI tiles
+            const kpis = [
+                { label: 'Spent', value: fmtUsd(t.cost) + (t.calls_without_cost ? '+' : ''), sub: t.calls_without_cost ? `${t.calls_without_cost} calls without a known price` : `${models.length} model${models.length === 1 ? '' : 's'}` },
+                { label: 'Calls', value: t.calls.toLocaleString(), sub: `${fmtTokens(t.prompt_tokens)} in · ${fmtTokens(t.completion_tokens)} out` },
+                { label: 'Average per call', value: t.calls - t.calls_without_cost ? fmtUsd(t.cost / (t.calls - t.calls_without_cost)) : '—', sub: t.prompt_tokens ? `${fmtPct(t.cached_tokens / t.prompt_tokens)} of input from cache` : 'no input yet' },
+                { label: 'Median latency', value: fmtSec(t.p50_ms), sub: 'request to last token' },
+                { label: 'Reliability', value: fmtPct(t.reliability, t.reliability !== null && t.reliability < 1 ? 1 : 0), sub: `${t.errors} failed · ${t.escalations} escalated`,
+                  status: t.reliability === null ? '' : t.reliability >= 0.99 ? 'good' : t.reliability >= 0.95 ? 'warning' : 'critical' },
+            ];
+
+            // Insights: plain sentences a reader can act on; small samples are said
+            const insights = [];
+            const few = (m) => m.calls < 20 ? `, from only ${m.calls} call${m.calls === 1 ? '' : 's'}` : '';
+            if (models.length && t.cost > 0) {
+                const m = models[0];
+                insights.push(`${m.name} took ${fmtPct(m.share)} of the spending (${fmtUsd(m.cost)}) for ${fmtPct(m.calls / t.calls)} of the calls.`);
+            }
+            const paid = priced.filter(m => m.cost_per_call > 0);
+            if (paid.length >= 2) {
+                const byCost = [...paid].sort((a, b) => a.cost_per_call - b.cost_per_call);
+                const lo = byCost[0], hi = byCost[byCost.length - 1];
+                if (lo.cost_per_call > 0) insights.push(`A call to ${hi.name} costs ${(hi.cost_per_call / lo.cost_per_call).toFixed(hi.cost_per_call / lo.cost_per_call >= 10 ? 0 : 1)}× a call to ${lo.name} (${fmtUsd(hi.cost_per_call)} vs ${fmtUsd(lo.cost_per_call)}).`);
+            }
+            const timed = models.filter(m => m.p50_ms !== null && m.timed_calls >= 3);
+            if (timed.length >= 2) {
+                const f = [...timed].sort((a, b) => a.p50_ms - b.p50_ms)[0];
+                insights.push(`Fastest typical answer: ${f.name}, half its calls finish within ${fmtSec(f.p50_ms)}.`);
+            }
+            const stuck = models.filter(m => m.escalations > 0).sort((a, b) => b.escalations - a.escalations)[0];
+            if (stuck) insights.push(`${stuck.name} got stuck and handed over ${stuck.escalations} time${stuck.escalations === 1 ? '' : 's'} (${fmtPct(stuck.escalation_rate, 1)} of its calls${few(stuck)}).`);
+            const failing = models.filter(m => m.errors > 0).sort((a, b) => b.errors - a.errors)[0];
+            if (failing) {
+                const kind = Object.entries(failing.error_kinds).sort((a, b) => b[1] - a[1])[0][0];
+                insights.push(`${failing.name} failed ${failing.errors} time${failing.errors === 1 ? '' : 's'} (mostly ${kind}); reliability ${fmtPct(failing.reliability, 1)}${few(failing)}.`);
+            }
+            if (t.calls_without_cost) insights.push(`${t.calls_without_cost} calls have no known price, so the totals are a lower bound. Add prices in Models.`);
+
+            // Series for the stacked charts: up to `top` named models, the rest folded into "Other"
+            const inView = models.map(m => m.model);
+            const series = order.filter(id => named(id) && inView.includes(id)).map(id => ({ id, name: modelName(id), color: colorOf(id) }));
+            if (inView.some(id => !named(id))) series.push({ id: '__other', name: 'Other', color: PERF_OTHER });
+            const sid = (id) => named(id) ? id : '__other';
+
+            // 1. Spending (or calls) over time: stacked columns
+            const metric = perfMetric.value;
+            const tl = (() => {
+                const H = 220, left = 52, right = 8, topPad = 10, bottom = 26;
+                const plotW = Math.max(100, W - left - right), plotH = H - topPad - bottom;
+                const buckets = d.timeline.map(b => {
+                    const vals = {};
+                    Object.entries(b.models).forEach(([id, c]) => { const k = sid(id); vals[k] = (vals[k] || 0) + (metric === 'cost' ? c.cost : c.calls); });
+                    return { key: b.bucket, vals, total: Object.values(vals).reduce((a, v) => a + v, 0) };
+                });
+                const max = Math.max(0, ...buckets.map(b => b.total));
+                const ticks = niceTicks(max || (metric === 'cost' ? 0.01 : 4), 4, metric === 'calls');
+                const ymax = ticks[ticks.length - 1];
+                const step = plotW / Math.max(1, buckets.length);
+                const bw = Math.max(2, Math.min(24, step * 0.72));
+                const y = (v) => topPad + plotH * (1 - v / ymax);
+                const cols = buckets.map((b, i) => {
+                    const x = left + i * step + (step - bw) / 2;
+                    let base = topPad + plotH;
+                    const parts = series.filter(s => b.vals[s.id] > 0);
+                    const segs = parts.map((s, j) => {
+                        const h = (b.vals[s.id] / ymax) * plotH;
+                        const yTop = base - h;
+                        const seg = { color: s.color, d: j === parts.length - 1 ? barTop(x, yTop, bw, Math.max(h, 1), 4) : `M${x},${base}V${yTop + (h > 3 ? 2 : 0)}H${x + bw}V${base}Z` };
+                        base = yTop;
+                        return seg;
+                    });
+                    const label = d.weekly ? 'Week of ' + b.key : new Date(b.key + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                    const rows = parts.map(s => ({ color: s.color, label: s.name, value: metric === 'cost' ? fmtUsd(b.vals[s.id]) : String(b.vals[s.id]) }));
+                    return { x, band: left + i * step, segs, tip: { title: label, total: metric === 'cost' ? fmtUsd(b.total) : `${b.total} calls`, rows: rows.reverse() } };
+                });
+                const every = Math.max(1, Math.ceil(64 / step));
+                const xlabels = buckets.map((b, i) => ({ i, b })).filter(({ i }) => (buckets.length - 1 - i) % every === 0)
+                    .map(({ i, b }) => ({ x: left + i * step + step / 2, text: new Date(b.key + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) }));
+                return { W, H, left, plotW, plotH, topPad, step, cols, xlabels, empty: !max,
+                         grid: ticks.map(v => ({ y: y(v), text: metric === 'cost' ? fmtUsd(v) : String(v) })) };
+            })();
+
+            // 2. Cost per call vs. typical latency (both log scales), bubble area = calls
+            const sc = (() => {
+                const H = 300, left = 56, right = 16, topPad = 14, bottom = 40;
+                const pts = models.filter(m => m.cost_per_call > 0 && m.p50_ms > 0);
+                const missing = models.length - pts.length;
+                if (!pts.length) return { W: half, H, pts: [], missing, empty: true };
+                const plotW = half - left - right, plotH = H - topPad - bottom;
+                const xs = pts.map(m => m.cost_per_call), ys = pts.map(m => m.p50_ms / 1000);
+                const pad = (lo, hi) => { const a = Math.log10(lo), b = Math.log10(hi); const p = Math.max(0.15, (b - a) * 0.12); return [Math.pow(10, a - p), Math.pow(10, b + p)]; };
+                const [x0, x1] = pad(Math.min(...xs), Math.max(...xs));
+                const [y0, y1] = pad(Math.min(...ys), Math.max(...ys));
+                const X = (v) => left + plotW * (Math.log10(v) - Math.log10(x0)) / (Math.log10(x1) - Math.log10(x0));
+                const Y = (v) => topPad + plotH * (1 - (Math.log10(v) - Math.log10(y0)) / (Math.log10(y1) - Math.log10(y0)));
+                const maxCalls = Math.max(...pts.map(m => m.calls));
+                const dots = pts.map(m => ({
+                    m, cx: X(m.cost_per_call), cy: Y(m.p50_ms / 1000), r: 5 + 11 * Math.sqrt(m.calls / maxCalls), color: m.color,
+                    tip: { title: m.name, rows: [
+                        { label: 'Cost per call', value: fmtUsd(m.cost_per_call) }, { label: 'Median latency', value: fmtSec(m.p50_ms) },
+                        { label: 'Calls', value: String(m.calls) }, { label: 'Spent', value: fmtUsd(m.cost) }] },
+                }));
+                // Direct labels: right of the dot, moved left or down when they would collide
+                const placed = [];
+                [...dots].sort((a, b) => b.m.calls - a.m.calls).forEach(p => {
+                    const text = p.m.name.length > 24 ? p.m.name.slice(0, 23) + '…' : p.m.name;
+                    const w = text.length * 6.4;
+                    const opts = [[p.cx + p.r + 5, p.cy + 4, 'start'], [p.cx - p.r - 5, p.cy + 4, 'end'], [p.cx, p.cy + p.r + 13, 'middle'], [p.cx, p.cy - p.r - 6, 'middle']];
+                    const box = ([x, y, a]) => { const x0b = a === 'start' ? x : a === 'end' ? x - w : x - w / 2; return [x0b, y - 10, x0b + w, y + 2]; };
+                    const free = (b) => b[0] >= left - 4 && b[2] <= half + 4 && b[1] >= 0 && b[3] <= H - bottom + 4 &&
+                        placed.every(q => b[2] < q[0] || b[0] > q[2] || b[3] < q[1] || b[1] > q[3]) &&
+                        dots.every(o => o === p || Math.hypot(Math.max(b[0], Math.min(o.cx, b[2])) - o.cx, Math.max(b[1], Math.min(o.cy, b[3])) - o.cy) > o.r);
+                    const pick = opts.find(o => free(box(o)));
+                    if (pick) { placed.push(box(pick)); p.label = { x: pick[0], y: pick[1], anchor: pick[2], text }; }
+                });
+                const xt = logTicks(x0, x1), yt = logTicks(y0, y1);
+                return { W: half, H, left, topPad, plotW, plotH, dots: dots.sort((a, b) => b.r - a.r), missing, empty: false,
+                         xgrid: xt.map(v => ({ x: X(v), text: fmtUsd(v) })), ygrid: yt.map(v => ({ y: Y(v), text: fmtSec(v * 1000) })) };
+            })();
+
+            // 3. Latency spread: p10–p90 range with the median dot, plus speed
+            const lat = (() => {
+                const rowsM = models.filter(m => m.p50_ms !== null).sort((a, b) => a.p50_ms - b.p50_ms);
+                const nameW = Math.min(170, Math.max(110, half * 0.3)), right = 74, rowH = 30, topPad = 8, bottom = 26;
+                const H = topPad + rowsM.length * rowH + bottom;
+                const plotW = Math.max(80, half - nameW - right);
+                const max = Math.max(1, ...rowsM.map(m => m.p90_ms / 1000));
+                const ticks = niceTicks(max, 4), xmax = ticks[ticks.length - 1];
+                const X = (ms) => nameW + plotW * (ms / 1000) / xmax;
+                const rows = rowsM.map((m, i) => ({
+                    m, y: topPad + i * rowH + rowH / 2, x10: X(m.p10_ms), x50: X(m.p50_ms), x90: X(m.p90_ms), color: m.color,
+                    name: m.name.length > 22 ? m.name.slice(0, 21) + '…' : m.name,
+                    speed: m.speed_tps !== null ? Math.round(m.speed_tps) + ' tok/s' : '—',
+                    tip: { title: m.name, rows: [
+                        { label: 'Fast calls (p10)', value: fmtSec(m.p10_ms) }, { label: 'Typical (median)', value: fmtSec(m.p50_ms) },
+                        { label: 'Slow calls (p90)', value: fmtSec(m.p90_ms) },
+                        { label: 'Output speed', value: m.speed_tps !== null ? `${Math.round(m.speed_tps)} tokens/s (${m.speed_calls} calls)` : 'not enough long answers' },
+                        { label: 'Timed calls', value: String(m.timed_calls) }] },
+                }));
+                return { W: half, H, nameW, plotW, rowH, topPad, rows, grid: ticks.map(v => ({ x: nameW + plotW * v / xmax, text: fmtSec(v * 1000) })), bottom };
+            })();
+
+            // 4. Token mix: what each model's tokens are, 100% bars
+            const mix = (() => {
+                const nameW = Math.min(170, Math.max(110, half * 0.3)), right = 56, rowH = 26, topPad = 4;
+                const plotW = Math.max(80, half - nameW - right);
+                const kinds = [['Cached input', PERF_TOKENS[0]], ['New input', PERF_TOKENS[1]], ['Output', PERF_TOKENS[2]], ['Thinking', PERF_TOKENS[3]]];
+                const rows = models.filter(m => m.prompt_tokens + m.completion_tokens > 0).map((m, i) => {
+                    const thinking = Math.min(m.reasoning_tokens, m.completion_tokens);
+                    const vals = [m.cached_tokens, Math.max(0, m.prompt_tokens - m.cached_tokens), m.completion_tokens - thinking, thinking];
+                    const total = vals.reduce((a, v) => a + v, 0);
+                    let x = nameW;
+                    const segs = [];
+                    vals.forEach((v, k) => {
+                        if (!v) return;
+                        const w = plotW * v / total;
+                        segs.push({ x, w: Math.max(w - 2, 1), color: kinds[k][1], tip: { title: m.name, rows: kinds.map((kk, j) => ({ color: kk[1], label: kk[0], value: `${fmtTokens(vals[j])} · ${fmtPct(vals[j] / total)}`, strong: j === k })) } });
+                        x += w;
+                    });
+                    return { m, y: topPad + i * rowH, segs, name: m.name.length > 22 ? m.name.slice(0, 21) + '…' : m.name, total: fmtTokens(total) };
+                });
+                return { W: half, H: topPad + rows.length * rowH + 4, nameW, plotW, rowH, rows, kinds };
+            })();
+
+            // 5. Where the money goes: model × project heatmap (all projects only)
+            const heat = (() => {
+                if (!d.matrix || d.matrix.projects.length < 1) return null;
+                const projCost = {};
+                d.matrix.cells.forEach(c => { projCost[c.project] = (projCost[c.project] || 0) + c.cost; });
+                let projects = d.matrix.projects.slice(0, 6);
+                const rest = d.matrix.projects.length > 6;
+                if (rest) projects.push('Other projects');
+                const pk = (p) => projects.includes(p) && p !== 'Other projects' ? p : 'Other projects';
+                const rowIds = series.map(s => s.id);
+                const cell = {};
+                d.matrix.cells.forEach(c => {
+                    const k = sid(c.model) + '|' + pk(c.project);
+                    const v = (cell[k] = cell[k] || { cost: 0, calls: 0 });
+                    v.cost += c.cost; v.calls += c.calls;
+                });
+                const max = Math.max(0, ...Object.values(cell).map(v => v.cost));
+                const nameW = Math.min(170, Math.max(110, half * 0.3)), headH = 34, rowH = 32;
+                const colW = Math.max(54, Math.min(120, (half - nameW) / projects.length));
+                const cells = [];
+                rowIds.forEach((id, r) => projects.forEach((p, c) => {
+                    const v = cell[id + '|' + p];
+                    const s = series.find(x => x.id === id);
+                    const tt = v && max ? Math.sqrt(v.cost / max) : 0;   // square root: small amounts stay visible
+                    cells.push({
+                        key: id + '|' + p, x: nameW + c * colW + 1, y: headH + r * rowH + 1, w: colW - 2, h: rowH - 2,
+                        fill: v ? heatColor(tt) : '#161e2e', ink: v && tt > 0.55 ? '#0b1220' : '#e5e7eb', has: !!v,
+                        text: v ? fmtUsd(v.cost) : '',
+                        tip: v ? { title: `${s.name} · ${p}`, rows: [{ label: 'Spent', value: fmtUsd(v.cost) }, { label: 'Calls', value: String(v.calls) },
+                            { label: 'Share of the project', value: fmtPct(projCost[p] ? v.cost / (p === 'Other projects' ? Object.entries(projCost).filter(([k]) => pk(k) === p).reduce((a, [, x]) => a + x, 0) : projCost[p]) : 0) }] } : null,
+                    });
+                }));
+                return {
+                    W: Math.min(half, nameW + colW * projects.length + 2), H: headH + rowIds.length * rowH + 2, nameW, colW, headH, rowH, cells,
+                    heads: projects.map((p, c) => ({ x: nameW + c * colW + colW / 2, text: p.length > Math.floor(colW / 7) ? p.slice(0, Math.floor(colW / 7) - 1) + '…' : p, full: p })),
+                    rows: rowIds.map((id, r) => { const s = series.find(x => x.id === id), fit = Math.floor((nameW - 22) / 6.6); return { y: headH + r * rowH + rowH / 2 + 4, name: s.name.length > fit ? s.name.slice(0, fit - 1) + '…' : s.name, full: s.name, color: s.color }; }),
+                    scale: [0, 0.25, 0.5, 0.75, 1].map(f => ({ color: heatColor(Math.sqrt(f)), text: fmtUsd(max * f) })),
+                };
+            })();
+
+            // Table: every model (not folded), sortable
+            const sk = perfSort.value.key, dir = perfSort.value.desc ? -1 : 1;
+            const table = [...models].sort((a, b) => {
+                const va = sk === 'model' ? a.name.toLowerCase() : a[sk], vb = sk === 'model' ? b.name.toLowerCase() : b[sk];
+                if (va === vb) return 0;
+                if (va === null || va === undefined) return 1;
+                if (vb === null || vb === undefined) return -1;
+                return (va < vb ? -1 : 1) * dir;
+            });
+            const sinceEvents = d.events_since && d.events_since > d.since ? new Date(d.events_since * 1000).toLocaleDateString() : '';
+            return { kpis, insights, series, tl, sc, lat, mix, heat, table, wide, sinceEvents, empty: !models.length,
+                     maxShare: Math.max(0.0001, ...models.map(m => m.share)) };
+        });
+        const PERF_ROLES = { conductor: 'Conductor', simple: 'Simple', complex: 'Complex', override: 'chosen by you', curator: 'memory',
+                             skill_draft: 'skill drafts', test: 'tests', commit_message: 'commit messages' };
+        const perfRole = (r) => PERF_ROLES[r] || r;
+        const sortPerf = (key) => {
+            const s = perfSort.value;
+            perfSort.value = s.key === key ? { key, desc: !s.desc } : { key, desc: key !== 'model' };
+        };
+        const perfCols = [
+            ['model', 'Model', 'Which model; the roles it played are listed under its name.'],
+            ['calls', 'Calls', 'Metered calls in the period.'],
+            ['cost', 'Spent', 'What these calls cost. A + means some calls have no known price.'],
+            ['share', 'Share', 'Part of all spending in the view.'],
+            ['cost_per_call', '$ / call', 'Average cost of one call.'],
+            ['cost_per_1k_out', '$ / 1K out', 'Cost for every 1,000 tokens the model wrote (its input included): what its work costs.'],
+            ['p50_ms', 'Latency', 'Median time from request to last token; p90 (slow calls) below.'],
+            ['speed_tps', 'Speed', 'Median output tokens per second, over answers of 20 tokens or more.'],
+            ['cache_share', 'Cache', 'Part of the input tokens read from the provider\'s cache (cheaper).'],
+            ['reliability', 'Reliable', 'Calls that worked / all attempts, failed ones included.'],
+            ['escalations', 'Stuck', 'Times this model got stuck and the task moved to the Complex model.'],
+        ];
+
         // ---- Project memory history and curator (Feature 17)
         // In-app confirm: await askConfirm({ title, detail, text, ok, danger }) -> true/false
         const confirmBox = ref(null);
@@ -2074,6 +2414,7 @@ createApp({
         const dashboardSections = [
             { id: 'overview', label: 'Overview', icon: '◎', group: 'Activity', hint: 'Spending, budgets, models and recent chats at a glance.' },
             { id: 'usage', label: 'Usage', icon: '▤', group: 'Activity', hint: 'Tokens, cost and time per project, role and model.' },
+            { id: 'performance', label: 'Performance', icon: '◔', group: 'Activity', hint: 'Cost, speed and reliability of every model, per project: which model gives you the most for your money.' },
             { id: 'budgets', label: 'Budgets', icon: '$', group: 'Activity', hint: 'Monthly spending limits per project.' },
             { id: 'projects', label: 'Projects', icon: '▦', group: 'Activity', hint: 'Cost, budget, chats and memory per project.' },
             { id: 'history', label: 'History', icon: '◷', group: 'Activity', hint: 'Every stored chat; open one to continue it.' },
@@ -2170,6 +2511,7 @@ createApp({
         const enterSection = (id) => {
             if (['overview', 'usage', 'budgets', 'system'].includes(id)) fetchUsage();
             if (['overview', 'usage'].includes(id)) fetchDaily();
+            if (id === 'performance') fetchPerf();
             if (id === 'overview') { fetchRecentChats(); fetchDeleted(); }
             if (id === 'projects') fetchProjectsOverview();
             if (id === 'history') fetchHistoryPage();
@@ -3393,6 +3735,7 @@ createApp({
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
             openChatFromDashboard, switchProject, routingRole, fmtAgo, costChart, overviewKpis, writeClipboard,
+            perf, perfData, perfDays, perfProject, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
             historyFiltered, resetHistoryFilters, lastPromptBefore, retryFrom, interruptionLabel, wsState, headerCostTitle,
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,

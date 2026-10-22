@@ -152,6 +152,211 @@
                     </div>
                 </div>
 
+                <!-- Section: Performance (v0.5): cost and performance per model -->
+                <div v-if="settingsTab === 'performance'" ref="perfBox" class="space-y-6">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="flex gap-1 bg-gray-900 border border-gray-800 rounded-lg p-1" role="group" aria-label="Period">
+                            <button v-for="p in [[7, '7 days'], [30, '30 days'], [90, '90 days'], [0, 'All time']]" :key="p[0]" @click="setPerfDays(p[0])"
+                                    :class="['text-[13px] px-3 py-1 rounded-md', perfDays === p[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ p[1] }}</button>
+                        </div>
+                        <select v-model="perfProject" @change="fetchPerf" aria-label="Project" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-[13px] text-gray-200">
+                            <option value="" class="bg-gray-900">All projects</option>
+                            <option v-for="p in [...new Set([...(projectsList || []), ...((perfData && perfData.projects) || [])])].sort()" :key="p" :value="p" class="bg-gray-900">{{ p }}</option>
+                        </select>
+                        <span v-if="perfLoading" class="text-xs text-gray-500">Loading…</span>
+                        <span class="flex-1"></span>
+                        <span class="text-xs text-gray-500 flex items-center">How these are measured<help-tip wide>
+                            <p><b>Latency</b> is the time from the request to the last token, thinking and tool calls included. <b>p10 / median / p90</b>: 10% of calls were faster than p10, half faster than the median, 90% faster than p90.</p>
+                            <p><b>Speed</b> is output tokens per second of that time, the median over answers of 20 tokens or more.</p>
+                            <p><b>$ / 1K out</b> is what a model cost for every 1,000 tokens it wrote, its input included: the price of its work.</p>
+                            <p><b>Reliability</b> counts every failed attempt, retried ones too. <b>Stuck</b> counts escalations: the model hit the step limit or repeated itself, and the Complex model took over.</p>
+                            <p>All from this machine's own records; nothing is sent anywhere.</p>
+                        </help-tip></span>
+                    </div>
+
+                    <div v-if="perf && perf.empty" class="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center text-[15px] text-gray-400">
+                        No model calls in this period{{ perfProject ? ' for ' + perfProject : '' }}. Chat a little, then come back.
+                    </div>
+                    <template v-if="perf && !perf.empty">
+                        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+                            <div v-for="k in perf.kpis" :key="k.label" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                                <div class="text-xs uppercase tracking-wider text-gray-500">{{ k.label }}</div>
+                                <div class="text-2xl font-mono text-gray-100 mt-1 flex items-center gap-2">
+                                    <span v-if="k.status" :class="['cm-pf-status', 'cm-pf-' + k.status]" :aria-label="k.status">{{ k.status === 'good' ? '✓' : k.status === 'warning' ? '!' : '✕' }}</span>{{ k.value }}
+                                </div>
+                                <div class="text-xs text-gray-500 mt-1">{{ k.sub }}</div>
+                            </div>
+                        </div>
+
+                        <div v-if="perf.insights.length" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-2">What stands out</h3>
+                            <ul class="space-y-1.5 text-[14px] text-gray-300">
+                                <li v-for="(s, i) in perf.insights" :key="i" class="flex gap-2"><span class="text-blue-400">›</span><span>{{ s }}</span></li>
+                            </ul>
+                            <div v-if="perf.sinceEvents" class="text-xs text-gray-500 mt-3">Failures and escalations are counted since {{ perf.sinceEvents }}, when Optimux started recording them.</div>
+                        </div>
+
+                        <!-- 1. Over time -->
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                <h3 class="text-[15px] font-bold text-gray-200">{{ perfMetric === 'cost' ? 'Spending' : 'Calls' }} per {{ perfData.weekly ? 'week' : 'day' }}, by model</h3>
+                                <div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="group" aria-label="Measure">
+                                    <button v-for="m in [['cost', 'Cost'], ['calls', 'Calls']]" :key="m[0]" @click="perfMetric = m[0]"
+                                            :class="['text-xs px-2.5 py-0.5 rounded-md', perfMetric === m[0] ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200']">{{ m[1] }}</button>
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mb-2">
+                                <span v-for="s in perf.series" :key="s.id" class="flex items-center gap-1.5"><span class="cm-pf-key" :style="{ background: s.color }"></span>{{ s.name }}</span>
+                            </div>
+                            <svg :width="perf.tl.W" :height="perf.tl.H" class="cm-pf-svg" role="img" :aria-label="(perfMetric === 'cost' ? 'Spending' : 'Calls') + ' over time by model'" @mouseleave="hideTip">
+                                <g v-for="g in perf.tl.grid" :key="'g' + g.y">
+                                    <line :x1="perf.tl.left" :x2="perf.tl.W" :y1="g.y" :y2="g.y" class="cm-pf-grid"></line>
+                                    <text :x="perf.tl.left - 8" :y="g.y + 4" text-anchor="end" class="cm-pf-axis">{{ g.text }}</text>
+                                </g>
+                                <g v-for="(c, i) in perf.tl.cols" :key="'c' + i" @mousemove="showTip($event, c.tip)" class="cm-pf-col">
+                                    <rect :x="c.band" :y="perf.tl.topPad" :width="perf.tl.step" :height="perf.tl.plotH" class="cm-pf-band"></rect>
+                                    <path v-for="(s, j) in c.segs" :key="j" :d="s.d" :fill="s.color"></path>
+                                </g>
+                                <text v-for="l in perf.tl.xlabels" :key="'x' + l.x" :x="l.x" :y="perf.tl.H - 6" text-anchor="middle" class="cm-pf-axis">{{ l.text }}</text>
+                                <text v-if="perf.tl.empty" :x="perf.tl.W / 2" :y="perf.tl.H / 2" text-anchor="middle" class="cm-pf-note">Nothing in this period</text>
+                            </svg>
+                        </div>
+
+                        <div :class="['grid gap-6', perf.wide ? 'grid-cols-2' : 'grid-cols-1']">
+                            <!-- 2. Cost vs latency -->
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                                <h3 class="text-[15px] font-bold text-gray-200">Price and speed</h3>
+                                <p class="text-xs text-gray-500 mt-0.5 mb-3">Each dot is a model: cost per call against its median latency. Bigger dot, more calls. Lower left is cheap and fast.</p>
+                                <svg v-if="!perf.sc.empty" :width="perf.sc.W" :height="perf.sc.H" class="cm-pf-svg" role="img" aria-label="Cost per call against median latency" @mouseleave="hideTip">
+                                    <g v-for="g in perf.sc.ygrid" :key="'y' + g.y">
+                                        <line :x1="perf.sc.left" :x2="perf.sc.left + perf.sc.plotW" :y1="g.y" :y2="g.y" class="cm-pf-grid"></line>
+                                        <text :x="perf.sc.left - 8" :y="g.y + 4" text-anchor="end" class="cm-pf-axis">{{ g.text }}</text>
+                                    </g>
+                                    <g v-for="g in perf.sc.xgrid" :key="'x' + g.x">
+                                        <line :x1="g.x" :x2="g.x" :y1="perf.sc.topPad" :y2="perf.sc.topPad + perf.sc.plotH" class="cm-pf-grid"></line>
+                                        <text :x="g.x" :y="perf.sc.topPad + perf.sc.plotH + 16" text-anchor="middle" class="cm-pf-axis">{{ g.text }}</text>
+                                    </g>
+                                    <text :x="perf.sc.left + perf.sc.plotW" :y="perf.sc.H - 4" text-anchor="end" class="cm-pf-axis">cost per call → (log scale)</text>
+                                    <text :x="4" :y="perf.sc.topPad - 2" class="cm-pf-axis">↑ median latency</text>
+                                    <g v-for="p in perf.sc.dots" :key="p.m.model" @mousemove="showTip($event, p.tip)" class="cm-pf-col">
+                                        <circle :cx="p.cx" :cy="p.cy" :r="Math.max(p.r, 12)" fill="transparent"></circle>
+                                        <circle :cx="p.cx" :cy="p.cy" :r="p.r" :fill="p.color" fill-opacity="0.85" class="cm-pf-ring"></circle>
+                                    </g>
+                                    <text v-for="p in perf.sc.dots.filter(x => x.label)" :key="'l' + p.m.model" :x="p.label.x" :y="p.label.y" :text-anchor="p.label.anchor" class="cm-pf-label">{{ p.label.text }}</text>
+                                </svg>
+                                <div v-else class="text-[13px] text-gray-500 italic py-6 text-center">Needs calls with a known price and a measured time.</div>
+                                <div v-if="perf.sc.missing" class="text-xs text-gray-500 mt-2">{{ perf.sc.missing }} model{{ perf.sc.missing === 1 ? ' is' : 's are' }} not shown: no known price or no timing.</div>
+                            </div>
+
+                            <!-- 3. Latency spread -->
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                                <h3 class="text-[15px] font-bold text-gray-200">How long a call takes</h3>
+                                <p class="text-xs text-gray-500 mt-0.5 mb-3">The line runs from fast calls (p10) to slow ones (p90); the dot is the median. A long line means an unpredictable model.</p>
+                                <svg :width="perf.lat.W" :height="perf.lat.H" class="cm-pf-svg" role="img" aria-label="Latency range per model" @mouseleave="hideTip">
+                                    <g v-for="g in perf.lat.grid" :key="'g' + g.x">
+                                        <line :x1="g.x" :x2="g.x" :y1="perf.lat.topPad" :y2="perf.lat.H - perf.lat.bottom" class="cm-pf-grid"></line>
+                                        <text :x="g.x" :y="perf.lat.H - 8" text-anchor="middle" class="cm-pf-axis">{{ g.text }}</text>
+                                    </g>
+                                    <text :x="perf.lat.W - 2" :y="perf.lat.H - 8" text-anchor="end" class="cm-pf-axis">speed</text>
+                                    <g v-for="r in perf.lat.rows" :key="r.m.model" @mousemove="showTip($event, r.tip)" class="cm-pf-col">
+                                        <rect x="0" :y="r.y - perf.lat.rowH / 2" :width="perf.lat.W" :height="perf.lat.rowH" class="cm-pf-band"></rect>
+                                        <text :x="perf.lat.nameW - 10" :y="r.y + 4" text-anchor="end" class="cm-pf-label">{{ r.name }}</text>
+                                        <line :x1="r.x10" :x2="r.x90" :y1="r.y" :y2="r.y" :stroke="r.color" stroke-width="2" stroke-linecap="round"></line>
+                                        <line :x1="r.x10" :x2="r.x10" :y1="r.y - 4" :y2="r.y + 4" :stroke="r.color" stroke-width="2"></line>
+                                        <line :x1="r.x90" :x2="r.x90" :y1="r.y - 4" :y2="r.y + 4" :stroke="r.color" stroke-width="2"></line>
+                                        <circle :cx="r.x50" :cy="r.y" r="5" :fill="r.color" class="cm-pf-ring"></circle>
+                                        <text :x="perf.lat.W - 2" :y="r.y + 4" text-anchor="end" class="cm-pf-value">{{ r.speed }}</text>
+                                    </g>
+                                </svg>
+                            </div>
+
+                            <!-- 4. Token mix -->
+                            <div :class="['bg-gray-900 border border-gray-800 rounded-xl p-4', perf.heat ? '' : (perf.wide ? 'col-span-2' : '')]">
+                                <h3 class="text-[15px] font-bold text-gray-200">What the tokens are</h3>
+                                <p class="text-xs text-gray-500 mt-0.5 mb-2">Cached input is the cheapest; output and thinking cost the most per token.</p>
+                                <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mb-2">
+                                    <span v-for="k in perf.mix.kinds" :key="k[0]" class="flex items-center gap-1.5"><span class="cm-pf-key" :style="{ background: k[1] }"></span>{{ k[0] }}</span>
+                                </div>
+                                <svg :width="perf.mix.W" :height="perf.mix.H" class="cm-pf-svg" role="img" aria-label="Token mix per model" @mouseleave="hideTip">
+                                    <g v-for="r in perf.mix.rows" :key="r.m.model">
+                                        <text :x="perf.mix.nameW - 10" :y="r.y + perf.mix.rowH / 2 + 3" text-anchor="end" class="cm-pf-label">{{ r.name }}</text>
+                                        <rect v-for="(s, j) in r.segs" :key="j" :x="s.x" :y="r.y + 5" :width="s.w" :height="perf.mix.rowH - 10" :fill="s.color" rx="2" class="cm-pf-col" @mousemove="showTip($event, s.tip)"></rect>
+                                        <text :x="perf.mix.W - 2" :y="r.y + perf.mix.rowH / 2 + 3" text-anchor="end" class="cm-pf-value">{{ r.total }}</text>
+                                    </g>
+                                </svg>
+                            </div>
+
+                            <!-- 5. Where the money goes -->
+                            <div v-if="perf.heat" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                                <h3 class="text-[15px] font-bold text-gray-200">Where the money goes</h3>
+                                <p class="text-xs text-gray-500 mt-0.5 mb-3">Spending per model in each project. Lighter means more.</p>
+                                <svg :width="perf.heat.W" :height="perf.heat.H" class="cm-pf-svg" role="img" aria-label="Spending per model and project" @mouseleave="hideTip">
+                                    <text v-for="h in perf.heat.heads" :key="h.full" :x="h.x" :y="perf.heat.headH - 12" text-anchor="middle" class="cm-pf-label"><title>{{ h.full }}</title>{{ h.text }}</text>
+                                    <g v-for="r in perf.heat.rows" :key="r.name + r.y">
+                                        <rect x="0" :y="r.y - 9" width="8" height="8" rx="2" :fill="r.color"></rect>
+                                        <text x="14" :y="r.y" class="cm-pf-label"><title>{{ r.full }}</title>{{ r.name }}</text>
+                                    </g>
+                                    <g v-for="c in perf.heat.cells" :key="c.key" @mousemove="c.tip ? showTip($event, c.tip) : hideTip()" :class="c.has ? 'cm-pf-col' : ''">
+                                        <rect :x="c.x" :y="c.y" :width="c.w" :height="c.h" rx="4" :fill="c.fill"></rect>
+                                        <text v-if="c.has" :x="c.x + c.w / 2" :y="c.y + c.h / 2 + 4" text-anchor="middle" class="cm-pf-cell" :fill="c.ink">{{ c.text }}</text>
+                                    </g>
+                                </svg>
+                                <div class="flex items-center gap-2 mt-3 text-xs text-gray-500">
+                                    <span>{{ perf.heat.scale[0].text }}</span>
+                                    <span v-for="(s, i) in perf.heat.scale" :key="i" class="cm-pf-swatch" :style="{ background: s.color }"></span>
+                                    <span>{{ perf.heat.scale[perf.heat.scale.length - 1].text }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- The same numbers as a table -->
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-3">Every model</h3>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-[13px] cm-pf-table whitespace-nowrap">
+                                    <thead>
+                                        <tr class="text-gray-500 border-b border-gray-800">
+                                            <th v-for="c in perfCols" :key="c[0]" :class="['py-2 px-2 font-medium whitespace-nowrap', c[0] === 'model' ? 'text-left' : 'text-right']" :aria-sort="perfSort.key === c[0] ? (perfSort.desc ? 'descending' : 'ascending') : 'none'">
+                                                <button @click="sortPerf(c[0])" :title="c[2]" :class="['hover:text-gray-200', perfSort.key === c[0] ? 'text-gray-200' : '']">{{ c[1] }}<span v-if="perfSort.key === c[0]">{{ perfSort.desc ? ' ↓' : ' ↑' }}</span></button>
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="m in perf.table" :key="m.model" class="border-b border-gray-800/60 hover:bg-gray-800/40">
+                                            <td class="py-2 px-2">
+                                                <div class="flex items-center gap-2 text-gray-200"><span class="cm-pf-key" :style="{ background: m.color }"></span><span class="truncate" :title="m.model">{{ m.name }}</span></div>
+                                                <div class="text-xs text-gray-500 pl-5">{{ Object.entries(m.roles).sort((a, b) => b[1] - a[1]).map(r => perfRole(r[0]) + ' ' + r[1]).join(' · ') }}</div>
+                                            </td>
+                                            <td class="py-2 px-2 text-right font-mono text-gray-300">{{ m.calls.toLocaleString() }}</td>
+                                            <td class="py-2 px-2 text-right font-mono text-gray-100">{{ fmtUsd(m.cost) }}{{ m.calls_without_cost ? '+' : '' }}</td>
+                                            <td class="py-2 px-2 text-right">
+                                                <div class="flex items-center justify-end gap-2"><span class="cm-pf-bar"><span :style="{ width: (100 * m.share / perf.maxShare) + '%', background: m.color }"></span></span><span class="font-mono text-gray-300 w-10">{{ fmtPct(m.share) }}</span></div>
+                                            </td>
+                                            <td class="py-2 px-2 text-right font-mono text-gray-300">{{ fmtUsd(m.cost_per_call) }}</td>
+                                            <td class="py-2 px-2 text-right font-mono text-gray-300">{{ fmtUsd(m.cost_per_1k_out) }}</td>
+                                            <td class="py-2 px-2 text-right font-mono text-gray-300">{{ fmtSec(m.p50_ms) }}<div class="text-xs text-gray-500">p90 {{ fmtSec(m.p90_ms) }}</div></td>
+                                            <td class="py-2 px-2 text-right font-mono text-gray-300">{{ m.speed_tps !== null ? Math.round(m.speed_tps) + '/s' : '—' }}</td>
+                                            <td class="py-2 px-2 text-right font-mono text-gray-300">{{ fmtPct(m.cache_share) }}</td>
+                                            <td class="py-2 px-2 text-right font-mono" :title="Object.entries(m.error_kinds).map(e => e[1] + ' ' + e[0]).join(', ')">
+                                                <span :class="m.reliability === null ? 'text-gray-500' : m.reliability >= 0.99 ? 'text-gray-300' : m.reliability >= 0.95 ? 'cm-pf-warn' : 'cm-pf-bad'">{{ m.reliability !== null && m.reliability < 0.99 ? (m.reliability >= 0.95 ? '! ' : '✕ ') : '' }}{{ fmtPct(m.reliability, m.reliability !== null && m.reliability < 1 ? 1 : 0) }}</span>
+                                                <div v-if="m.errors" class="text-xs text-gray-500">{{ m.errors }} failed</div>
+                                            </td>
+                                            <td class="py-2 px-2 text-right font-mono text-gray-300">{{ m.escalations }}<div v-if="m.escalations" class="text-xs text-gray-500">{{ fmtPct(m.escalation_rate, 1) }}</div></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </template>
+                    <div v-if="perfTip" class="cm-pf-tip" :style="{ left: perfTip.x + 'px', top: perfTip.y + 'px' }" role="tooltip">
+                        <div class="cm-pf-tip-title">{{ perfTip.title }}<span v-if="perfTip.total" class="cm-pf-tip-total">{{ perfTip.total }}</span></div>
+                        <div v-for="(r, i) in perfTip.rows" :key="i" :class="['cm-pf-tip-row', r.strong ? 'cm-pf-tip-strong' : '']">
+                            <span v-if="r.color" class="cm-pf-key" :style="{ background: r.color }"></span>
+                            <span class="cm-pf-tip-label">{{ r.label }}</span><span class="cm-pf-tip-value">{{ r.value }}</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Section: Overview -->
                 <div v-if="settingsTab === 'overview'" class="space-y-6">
                     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">

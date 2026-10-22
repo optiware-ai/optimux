@@ -747,7 +747,23 @@ The price per token comes from your model settings or LiteLLM's price list. When
 - **In the header**: the active project's month (and budget).
 - **Dashboard → Overview**: today, this month, the cache-hit rate, output and thinking, cost per day for the last 30 days, budgets, model status and recent chats.
 - **Dashboard → Usage**: totals for today, 7 days, this month or all time, broken down **by project, role, model, skill**, plus **skill drafting** and **memory updates**, with calls, input, cached, output, thinking, cost and average time. *Roles* are who made the call: `conductor`, `simple`, `complex`, `override` (a model you picked), `curator` (memory updates), `skill_draft`, `test`.
+- **Dashboard → Performance**: cost, speed and reliability of every model, per project (see below).
 - **History**: the cost of every chat.
+
+### Model performance
+
+**Dashboard → Performance** answers one question: *which model gives you the most for your money?* Pick a period (7, 30 or 90 days, or all time) and a project, or all projects. Hover any bar, dot or cell for its numbers.
+
+- **The tiles:** what you spent, how many calls, the average cost of a call, the median latency and the reliability. A **+** after an amount means some calls have no known price, so the real total is higher; add the price in **Models**.
+- **What stands out:** a few plain sentences: which model takes most of the money, how much more one call costs on the dearest model than on the cheapest, the fastest model, and which model got stuck or failed most. When a figure comes from fewer than 20 calls, it says so: don't judge a model on a handful of calls.
+- **Spending per day, by model:** stacked columns, one colour per model. **Calls** shows the number of calls instead. Long periods are grouped by week.
+- **Price and speed:** each model is a dot, its cost per call against its median latency, both on log scales; a bigger dot means more calls. **Lower left is cheap and fast.** A model far up and right is a candidate to replace.
+- **How long a call takes:** the line runs from fast calls (p10: 10% were faster) to slow ones (p90: 90% were faster), with the median as a dot. A long line means an unpredictable model. On the right, the output speed in tokens per second (the median over answers of 20 tokens or more).
+- **What the tokens are:** for each model, how much was cached input (cheapest), new input, output and thinking (dearest). A low cached share on a model you use a lot is worth a look.
+- **Where the money goes** (all projects): spending per model in each project; lighter cells mean more.
+- **Every model:** the same numbers as a table; click a column to sort. **$ / 1K out** is what a model cost for every 1,000 tokens it wrote, its input included: the price of its work. **Reliable** counts every failed attempt (retried ones too). **Stuck** counts escalations: the model hit the step limit or repeated itself, and the Complex model took over.
+
+How it's measured: latency is the time from the request to the last token, thinking and tool calls included. Failures and escalations are recorded from v0.5 on, so older periods show them as 0. A model keeps its colour when you change the filters (colours follow all-time spending; after the 8th model, the rest are grey "Other" in the charts but listed in the table). Everything is computed from this machine's own records.
 
 ### Budgets
 
@@ -805,6 +821,7 @@ Most of the cost is **input tokens resent on every step**. The levers below are 
 |---|---|
 | **Overview** | Today and this month, cache-hit rate, output and thinking, cost per day (30 days), budgets, model status, recent chats. |
 | **Usage** | Tokens, cost and time per project, role (hover a role for what it is), model and skill, plus skill drafting and memory updates, for today, 7 days, this month or all time. |
+| **Performance** | Cost, latency, speed, cache use and reliability of every model, per project, with charts and a sortable table. |
 | **Budgets** | Monthly limits per project (Block or Warn) and the cost warnings. |
 | **Projects** | Cost, budget, chats and memory per project; make one active, create, archive; restore or permanently delete archived projects. |
 | **History** | Every stored chat with filters (project, period, active or archived, title search) and sortable columns; open one to continue it. |
@@ -875,7 +892,7 @@ Everything Optimux keeps is in one folder, `~/.optimux` (set `OPTIMUX_HOME` to m
 │   ├── routing.json              which model is Conductor, Simple and Complex
 │   └── budgets.json              monthly budget per project
 ├── data/
-│   └── optimux.db                SQLite: chats, every model call and its cost, memory history, sign-ins
+│   └── optimux.db                SQLite: chats, every model call and its cost, failed calls and escalations, memory history, sign-ins
 ├── backups/
 │   ├── optimux-2026-10-07.db     one copy of the database per day…
 │   └── optimux-2026-10-08.db     …the newest 14 are kept

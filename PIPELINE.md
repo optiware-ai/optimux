@@ -37,6 +37,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │   ├── admin.py                 (setup commands for the installer: password, keys, models, Workspace, GitHub)
 │   ├── admin.py_AGENT.md
 │   └── core/
+│       ├── analytics.py         (Cost and performance per model: Dashboard → Performance)
+│       ├── analytics.py_AGENT.md
 │       ├── agents.py            (System prompts: router & executor)
 │       ├── auth.py              (Password sign-in, sessions, two-step codes, rate limits)
 │       ├── auth.py_AGENT.md

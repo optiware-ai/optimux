@@ -122,6 +122,21 @@ MIGRATIONS = [
     ALTER TABLE usage ADD COLUMN plan_id TEXT;
     ALTER TABLE usage ADD COLUMN step INTEGER;
     """,
+    # 9: what happened to model calls besides their usage (v0.5 performance charts):
+    # failed calls (kind 'error', detail = the error class) and escalations away from a
+    # model that got stuck (kind 'escalation', detail = why)
+    """
+    CREATE TABLE model_events (
+        id INTEGER PRIMARY KEY,
+        ts REAL NOT NULL,
+        project TEXT,
+        role TEXT,
+        model TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        detail TEXT
+    );
+    CREATE INDEX model_events_ts ON model_events (ts);
+    """,
 ]
 
 _ready_for: str | None = None
