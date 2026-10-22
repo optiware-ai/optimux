@@ -16,7 +16,7 @@ It isn't limited to code: you can ask it anything you would ask a chat AI, and i
 [![LiteLLM](https://img.shields.io/badge/LiteLLM-100%2B_providers-6E56CF)](https://github.com/BerriAI/litellm)
 [![Tests](https://github.com/optiware-ai/optimux/actions/workflows/tests.yml/badge.svg)](https://github.com/optiware-ai/optimux/actions/workflows/tests.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL_v3-blue.svg)](LICENSE)
-[![Status: beta](https://img.shields.io/badge/status-beta_v0.4-orange.svg)](#project-status)
+[![Status: beta](https://img.shields.io/badge/status-beta_v0.5-orange.svg)](#project-status)
 
 [Website](https://optimux.si) · [Features](#features) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Documentation](docs/GUIDE.md) · [Security](#security) · [Contributing](CONTRIBUTING.md)
 
@@ -50,7 +50,7 @@ It sends simple requests to cheap models, hands hard work to stronger models, tr
 ---
 
 > ### Project status
-> **Optimux is in beta (v0.4).** It is used every day on Linux and has a large test suite, but some paths have had little real-world use yet: server installs, macOS, and creating GitHub repositories from the app. Expect rough edges, and please [open an issue](https://github.com/optiware-ai/optimux/issues) when something breaks. What changed in each release: [CHANGELOG.md](CHANGELOG.md).
+> **Optimux is in beta (v0.5).** It is used every day on Linux and has a large test suite, but some paths have had little real-world use yet: server installs, macOS, and creating GitHub repositories from the app. Expect rough edges, and please [open an issue](https://github.com/optiware-ai/optimux/issues) when something breaks. What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
 ## Table of contents
 
@@ -93,6 +93,7 @@ Optimux runs on your own machine, works on your own repositories, and treats **c
 - Two tiers, Simple and Complex, with automatic **escalation** when the Simple model hits its step limit or repeats itself.
 - A **Conductor** (one small call per message) picks the tier; it never moves an unfinished task to a weaker model.
 - **Fallback** and **cooldowns** when a provider fails or a quota runs out.
+- Any **LiteLLM provider**, local models (Ollama), and models behind a **Base URL** (proxies, resellers, your own server).
 - Pin a tier with `/simple` or `/complex`, or force a specific model for your requests.
 - Per-model **thinking level** (Minimal to High).
 
@@ -100,6 +101,8 @@ Optimux runs on your own machine, works on your own repositories, and treats **c
 - A terminal tool with **per-command approval**, exit codes and a syntax-highlighted output viewer.
 - **Projects** inside a **Workspace** folder: create one with a form (name, starter files, git, a private or public **GitHub** repository, description), from the **+** button for free or by asking the model, which fills the form in for you.
 - **GitHub set up from the web interface** (or the installer): a token checked with GitHub before it's saved, used only to create or clone repositories, never visible to model-run commands.
+- **Push and Update from GitHub** with one click: every file shown first, saved keys refused, an optional commit message written by the cheap model from your commit template; Update is fast-forward only.
+- **Files changed** under every reply that changed the project.
 - **Clone from GitHub**: pick one of your repositories and it becomes a project (background clone with progress and cancel; no model involved). Folders added to the Workspace by hand show up live.
 - **Scope checks** that flag commands touching paths outside the project.
 - A **bubblewrap sandbox**: commands can only change the active project; your home folder and keys are invisible.
@@ -154,6 +157,7 @@ Memory costs tokens on every model call, so short and precise memory is cheaper 
 **Costs and data**
 - Live cost while a reply runs, and a cost line under every reply.
 - **Dashboard**: overview, usage by project, role, model and skill, a 30-day cost chart, budgets, history with filters.
+- **Model performance** (Dashboard → Performance): cost, latency (p10, median, p90), speed, cache use, reliability and escalations of every model, per project, with charts and a sortable table.
 - **Model catalog**: pick a provider, then a model from its list with prices per million tokens and context size, in a sortable price table, offline. An opt-in online catalog refreshes prices (LiteLLM's public list) and asks the provider which models your key can use, only when you click Refresh.
 - **Monthly budgets** per project (block or warn) and **cost warnings** before paid one-off actions.
 - Every chat and every model call is stored in SQLite and **survives restarts**, with daily backups.
