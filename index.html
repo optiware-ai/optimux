@@ -2205,6 +2205,7 @@
                             <div v-else-if="blk.kind === 'cmd'" class="bg-black/80 rounded-lg border border-gray-700/80 overflow-hidden font-mono text-xs">
                                 <div class="bg-gray-800/80 px-3 py-2 flex items-start justify-between gap-3 text-gray-300 border-b border-gray-700/60">
                                     <div class="flex items-start gap-2 min-w-0 flex-1"><span class="text-green-400 font-bold flex-shrink-0">{{ blk.file ? '✎' : '$' }}</span><span class="whitespace-pre-wrap break-all max-h-40 overflow-y-auto min-w-0">{{ blk.file ? blk.command.replace(/^✎ /, '') : blk.command }}</span></div>
+                                    <span v-if="blk.cut" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-amber-300 border-amber-900/60 bg-amber-950/40" :title="'The output was too long: ' + blk.cut.toLocaleString() + ' bytes from its middle were cut, so they don\'t cost tokens at every step. The model was told how to see a part.'">output cut</span>
                                     <span v-if="blk.exit_code !== undefined" :class="['flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border', blk.exit_code === 0 ? 'text-green-400 border-green-900/60 bg-green-950/40' : 'text-red-400 border-red-900/60 bg-red-950/40']">exit {{ blk.exit_code }}</span>
                                     <span v-else class="flex-shrink-0 whitespace-nowrap text-yellow-400 animate-pulse">running...</span>
                                 </div>
@@ -2292,6 +2293,7 @@
                             <div class="bg-black/80 rounded-lg border border-gray-700/80 overflow-hidden font-mono text-xs">
                                 <div class="bg-gray-800/80 px-3 py-2 flex items-start justify-between gap-3 text-gray-300 border-b border-gray-700/60">
                                     <div class="flex items-start gap-2 min-w-0 flex-1"><span class="text-green-400 font-bold flex-shrink-0">$</span><span class="whitespace-pre-wrap break-all max-h-40 overflow-y-auto min-w-0">{{ cmdItem.command }}</span></div>
+                                    <span v-if="cmdItem.cut" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-amber-300 border-amber-900/60 bg-amber-950/40" :title="'The output was too long: ' + cmdItem.cut.toLocaleString() + ' bytes from its middle were cut, so they don\'t cost tokens at every step. The model was told how to see a part.'">output cut</span>
                                     <span v-if="cmdItem.exit_code !== undefined" :class="['flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border', cmdItem.exit_code === 0 ? 'text-green-400 border-green-900/60 bg-green-950/40' : 'text-red-400 border-red-900/60 bg-red-950/40']">exit {{ cmdItem.exit_code }}</span>
                                     <span v-else class="flex-shrink-0 whitespace-nowrap text-yellow-400 animate-pulse">running...</span>
                                 </div>

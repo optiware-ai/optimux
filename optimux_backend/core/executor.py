@@ -85,6 +85,53 @@ def _child_setup(limits: list[tuple[int, int]]):
 # [[ ]], arrays), so don't let /bin/sh (dash on Debian/Ubuntu) run it.
 SHELL = shutil.which("bash") or "/bin/sh"
 
+# Output kept from a command (v0.5.1). The tool result goes back to the model at
+# every following step of the turn, so one huge output (a log, a minified file)
+# could cost more than the rest of the task and overflow the context. The start
+# and the end are kept (errors and summaries are usually at the end); the middle
+# is replaced by a note. Bytes beyond the cap are read and dropped, never held.
+OUTPUT_CAPS = {"stdout": (8_000, 16_000), "stderr": (2_000, 4_000)}   # (head, tail) in bytes
+
+
+class _Capped:
+    """Collects one output stream: the first `head` bytes, the last `tail`
+    bytes and the total count, in bounded memory."""
+
+    def __init__(self, head: int, tail: int):
+        self.head_n, self.tail_n = head, tail
+        self.head, self.tail, self.total = bytearray(), bytearray(), 0
+
+    def add(self, chunk: bytes) -> None:
+        self.total += len(chunk)
+        room = self.head_n - len(self.head)
+        if room > 0:
+            self.head += chunk[:room]
+            chunk = chunk[room:]
+        if chunk:
+            self.tail += chunk
+            if len(self.tail) > self.tail_n:
+                del self.tail[:len(self.tail) - self.tail_n]
+
+    @property
+    def cut(self) -> int:
+        return self.total - len(self.head) - len(self.tail)
+
+    def text(self) -> str:
+        if not self.cut:
+            return (bytes(self.head) + bytes(self.tail)).decode("utf-8", errors="replace")
+        return (bytes(self.head).decode("utf-8", errors="replace")
+                + f"\n\n[... {self.cut:,} bytes of output cut here by Optimux ({self.total:,} in all). "
+                  "To see a part, run the command again with grep, head, tail or sed -n. ...]\n\n"
+                + bytes(self.tail).decode("utf-8", errors="replace"))
+
+
+async def _drain(stream, sink: _Capped) -> None:
+    while True:
+        chunk = await stream.read(65536)
+        if not chunk:
+            return
+        sink.add(chunk)
+
 
 async def run_shell_command(command: str, timeout: int = 30, cwd: str | None = None) -> dict:
     """Execute a bash command asynchronously inside the configured scope.
@@ -110,6 +157,7 @@ async def run_shell_command(command: str, timeout: int = 30, cwd: str | None = N
                                   ro_paths=settings.get("sandbox_ro_paths") or [], bwrap=st["path"])
 
     process = None
+    out_buf, err_buf = _Capped(*OUTPUT_CAPS["stdout"]), _Capped(*OUTPUT_CAPS["stderr"])
     try:
         # Only allow-listed variables (no keys or tokens) and the configured limits
         common = dict(stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=workdir,
@@ -128,21 +176,29 @@ async def run_shell_command(command: str, timeout: int = 30, cwd: str | None = N
             except Exception:
                 process = None
             raise
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-        err = stderr.decode("utf-8", errors="replace")
+        async def collect():
+            await asyncio.gather(_drain(process.stdout, out_buf), _drain(process.stderr, err_buf))
+            await process.wait()
+
+        await asyncio.wait_for(collect(), timeout=timeout)
+        err = err_buf.text()
         if argv and process.returncode and "Read-only file system" in err:
             # Tell the model why, so it doesn't try other paths outside the project
             err += (f"\n[Optimux sandbox: only the working folder ({workdir}) can be changed; the home folder, "
                     "other projects and the rest of the system are read-only. To create a project, use the "
                     "create_project tool; anything else outside this folder is for the user to do.]")
-        return {
-            "stdout": stdout.decode("utf-8", errors="replace"),
-            "stderr": err,
-            "exit_code": process.returncode,
-        }
+        result = {"stdout": out_buf.text(), "stderr": err, "exit_code": process.returncode}
+        if out_buf.cut or err_buf.cut:
+            result["cut"] = out_buf.cut + err_buf.cut
+        return result
     except asyncio.TimeoutError:
         _kill_group(process)
-        return {"stdout": "", "stderr": f"Command timed out after {timeout}s.", "exit_code": 124}
+        # What the command printed before it was stopped helps to see where it hung
+        result = {"stdout": out_buf.text(), "stderr": (err_buf.text() + "\n" if err_buf.total else "")
+                  + f"Command timed out after {timeout}s.", "exit_code": 124}
+        if out_buf.cut or err_buf.cut:
+            result["cut"] = out_buf.cut + err_buf.cut
+        return result
     except asyncio.CancelledError:
         # The user pressed Stop: don't leave the command running
         _kill_group(process)

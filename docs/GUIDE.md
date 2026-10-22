@@ -648,6 +648,8 @@ The same card sets **limits per command** (0 = none):
 
 Open files are always capped at 4,096 and core dumps are off. Each command also stops after **30 seconds**. On a server, the systemd unit in `deploy/` limits Optimux as a whole as well.
 
+**Long output is cut in the middle.** The model sees a command's output again at every following step of the reply, so one huge output (a log, a minified file, `npm ls`) could cost more than the rest of the task. Optimux keeps the first 8 KB and the last 16 KB of the output (2 KB and 4 KB of the error output) and puts a note in between that says how much was cut and tells the model to look at a part with `grep`, `head`, `tail` or `sed -n`. The chat shows the same text with an **output cut** label. The rest is never kept, so a command that prints gigabytes can't fill the server's memory either. When a command times out, what it printed until then is kept too.
+
 ### Secrets
 
 - API keys, the access token and the GitHub token live in `~/.optimux/secrets.env` (mode 600), never in your repositories.
