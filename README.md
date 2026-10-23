@@ -261,6 +261,7 @@ Almost everything is configured in the Dashboard and stored under `~/.optimux`. 
 | `OPTIMUX_SERVER` | unset | `1` for a server others can reach: sandbox required, auto-approve off, commands without network by default, HTTPS-only cookies. See [Running on a server](docs/GUIDE.md#running-on-a-server). |
 | `OPTIMUX_REQUIRE_SANDBOX` | unset | `1` forces the sandbox on; it can't be turned off from the Dashboard. |
 | `OPTIMUX_ALLOWED_ORIGINS` | unset | Comma-separated extra web origins allowed to use Optimux from a browser. |
+| `OPTIMUX_ALLOWED_HOSTS` | unset | Comma-separated host names Optimux answers for over TCP, besides `localhost` and IP addresses (`*` turns the check off). Not needed behind Caddy on the Unix socket. |
 
 All settings, with their defaults, are listed in the [Guide's settings reference](docs/GUIDE.md#settings-reference).
 

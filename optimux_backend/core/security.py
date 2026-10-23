@@ -4,6 +4,7 @@ env-key validation, and secret scrubbing for spawned shells.
 Kept free of FastAPI imports so it can be unit-tested in isolation.
 """
 import hmac
+import ipaddress
 import os
 import re
 import secrets
@@ -16,6 +17,7 @@ TOKEN_ENV = "OPTIMUX_TOKEN"
 # Only workspace.py's own gh calls get it; model-run commands never see it.
 GITHUB_TOKEN_ENV = "OPTIMUX_GITHUB_TOKEN"
 ALLOWED_ORIGINS_ENV = "OPTIMUX_ALLOWED_ORIGINS"
+ALLOWED_HOSTS_ENV = "OPTIMUX_ALLOWED_HOSTS"
 
 # Names the UI may write to .env. Restricting the suffix keeps the API from
 # setting PATH, LD_PRELOAD, BASH_ENV, PYTHONPATH, etc. in the server process.
@@ -291,6 +293,40 @@ def bearer_from_header(header_value: str | None) -> str:
 
 
 # ---------------------------------------------------------------- origin
+
+def split_host(host: str) -> str:
+    """The name or address of a Host header, without the port and brackets, lower case."""
+    host = (host or "").strip().lower()
+    if host.startswith("["):                       # [::1]:8000
+        return host[1:host.find("]")] if "]" in host else host[1:]
+    if host.count(":") == 1:
+        host = host.split(":", 1)[0]
+    return host.rstrip(".")
+
+
+def host_allowed(host: str | None, extra: str | None = None) -> bool:
+    """The Host allow-list (v0.6, IM-10, against DNS rebinding).
+
+    A rebinding attack needs a domain name that the attacker's page uses and
+    that resolves to this machine, so these are safe: localhost (and
+    *.localhost), any IP address (a LAN address too), and the names in
+    OPTIMUX_ALLOWED_HOSTS (comma-separated, with or without a port; "*" turns
+    the check off). No Host header means no browser: allowed (scripts still
+    need the token)."""
+    if not host:
+        return True
+    name = split_host(host)
+    if name == "localhost" or name.endswith(".localhost"):
+        return True
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        pass
+    extra = extra if extra is not None else os.environ.get(ALLOWED_HOSTS_ENV, "")
+    allowed = {split_host(h) for h in extra.split(",") if h.strip()}
+    return "*" in allowed or name in allowed
+
 
 def origin_allowed(origin: str | None, host: str | None, extra: str | None = None) -> bool:
     """Allow same-host origins, plus any listed in OPTIMUX_ALLOWED_ORIGINS.

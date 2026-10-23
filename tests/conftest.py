@@ -10,6 +10,8 @@ import tempfile
 
 os.environ["OPTIMUX_HOME"] = tempfile.mkdtemp(prefix="optimux-test-home-")
 os.environ["OPTIMUX_NO_MIGRATE"] = "1"
+# FastAPI's TestClient sends "Host: testserver" (IM-10 allow-list)
+os.environ.setdefault("OPTIMUX_ALLOWED_HOSTS", "testserver")
 
 import pytest  # noqa: E402
 

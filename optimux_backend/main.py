@@ -57,12 +57,47 @@ from optimux_backend.core import gitsync
 from optimux_backend.core import tasks as tasks_lib
 from optimux_backend.core.security import (
     GITHUB_TOKEN_ENV, ScopeError, ValidationError, bearer_from_header, check_token,
-    get_or_create_token, mask_messages, mask_secrets, origin_allowed, secret_mark, paths_outside_scope, resolve_project_dir, rotate_token,
+    get_or_create_token, host_allowed, mask_messages, mask_secrets, origin_allowed, secret_mark, paths_outside_scope, resolve_project_dir, rotate_token,
     secret_values, validate_project_name,
 )
 
 # No interactive API docs: they would load scripts from a CDN and list every endpoint
 app = FastAPI(title="Optimux Gateway", docs_url=None, redoc_url=None, openapi_url=None)
+
+
+class HostGuard:
+    """Refuse requests for an unknown Host (v0.6, IM-10, against DNS rebinding),
+    on the HTTP and the WebSocket paths, before anything else runs.
+
+    Connections over the Unix socket (a server behind Caddy: ASGI "server" is
+    None) are not checked: only Caddy can open that socket, and Caddy answers
+    only for the configured domain."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket") and scope.get("server") is not None:
+            host = next((v.decode("latin-1") for k, v in scope.get("headers") or [] if k == b"host"), "")
+            if not host_allowed(host):
+                name = " ".join(host.split())[:200]
+                if scope["type"] == "websocket":
+                    await receive()                                    # websocket.connect
+                    await send({"type": "websocket.close", "code": 1008})   # refused handshake (HTTP 403)
+                    return
+                body = (f"Optimux doesn't answer for the address {name}. Open it as localhost or by IP "
+                        "address, or add this name to OPTIMUX_ALLOWED_HOSTS (comma-separated) in "
+                        "Optimux's environment and restart it.\n").encode()
+                await send({"type": "http.response.start", "status": 400,
+                            "headers": [(b"content-type", b"text/plain; charset=utf-8"),
+                                        (b"content-length", str(len(body)).encode()),
+                                        (b"cache-control", b"no-store")]})
+                await send({"type": "http.response.body", "body": body})
+                return
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(HostGuard)
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(REPO_DIR, "web")
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
