@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import os
 import json
 import time
@@ -2395,6 +2396,50 @@ async def meter(websocket: WebSocket, session: dict, role: str, model: str, usag
 STREAMED_KINDS = ("token", "thinking")
 
 
+# ---- "Optimux was updated — Reload" (v0.5.2, IM-06)
+# The page compares the build it started with to the one in each auth_ok: after
+# an update (or any change to the page's files) a reconnecting tab offers a reload
+# instead of running old code against a new server.
+PAGE_FILES = ("index.html", "web/app.js", "web/app.css", "web/boot.js", "web/optimux.css")
+_build_cache: dict = {"key": None, "value": ""}
+
+
+def page_build() -> str:
+    """A short fingerprint of the page's files; changes whenever one of them does."""
+    root = os.path.dirname(WEB_DIR)
+    stats = []
+    for rel in PAGE_FILES:
+        try:
+            st = os.stat(os.path.join(root, rel))
+            stats.append((rel, st.st_mtime_ns, st.st_size))
+        except OSError:
+            stats.append((rel, None, None))
+    key = tuple(stats)
+    if _build_cache["key"] != key:
+        digest = hashlib.sha256()
+        for rel, *_ in stats:
+            try:
+                with open(os.path.join(root, rel), "rb") as f:
+                    digest.update(rel.encode() + b"\0" + f.read())
+            except OSError:
+                pass
+        _build_cache.update(key=key, value=digest.hexdigest()[:12])
+    return _build_cache["value"]
+
+
+_version_cache: dict = {"value": None}
+
+
+def running_version() -> str:
+    """The version this server runs (VERSION and commit), read once."""
+    if _version_cache["value"] is None:
+        try:
+            _version_cache["value"] = snapshots.optimux_version()
+        except Exception:
+            _version_cache["value"] = ""
+    return _version_cache["value"]
+
+
 async def send(websocket: WebSocket, kind: str, content=None, **extra) -> None:
     """Send one event to the page (and record it with the chat).
 
@@ -3769,7 +3814,8 @@ async def websocket_endpoint(websocket: WebSocket):
     else:
         LIVE_SOCKETS.setdefault(login_id, set()).add(websocket)
         ensure_workspace_watcher()
-    await websocket.send_text(json.dumps({"type": "auth_ok"}))
+    await websocket.send_text(json.dumps({"type": "auth_ok", "build": page_build(),
+                                          "version": await asyncio.to_thread(running_version)}))
     problem = sandbox_problem()
     if problem:
         await websocket.send_text(json.dumps({"type": "sandbox_problem", "content": problem}))

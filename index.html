@@ -19,6 +19,14 @@
 <body class="bg-gray-950 text-gray-200 font-sans h-screen flex flex-col">
     <div id="app" class="flex flex-col h-full max-w-6xl mx-auto w-full p-4 relative">
         
+        <!-- IM-06: the server was updated while this tab was open -->
+        <div v-if="pageUpdated" role="alert" class="fixed top-3 left-1/2 -translate-x-1/2 z-[80] w-[min(42rem,calc(100vw-2rem))] rounded-xl border border-blue-500/60 bg-gray-900 shadow-2xl px-4 py-3 flex flex-wrap items-center gap-3">
+            <span class="text-blue-300 text-xl leading-none" aria-hidden="true">↻</span>
+            <span class="flex-1 min-w-0 text-[14px] text-gray-200"><b class="text-blue-200">Optimux was updated</b><template v-if="pageUpdated.version"> to <span class="font-mono text-gray-300">{{ pageUpdated.version }}</span></template>. This page still runs the old code; reload it to use the new version.</span>
+            <button @click="reloadPage" :disabled="isGenerating" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg font-bold text-[14px] disabled:opacity-50" :title="isGenerating ? 'A reply is running: reload when it has finished' : 'Reload the page (the chat stays as it is)'">{{ isGenerating ? 'Reload after this reply' : 'Reload' }}</button>
+            <button @click="pageUpdated = null" class="text-[13px] text-gray-400 hover:text-gray-200" title="Hide until the next update">Later</button>
+        </div>
+
         <!-- Interactive Setup Modal -->
         <div v-if="showSetupModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
             <div class="bg-gray-900 border border-gray-700 p-6 rounded-xl max-w-md w-full shadow-2xl">

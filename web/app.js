@@ -1307,6 +1307,10 @@ createApp({
             s.unreadable_count ? `${s.unreadable_count} file(s) couldn't be read and are not inside: ${(s.unreadable || []).join(', ')}` : '',
             s.changed_count ? `${s.changed_count} file(s) changed while they were copied (stored as they were when the copy began): ${(s.changed || []).join(', ')}` : '',
         ].filter(Boolean).join('\n');
+        // IM-06: "Optimux was updated — Reload"
+        let pageBuild = '';
+        const pageUpdated = ref(null);
+        const reloadPage = () => { window.location.reload(); };
         // v0.5.2: the daily database backups, in Dashboard -> Backups
         const dailyInfo = ref({ backups: [], keep: 14, keep_range: [3, 60], dir: '', last_check: null });
         const dailyKeep = ref(14);
@@ -3373,6 +3377,11 @@ createApp({
             const handleMessage = (data, replay = false) => {
                 if (data.type === 'sandbox_problem') { sandboxProblem.value = data.content || ''; return; }
                 if (data.type === 'auth_ok') {
+                    // IM-06: the server's page files changed since this tab loaded them (an update)
+                    if (data.build) {
+                        if (!pageBuild) pageBuild = data.build;
+                        else if (data.build !== pageBuild) pageUpdated.value = { version: data.version || '' };
+                    }
                     sandboxProblem.value = '';   // told again right after, if still true
                     // Reopen where we left off: the active project's latest session
                     moveChatTo = null;   // a reconnect opens the right chat already
@@ -3943,7 +3952,7 @@ createApp({
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
             snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
-            dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
+            pageUpdated, reloadPage, dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
             rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,

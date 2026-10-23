@@ -1153,6 +1153,8 @@ These steps assume a fresh server, a DNS name (here `optimux.example.com`) point
 
 **Updating:** `sudo optimux update` (installed with the installer), or by hand: `cd /opt/optimux && sudo git pull && sudo /opt/optimux/.venv/bin/pip install -r requirements.txt && sudo systemctl restart optimux`.
 
+A tab that was open during an update shows **Optimux was updated** at the top when it reconnects: it still runs the old page, so new features may be missing or behave oddly. Click **Reload** (after a running reply has finished); the chat stays as it is. **Later** hides it until the next update.
+
 **Backups:** copy `/var/lib/optimux/.optimux` (it holds your keys: keep the copy encrypted) and your Workspace off the server.
 
 **Local models** (Ollama) are usually too slow on a small VPS; use hosted models, or a cheap hosted model as the Conductor.
