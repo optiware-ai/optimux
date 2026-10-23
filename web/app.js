@@ -523,6 +523,38 @@ createApp({
         const pendingOutside = ref([]);
         const pendingWorkdir = ref('');
         const pendingSandboxed = ref(false);
+        // Command time limits (IM-03b): the choice in the approval box, the live
+        // counter on a running command, and the question at the limit
+        const pendingTimeLimit = ref('');
+        const pendingDefaultLimit = ref(120);
+        const keepWaiting = ref(null);
+        const clockNow = ref(Date.now());
+        setInterval(() => { clockNow.value = Date.now(); }, 1000);
+        const fmtClock = (ms) => {
+            const t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, sec = t % 60;
+            return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0');
+        };
+        const fmtSpan = (s) => {
+            s = Math.round(s || 0);
+            if (s < 60) return s + ' s';
+            return s % 60 ? Math.floor(s / 60) + ' min ' + (s % 60) + ' s' : (s / 60) + ' min';
+        };
+        const runningCommand = (command) => {
+            for (let i = messages.value.length - 1; i >= 0; i--) {
+                const c = (messages.value[i].commands || []).find(x => x.command === command && x.exit_code === undefined);
+                if (c) return c;
+            }
+            return null;
+        };
+        const answerLimit = (choice) => {
+            const w = keepWaiting.value;
+            if (!w) return;
+            try { ws.value.send(JSON.stringify({ type: 'limit_response', choice })); } catch (_) {}
+            const c = runningCommand(w.command);
+            if (c && choice === 'more') c.limit = (c.limit || 0) + w.limit;
+            if (c && choice === 'until_end') c.limit = 0;
+            keepWaiting.value = null;
+        };
         const pendingSandboxProblem = ref('');   // the sandbox is on but broken: the command will be refused
         const sandboxProblem = ref('');          // the same, told on connect (banner above the chat box)
         // ---- Sandbox (bubblewrap)
@@ -3407,6 +3439,8 @@ createApp({
                     pendingOutside.value = data.outside_paths || [];
                     pendingSandboxed.value = !!data.sandboxed;
                     pendingSandboxProblem.value = data.sandbox_problem || '';
+                    pendingTimeLimit.value = '';
+                    if (data.time_limit) pendingDefaultLimit.value = data.time_limit;
                     pendingWorkdir.value = data.workdir || '';
                     pendingAction.value = data.action || '';  // project actions always ask
                     pendingFile.value = data.file_change || null;
@@ -3456,7 +3490,8 @@ createApp({
                 }
                 else if (data.type === "command_start") {
                     if (!lastMsg.commands) lastMsg.commands = [];
-                    const cmd = { kind: 'cmd', command: data.command, output: "", file: data.file || null };
+                    const cmd = { kind: 'cmd', command: data.command, output: "", file: data.file || null,
+                                  limit: data.time_limit ?? null, started: replay || data.time_limit === undefined ? null : Date.now() };
                     lastMsg.commands.push(cmd);
                     if (lastMsg.blocks) lastMsg.blocks.push(cmd);  // same object: output updates both
                     scrollToBottom();
@@ -3467,6 +3502,11 @@ createApp({
                     if (!replay && appSettings.value.projects_root) {
                         fetchProjectsList();
                     }
+                } else if (data.type === "command_limit") {
+                    keepWaiting.value = { command: data.command, elapsed: data.elapsed, limit: data.limit };
+                    scrollToBottom();
+                } else if (data.type === "command_limit_done") {
+                    if (keepWaiting.value && keepWaiting.value.command === data.command) keepWaiting.value = null;
                 } else if (data.type === "prompt_masked") {
                     // A saved key was pasted: show the message as it was sent and stored (IM-02b)
                     const mine = [...messages.value].reverse().find(m => m.role === 'user');
@@ -3551,6 +3591,7 @@ createApp({
             isStopping.value = true;
             pendingApproval.value = false;
             pendingForm.value = null;
+            keepWaiting.value = null;
             pendingCommand.value = ''; pendingFile.value = null;
             try { ws.value.send(JSON.stringify({ type: 'stop' })); } catch (_) {}
             // The server answers with "done" almost at once; release the
@@ -3581,8 +3622,10 @@ createApp({
             }
             const reason = isApproved ? '' : rejectReason.value.trim().slice(0, 500);
             rejectReason.value = '';
+            const limit = isApproved && pendingTimeLimit.value !== '' ? { time_limit: Number(pendingTimeLimit.value) } : {};
+            pendingTimeLimit.value = '';
             ws.value.send(JSON.stringify(reason ? { type: 'approval_response', approved: false, reason }
-                                                : { type: 'approval_response', approved: isApproved }));
+                                                : { type: 'approval_response', approved: isApproved, ...limit }));
             pendingApproval.value = false;
             pendingForm.value = null;
             pendingCommand.value = ''; pendingFile.value = null;
@@ -3808,6 +3851,7 @@ createApp({
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
             pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
+            pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
             pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
 					renderMarkdown,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashboardSections, dashboardGroups,

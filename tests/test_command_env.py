@@ -98,15 +98,15 @@ def test_timeout_setting_saved_and_read(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_commands_use_the_setting(tmp_path, mocker):
     mocker.patch.object(executor, "get_settings", return_value={"command_timeout": 10})
+    real = executor._watch
     seen = {}
-    real = executor.asyncio.wait_for
 
-    async def spy(aw, timeout):
-        seen["timeout"] = timeout
-        return await real(aw, timeout)
-    mocker.patch.object(executor.asyncio, "wait_for", side_effect=spy)
+    async def spy(task, limit, on_limit):
+        seen["limit"] = limit
+        return await real(task, limit, on_limit)
+    mocker.patch.object(executor, "_watch", side_effect=spy)
     r = await executor.run_shell_command("echo hi", cwd=str(tmp_path))
-    assert r["stdout"] == "hi\n" and seen["timeout"] == 10
+    assert r["stdout"] == "hi\n" and seen["limit"] == 10
 
 
 @pytest.mark.asyncio

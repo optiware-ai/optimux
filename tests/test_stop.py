@@ -120,7 +120,8 @@ def test_approval_still_works_with_reader_loop(mocker, client):
     read_until(chat.ws, "approval_request")
     chat.ws.send_text(json.dumps({"type": "approval_response", "approved": True}))
     msgs = collect(chat.ws)
-    run.assert_called_once_with("ls")
+    run.assert_called_once()
+    assert run.call_args.args == ("ls",) and run.call_args.kwargs["timeout"] is None
     assert "".join(m["content"] for m in msgs if m["type"] == "token") == "Files: a.py"
     chat.close()
 
@@ -200,3 +201,59 @@ async def test_stop_while_the_command_starts_still_kills_it(tmp_path, monkeypatc
     except FileNotFoundError:
         state = "gone"
     assert state in ("gone", "Z")
+
+
+def test_keep_waiting_at_the_time_limit(mocker, client, tmp_path):
+    """IM-03b end to end: the limit is shown before approval and on the running
+    command; at the limit the page is asked, and "more" lets it finish."""
+    import json as _json
+    mocker.patch.object(main, "command_timeout_for", return_value=1)
+    mocker.patch("optimux_backend.core.executor.command_timeout_for", return_value=1)
+    mocker.patch.object(main, "current_workdir", return_value=str(tmp_path))
+    mocker.patch("optimux_backend.core.executor.get_active_cwd", return_value=str(tmp_path))
+    from tests.test_routing_session import Recorder, reply, tool_reply
+    rec = Recorder(tool_reply("execute_bash", {"command": "sleep 1.6; echo done"}), reply("Finished."))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    chat = Conversation(client)
+    chat.ws.send_text(_json.dumps({"prompt": "build it", "model": "auto"}))
+    while True:
+        m = _json.loads(chat.ws.receive_text())
+        if m["type"] == "approval_request":
+            break
+    assert m["time_limit"] == 1
+    chat.ws.send_text(_json.dumps({"type": "approval_response", "approved": True}))
+    seen = []
+    while True:
+        m = _json.loads(chat.ws.receive_text())
+        seen.append(m)
+        if m["type"] == "command_limit":
+            assert m["limit"] == 1 and m["command"] == "sleep 1.6; echo done"
+            chat.ws.send_text(_json.dumps({"type": "limit_response", "choice": "more"}))
+        if m["type"] == "done":
+            break
+    chat.close()
+    start = [x for x in seen if x["type"] == "command_start"][0]
+    out = [x for x in seen if x["type"] == "command_output"][0]
+    assert start["time_limit"] == 1 and out["output"] == "done\n" and out["exit_code"] == 0
+    assert any(x["type"] == "command_limit_done" for x in seen)
+    assert any(x["type"] == "system" and "Waiting 1s more" in x["content"] for x in seen)
+
+
+def test_a_time_limit_chosen_in_the_approval_box(mocker, client, tmp_path):
+    import json as _json
+    run = mocker.patch.object(main, "run_shell_command", return_value={"stdout": "ok\n", "stderr": "", "exit_code": 0})
+    from tests.test_routing_session import Recorder, reply, tool_reply
+    rec = Recorder(tool_reply("execute_bash", {"command": "make"}), reply("ok"))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    chat = Conversation(client)
+    chat.ws.send_text(_json.dumps({"prompt": "build", "model": "auto"}))
+    while _json.loads(chat.ws.receive_text())["type"] != "approval_request":
+        pass
+    chat.ws.send_text(_json.dumps({"type": "approval_response", "approved": True, "time_limit": 0}))
+    from tests.ws_helpers import collect
+    msgs = collect(chat.ws)
+    chat.close()
+    assert run.call_args.kwargs["timeout"] == 0
+    assert [m for m in msgs if m["type"] == "command_start"][0]["time_limit"] == 0
+    assert main.chosen_time_limit({"time_limit": 99}) is None and main.chosen_time_limit({"time_limit": True}) is None
+    assert main.chosen_time_limit({"time_limit": 600}) == 600 and main.chosen_time_limit({}) is None

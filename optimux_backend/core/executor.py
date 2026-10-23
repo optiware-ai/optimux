@@ -2,6 +2,7 @@ import asyncio
 import os
 import shutil
 import signal
+import time
 
 from optimux_backend.core import sandbox
 import resource
@@ -150,6 +151,25 @@ class _Capped:
                         "To see a part, run the command again with grep, head, tail or sed -n. ...]\n\n" + end)
 
 
+def _stopped(why: str, ran: float, limit: int, named: bool, out_buf: _Capped, err_buf: _Capped) -> dict:
+    """The result of a command stopped at its time limit, with what it printed
+    until then (it helps to see where it hung) and why, for the model."""
+    if why == "user":
+        note = (f"Stopped by the user after {_minutes(ran)}: the command reached its time limit ({limit}s) and the "
+                "user chose to stop it. Don't run it again unless the user asks you to.")
+    elif why == "no_answer":
+        note = (f"Stopped after {_minutes(ran)}: the command reached its time limit ({limit}s) and nobody answered "
+                "whether to keep waiting. If it needs longer, ask the user to raise the limit (Dashboard → "
+                "Execution → Timeout, or the time limit in the approval box); don't retry the same command.")
+    else:
+        note = f"Command timed out after {limit}s" + (
+            " (the limit set in Dashboard → Execution → Command timeout). If it needs longer, ask the user to "
+            "raise that limit; don't retry the same command." if named else ".")
+    result = {"stdout": out_buf.text(), "stderr": (err_buf.text() + "\n" if err_buf.total else "") + note,
+              "exit_code": 124, "stopped": why}
+    return _extras(result, out_buf, err_buf)
+
+
 def _extras(result: dict, out_buf: _Capped, err_buf: _Capped) -> dict:
     """Add "cut" (bytes dropped) and "hidden" (saved keys hidden) when there are any."""
     if out_buf.cut or err_buf.cut:
@@ -167,8 +187,56 @@ async def _drain(stream, sink: _Capped) -> None:
         sink.add(chunk)
 
 
-async def run_shell_command(command: str, timeout: int | None = None, cwd: str | None = None) -> dict:
+LIMIT_CHOICES = ("more", "until_end", "stop")
+
+
+async def _watch(task: asyncio.Future, limit: int, on_limit) -> tuple[str | None, float]:
+    """Wait for the command (task). Returns (why it must be stopped, seconds run):
+    None when it ended by itself; "limit" at the time limit without on_limit;
+    with on_limit (IM-03b), the command keeps running while on_limit(seconds)
+    asks the user: "more" waits one more limit, "until_end" waits without
+    limit, "stop" -> "user"; no answer within one more limit -> "no_answer"."""
+    started = time.monotonic()
+    if not limit:
+        await task
+        return None, time.monotonic() - started
+    done, _ = await asyncio.wait({task}, timeout=limit)
+    while not done:
+        if on_limit is None:
+            return "limit", time.monotonic() - started
+        answer = asyncio.ensure_future(on_limit(time.monotonic() - started))
+        try:
+            done, _ = await asyncio.wait({task, answer}, timeout=limit, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            if not answer.done():
+                answer.cancel()             # it ended, or nobody answered: the question goes away
+                await asyncio.gather(answer, return_exceptions=True)   # ...before anything else is shown
+        if task in done:
+            break
+        if answer not in done:
+            return "no_answer", time.monotonic() - started
+        choice = answer.result()
+        if choice == "stop":
+            return "user", time.monotonic() - started
+        if choice == "until_end":
+            await task
+            break
+        done, _ = await asyncio.wait({task}, timeout=limit)
+    return None, time.monotonic() - started
+
+
+def _minutes(seconds: float) -> str:
+    seconds = int(round(seconds))
+    return f"{seconds}s" if seconds < 120 else f"{seconds // 60} min {seconds % 60:02d}s"
+
+
+async def run_shell_command(command: str, timeout: int | None = None, cwd: str | None = None,
+                            on_limit=None) -> dict:
     """Execute a bash command asynchronously inside the configured scope.
+
+    timeout: seconds, 0 = no limit, None = the setting (Dashboard -> Execution).
+    on_limit(seconds) -> "more" | "until_end" | "stop": asked at the limit while
+    the command keeps running (IM-03b); without it, the command is stopped there.
 
     With the sandbox on (sandbox.py), the command runs in bubblewrap and can
     only change the working folder; if bubblewrap doesn't work the command is
@@ -217,7 +285,16 @@ async def run_shell_command(command: str, timeout: int | None = None, cwd: str |
             await asyncio.gather(_drain(process.stdout, out_buf), _drain(process.stderr, err_buf))
             await process.wait()
 
-        await asyncio.wait_for(collect(), timeout=timeout)
+        collector = asyncio.ensure_future(collect())
+        try:
+            why, ran = await _watch(collector, timeout, on_limit)
+        except BaseException:
+            collector.cancel()
+            raise
+        if why:
+            collector.cancel()
+            _kill_group(process)
+            return _stopped(why, ran, timeout, named, out_buf, err_buf)
         err = err_buf.text()
         if argv and process.returncode and "Read-only file system" in err:
             # Tell the model why, so it doesn't try other paths outside the project
@@ -225,14 +302,6 @@ async def run_shell_command(command: str, timeout: int | None = None, cwd: str |
                     "other projects and the rest of the system are read-only. To create a project, use the "
                     "create_project tool; anything else outside this folder is for the user to do.]")
         result = {"stdout": out_buf.text(), "stderr": err, "exit_code": process.returncode}
-        return _extras(result, out_buf, err_buf)
-    except asyncio.TimeoutError:
-        _kill_group(process)
-        # What the command printed before it was stopped helps to see where it hung
-        result = {"stdout": out_buf.text(), "stderr": (err_buf.text() + "\n" if err_buf.total else "")
-                  + f"Command timed out after {timeout}s"
-                  + (" (the limit set in Dashboard → Execution → Command timeout). If it needs longer, ask the user "
-                     "to raise that limit; don't retry the same command." if named else "."), "exit_code": 124}
         return _extras(result, out_buf, err_buf)
     except asyncio.CancelledError:
         # The user pressed Stop: don't leave the command running

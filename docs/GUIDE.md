@@ -182,6 +182,7 @@ A reply can contain, from top to bottom:
 Before a command runs you see **Approval Required** with the full command:
 
 - **Approve** runs it once. **Reject** refuses it; the model is told and continues without it. It won't try the same thing again unless you ask it to later in the chat.
+- **⏱ Time limit** (commands only): how long this command may run before Optimux asks whether to keep waiting. It starts at your setting (**Dashboard → Execution → Timeout**, 2 minutes by default); pick **10 min**, **30 min** or **No limit** for this one command, for example before you leave a long install running. While it runs, the command shows its running time and limit, like `⏱ 0:45 / 2:00`.
 - **Why reject?** (optional): type a few words next to Reject, such as *no pipes* or *use pytest instead*, and press **Enter** or **Reject with reason**. The reason goes to the model together with the refusal, in the same step, so it can try again the way you want without waiting for its reply first. It works the same for file changes and for archiving a project. Leave it empty for a plain Reject.
 - **Always Approve** runs it and turns on auto-approve for all future commands (you can turn it off in **Dashboard → Execution**).
 - A red **Outside the project** box appears when the command touches paths outside the active project. These are never auto-approved, and *Always Approve* is hidden.
@@ -649,7 +650,9 @@ The same card sets **limits per command** (0 = none):
 
 Open files are always capped at 4,096 and core dumps are off.
 
-**Timeout (seconds)** stops a command that runs too long: 120 by default, from 10 to 1800 (30 minutes). Raise it for long installs, builds or test suites. A command that hits it ends with exit code 124; what it printed until then is kept, and the model is told which setting to raise instead of retrying. **Stop** ends a command at any time. Plan steps and skills use the same limit. On a server, the systemd unit in `deploy/` limits Optimux as a whole as well.
+**Timeout (seconds)** is how long a command may run before Optimux asks about it: 120 by default, from 10 to 1800 (30 minutes). The approval box can set another limit for one command (10 min, 30 min or none).
+
+**At the limit, nothing is lost.** The command **keeps running** while a box asks: **Wait N more** (asks again at the next limit), **Wait until it ends** (no more questions; Stop still works) or **Stop it**. If nobody answers, it waits one more limit and then stops, so a hung command can't run forever while you're away. A stopped command ends with exit code 124; what it printed until then is kept, and the model is told why and not to retry. **Stop** ends a command at any time. Plan steps and skills work the same way. On a server, the systemd unit in `deploy/` limits Optimux as a whole as well.
 
 **Long output is cut in the middle.** The model sees a command's output again at every following step of the reply, so one huge output (a log, a minified file, `npm ls`) could cost more than the rest of the task. Optimux keeps the first 8 KB and the last 16 KB of the output (2 KB and 4 KB of the error output) and puts a note in between that says how much was cut and tells the model to look at a part with `grep`, `head`, `tail` or `sed -n`. The chat shows the same text with an **output cut** label. The rest is never kept, so a command that prints gigabytes can't fill the server's memory either. When a command times out, what it printed until then is kept too.
 

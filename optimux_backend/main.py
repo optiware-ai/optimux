@@ -25,9 +25,10 @@ from optimux_backend.core.config_manager import (
     delete_api_key_from_env, get_routing_config, save_routing_config, RoutingPayload,
     get_settings, save_settings, SettingsPayload, model_id_problem, get_all_models,
     litellm_key_kwargs, max_steps_for, thinking_kwargs, set_thinking, _read_settings, GITHUB_FIELDS,
-    set_github_fields, update_settings, PLAN_MODES,
+    set_github_fields, update_settings, PLAN_MODES, command_timeout_for,
 )
 from optimux_backend.core.executor import run_shell_command, get_active_cwd
+from optimux_backend.core import executor as executor_lib
 import litellm
 from optimux_backend.core.llm_client import route_model_with_usage, TOOLS, FINISH_STEP_TOOL, FINISH_CHECK_TOOL
 from optimux_backend.core import usage as usage_meter
@@ -1796,6 +1797,7 @@ def new_session() -> dict:
         "last_turn_ok": True,    # the previous turn finished normally (not stopped, failed or paused)
         "budget_notes": set(),   # (project, level, month) budget notes already shown
         "approval": None,        # Future resolved by the reader loop with the user's approval_response
+        "limit_answer": None,    # Future for "keep waiting?" at a command's time limit (IM-03b)
         "current_stream": None,  # StreamResult of the call in flight (for partial text on stop)
         "chat_id": None,         # stored session (created on the first prompt of a chat)
         "recorder": chat_store.Recorder(),  # what the UI is sent, saved with the session
@@ -2768,6 +2770,41 @@ async def ask_approval(websocket: WebSocket, session: dict, tc_id: str, command:
     return (await wait_for_answer(websocket, session, tc_id, command, **extra))["approved"] is True
 
 
+TIME_LIMIT_CHOICES = (0, 600, 1800)       # the approval box: no limit, 10 min, 30 min (or the setting)
+
+
+def chosen_time_limit(answer: dict) -> int | None:
+    """The time limit picked in the approval box for this command (seconds,
+    0 = no limit), or None for the setting."""
+    value = answer.get("time_limit")
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if value in TIME_LIMIT_CHOICES else None
+
+
+async def ask_keep_waiting(websocket: WebSocket, session: dict, command: str, seconds: float, limit: int) -> str:
+    """At the time limit (IM-03b): the command keeps running while the page asks
+    whether to keep waiting. Returns "more", "until_end" or "stop"; cancelled
+    (and the question removed) when the command ends or nobody answers."""
+    answer = asyncio.get_running_loop().create_future()
+    session["limit_answer"] = answer
+    await send(websocket, "command_limit", command=command, elapsed=int(seconds), limit=limit)
+    choice = None
+    try:
+        reply = await answer
+        choice = reply.get("choice") if reply.get("choice") in executor_lib.LIMIT_CHOICES else "stop"
+        return choice
+    finally:
+        session["limit_answer"] = None
+        await send(websocket, "command_limit_done", command=command)
+        span = f"{limit // 60} min" if limit >= 60 else f"{limit}s"
+        note = {"more": f"Waiting {span} more for '{command}'.",
+                "until_end": f"Waiting for '{command}' until it ends (Stop ends it).",
+                "stop": f"'{command}' stopped at its time limit.", None: None}[choice]
+        if note:
+            await send(websocket, "system", "⏱ " + note)
+
+
 async def mark_changes_start(session: dict) -> None:
     """Before the first command or file change of a request: remember the
     project's files, so the end of the request can list what changed (v0.4-5m)."""
@@ -3146,12 +3183,20 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                 workdir = current_workdir()
                 outside = [p for p in (paths_outside_scope(cmd, workdir) if workdir else [])
                            if not in_skill_folder(p)]
-                answer = await wait_for_answer(websocket, session, tc_id, cmd, outside_paths=outside, workdir=workdir)
+                answer = await wait_for_answer(websocket, session, tc_id, cmd, outside_paths=outside, workdir=workdir,
+                                               time_limit=command_timeout_for())
                 if answer["approved"]:
                     await mark_changes_start(session)
-                    await send(websocket, "command_start", command=cmd)
-                    exec_result = await run_shell_command(cmd)
+                    chosen = chosen_time_limit(answer)
+                    limit = command_timeout_for() if chosen is None else chosen
+                    await send(websocket, "command_start", command=cmd, time_limit=limit)
+
+                    async def keep_waiting(seconds: float, cmd=cmd, limit=limit) -> str:
+                        return await ask_keep_waiting(websocket, session, cmd, seconds, limit)
+                    exec_result = await run_shell_command(cmd, timeout=chosen, on_limit=keep_waiting)
                     out = exec_result["stdout"] or exec_result["stderr"] or "(no output)"
+                    if exec_result.get("stopped") and exec_result["stdout"]:
+                        out += "\n" + exec_result["stderr"].rsplit("\n", 1)[-1]     # why it stopped
                     log_command_to_session(cmd, exec_result["exit_code"])
                     await send(websocket, "command_output", command=cmd, output=out, exit_code=exec_result["exit_code"],
                                cut=exec_result.get("cut", 0), hidden=exec_result.get("hidden", 0))
@@ -3731,6 +3776,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 if approval is not None and not approval.done():
                     approval.set_result(payload)
                 continue  # otherwise a stray click after the turn ended
+            if kind == "limit_response":
+                waiting = session.get("limit_answer")
+                if waiting is not None and not waiting.done():
+                    waiting.set_result(payload)
+                continue
             if kind not in ("new_chat", "escalate", "open_session", "plan_action") and not payload.get("prompt", ""):
                 continue
             if busy:

@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 from optimux_backend.core.executor import run_shell_command
 
@@ -117,3 +118,84 @@ def test_one_long_line_is_not_dropped_for_a_line_end():
     c.add(b"a\n" + b"x" * 1000 + b"\nz")
     head, tail = c._parts()
     assert len(head) == 100 and len(tail) == 100          # the line end is too far back: keep the bytes
+
+
+# ---- IM-03b: at the time limit the command keeps running while the user chooses
+
+def _asker(*choices, log=None):
+    queue = list(choices)
+
+    async def ask(seconds):
+        if log is not None:
+            log.append(round(seconds))
+        choice = queue.pop(0)
+        if choice == "never":
+            await asyncio.sleep(3600)
+        return choice
+    return ask
+
+
+@pytest.mark.asyncio
+async def test_keep_waiting_lets_it_finish(tmp_path):
+    asked = []
+    r = await run_shell_command("sleep 1.6; echo done", timeout=1, cwd=str(tmp_path), on_limit=_asker("more", log=asked))
+    assert r["exit_code"] == 0 and r["stdout"] == "done\n" and asked == [1]
+
+
+@pytest.mark.asyncio
+async def test_wait_until_it_ends(tmp_path):
+    r = await run_shell_command("sleep 2.5; echo done", timeout=1, cwd=str(tmp_path), on_limit=_asker("until_end"))
+    assert r["exit_code"] == 0 and r["stdout"] == "done\n"
+
+
+@pytest.mark.asyncio
+async def test_stop_at_the_limit(tmp_path):
+    r = await run_shell_command("echo started; sleep 10", timeout=1, cwd=str(tmp_path), on_limit=_asker("stop"))
+    assert r["exit_code"] == 124 and r["stopped"] == "user" and r["stdout"] == "started\n"
+    assert "the user chose to stop it" in r["stderr"]
+
+
+@pytest.mark.asyncio
+async def test_no_answer_stops_after_one_more_limit(tmp_path):
+    import time as _t
+    t0 = _t.monotonic()
+    r = await run_shell_command("sleep 10", timeout=1, cwd=str(tmp_path), on_limit=_asker("never"))
+    assert r["stopped"] == "no_answer" and "nobody answered" in r["stderr"] and 1.8 < _t.monotonic() - t0 < 4
+
+
+@pytest.mark.asyncio
+async def test_the_question_goes_away_when_it_ends(tmp_path):
+    cancelled = []
+
+    async def ask(seconds):
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+    r = await run_shell_command("sleep 1.5; echo done", timeout=1, cwd=str(tmp_path), on_limit=ask)
+    assert r["stdout"] == "done\n" and r["exit_code"] == 0 and cancelled == [True]
+
+
+@pytest.mark.asyncio
+async def test_no_limit(tmp_path):
+    r = await run_shell_command("sleep 1.2; echo done", timeout=0, cwd=str(tmp_path))
+    assert r["stdout"] == "done\n"
+
+
+@pytest.mark.asyncio
+async def test_stop_while_asking_ends_the_command(tmp_path):
+    marker = tmp_path / "still-running"
+    asked = asyncio.Event()
+
+    async def ask(seconds):
+        asked.set()
+        await asyncio.sleep(3600)
+    task = asyncio.ensure_future(run_shell_command(f"sleep 3 && touch {marker}", timeout=1, cwd=str(tmp_path),
+                                                   on_limit=ask))
+    await asyncio.wait_for(asked.wait(), 5)
+    task.cancel()                                     # the user pressed Stop
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.sleep(3)
+    assert not marker.exists()                        # the command was killed, not left running

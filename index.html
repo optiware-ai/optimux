@@ -2209,7 +2209,7 @@
                                     <span v-if="blk.hidden" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-green-300 border-green-800 bg-green-950/40" :title="'The output had ' + (blk.hidden === 1 ? 'a key' : blk.hidden + ' keys') + ' saved in Optimux. Shown as ••••(NAME): the chat, the history and the model never see the value.'">🔒 {{ blk.hidden === 1 ? 'key' : blk.hidden + ' keys' }} hidden</span>
                                     <span v-if="blk.cut" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-amber-300 border-amber-900/60 bg-amber-950/40" :title="'The output was too long: ' + blk.cut.toLocaleString() + ' bytes from its middle were cut, so they don\'t cost tokens at every step. The model was told how to see a part.'">output cut</span>
                                     <span v-if="blk.exit_code !== undefined" :class="['flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border', blk.exit_code === 0 ? 'text-green-400 border-green-900/60 bg-green-950/40' : 'text-red-400 border-red-900/60 bg-red-950/40']">exit {{ blk.exit_code }}</span>
-                                    <span v-else class="flex-shrink-0 whitespace-nowrap text-yellow-400 animate-pulse">running...</span>
+                                    <span v-else class="flex-shrink-0 whitespace-nowrap text-yellow-400"><span class="animate-pulse">running</span><span v-if="blk.started" class="ml-1.5 font-mono text-gray-400" :title="blk.limit ? 'Running time / time limit. At the limit Optimux asks whether to keep waiting.' : 'Running time (no time limit for this command)'">⏱ {{ fmtClock(clockNow - blk.started) }}<template v-if="blk.limit"> / {{ fmtClock(blk.limit * 1000) }}</template></span></span>
                                 </div>
                                 <pre v-if="blk.file && blk.exit_code === 0" class="p-3 overflow-x-auto whitespace-pre max-h-60"><span v-for="(l, i) in (blk.output || '').split('\n')" :key="i" :class="diffLineClass(l)">{{ l }}
 </span></pre>
@@ -2298,7 +2298,7 @@
                                     <span v-if="cmdItem.hidden" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-green-300 border-green-800 bg-green-950/40" :title="'The output had ' + (cmdItem.hidden === 1 ? 'a key' : cmdItem.hidden + ' keys') + ' saved in Optimux. Shown as ••••(NAME): the chat, the history and the model never see the value.'">🔒 {{ cmdItem.hidden === 1 ? 'key' : cmdItem.hidden + ' keys' }} hidden</span>
                                     <span v-if="cmdItem.cut" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-amber-300 border-amber-900/60 bg-amber-950/40" :title="'The output was too long: ' + cmdItem.cut.toLocaleString() + ' bytes from its middle were cut, so they don\'t cost tokens at every step. The model was told how to see a part.'">output cut</span>
                                     <span v-if="cmdItem.exit_code !== undefined" :class="['flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border', cmdItem.exit_code === 0 ? 'text-green-400 border-green-900/60 bg-green-950/40' : 'text-red-400 border-red-900/60 bg-red-950/40']">exit {{ cmdItem.exit_code }}</span>
-                                    <span v-else class="flex-shrink-0 whitespace-nowrap text-yellow-400 animate-pulse">running...</span>
+                                    <span v-else class="flex-shrink-0 whitespace-nowrap text-yellow-400"><span class="animate-pulse">running</span><span v-if="cmdItem.started" class="ml-1.5 font-mono text-gray-400" :title="cmdItem.limit ? 'Running time / time limit. At the limit Optimux asks whether to keep waiting.' : 'Running time (no time limit for this command)'">⏱ {{ fmtClock(clockNow - cmdItem.started) }}<template v-if="cmdItem.limit"> / {{ fmtClock(cmdItem.limit * 1000) }}</template></span></span>
                                 </div>
                                 <pre class="p-3 text-gray-300 overflow-x-auto whitespace-pre-wrap max-h-60">{{ cmdItem.output }}</pre>
                                 <div class="px-3 py-1 border-t border-gray-800 flex justify-end">
@@ -2408,6 +2408,17 @@
                 <div class="min-w-0"><b class="text-red-300">Commands can't run: the sandbox doesn't work here.</b> {{ sandboxProblem }}
                     <button @click="openSettings('system')" class="underline text-red-300 hover:text-red-100">Dashboard → System</button></div>
             </div>
+            <!-- At a command's time limit (IM-03b): it keeps running while you choose -->
+            <div v-if="keepWaiting" role="alertdialog" aria-label="Time limit reached" class="mb-4 bg-amber-950/30 border border-amber-700/60 rounded-lg p-4 flex flex-col gap-3">
+                <div class="text-[14px] text-amber-200"><b class="text-amber-300">⏱ Time limit reached.</b>&nbsp;
+                    <span class="font-mono text-amber-100">{{ keepWaiting.command }}</span> has been running for {{ fmtSpan(keepWaiting.elapsed) }} (limit {{ fmtSpan(keepWaiting.limit) }}). It is still running.
+                    <div class="text-[13px] text-gray-400 mt-1">Without an answer it stops after {{ fmtSpan(keepWaiting.limit) }} more.</div></div>
+                <div class="flex flex-wrap justify-end gap-3">
+                    <button @click="answerLimit('stop')" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-red-400 font-bold rounded border border-red-900/50 text-sm">Stop it</button>
+                    <button @click="answerLimit('until_end')" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 font-bold rounded border border-gray-600 text-sm">Wait until it ends</button>
+                    <button @click="answerLimit('more')" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded text-sm">Wait {{ fmtSpan(keepWaiting.limit) }} more</button>
+                </div>
+            </div>
             <!-- Approval Widget -->
             <div v-if="pendingApproval && !pendingForm" class="mb-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 flex flex-col gap-3">
                 <div class="flex items-start gap-3">
@@ -2421,6 +2432,14 @@
                         <div class="bg-black/60 p-3 rounded font-mono text-sm text-yellow-200 whitespace-pre-wrap break-all max-h-96 overflow-y-auto">{{ pendingCommand }}</div>
                         <pre v-if="pendingFile && pendingFile.diff" class="mt-2 bg-black/60 p-3 rounded font-mono text-xs whitespace-pre overflow-auto max-h-96"><span v-for="(l, i) in pendingFile.diff.split('\n')" :key="i" :class="diffLineClass(l)">{{ l }}
 </span></pre>
+                        <div v-if="!pendingAction && !pendingFile" class="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-gray-300">
+                            <span>⏱ Time limit</span>
+                            <select v-model="pendingTimeLimit" aria-label="Time limit for this command" class="bg-gray-950 border border-gray-700 rounded px-2 py-1 text-[13px] text-gray-200">
+                                <option value="" class="bg-gray-900">{{ fmtSpan(pendingDefaultLimit) }} (your setting)</option>
+                                <option v-for="o in [[600, '10 min'], [1800, '30 min'], [0, 'No limit']]" :key="o[0]" :value="o[0]" class="bg-gray-900">{{ o[1] }}</option>
+                            </select>
+                            <span class="text-gray-500">{{ pendingTimeLimit === 0 ? 'It runs until it ends; Stop ends it at any time.' : 'At the limit it keeps running and Optimux asks whether to keep waiting.' }}</span>
+                        </div>
                         <div v-if="pendingOutside.length" class="mt-3 p-3 rounded border border-red-700 bg-red-900/30 text-sm text-red-300">
                             <div class="font-bold">⚠ Outside the project</div>
                             <div class="text-xs mt-1">This command refers to paths outside <span class="font-mono">{{ pendingWorkdir }}</span>:

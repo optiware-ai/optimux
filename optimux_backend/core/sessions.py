@@ -181,7 +181,8 @@ class Recorder:
     MERGE = ("token", "thinking")
     SKIP = ("done", "auth_ok", "approval_request", "chat_reset", "session_loaded", "session_started", "stopped",
             "project_created",   # a toast: only for the page that's watching
-            "prompt_masked")     # the stored prompt is already the hidden version
+            "prompt_masked",     # the stored prompt is already the hidden version
+            "command_limit", "command_limit_done")   # the keep-waiting question, live only
 
     def __init__(self):
         self.pending: list[dict] = []
