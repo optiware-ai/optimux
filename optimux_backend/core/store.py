@@ -138,6 +138,12 @@ MIGRATIONS = [
     );
     CREATE INDEX model_events_ts ON model_events (ts);
     """,
+    # 10: the savings view (v0.6, IM-08): what the same tokens would have cost on the
+    # reference model (the Complex model at the time of the call). NULL = not measured.
+    """
+    ALTER TABLE usage ADD COLUMN ref_model TEXT;
+    ALTER TABLE usage ADD COLUMN ref_cost REAL;
+    """,
 ]
 
 _ready_for: str | None = None

@@ -186,6 +186,79 @@
                         No model calls in this period{{ perfProject ? ' for ' + perfProject : '' }}. Chat a little, then come back.
                     </div>
                     <template v-if="perf && !perf.empty">
+                        <!-- 0. Savings (IM-08) -->
+                        <div v-if="perf.sv" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                <h3 class="text-[15px] font-bold text-gray-200 flex items-center">What routing saved<help-tip wide>
+                                    <p>For every call, Optimux works out what the same tokens would have cost on the <b>Complex model</b> of that moment (the reference), and compares it with what was really spent.</p>
+                                    <p>The <b>Conductor</b> counts as pure extra cost: without routing it would not run at all.</p>
+                                    <p>Limits: it assumes the reference model would have used the same tokens; calls escalated after the Simple model got stuck are not subtracted yet; only prices are compared, not quality or speed.</p>
+                                    <p>Calls made before v0.6 are <b>estimated</b> with today's Complex model and prices. Calls with an unknown price are <b>not measured</b>.</p>
+                                </help-tip></h3>
+                                <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+                                    <span class="flex items-center gap-1.5"><span class="cm-pf-key cm-sv-key-ref"></span>Would have cost</span>
+                                    <span class="flex items-center gap-1.5"><span class="cm-pf-key cm-sv-key-spent"></span>Spent</span>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                                <div>
+                                    <div class="text-xs uppercase tracking-wider text-gray-500">Spent</div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtUsd(perf.sv.v.spent) }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">{{ perf.sv.v.calls.toLocaleString() }} calls</div>
+                                </div>
+                                <div>
+                                    <div class="text-xs uppercase tracking-wider text-gray-500">Would have cost</div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtUsd(perf.sv.v.reference) }}</div>
+                                    <div class="text-xs text-gray-500 mt-1 truncate" :title="perf.sv.refTitle">all on {{ perf.sv.refName }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-xs uppercase tracking-wider text-gray-500">Saved</div>
+                                    <div :class="['text-2xl font-mono mt-1', perf.sv.v.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(perf.sv.v.saved) }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">{{ perf.sv.v.saved_share === null ? '—' : fmtPct(perf.sv.v.saved_share) + (perf.sv.v.saved >= 0 ? ' less' : ' more') }}</div>
+                                </div>
+                            </div>
+                            <svg :width="perf.sv.W" :height="perf.sv.H" class="cm-pf-svg" role="img" aria-label="Spent against what the same calls would have cost on the reference model" @mouseleave="hideTip">
+                                <g v-for="g in perf.sv.grid" :key="'g' + g.y">
+                                    <line :x1="perf.sv.left" :x2="perf.sv.W" :y1="g.y" :y2="g.y" class="cm-pf-grid"></line>
+                                    <text :x="perf.sv.left - 8" :y="g.y + 4" text-anchor="end" class="cm-pf-axis">{{ g.text }}</text>
+                                </g>
+                                <path :d="perf.sv.gapPath" class="cm-sv-gap"></path>
+                                <path :d="perf.sv.refPath" class="cm-sv-line cm-sv-ref"></path>
+                                <path :d="perf.sv.spentPath" class="cm-sv-line cm-sv-spent"></path>
+                                <g v-for="(p, i) in perf.sv.points" :key="'p' + i" @mousemove="showTip($event, p.tip)" class="cm-pf-col cm-sv-pt">
+                                    <rect :x="p.band" :y="perf.sv.topPad" :width="perf.sv.step" :height="perf.sv.plotH" class="cm-pf-band"></rect>
+                                    <line :x1="p.x" :x2="p.x" :y1="perf.sv.topPad" :y2="perf.sv.topPad + perf.sv.plotH" class="cm-sv-cross"></line>
+                                    <circle :cx="p.x" :cy="p.yRef" r="4" class="cm-sv-dot cm-sv-dot-ref"></circle>
+                                    <circle :cx="p.x" :cy="p.ySpent" r="4" class="cm-sv-dot cm-sv-dot-spent"></circle>
+                                </g>
+                                <text v-for="l in perf.sv.xlabels" :key="'x' + l.x" :x="l.x" :y="perf.sv.H - 6" text-anchor="middle" class="cm-pf-axis">{{ l.text }}</text>
+                            </svg>
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+                                <div v-for="t in [['By role', perf.sv.roles], ['By project', perf.sv.projects]]" :key="t[0]" class="overflow-x-auto">
+                                    <table class="w-full text-[13px]">
+                                        <thead><tr class="text-xs text-gray-500 text-left">
+                                            <th class="font-normal py-1 pr-3">{{ t[0] }}</th><th class="font-normal py-1 pr-3 text-right">Calls</th>
+                                            <th class="font-normal py-1 pr-3 text-right">Spent</th><th class="font-normal py-1 pr-3 text-right">Would have cost</th>
+                                            <th class="font-normal py-1 text-right">Saved</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            <tr v-for="r in t[1]" :key="r.key" class="border-t border-gray-800 text-gray-300">
+                                                <td class="py-1 pr-3 truncate max-w-[12rem]" :title="r.key">{{ r.label }}</td>
+                                                <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString() }}</td>
+                                                <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.spent) }}</td>
+                                                <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.reference) }}</td>
+                                                <td :class="['py-1 text-right font-mono', r.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(r.saved) }}<span class="text-gray-500"> · {{ r.saved_share === null ? 'extra' : fmtPct(r.saved_share) }}</span></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-3">
+                                <span v-if="perf.sv.v.estimated_calls">{{ perf.sv.v.estimated_calls.toLocaleString() }} older calls are estimated with today's prices. </span>
+                                <span v-if="perf.sv.v.not_measured_calls">{{ perf.sv.v.not_measured_calls.toLocaleString() }} calls are not measured (unknown price). </span>
+                                <span v-if="perf.sv.v.escalations">{{ perf.sv.v.escalations.toLocaleString() }} escalations: the Simple model's work on those was extra cost, not yet subtracted.</span>
+                            </p>
+                        </div>
                         <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
                             <div v-for="k in perf.kpis" :key="k.label" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                                 <div class="text-xs uppercase tracking-wider text-gray-500">{{ k.label }}</div>
@@ -402,7 +475,7 @@
 
                 <!-- Section: Overview -->
                 <div v-if="settingsTab === 'overview'" class="space-y-6">
-                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div :class="['grid grid-cols-2 gap-4', overviewKpis.length > 4 ? 'lg:grid-cols-5' : 'lg:grid-cols-4']">
                         <div v-for="k in overviewKpis" :key="k.label" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                             <div class="text-xs uppercase tracking-wider text-gray-500">{{ k.label }}</div>
                             <div class="text-2xl font-mono text-gray-100 mt-1">{{ k.value }}</div>

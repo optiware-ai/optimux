@@ -767,6 +767,13 @@ The price per token comes from your model settings or LiteLLM's price list. When
 
 **Dashboard → Performance** answers one question: *which model gives you the most for your money?* Pick a period (7, 30 or 90 days, or all time) and a project, or all projects. Hover any bar, dot or cell for its numbers.
 
+- **What routing saved** (top card): what you **spent**, what the same calls **would have cost** if every one had gone to the Complex model, and the difference, **saved**, in dollars and percent. The chart shows both per day (per week for long periods); the shaded gap between the two lines is the saving. Two tables split it by role and by project. Read it like this:
+  - The reference is the Complex model **at the time of each call**, so changing models later doesn't rewrite the past.
+  - The **Conductor** counts as pure extra cost (without routing it wouldn't run), so its row shows a negative saving.
+  - It assumes the Complex model would have used the same tokens, and it compares prices only, not quality or speed.
+  - Calls escalated after the Simple model got stuck are not subtracted yet: the Simple model's part of them was extra cost.
+  - Calls made before v0.6 are **estimated** with today's Complex model and prices; calls with an unknown price are **not measured**. The note under the card counts both.
+  - **Dashboard → Overview** shows the same figure for this month in the **Saved · month** tile.
 - **The tiles:** what you spent, how many calls, the average cost of a call, the median latency and the reliability. A **+** after an amount means some calls have no known price, so the real total is higher; add the price in **Models**.
 - **What stands out:** a few plain sentences: which model takes most of the money, how much more one call costs on the dearest model than on the cheapest, the fastest model, and which model got stuck or failed most. When a figure comes from fewer than 20 calls, it says so: don't judge a model on a handful of calls.
 - **Spending per day, by model:** stacked columns, one colour per model. **Calls** shows the number of calls instead. Long periods are grouped by week.

@@ -107,3 +107,16 @@
 .cm-pf-cost { fill: #2a78d6; }
 .cm-pf-k-calls { background: #86b6ef; }
 .cm-pf-k-cost { background: #2a78d6; }
+
+/* Savings view (IM-08): spent against the reference model */
+.cm-sv-key-ref { background: #86b6ef; }
+.cm-sv-key-spent { background: #2a78d6; }
+.cm-sv-gap { fill: rgba(134, 182, 239, .12); }
+.cm-sv-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.cm-sv-ref { stroke: #86b6ef; }
+.cm-sv-spent { stroke: #2a78d6; }
+.cm-sv-cross { stroke: #64748b; stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; }
+.cm-sv-dot { stroke: #111827; stroke-width: 2; opacity: 0; }
+.cm-sv-dot-ref { fill: #86b6ef; }
+.cm-sv-dot-spent { fill: #2a78d6; }
+.cm-sv-pt:hover .cm-sv-cross, .cm-sv-pt:hover .cm-sv-dot { opacity: 1; }

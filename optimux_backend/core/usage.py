@@ -14,7 +14,8 @@ from optimux_backend.core import store
 
 USAGE_FILE = store.paths.LEGACY_USAGE_LOG  # legacy log, imported once
 COLUMNS = ("ts", "session", "project", "role", "model", "prompt_tokens", "completion_tokens",
-           "cached_tokens", "reasoning_tokens", "cost", "duration_ms", "estimated", "skill", "plan_id", "step")
+           "cached_tokens", "reasoning_tokens", "cost", "duration_ms", "estimated", "skill", "plan_id", "step",
+           "ref_model", "ref_cost")
 _imported_for: str | None = None
 NO_PROJECT = "(no project)"
 LOCAL_PROVIDERS = ("ollama/", "ollama_chat/")  # run on your machine: no per-token cost
@@ -107,6 +108,33 @@ def cost_for(model: str, tokens: dict) -> float | None:
         return None
 
 
+# The savings view (v0.6, IM-08). Each call also gets what the same tokens would
+# have cost on the reference model: the Complex model at the time of the call.
+# The Conductor's reference is 0: with the strong model for everything there is
+# no routing call, so it is pure overhead. Model tests are not work: no reference.
+REF_ZERO_ROLES = ("conductor",)
+REF_SKIP_ROLES = ("test",)
+
+
+def reference_model() -> str:
+    """The model calls are compared with: the Complex model of the routing."""
+    try:
+        from optimux_backend.core.config_manager import get_routing_config
+        return (get_routing_config() or {}).get("complex_model", "") or ""
+    except Exception:
+        return ""
+
+
+def reference_cost(role: str, tokens: dict, ref_model: str) -> float | None:
+    """What these tokens would have cost on ref_model for this role; None when
+    it can't be known (no reference model, or no price for it)."""
+    if role in REF_SKIP_ROLES or not ref_model:
+        return None
+    if role in REF_ZERO_ROLES:
+        return 0.0
+    return cost_for(ref_model, tokens)
+
+
 def record(session_id: str, role: str, model: str, usage, duration_ms: int | None = None,
            project: str = "", skill: str | None = None, plan_id: str | None = None,
            step: int | None = None) -> dict:
@@ -124,6 +152,10 @@ def record(session_id: str, role: str, model: str, usage, duration_ms: int | Non
         "cost": cost_for(model, tokens),
         "duration_ms": duration_ms,
     }
+    ref = reference_model()
+    if role not in REF_SKIP_ROLES and ref:
+        entry["ref_model"] = ref
+        entry["ref_cost"] = reference_cost(role, tokens, ref)
     if plan_id:
         entry["plan_id"] = plan_id
         entry["step"] = step

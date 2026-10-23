@@ -1984,8 +1984,17 @@ createApp({
                 { label: 'This month', value: fmtCost(month.cost) + (month.calls_without_cost ? '+' : ''), sub: `${month.calls} calls` },
                 { label: 'Cache hit · month', value: hit + '%', sub: `${fmtTokens(month.cached_tokens)} of ${fmtTokens(month.prompt_tokens)} input tokens` },
                 { label: 'Output · month', value: fmtTokens(month.completion_tokens), sub: `${fmtTokens(month.reasoning_tokens || 0)} of it thinking` },
+                ...(monthSavings.value && monthSavings.value.calls ? [{
+                    label: 'Saved · month', value: fmtUsd(monthSavings.value.saved),
+                    sub: monthSavings.value.saved_share !== null ? `${fmtPct(monthSavings.value.saved_share)} less than all on Complex` : '' }] : []),
             ];
         });
+        // IM-08: this month's savings, for the Overview tile
+        const monthSavings = ref(null);
+        const fetchMonthSavings = async () => {
+            try { const r = await fetch('/api/savings?period=month'); if (r.ok) monthSavings.value = await r.json(); }
+            catch (error) { console.error('Failed to load the savings', error); }
+        };
 
         // ---- Dashboard → Performance (v0.5): cost and performance per model.
         // Colours: a fixed categorical order validated for colour-blind readers on the
@@ -2025,6 +2034,7 @@ createApp({
         const fmtUsd = (c) => {
             if (c === null || c === undefined) return '—';
             if (c === 0) return '$0';
+            if (c < 0) return '−' + fmtUsd(-c);
             if (c >= 1) return '$' + c.toFixed(2);
             if (c >= 0.01) return '$' + c.toFixed(3);
             return '$' + Number(c.toPrecision(2)).toFixed(Math.min(8, 1 - Math.floor(Math.log10(c))));
@@ -2391,7 +2401,53 @@ createApp({
                 return (va < vb ? -1 : 1) * dir;
             });
             const sinceEvents = d.events_since && d.events_since > d.since ? new Date(d.events_since * 1000).toLocaleDateString() : '';
-            return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, empty: !models.length,
+            // 0. Savings (IM-08): spent against the reference model, per day (or week)
+            const sv = (() => {
+                const v = d.savings;
+                if (!v || !v.calls) return null;
+                const buckets = d.timeline.map(b => b.bucket);
+                const keyOf = (day) => {
+                    if (!d.weekly) return day;
+                    const dt = new Date(day + 'T00:00:00');
+                    dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+                    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+                };
+                const per = Object.fromEntries(buckets.map(k => [k, { spent: 0, reference: 0 }]));
+                Object.entries(v.by_day).forEach(([day, x]) => {
+                    const k = keyOf(day);
+                    if (per[k]) { per[k].spent += x.spent; per[k].reference += x.reference; }
+                });
+                const H = 200, left = 56, right = 12, topPad = 10, bottom = 26;
+                const plotW = Math.max(100, W - left - right), plotH = H - topPad - bottom;
+                const max = Math.max(0, ...buckets.map(k => Math.max(per[k].spent, per[k].reference)));
+                const ticks = niceTicks(max || 0.01, 4), ymax = ticks[ticks.length - 1];
+                const step = plotW / Math.max(1, buckets.length - 1);
+                const X = (i) => left + (buckets.length === 1 ? plotW / 2 : i * step);
+                const Y = (val) => topPad + plotH * (1 - val / ymax);
+                const line = (key) => buckets.map((k, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(per[k][key]).toFixed(1)}`).join('');
+                const gap = buckets.map((k, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(per[k].reference).toFixed(1)}`).join('')
+                    + [...buckets].reverse().map((k, j) => `L${X(buckets.length - 1 - j).toFixed(1)},${Y(per[k].spent).toFixed(1)}`).join('') + 'Z';
+                const every = Math.max(1, Math.ceil(64 / Math.max(step, 1)));
+                const points = buckets.map((k, i) => ({
+                    x: X(i), ySpent: Y(per[k].spent), yRef: Y(per[k].reference), band: X(i) - step / 2,
+                    tip: { title: d.weekly ? 'Week of ' + k : new Date(k + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
+                           rows: [{ color: '#86b6ef', label: 'Would have cost', value: fmtUsd(per[k].reference) },
+                                  { color: '#2a78d6', label: 'Spent', value: fmtUsd(per[k].spent) },
+                                  { label: 'Saved', value: fmtUsd(per[k].reference - per[k].spent) }] } }));
+                const rowsOf = (obj, label) => Object.entries(obj).map(([k, x]) => ({ key: k, label: label(k), ...x }));
+                const maxRef = Math.max(0.000001, ...Object.values(v.by_role).map(x => x.reference), ...Object.values(v.by_project).map(x => x.reference));
+                const refs = Object.keys(v.reference_models || {});
+                return {
+                    W, H, left, topPad, plotH, step: Math.max(step, 8), points, spentPath: line('spent'), refPath: line('reference'), gapPath: gap,
+                    grid: ticks.map(t => ({ y: Y(t), text: fmtUsd(t) })),
+                    xlabels: buckets.map((k, i) => ({ k, i })).filter(({ i }) => (buckets.length - 1 - i) % every === 0)
+                        .map(({ k, i }) => ({ x: X(i), text: new Date(k + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })),
+                    v, maxRef, roles: rowsOf(v.by_role, perfRole), projects: rowsOf(v.by_project, (k) => k),
+                    refName: refs.length === 1 ? (byId[refs[0]] || {}).name || base(refs[0]) : (refs.length ? refs.length + ' reference models' : base(v.today_reference || '')),
+                    refTitle: refs.map(r => `${r}: ${v.reference_models[r]} calls`).join('\n'),
+                };
+            })();
+            return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, sv, empty: !models.length,
                      maxShare: Math.max(0.0001, ...models.map(m => m.share)) };
         });
         const PERF_ROLES = { conductor: 'Conductor', simple: 'Simple', complex: 'Complex', override: 'chosen by you', curator: 'memory',
@@ -2707,7 +2763,7 @@ createApp({
             if (['overview', 'usage', 'budgets', 'system'].includes(id)) fetchUsage();
             if (['overview', 'usage'].includes(id)) fetchDaily();
             if (id === 'performance') fetchPerf();
-            if (id === 'overview') { fetchRecentChats(); fetchDeleted(); }
+            if (id === 'overview') { fetchRecentChats(); fetchDeleted(); fetchMonthSavings(); }
             if (id === 'projects') fetchProjectsOverview();
             if (id === 'history') fetchHistoryPage();
             if (id === 'memory') { fetchMemory(); fetchCostEstimates(); }
@@ -3952,7 +4008,7 @@ createApp({
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
             snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
-            pageUpdated, reloadPage, dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
+            monthSavings, pageUpdated, reloadPage, dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
             rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,

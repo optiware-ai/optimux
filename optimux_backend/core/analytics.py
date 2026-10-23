@@ -155,6 +155,67 @@ def _empty_model() -> dict:
             "_durations": [], "_speeds": [], "errors": 0, "error_kinds": {}, "escalations": 0}
 
 
+def savings_of(entries: list[dict], escalations: int = 0) -> dict:
+    """Spent against what the same calls would have cost on the reference model
+    (v0.6, IM-08). A call made before reference costs were stored is estimated
+    with today's reference model and prices; a call whose own price or whose
+    reference price is unknown is "not measured" and left out of both sums."""
+    from optimux_backend.core.usage import REF_SKIP_ROLES, reference_cost, reference_model
+    today_ref = reference_model()
+    tot = {"spent": 0.0, "reference": 0.0, "calls": 0, "estimated_calls": 0, "not_measured_calls": 0}
+    by_role: dict[str, dict] = {}
+    by_project: dict[str, dict] = {}
+    by_day: dict[str, dict] = {}
+    refs: dict[str, int] = {}
+
+    def add(bucket: dict, key: str, spent: float, ref: float) -> None:
+        b = bucket.setdefault(key, {"spent": 0.0, "reference": 0.0, "calls": 0})
+        b["spent"] += spent
+        b["reference"] += ref
+        b["calls"] += 1
+
+    for e in entries:
+        role = e.get("role") or "?"
+        if role in REF_SKIP_ROLES:
+            continue
+        ref, ref_model = e.get("ref_cost"), e.get("ref_model")
+        estimated = False
+        if ref_model is None:                  # before v0.6: estimated with today's reference
+            ref_model = today_ref
+            tokens = {k: int(e.get(k) or 0) for k in ("prompt_tokens", "completion_tokens", "cached_tokens")}
+            ref = reference_cost(role, tokens, ref_model) if ref_model else None
+            estimated = True
+        if e.get("cost") is None or ref is None:
+            tot["not_measured_calls"] += 1
+            continue
+        tot["calls"] += 1
+        tot["estimated_calls"] += estimated
+        tot["spent"] += e["cost"]
+        tot["reference"] += ref
+        refs[ref_model] = refs.get(ref_model, 0) + 1
+        add(by_role, role, e["cost"], ref)
+        add(by_project, e.get("project") or "(unknown)", e["cost"], ref)
+        add(by_day, datetime.fromtimestamp(e["ts"]).date().isoformat(), e["cost"], ref)
+
+    def finish(b: dict) -> dict:
+        b["saved"] = b["reference"] - b["spent"]
+        b["saved_share"] = (b["saved"] / b["reference"]) if b["reference"] > 0 else None
+        return b
+
+    finish(tot)
+    return {**tot, "escalations": escalations, "reference_models": refs, "today_reference": today_ref,
+            "by_role": {k: finish(v) for k, v in sorted(by_role.items(), key=lambda kv: -kv[1]["reference"])},
+            "by_project": {k: finish(v) for k, v in sorted(by_project.items(), key=lambda kv: -kv[1]["reference"])},
+            "by_day": {k: finish(v) for k, v in sorted(by_day.items())}}
+
+
+def savings(since: float, project: str | None = None) -> dict:
+    """The savings view for a period (the Overview tile uses this month)."""
+    entries = usage.read_entries(project=project, since=since)
+    events, _ = _events(project, since)
+    return savings_of(entries, sum(1 for ev in events if ev["kind"] == "escalation"))
+
+
 def analytics(days: int = 30, project: str | None = None, now: float | None = None) -> dict:
     """Per-model cost and performance for the last `days` days (0 = all time),
     optionally for one project."""
@@ -272,5 +333,6 @@ def analytics(days: int = 30, project: str | None = None, now: float | None = No
         if (totals["calls"] + totals["errors"]) else None
     return {"days": days, "project": project, "since": since or start, "now": now, "weekly": weekly,
             "events_since": events_since, "totals": totals, "models": rows, "timeline": timeline,
-            "matrix": matrix, "roles": role_rows, "top": TOP_MODELS, "color_order": color_order(),
+            "matrix": matrix, "roles": role_rows, "top": TOP_MODELS,
+            "savings": savings_of(entries, totals["escalations"]), "color_order": color_order(),
             "projects": known_projects()}

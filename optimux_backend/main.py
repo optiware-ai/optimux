@@ -450,6 +450,13 @@ async def get_usage_daily(days: int = 30, project: str | None = None):
     return usage_meter.daily(max(1, min(days, 366)), project)
 
 
+@app.get("/api/savings")
+async def get_savings(period: str = "month", project: str | None = None):
+    """Spent against the reference model (IM-08), for this month (the Overview tile) or all time."""
+    since = usage_meter.month_start() if period == "month" else 0
+    return await asyncio.to_thread(analytics.savings, since, project or None)
+
+
 @app.get("/api/analytics")
 async def get_analytics(days: int = 30, project: str | None = None):
     """Cost and performance per model (Dashboard → Performance). days=0 is all time."""
