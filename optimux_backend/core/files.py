@@ -20,6 +20,8 @@ import os
 import re
 import tempfile
 
+from optimux_backend.core.security import mask_secrets, secret_mark, secret_values
+
 MAX_BYTES = 1_000_000          # a file larger than this isn't written or edited
 DIFF_LINES = 400               # diff lines shown in the approval and the chat
 SHRINK_MIN_LINES = 20          # write_file may not cut a file this long to half its lines or less
@@ -115,6 +117,28 @@ def _check_text(rel: str, before: str | None, after: str) -> None:
                             "Write emoji and other special characters as themselves.")
 
 
+def _keep_keys(rel: str, before: str | None, text: str) -> str:
+    """Saved keys are shown to models as ••••(NAME) (v0.5.1). A model that edits
+    or rewrites a file may keep such a mark where the key already is: the mark
+    is written back as the key. It can't add a key the file doesn't have, so a
+    model can never place a key it was never shown into a file."""
+    if "••••(" not in text:
+        return text
+    old = before or ""
+    for name, value in secret_values():
+        mark = secret_mark(name)
+        n = text.count(mark)
+        if not n:
+            continue
+        if n > old.count(value):
+            raise FileToolError(
+                f"the new text for {rel} has {mark}, a key saved in Optimux that is hidden from models. A key "
+                "can stay where it already is, but can't be added or copied. Leave that part out, or ask the "
+                "user to put the key in by hand.")
+        text = text.replace(mark, value)
+    return text
+
+
 def _change(real: str, rel: str, op: str, before: str | None, after: str) -> dict:
     _check_text(rel, before, after)
     if len(after.encode("utf-8")) > MAX_BYTES:
@@ -126,9 +150,11 @@ def _change(real: str, rel: str, op: str, before: str | None, after: str) -> dic
     shown = diff[2:] if len(diff) >= 2 else diff         # the ---/+++ header repeats the path
     if len(shown) > DIFF_LINES:
         shown = shown[:DIFF_LINES] + [f"… {len(shown) - DIFF_LINES} more diff lines"]
+    # The diff is shown, stored and can reach a model: saved keys stay hidden in it
+    diff, _ = mask_secrets("\n".join(shown))
     return {"abs": real, "path": rel, "op": op, "new_text": after, "before_digest": _digest(before),
             "lines_before": 0 if before is None else _lines(before), "lines_after": _lines(after),
-            "added": added, "removed": removed, "diff": "\n".join(shown)}
+            "added": added, "removed": removed, "diff": diff}
 
 
 def prepare_write(project: str, path: str, content) -> dict:
@@ -137,6 +163,7 @@ def prepare_write(project: str, path: str, content) -> dict:
         raise FileToolError("content must be a string.")
     real, rel = resolve_target(project, path)
     before = _read_text(real, rel) if os.path.exists(real) else None
+    content = _keep_keys(rel, before, content)
     if before is not None and before == content:
         raise FileToolError(f"{rel} already has exactly this content; nothing to change.")
     if before is not None:
@@ -162,6 +189,9 @@ def prepare_edit(project: str, path: str, old_text, new_text) -> dict:
     if not os.path.exists(real):
         raise FileToolError(f"{rel} doesn't exist; use write_file to create it.")
     before = _read_text(real, rel)
+    # A model copies old_text from output where keys are hidden: find the real text
+    old_text = _keep_keys(rel, before, old_text)
+    new_text = _keep_keys(rel, old_text, new_text)          # only keys the replaced text has
     count = before.count(old_text)
     if count != 1:
         hint = ("Read the file again and copy the exact text, including spaces, quotes and special characters."

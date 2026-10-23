@@ -108,6 +108,7 @@ Optimux runs on your own machine, works on your own repositories, and treats **c
 - A **bubblewrap sandbox**: commands can only change the active project; your home folder and keys are invisible.
 - **Ready for a server**: password sign-in with optional two-step codes, a strict content security policy, and a [deployment kit](deploy/) (HTTPS with Caddy, a hardened systemd unit).
 - **Commands run lean**: only an allow-list of environment variables (never keys), with per-command limits on memory, file size and processes.
+- **Saved keys are hidden** in command output and file diffs (`••••(NAME)`), so a key inside a project file never reaches the chat, the history or a model; long output is cut in the middle so it can't flood the model.
 
 **Security and sign-in**
 - **Password sign-in** (scrypt) with optional **two-step codes** from an authenticator app; failed attempts are rate-limited.
@@ -362,7 +363,7 @@ The same tests and `shellcheck` run on GitHub Actions for every push and pull re
 ## Roadmap
 
 - **Measured local-model delegation**: hand narrow, checkable tasks (output compression, titles, embeddings) to free local models where it pays off.
-- **Security, phase 2** (before 1.0): an audit log, masking secrets in command output, dependency scanning and signed releases, then an independent penetration test.
+- **Security, phase 2** (before 1.0): an audit log, dependency scanning and signed releases, then an independent penetration test.
 - **Teams** (a later generation): several users, roles, and keys and budgets per user.
 - **Configurable command timeout** (30 seconds today).
 

@@ -3084,7 +3084,7 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                     out = exec_result["stdout"] or exec_result["stderr"] or "(no output)"
                     log_command_to_session(cmd, exec_result["exit_code"])
                     await send(websocket, "command_output", command=cmd, output=out, exit_code=exec_result["exit_code"],
-                               cut=exec_result.get("cut", 0))
+                               cut=exec_result.get("cut", 0), hidden=exec_result.get("hidden", 0))
                     messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": json.dumps(exec_result)})
                 else:
                     reason = answer.get("reason", "")

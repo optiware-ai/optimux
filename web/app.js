@@ -3462,7 +3462,7 @@ createApp({
                     scrollToBottom();
                 } else if (data.type === "command_output") {
                     const cmdObj = lastMsg.commands.find(c => c.command === data.command && c.exit_code === undefined);
-                    if (cmdObj) { cmdObj.output = data.output; cmdObj.exit_code = data.exit_code; cmdObj.cut = data.cut || 0; }
+                    if (cmdObj) { cmdObj.output = data.output; cmdObj.exit_code = data.exit_code; cmdObj.cut = data.cut || 0; cmdObj.hidden = data.hidden || 0; }
                     scrollToBottom();
                     if (!replay && appSettings.value.projects_root) {
                         fetchProjectsList();

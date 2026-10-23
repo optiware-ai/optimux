@@ -7,7 +7,7 @@ from optimux_backend.core import sandbox
 import resource
 
 from optimux_backend.core.config_manager import get_settings, command_env
-from optimux_backend.core.security import ScopeError, resolve_project_dir, resolve_scope_root
+from optimux_backend.core.security import ScopeError, mask_secrets, resolve_project_dir, resolve_scope_root
 
 
 def get_active_cwd() -> str:
@@ -100,6 +100,7 @@ class _Capped:
     def __init__(self, head: int, tail: int):
         self.head_n, self.tail_n = head, tail
         self.head, self.tail, self.total = bytearray(), bytearray(), 0
+        self.hidden = 0
 
     def add(self, chunk: bytes) -> None:
         self.total += len(chunk)
@@ -134,14 +135,28 @@ class _Capped:
         return self.total - len(head) - len(tail)
 
     def text(self) -> str:
+        """The kept output with saved keys hidden (security.mask_secrets); how
+        many were hidden is in self.hidden. Each side of a cut is checked for a
+        piece of a key too, since the cut can fall inside one."""
         head, tail = self._parts()
         cut = self.total - len(head) - len(tail)
         if not cut:
-            return (head + tail).decode("utf-8", errors="replace")
-        return (head.decode("utf-8", errors="replace").rstrip("\n")
-                + f"\n\n[... {cut:,} bytes of output cut here by Optimux ({self.total:,} in all). "
-                  "To see a part, run the command again with grep, head, tail or sed -n. ...]\n\n"
-                + tail.decode("utf-8", errors="replace"))
+            out, self.hidden = mask_secrets((head + tail).decode("utf-8", errors="replace"))
+            return out
+        start, n1 = mask_secrets(head.decode("utf-8", errors="replace").rstrip("\n"), edges=True)
+        end, n2 = mask_secrets(tail.decode("utf-8", errors="replace"), edges=True)
+        self.hidden = n1 + n2
+        return (start + f"\n\n[... {cut:,} bytes of output cut here by Optimux ({self.total:,} in all). "
+                        "To see a part, run the command again with grep, head, tail or sed -n. ...]\n\n" + end)
+
+
+def _extras(result: dict, out_buf: _Capped, err_buf: _Capped) -> dict:
+    """Add "cut" (bytes dropped) and "hidden" (saved keys hidden) when there are any."""
+    if out_buf.cut or err_buf.cut:
+        result["cut"] = out_buf.cut + err_buf.cut
+    if out_buf.hidden or err_buf.hidden:
+        result["hidden"] = out_buf.hidden + err_buf.hidden
+    return result
 
 
 async def _drain(stream, sink: _Capped) -> None:
@@ -207,17 +222,13 @@ async def run_shell_command(command: str, timeout: int = 30, cwd: str | None = N
                     "other projects and the rest of the system are read-only. To create a project, use the "
                     "create_project tool; anything else outside this folder is for the user to do.]")
         result = {"stdout": out_buf.text(), "stderr": err, "exit_code": process.returncode}
-        if out_buf.cut or err_buf.cut:
-            result["cut"] = out_buf.cut + err_buf.cut
-        return result
+        return _extras(result, out_buf, err_buf)
     except asyncio.TimeoutError:
         _kill_group(process)
         # What the command printed before it was stopped helps to see where it hung
         result = {"stdout": out_buf.text(), "stderr": (err_buf.text() + "\n" if err_buf.total else "")
                   + f"Command timed out after {timeout}s.", "exit_code": 124}
-        if out_buf.cut or err_buf.cut:
-            result["cut"] = out_buf.cut + err_buf.cut
-        return result
+        return _extras(result, out_buf, err_buf)
     except asyncio.CancelledError:
         # The user pressed Stop: don't leave the command running
         _kill_group(process)

@@ -657,6 +657,8 @@ Open files are always capped at 4,096 and core dumps are off. Each command also 
 - Your password is stored only as a scrypt hash in `~/.optimux/auth.json` (mode 600), together with the two-step secret if you turned it on.
 - Commands get an allow-list of variables, not a copy of the server's environment (see *What commands see, and their limits*), so a command like `env` can't leak keys.
 - Automatic memory updates are told never to store secrets.
+- **Saved keys are hidden in output.** If a file a command prints holds the exact value of a saved key (a project `.env`, a config file, or `secrets.env` itself when the sandbox is off), the output shows `••••(ANTHROPIC_API_KEY)` instead, marked **🔒 key hidden**. The chat, the history and the model never see the value. File changes show keys the same way in their diffs. Only exact values (8 characters or more) of the keys in `secrets.env` and of key-like variables of the server's environment are hidden, so git hashes and other long strings stay readable; server addresses (`…_API_BASE`) aren't secret and stay visible.
+- **A model can keep a key, never place one.** When a model edits or rewrites a file that holds a key, it may leave the `••••(NAME)` mark where the key already is, and Optimux writes the real value back there. Adding a mark anywhere else (a new file, a second copy, another line) is refused, so a model can't put a key it was never shown into a file. To add a key to a project file, type it in yourself.
 
 ## Memory
 

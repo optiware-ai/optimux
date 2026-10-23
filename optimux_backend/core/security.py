@@ -38,6 +38,108 @@ def _secrets_file() -> str:
     return paths.SECRETS_FILE
 
 
+# ---------------------------------------------------------------- hiding saved keys (v0.5.1)
+# "Nothing leaks": a key saved in secrets.env must not reach the chat, the
+# database or a model, even when it sits inside a file a command prints (a
+# project .env, a config file, secrets.env itself with the sandbox off).
+# Exact values only: patterns would hide every git hash and still miss custom keys.
+MIN_SECRET = 8                        # shorter values would match by chance
+MIN_SECRET_PIECE = 6                  # a key cut by the output cap: the piece left at the cut
+NOT_SECRET_SUFFIXES = ("_API_BASE",)  # server addresses are saved there too, and aren't secret
+SECRET_ENV_NAME = re.compile(r"(_API_KEY|_KEY|_TOKEN|_SECRET|_PASSWORD)$")
+_secret_cache: dict = {"key": None, "values": []}
+
+
+def _secret_file_values(path: str) -> list[tuple[str, str]]:
+    out = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key, value = key.strip(), value.strip().strip('"').strip("'")
+                if key.startswith("export "):
+                    key = key[7:].strip()
+                if len(value) >= MIN_SECRET and not key.endswith(NOT_SECRET_SUFFIXES):
+                    out.append((key, value))
+    except (OSError, UnicodeDecodeError):
+        pass
+    return out
+
+
+def secret_values() -> list[tuple[str, str]]:
+    """(name, value) of every saved key: the values in secrets.env (API keys,
+    the GitHub token, the access token) and key-like variables of the server's
+    own environment. Longest first, so a key that contains another is hidden
+    whole. Re-read only when secrets.env changes."""
+    path = _secrets_file()
+    try:
+        st = os.stat(path)
+        stamp = (path, st.st_mtime_ns, st.st_size)
+    except OSError:
+        stamp = (path, None, None)
+    env = tuple(sorted((k, v) for k, v in os.environ.items()
+                       if SECRET_ENV_NAME.search(k) and len(v.strip()) >= MIN_SECRET))
+    key = (stamp, env)
+    if _secret_cache["key"] != key:
+        found: dict[str, str] = {}
+        for name, value in [*_secret_file_values(path), *((k, v.strip()) for k, v in env)]:
+            found.setdefault(value, name)
+        _secret_cache["values"] = sorted(((n, v) for v, n in found.items()), key=lambda x: -len(x[1]))
+        _secret_cache["key"] = key
+    return list(_secret_cache["values"])
+
+
+def secret_mark(name: str) -> str:
+    return f"••••({name})"
+
+
+def mask_secrets(text: str, edges: bool = False) -> tuple[str, int]:
+    """Replace every saved key's exact value in text with ••••(NAME). Returns
+    (text, how many were hidden). With edges=True, a piece of a key (at least
+    MIN_SECRET_PIECE characters) at the very start or end of the text is hidden
+    too: the output cap can cut through a key."""
+    if not text:
+        return text, 0
+    hidden = 0
+    for name, value in secret_values():
+        n = text.count(value)
+        if n:
+            text = text.replace(value, secret_mark(name))
+            hidden += n
+        if edges:
+            for size in range(len(value) - 1, MIN_SECRET_PIECE - 1, -1):
+                if text.endswith(value[:size]):
+                    text = text[:-size] + secret_mark(name + ", cut")
+                    hidden += 1
+                    break
+            for size in range(len(value) - 1, MIN_SECRET_PIECE - 1, -1):
+                if text.startswith(value[-size:]):
+                    text = secret_mark(name + ", cut") + text[size:]
+                    hidden += 1
+                    break
+    return text, hidden
+
+
+def secret_marks_in(text: str) -> list[str]:
+    """Names of saved keys whose ••••(NAME) mark appears in text."""
+    if not text or "••••(" not in text:
+        return []
+    return sorted({name for name, _ in secret_values() if secret_mark(name) in text})
+
+
+def unmask_secrets(text: str) -> str:
+    """The text with each ••••(NAME) mark replaced by the key's value. Only for
+    finding text in a file (edit_file's old_text), never for writing."""
+    if not text or "••••(" not in text:
+        return text
+    for name, value in secret_values():
+        text = text.replace(secret_mark(name), value)
+    return text
+
+
 def _saved_token(env_file: str) -> str:
     """The token saved in secrets.env (the last one, as dotenv reads it), or ''."""
     found = ""

@@ -23,6 +23,7 @@ import threading
 
 from optimux_backend.core import changes as changes_lib
 from optimux_backend.core import paths
+from optimux_backend.core import security
 from optimux_backend.core.security import GITHUB_TOKEN_ENV
 from optimux_backend.core.workspace import (
     MANUAL_COMMIT_MESSAGE, WorkspaceError, _GITHUB_REMOTE, _clean_remote, _git_remote, _run, copy_target, git_can_commit,
@@ -32,7 +33,6 @@ from optimux_backend.core.workspace import (
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 BIG_FILE = 50 * 1024 * 1024          # GitHub refuses files over 100 MB; warn at 50
 SCAN_MAX = 5 * 1024 * 1024            # files larger than this aren't scanned for keys
-MIN_SECRET = 8                        # shorter values would match by chance
 MAX_COMMITS = 30                      # incoming commits listed by Update
 DIFF_CHARS = 15_000                   # diff sent to the model that writes the message
 TEMPLATE_CHARS = 4_000
@@ -115,22 +115,9 @@ def _counts(path: str, upstream: str | None) -> tuple[int, int]:
 
 
 def _secret_values() -> list[tuple[str, bytes]]:
-    """(name, value) of every key saved in secrets.env: API keys, the GitHub
-    token, the access token. Never returned to the page, only their names."""
-    out = []
-    try:
-        with open(paths.SECRETS_FILE, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                value = value.strip().strip('"').strip("'")
-                if len(value) >= MIN_SECRET:
-                    out.append((key.strip(), value.encode("utf-8")))
-    except OSError:
-        pass
-    return out
+    """(name, value) of every saved key (security.secret_values). Only their
+    names are ever shown."""
+    return [(k, v.encode("utf-8")) for k, v in security.secret_values()]
 
 
 def _scan(path: str, files: list[dict]) -> tuple[list[str], list[str]]:
