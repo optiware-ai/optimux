@@ -2,6 +2,31 @@
 
 What each release of Optimux changed. The version rules are in [CONTRIBUTING.md](CONTRIBUTING.md#versions-and-releases); the newest release is at the top.
 
+## v0.5.1 (2026-10-23) — beta
+
+Cost and secrets. Besides the fixes, this release has a few small features that came out of testing them on a server (Reject with a reason, the time limit in the approval box, keep waiting at the limit), so it is a little more than a patch.
+
+**Before you update**
+
+- Commands may now run for **120 seconds** before Optimux asks about them (it was 30, and they were killed). Set another value in **Dashboard → Execution → Timeout**.
+- The first start after the update hides saved keys in chats stored before (after the daily backup). Older daily backups and snapshots keep what they had; daily backups are replaced within 14 days.
+- Reload any open Optimux tab after `optimux update`.
+
+**New**
+
+- **Saved keys never leave the server:** a key from `secrets.env` (or a key-like variable of the server) is shown as `••••(NAME)` in command output, file diffs, your messages, the model's replies, stored chats and everything sent to a model. A model can keep a key where a file already has it, but can never place or copy one.
+- **Long output is cut in the middle:** a command keeps the first 8 KB and the last 16 KB of its output (cut at whole lines), with a note on how to see a part, so one huge output can't flood the model or fill the server's memory.
+- **Command time limits:** a Timeout setting (10 s to 30 min), a time limit per command in the approval box (or no limit), a running counter, and at the limit the command keeps running while Optimux asks whether to keep waiting.
+- **Reject with a reason:** type why next to Reject; the model gets it with the refusal and tries again your way.
+
+**Fixed**
+
+- The full output of a command was resent to the model at every following step of a reply.
+- A key inside a file a command printed reached the chat, the database and the provider.
+- Every command was killed after 30 seconds, including installs, builds and test runs.
+- After a Reject, the model refused to run the command for the rest of the chat even when asked.
+- A timed-out command lost what it had printed.
+
 ## v0.5.0 (2026-10-22) — beta
 
 **Before you update**
