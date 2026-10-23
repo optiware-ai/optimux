@@ -3467,6 +3467,10 @@ createApp({
                     if (!replay && appSettings.value.projects_root) {
                         fetchProjectsList();
                     }
+                } else if (data.type === "prompt_masked") {
+                    // A saved key was pasted: show the message as it was sent and stored (IM-02b)
+                    const mine = [...messages.value].reverse().find(m => m.role === 'user');
+                    if (mine) mine.content = data.content;
                 } else if (data.type === "changes") {
                     const { type, ...rest } = data;
                     lastMsg.changes = rest;

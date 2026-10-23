@@ -151,3 +151,76 @@ def test_cat_env_in_a_chat(saved, mocker, tmp_path):
     finally:
         conn.close()
     assert "(ANTHROPIC_API_KEY)" in stored and KEY not in stored            # stored as JSON (•• escaped)
+
+
+# ---- IM-02b: keys in the user's message and in the model's replies
+
+def _chat(mocker, tmp_path, *responses):
+    from tests.ws_helpers import Conversation, make_client
+    from tests.test_routing_session import Recorder
+    client = make_client(mocker, tmp_path)
+    rec = Recorder(*responses)
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    return Conversation(client), rec
+
+
+def _stored_text():
+    from optimux_backend.core import store
+    conn = store.connect()
+    try:
+        return (" ".join(r[0] for r in conn.execute("SELECT data FROM session_events"))
+                + " ".join((r[0] or "") + (r[1] or "") for r in conn.execute("SELECT history, title FROM sessions")))
+    finally:
+        conn.close()
+
+
+def test_a_key_pasted_in_a_message_is_hidden(saved, mocker, tmp_path):
+    from tests.test_routing_session import reply
+    chat, rec = _chat(mocker, tmp_path, reply("Noted."))
+    msgs = chat.prompt(f"use this key: {KEY} please")
+    chat.close()
+    sent = json.dumps(rec.calls[0]["messages"])
+    assert KEY not in sent and "use this key: ••••(ANTHROPIC_API_KEY) please" in json.loads(sent)[-1]["content"]
+    masked = [m for m in msgs if m["type"] == "prompt_masked"]
+    assert masked and masked[0]["content"] == "use this key: ••••(ANTHROPIC_API_KEY) please"
+    assert any("held a saved key (ANTHROPIC_API_KEY)" in m.get("content", "") for m in msgs if m["type"] == "system")
+    stored = _stored_text()
+    assert KEY not in stored and "prompt_masked" not in stored
+
+
+def test_a_key_in_a_streamed_reply_is_hidden_even_when_split(saved, mocker, tmp_path):
+    from tests.ws_helpers import chunk, fake_stream
+    from tests.test_routing_session import reply
+    DONE = {"prompt_tokens": 10, "completion_tokens": 2}
+    parts = ["Your key is ", KEY[:9], KEY[9:20], KEY[20:], " and the token ", GH[:3], GH[3:], " end."]
+    first = fake_stream([*(chunk(p) for p in parts), chunk(empty=True, usage_obj=DONE)])
+    chat, rec = _chat(mocker, tmp_path, first, reply("ok"))
+    msgs = chat.prompt("what is my key?")
+    chat.prompt("thanks")
+    chat.close()
+    tokens = [m["content"] for m in msgs if m["type"] == "token"]
+    assert all(KEY[:9] not in t and GH[:3] + GH[3:6] not in t for t in tokens)
+    assert "".join(tokens) == "Your key is ••••(ANTHROPIC_API_KEY) and the token ••••(OPTIMUX_GITHUB_TOKEN) end."
+    assert msgs[-1]["type"] == "done"                                        # nothing left waiting
+    assert KEY not in json.dumps(rec.calls[1]["messages"])                  # the history of the next call
+    assert KEY not in _stored_text() and GH not in _stored_text()
+
+
+def test_held_text_keeps_its_place(saved, mocker, tmp_path):
+    """A reply that ends with what could be the start of a key ('sk-') still
+    comes out whole, before the next event."""
+    from tests.ws_helpers import chunk, fake_stream
+    DONE = {"prompt_tokens": 10, "completion_tokens": 2}
+    chat, _ = _chat(mocker, tmp_path, fake_stream([chunk("prefix is sk-"), chunk(empty=True, usage_obj=DONE)]))
+    msgs = chat.prompt("hi")
+    chat.close()
+    kinds = [m["type"] for m in msgs]
+    tokens = [m["content"] for m in msgs if m["type"] == "token"]
+    assert "".join(tokens) == "prefix is sk-" and kinds.index("token") < kinds.index("done")
+
+
+def test_events_are_stored_without_keys(saved, tmp_path):
+    from optimux_backend.core import sessions
+    sid = sessions.create("alpha")
+    sessions.append_events(sid, [{"type": "token", "content": f"k={KEY}"}])
+    assert KEY not in _stored_text()

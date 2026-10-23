@@ -54,7 +54,8 @@ from optimux_backend.core import changes as changes_lib
 from optimux_backend.core import gitsync
 from optimux_backend.core.security import (
     GITHUB_TOKEN_ENV, ScopeError, ValidationError, bearer_from_header, check_token,
-    get_or_create_token, origin_allowed, paths_outside_scope, resolve_project_dir, rotate_token, validate_project_name,
+    get_or_create_token, mask_secrets, origin_allowed, secret_mark, paths_outside_scope, resolve_project_dir, rotate_token,
+    secret_values, validate_project_name,
 )
 
 # No interactive API docs: they would load scripts from a CDN and list every endpoint
@@ -2289,7 +2290,29 @@ async def meter(websocket: WebSocket, session: dict, role: str, model: str, usag
                session_cost_complete=session["cost_complete"])
 
 
+STREAMED_KINDS = ("token", "thinking")
+
+
 async def send(websocket: WebSocket, kind: str, content=None, **extra) -> None:
+    """Send one event to the page (and record it with the chat).
+
+    Streamed text (token, thinking) passes a key filter first (v0.5.1, IM-02b):
+    a saved key a model writes, for example one the user pasted earlier, is
+    shown and stored as ••••(NAME). A key can arrive split over several chunks,
+    so an end that could be the start of a key waits for the next chunk (most
+    chunks end otherwise and go out at once); any other event sends what waits
+    first, so the order never changes."""
+    if kind in STREAMED_KINDS and isinstance(content, str):
+        await _release_held(websocket, but=kind)  # thinking that waits goes out before the text after it
+        content = _hold_back(websocket, kind, content)
+        if not content:
+            return
+    else:
+        await _release_held(websocket)
+    await _send_now(websocket, kind, content, **extra)
+
+
+async def _send_now(websocket: WebSocket, kind: str, content=None, **extra) -> None:
     payload = {"type": kind, **extra}
     if content is not None:
         payload["content"] = content
@@ -2297,6 +2320,47 @@ async def send(websocket: WebSocket, kind: str, content=None, **extra) -> None:
     if recorder is not None:
         recorder.add(payload)
     await websocket.send_text(json.dumps(payload))
+
+
+def _held(websocket: WebSocket) -> dict:
+    held = getattr(websocket, "optimux_held", None)
+    if held is None:
+        held = {}
+        try:
+            websocket.optimux_held = held
+        except AttributeError:
+            pass
+    return held
+
+
+def _hold_back(websocket: WebSocket, kind: str, text: str) -> str:
+    keys = secret_values()
+    if not keys:
+        return text
+    held = _held(websocket)
+    masked, _ = mask_secrets(held.pop(kind, "") + text)
+    # Hold back only an end that could be the start of a key; usually nothing
+    keep = 0
+    for _, value in keys:
+        for k in range(min(len(value) - 1, len(masked)), keep, -1):
+            if masked.endswith(value[:k]):
+                keep = k
+                break
+    if keep:
+        held[kind] = masked[-keep:]
+        return masked[:-keep]
+    return masked
+
+
+async def _release_held(websocket: WebSocket, but: str | None = None) -> None:
+    """Send the streamed text that waits (all kinds, or all but one)."""
+    held = getattr(websocket, "optimux_held", None)
+    if not held:
+        return
+    for kind in STREAMED_KINDS:
+        if kind != but and held.get(kind):
+            masked, _ = mask_secrets(held.pop(kind))
+            await _send_now(websocket, kind, masked)
 
 
 # ------------------------------------------------------------------ provider errors
@@ -2430,6 +2494,9 @@ async def stream_once(websocket: WebSocket, model: str, messages: list, r: Strea
             else:
                 r.pending_text = True
     ratelimits.record_response(model, stream)
+    # What goes on to the history and the next model call: saved keys hidden (IM-02b)
+    r.text = mask_secrets(r.text)[0]
+    r.thinking = mask_secrets(r.thinking)[0]
     return r
 
 
@@ -3599,9 +3666,17 @@ async def websocket_endpoint(websocket: WebSocket):
                 await handle_plan_action(websocket, session, payload)
             else:
                 prompt = payload.get("prompt", "")
+                # A saved key pasted into the chat is hidden before anything sees it (IM-02b)
+                prompt, hidden = mask_secrets(prompt)
                 if prompt.strip().lower() != NEW_CHAT_COMMAND:
                     recorder.add({"type": "prompt", "content": prompt})
                     turns_added = 1
+                if hidden:
+                    names = sorted({n for n, _ in secret_values() if secret_mark(n) in prompt})
+                    await send(websocket, "prompt_masked", content=prompt)     # the page shows the hidden version
+                    await send(websocket, "system", f"Your message held a saved key ({', '.join(names)}). It was "
+                                                    "hidden as ••••(NAME) before anything was sent or stored: "
+                                                    "models never get saved keys.")
                 model_override = payload.get("model", payload.get("model_override", "auto"))
                 await handle_prompt(websocket, session, prompt, model_override)
         except asyncio.CancelledError:

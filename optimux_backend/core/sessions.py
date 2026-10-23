@@ -14,6 +14,13 @@ import time
 import uuid
 
 from optimux_backend.core import store
+from optimux_backend.core.security import mask_secrets
+
+
+def _stored(obj) -> str:
+    """JSON for the database, with saved keys hidden: the last safety net (IM-02b)
+    behind the hiding in command output, prompts and model replies."""
+    return mask_secrets(json.dumps(obj))[0]
 
 TITLE_LENGTH = 80
 
@@ -48,7 +55,7 @@ def append_events(sid: str, events: list[dict]) -> None:
     try:
         with conn:
             conn.executemany("INSERT INTO session_events (session_id, ts, data) VALUES (?, ?, ?)",
-                             [(sid, now, json.dumps(e)) for e in events])
+                             [(sid, now, _stored(e)) for e in events])
             conn.execute("UPDATE sessions SET updated = ? WHERE id = ?", (now, sid))
     finally:
         conn.close()
@@ -62,7 +69,7 @@ def save_state(sid: str, history: list, tier: str | None, tier_pinned: bool,
             conn.execute(
                 "UPDATE sessions SET history = ?, tier = ?, tier_pinned = ?, last_turn_ok = ?, "
                 "turns = turns + ?, updated = ? WHERE id = ?",
-                (json.dumps(history), tier, int(tier_pinned), int(last_turn_ok), turns_added, time.time(), sid))
+                (_stored(history), tier, int(tier_pinned), int(last_turn_ok), turns_added, time.time(), sid))
     finally:
         conn.close()
 
@@ -173,7 +180,8 @@ class Recorder:
 
     MERGE = ("token", "thinking")
     SKIP = ("done", "auth_ok", "approval_request", "chat_reset", "session_loaded", "session_started", "stopped",
-            "project_created")   # a toast: only for the page that's watching
+            "project_created",   # a toast: only for the page that's watching
+            "prompt_masked")     # the stored prompt is already the hidden version
 
     def __init__(self):
         self.pending: list[dict] = []
