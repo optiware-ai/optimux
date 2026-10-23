@@ -3342,6 +3342,8 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                     out = exec_result["stdout"] or exec_result["stderr"] or "(no output)"
                     if exec_result.get("stopped") and exec_result["stdout"]:
                         out += "\n" + exec_result["stderr"].rsplit("\n", 1)[-1]     # why it stopped
+                    elif exec_result.get("hint") and exec_result["hint"] not in out:
+                        out += "\n" + exec_result["hint"]                        # no network in the sandbox
                     log_command_to_session(cmd, exec_result["exit_code"])
                     await send(websocket, "command_output", command=cmd, output=out, exit_code=exec_result["exit_code"],
                                cut=exec_result.get("cut", 0), hidden=exec_result.get("hidden", 0))

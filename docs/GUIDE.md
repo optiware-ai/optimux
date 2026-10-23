@@ -335,7 +335,7 @@ Both use the saved GitHub token for that one call only (never in a URL or a git 
 
 ### Pushing and cloning by hand
 
-The model can commit (when you approve the command) but **can't push**: its commands don't get the GitHub token, and on a server the sandbox has no network either. A push it tries fails with *Could not resolve host* or asks for a username. Push yourself, from a terminal on the machine Optimux runs on.
+The model can commit (when you approve the command) but **can't push**: its commands don't get the GitHub token, and on a server the sandbox has no network either. A push it tries fails with *Could not resolve host* (Optimux then adds a line explaining that the sandbox has no network) or asks for a username. Use **Push** on the project, or push from a terminal on the machine Optimux runs on.
 
 **The quick way:** on the project's card in **Dashboard → Projects**, press **Push manually** or **Pull manually** and **Copy** the one-line command it shows. It's made for that project: its folder, its GitHub address, the user Optimux runs as (through `sudo` on a server) and the saved token for that one command. *Push manually* commits every change first as *Update from Optimux* (edit the message before running it if you like), with the name and email from **Dashboard → GitHub** (on a server, git itself usually has none), then pushes the current branch. *Pull manually* is for another computer: run it in the folder where you keep your projects; it clones the project the first time and pulls after that. Pick **SSH** to clone with your SSH key, and put your SSH host alias (from `~/.ssh/config`) in the *host* box if you use one; the browser remembers it. The address never contains a token, even if the project's origin does. **A copy** (a project whose folder isn't named like its repository, such as `t3-off` cloned from `makerhub2`) pushes to a branch named after its folder (`HEAD:t3-off`), because the original and every other copy share the same repository: pushing them all to `main` would replace each other's work, and git would refuse the second push. Its *Pull manually* clones that branch into a folder with the copy's name. To push a copy to `main` on purpose, change `HEAD:t3-off` to `HEAD` at the end of the command. The sections below explain the same commands step by step.
 
@@ -1057,7 +1057,7 @@ Start Optimux with `OPTIMUX_SERVER=1` and:
 
 - the **sandbox is required** (if bubblewrap doesn't work, commands are refused);
 - **auto-approve is off** and can't be turned on: every command waits for you;
-- commands have **no network** unless you turn it on in **Execution → Sandbox**;
+- commands have **no network** unless you turn it on in **Execution → Sandbox**. When a command fails because of it (*Could not resolve host*, *Temporary failure in name resolution*, *Network is unreachable*…), Optimux adds a line saying so, in the chat and for the model, so the model tells you instead of retrying;
 - the sign-in cookie is only ever sent over **HTTPS**.
 
 ### With the installer
