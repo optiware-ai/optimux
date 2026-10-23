@@ -2,6 +2,28 @@
 
 What each release of Optimux changed. The version rules are in [CONTRIBUTING.md](CONTRIBUTING.md#versions-and-releases); the newest release is at the top.
 
+## v0.5.2 (2026-10-23) — beta
+
+Small safety. The daily-backups screen is a small feature that grew out of checking the backups (IM-05), so this release is a little more than a patch, like v0.5.1.
+
+**Before you update**
+
+- Nothing to do. Reload open Optimux tabs once after this update; from now on a tab tells you itself when Optimux was updated.
+- A memory file over 20,000 characters keeps working, but can't be saved larger until it is shortened.
+
+**New**
+
+- **Daily backups in Dashboard → Backups:** every daily database backup with its check, Back up now, how many to keep (3 to 60), Restore (with the snapshot rules: your current data is saved first, usage, costs and sign-ins are never rolled back), an encrypted Download, and Delete.
+- **"Optimux was updated — Reload":** a tab that stayed open during an update says so and offers a reload, instead of running old code.
+- **Memory limit:** 20,000 characters per memory file (about 5,000 tokens on every request), with a counter in the editor. A longer save, or a model's "remember this" that would go over it, is refused with a message.
+
+**Fixed**
+
+- Daily backups were never checked: a damaged copy could replace a good one, and good ones were pruned anyway. Each copy is now checked before it replaces anything; a failed one is kept aside and Dashboard → System warns.
+- Memory files were written in place: a crash or a full disk could leave them cut. They are now written in one step.
+- The memory editor said "Saved!" even when the save was refused.
+- A command in a sandbox without network failed with "Could not resolve host" and models retried; now a line says why and what to do.
+
 ## v0.5.1 (2026-10-23) — beta
 
 Cost and secrets. Besides the fixes, this release has a few small features that came out of testing them on a server (Reject with a reason, the time limit in the approval box, keep waiting at the limit), so it is a little more than a patch.
