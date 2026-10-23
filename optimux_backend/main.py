@@ -6,7 +6,7 @@ import time
 import traceback
 import uuid
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 # Import from the modular core
@@ -54,6 +54,7 @@ from optimux_backend.core.agents import get_executor_prompt, get_step_prompt
 from optimux_backend.core import files as files_lib
 from optimux_backend.core import changes as changes_lib
 from optimux_backend.core import gitsync
+from optimux_backend.core import tasks as tasks_lib
 from optimux_backend.core.security import (
     GITHUB_TOKEN_ENV, ScopeError, ValidationError, bearer_from_header, check_token,
     get_or_create_token, mask_messages, mask_secrets, origin_allowed, secret_mark, paths_outside_scope, resolve_project_dir, rotate_token,
@@ -455,6 +456,37 @@ async def get_savings(period: str = "month", project: str | None = None):
     """Spent against the reference model (IM-08), for this month (the Overview tile) or all time."""
     since = usage_meter.month_start() if period == "month" else 0
     return await asyncio.to_thread(analytics.savings, since, project or None)
+
+
+class TaskRatingPayload(BaseModel):
+    rating: int
+
+
+@app.post("/api/tasks/{task_id}/rating")
+async def rate_task(task_id: str, payload: TaskRatingPayload):
+    """👍 / 👎 under a reply (IM-09): 1, -1, or 0 to clear."""
+    try:
+        return tasks_lib.rate(task_id, payload.rating)
+    except tasks_lib.TaskError as e:
+        return JSONResponse({"detail": str(e)}, status_code=404 if "No such" in str(e) else 400)
+
+
+@app.get("/api/tasks")
+async def tasks_summary():
+    return tasks_lib.stats()
+
+
+@app.get("/api/tasks.csv")
+async def tasks_csv():
+    """Every task record as CSV (Dashboard -> Usage)."""
+    name = "optimux-tasks-" + time.strftime("%Y-%m-%d") + ".csv"
+    return Response(tasks_lib.export_csv(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
+
+
+@app.delete("/api/tasks")
+async def tasks_delete():
+    return {"deleted": tasks_lib.delete_all()}
 
 
 @app.get("/api/analytics")
@@ -1908,6 +1940,8 @@ def new_session() -> dict:
         "limit_answer": None,    # Future for "keep waiting?" at a command's time limit (IM-03b)
         "current_stream": None,  # StreamResult of the call in flight (for partial text on stop)
         "chat_id": None,         # stored session (created on the first prompt of a chat)
+        "task": None,            # the record of the request running now (IM-09, see tasks.py)
+        "last_task_id": None,    # the previous request of this chat, marked if the user escalates it
         "recorder": chat_store.Recorder(),  # what the UI is sent, saved with the session
     }
 
@@ -1918,6 +1952,7 @@ def reset_chat(session: dict) -> None:
     session["tier"] = None
     session["tier_pinned"] = False
     session["last_turn_ok"] = True
+    session["last_task_id"] = None
 
 
 def parse_plan_command(text: str) -> tuple[bool | None, str]:
@@ -1999,6 +2034,9 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
         cancel_waiting_plans(session, "Replaced by a newer request.")
         plan = plans_lib.create(session["chat_id"], get_settings().get("active_project", ""), result["plan"],
                                 request=user_message)
+    task_route(session, "complex", model)
+    if plan and session.get("task") is not None:
+        session["task"]["plan_id"] = plan["id"]
     for usage, ms in result["calls"]:
         await meter(websocket, session, "planner", model, usage, ms, plan_id=plan["id"] if plan else None)
     if not plan:
@@ -2084,6 +2122,8 @@ async def run_in_step(websocket: WebSocket, session: dict, routing: dict, pid: s
         alt = fallback_for(role, model, routing)
         if alt:
             analytics.record_event("escalation", model, role, stuck_reason(outcome, role))
+            tasks_lib.escalate(session.get("task"), f"step {step_no}: {stuck_reason(outcome, role)}")
+            usage_meter.zero_reference((session.get("task") or {}).get("id"), role, step_no)
             await send(websocket, "system", f"Escalated this step to {alt[1]}: {stuck_reason(outcome, role)}")
             role, model = alt
             if step_no != plans_lib.CHECK_STEP:
@@ -2280,6 +2320,8 @@ async def handle_plan_action(websocket: WebSocket, session: dict, payload: dict)
     if plan["session"] != session.get("chat_id"):
         await send(websocket, "error", "That plan belongs to another chat; open that chat to use it.")
         return
+    if session.get("task") is not None:
+        session["task"]["plan_id"] = pid
     allowed = {"run": ("waiting",), "resume": ("paused",), "skip": ("paused",), "cancel": ("waiting", "paused")}
     if plan["status"] not in allowed[action]:
         await send(websocket, "system", f"This plan is {plan['status']}, so {action.capitalize()} doesn't apply now.")
@@ -2383,7 +2425,9 @@ async def meter(websocket: WebSocket, session: dict, role: str, model: str, usag
         plan_id, step = ctx["plan_id"], ctx["step"]
     entry = usage_meter.record(session.get("chat_id") or session["id"], role, model, usage, duration_ms,
                                project=get_settings().get("active_project", ""),
-                               skill=(session.get("skill") or {}).get("name"), plan_id=plan_id, step=step)
+                               skill=(session.get("skill") or {}).get("name"), plan_id=plan_id, step=step,
+                               task_id=(session.get("task") or {}).get("id"))
+    tasks_lib.add_call(session.get("task"), entry)
     if ctx:
         try:
             plans_lib.add_cost(plan_id, step, entry["cost"], model)
@@ -2894,6 +2938,10 @@ async def wait_for_answer(websocket: WebSocket, session: dict, tc_id: str, comma
         answer = await approval
     finally:
         session["approval"] = None
+    task = session.get("task")
+    if task is not None:
+        task["approved" if answer.get("type") == "approval_response" and answer.get("approved") is True
+             else "rejected"] += 1
     if answer.get("type") != "approval_response" or answer.get("approved") is not True:
         # An optional reason typed with Reject goes to the model with the refusal
         reason = answer.get("reason") if answer.get("type") == "approval_response" else ""
@@ -2974,6 +3022,7 @@ async def report_changes(websocket: WebSocket, session: dict) -> None:
     if base is None:
         return
     result = await asyncio.to_thread(changes_lib.compare, base)
+    tasks_lib.set_changes(session.get("task"), result)
     if result.get("git") and not result.get("error") and not result.get("files"):
         return                                    # nothing changed: nothing to show
     await send(websocket, "changes", **result)
@@ -3209,6 +3258,8 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
     nudges = 0
     max_loops = max_loops or (session.get("skill") or {}).get("max_steps") or max_steps_for(role)
     for loop_count in range(1, max_loops + 1):
+        if session.get("task") is not None:
+            session["task"]["steps"] += 1
         r = await call_model(websocket, session, role, model, messages)
         full_text_response = r.text
         tool_calls_accumulator = r.tool_calls
@@ -3458,6 +3509,17 @@ def close_stopped_turn(messages: list, partial_text: str) -> None:
     messages.append({"role": "assistant", "content": f"{text}\n\n{STOPPED_NOTE}" if text else STOPPED_NOTE})
 
 
+TASK_OUTCOMES = {"ok": "ok", "loop_limit": "step_limit", "aborted": "stuck"}
+
+
+def task_outcome(session: dict, outcome: str) -> None:
+    """How the request ended (the last attempt wins): ok, step_limit, stuck,
+    provider_error, budget_paused, error; stopped is set when the job is cancelled."""
+    task = session.get("task")
+    if task is not None:
+        task["outcome"] = TASK_OUTCOMES.get(outcome, outcome)
+
+
 async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
                              model: str, role: str, messages: list) -> None:
     reason, provider_problem = None, False
@@ -3465,6 +3527,7 @@ async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
     try:
         outcome = await run_turn(websocket, session, model, role, messages)
         session["last_turn_ok"] = outcome == "ok"
+        task_outcome(session, outcome)
         if outcome == "loop_limit":
             reason = f"step limit ({max_steps_for(role)}) reached"
         elif outcome == "aborted":
@@ -3472,12 +3535,15 @@ async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
     except (ProviderFailure, ModelUnavailable) as e:
         provider_problem = True
         reason = f"{model} {e.info.summary}"
+        task_outcome(session, "provider_error")
     except BudgetExceeded as e:
+        task_outcome(session, "budget_paused")
         await notify_budget_pause(websocket, e.status)
         session["history"] = trim_history(compact_history(messages[1:]))
         return
     except Exception as e:
         traceback.print_exc()
+        task_outcome(session, "error")
         await send(websocket, "error", f"{model}: {providers.classify(e).summary}")
         return  # nothing usable happened; keep history as it was
 
@@ -3492,18 +3558,27 @@ async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
         if fb_role == "complex" and not provider_problem:
             session["tier"] = "complex"  # the task proved hard; stay on complex for this chat
             analytics.record_event("escalation", model, role, reason)
+            tasks_lib.escalate(session.get("task"), reason)
+            # the stuck model's calls would not have happened on the reference: pure overhead (IM-09)
+            usage_meter.zero_reference((session.get("task") or {}).get("id"), role)
+        if session.get("task") is not None:
+            session["task"]["model"] = fb_model
         try:
             # Continue from the same messages so work already done (and approved) is kept
             fb_outcome = await run_turn(websocket, session, fb_model, fb_role, messages)
             session["last_turn_ok"] = fb_outcome == "ok"
+            task_outcome(session, fb_outcome)
             if fb_outcome == "loop_limit":
                 await notify_step_limit(websocket, fb_role)
         except (ProviderFailure, ModelUnavailable) as e:
+            task_outcome(session, "provider_error")
             await send(websocket, "error", f"{reason}. Fallback {fb_model} also failed: {e.info.summary}")
         except BudgetExceeded as e:
+            task_outcome(session, "budget_paused")
             await notify_budget_pause(websocket, e.status)
         except Exception as e:
             traceback.print_exc()
+            task_outcome(session, "error")
             await send(websocket, "error", f"{fb_model}: {providers.classify(e).summary}")
     elif reason and reason.startswith("step limit"):
         await notify_step_limit(websocket, role)
@@ -3543,6 +3618,9 @@ async def resolve_tier(websocket: WebSocket, session: dict, user_message: str) -
     if conductor_usage is not None:
         await meter(websocket, session, "conductor", conductor_model, conductor_usage, duration)
     failed = result[6] if len(result) > 6 else ""
+    if session.get("task") is not None:      # what the Conductor decided (IM-09); no reason is asked for
+        session["task"].update(conductor_model=conductor_model, conductor_tier=tier,
+                               conductor_plan=session["conductor_plan"], conductor_error=failed or None)
     if failed:                       # never fall back silently: the user should know routing didn't happen
         await send(websocket, "system", f"The Conductor ({conductor_model}) couldn't decide: {failed}. "
                                         "This request starts on the simple tier.")
@@ -3641,7 +3719,32 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
         elif plan_cmd is True:
             await send(websocket, "system", f"Not planned: {why_not}. Doing the task the usual way.")
     await send(websocket, "system", f"Routed to: {model} ({role})", tier=role, model=model)
+    task_route(session, role, model)
     await run_with_fallback(websocket, session, routing, model, role, user_message)
+
+
+def task_route(session: dict, role: str, model: str) -> None:
+    """The tier and model a request runs on, and its skill (IM-09)."""
+    task = session.get("task")
+    if task is not None:
+        task.update(tier=role, model=model, skill=(session.get("skill") or {}).get("name"))
+
+
+def finish_task(session: dict) -> bool:
+    """Write the request's record (IM-09). A plan request without an outcome
+    takes the plan's status. True when a row was written."""
+    task, session["task"] = session.get("task"), None
+    if task is None:
+        return False
+    if task.get("plan_id") and not task.get("outcome") and task.get("calls"):
+        try:
+            task["outcome"] = "plan_" + plans_lib.get(task["plan_id"])["status"]
+        except plans_lib.PlanError:
+            pass
+    if not tasks_lib.finish(task, session.get("chat_id")):
+        return False
+    session["last_task_id"] = task["id"]
+    return True
 
 
 def ensure_chat(session: dict, first_prompt: str) -> bool:
@@ -3728,7 +3831,7 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
         # don't switch to that project or continue the chat, since commands couldn't run there.
         reset_chat(session)
         await send(websocket, "session_loaded", session=summary, events=data["events"],
-                   read_only=True, reason=reason)
+                   read_only=True, reason=reason, ratings=tasks_lib.ratings(data["id"]))
         return
     if data["project"] and data["project"] != active_project():
         # Commands must run in the session's own project
@@ -3744,7 +3847,7 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
     })
     session["budget_notes"] = set()
     await send(websocket, "session_loaded", session=summary, events=data["events"], active_project_changed=switched,
-               plans=[public_plan(p) for p in plans_lib.for_session(data["id"])])
+               plans=[public_plan(p) for p in plans_lib.for_session(data["id"])], ratings=tasks_lib.ratings(data["id"]))
 
 
 async def handle_escalate(websocket: WebSocket, session: dict) -> None:
@@ -3766,9 +3869,15 @@ async def handle_escalate(websocket: WebSocket, session: dict) -> None:
     prior = history[:last_user + 1] + work
     session["history"] = history[:last_user]
     session["tier"] = "complex"
+    # the previous request wasn't good enough: its Simple calls become overhead in the savings (IM-09)
+    tasks_lib.mark_escalated(session.get("last_task_id"), "the user pressed Escalate")
+    if session.get("last_task_id"):
+        usage_meter.zero_reference(session["last_task_id"], "simple")
+    tasks_lib.escalate(session.get("task"), "the user pressed Escalate")
     reused = sum(1 for m in work if m.get("role") == "tool")
     note = f"Escalated to: {model} (complex)" + (f", reusing {reused} command result{'s' if reused != 1 else ''}" if reused else "")
     await send(websocket, "system", note, tier="complex", model=model)
+    task_route(session, "complex", model)
     await run_with_fallback(websocket, session, routing, model, "complex", user_message, prior=prior)
 
 
@@ -3851,6 +3960,10 @@ async def websocket_endpoint(websocket: WebSocket):
         recorder.pending = []
         turns_added = 0
         session["changes_base"] = None
+        session["task"] = None
+        if kind in ("escalate", "plan_action") or (kind not in ("new_chat", "open_session")
+                                                   and payload.get("prompt", "").strip().lower() != NEW_CHAT_COMMAND):
+            session["task"] = tasks_lib.new(kind if kind in tasks_lib.KINDS else "prompt", active_project())
         try:
             if kind in ("new_chat", "open_session") and session["chat_id"]:
                 schedule_curation(websocket, session["chat_id"])   # the chat being left is finished
@@ -3883,19 +3996,28 @@ async def websocket_endpoint(websocket: WebSocket):
                 model_override = payload.get("model", payload.get("model_override", "auto"))
                 await handle_prompt(websocket, session, prompt, model_override)
         except asyncio.CancelledError:
+            task_outcome(session, "stopped")
             await send(websocket, "stopped")
             await send(websocket, "system", "Stopped.")
         except WebSocketDisconnect:
+            finish_task(session)
             return
         except Exception as e:
             traceback.print_exc()
+            task_outcome(session, "error")
             await send(websocket, "error", providers.classify(e).summary)
         try:
             await report_changes(websocket, session)       # also after a stop or an error
         except WebSocketDisconnect:
+            finish_task(session)
             return
         except Exception as e:
             print(f"[Optimux] listing changed files failed: {e}")
+        if finish_task(session):
+            try:      # the page puts 👍 / 👎 under this reply; recorded, so a replay shows them too
+                await send(websocket, "task_done", task_id=session["last_task_id"])
+            except Exception:
+                pass
         if kind not in ("new_chat", "open_session"):
             try:
                 save_chat(session, turns_added)

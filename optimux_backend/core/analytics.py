@@ -213,7 +213,18 @@ def savings(since: float, project: str | None = None) -> dict:
     """The savings view for a period (the Overview tile uses this month)."""
     entries = usage.read_entries(project=project, since=since)
     events, _ = _events(project, since)
-    return savings_of(entries, sum(1 for ev in events if ev["kind"] == "escalation"))
+    return savings_of(entries, unlinked_escalations(events))
+
+
+def unlinked_escalations(events: list[dict]) -> int:
+    """Escalations from before task records (v0.6, IM-09): only those are not
+    subtracted in the savings; later ones zero the stuck model's reference."""
+    from optimux_backend.core.tasks import first_ts
+    try:
+        start = first_ts()
+    except Exception:
+        start = None
+    return sum(1 for ev in events if ev["kind"] == "escalation" and (start is None or ev["ts"] < start))
 
 
 def analytics(days: int = 30, project: str | None = None, now: float | None = None) -> dict:
@@ -334,5 +345,5 @@ def analytics(days: int = 30, project: str | None = None, now: float | None = No
     return {"days": days, "project": project, "since": since or start, "now": now, "weekly": weekly,
             "events_since": events_since, "totals": totals, "models": rows, "timeline": timeline,
             "matrix": matrix, "roles": role_rows, "top": TOP_MODELS,
-            "savings": savings_of(entries, totals["escalations"]), "color_order": color_order(),
+            "savings": savings_of(entries, unlinked_escalations(events)), "color_order": color_order(),
             "projects": known_projects()}

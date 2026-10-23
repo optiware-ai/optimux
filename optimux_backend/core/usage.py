@@ -15,7 +15,7 @@ from optimux_backend.core import store
 USAGE_FILE = store.paths.LEGACY_USAGE_LOG  # legacy log, imported once
 COLUMNS = ("ts", "session", "project", "role", "model", "prompt_tokens", "completion_tokens",
            "cached_tokens", "reasoning_tokens", "cost", "duration_ms", "estimated", "skill", "plan_id", "step",
-           "ref_model", "ref_cost")
+           "ref_model", "ref_cost", "task_id")
 _imported_for: str | None = None
 NO_PROJECT = "(no project)"
 LOCAL_PROVIDERS = ("ollama/", "ollama_chat/")  # run on your machine: no per-token cost
@@ -137,9 +137,10 @@ def reference_cost(role: str, tokens: dict, ref_model: str) -> float | None:
 
 def record(session_id: str, role: str, model: str, usage, duration_ms: int | None = None,
            project: str = "", skill: str | None = None, plan_id: str | None = None,
-           step: int | None = None) -> dict:
+           step: int | None = None, task_id: str | None = None) -> dict:
     """Append one call to the usage log and return the entry. plan_id and step tie a
-    call to a plan (v0.4 plan mode); both stay empty outside plans."""
+    call to a plan (v0.4 plan mode); both stay empty outside plans. task_id ties it
+    to the request it served (v0.6, IM-09)."""
     tokens = extract_usage(usage)
     entry = {
         "ts": time.time(),
@@ -159,6 +160,8 @@ def record(session_id: str, role: str, model: str, usage, duration_ms: int | Non
     if plan_id:
         entry["plan_id"] = plan_id
         entry["step"] = step
+    if task_id:
+        entry["task_id"] = task_id
     if isinstance(usage, dict) and usage.get("estimated"):
         entry["estimated"] = True
     try:
@@ -395,3 +398,26 @@ def estimate(model: str, messages: list, completion_text: str) -> dict:
     except Exception:
         prompt, completion = 0, 0
     return {"prompt_tokens": prompt, "completion_tokens": completion, "cached_tokens": 0, "estimated": True}
+
+
+def zero_reference(task_id: str, role: str, step: int | None = None) -> int:
+    """A model that got stuck and handed over (an escalation): its calls in this
+    request (or plan step) would not have happened with everything on the
+    reference model, so their reference cost becomes 0: pure overhead in the
+    savings view (v0.6, IM-09). Returns the rows changed; never raises."""
+    if not task_id:
+        return 0
+    sql, args = "UPDATE usage SET ref_cost = 0 WHERE task_id = ? AND role = ? AND ref_model IS NOT NULL", [task_id, role]
+    if step is not None:
+        sql += " AND step = ?"
+        args.append(step)
+    try:
+        conn = _connect()
+        try:
+            with conn:
+                return conn.execute(sql, args).rowcount
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[Optimux] usage update failed: {e}")
+        return 0

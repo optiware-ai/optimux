@@ -144,6 +144,43 @@ MIGRATIONS = [
     ALTER TABLE usage ADD COLUMN ref_model TEXT;
     ALTER TABLE usage ADD COLUMN ref_cost REAL;
     """,
+    # 11 (v0.6, IM-09): one row per request, for routing that learns later; calls link to it
+    """
+    CREATE TABLE tasks (
+        id TEXT PRIMARY KEY,
+        ts REAL NOT NULL,
+        session TEXT,
+        project TEXT,
+        kind TEXT,
+        tier TEXT,
+        model TEXT,
+        conductor_model TEXT,
+        conductor_tier TEXT,
+        conductor_plan INTEGER,
+        conductor_error TEXT,
+        escalated INTEGER NOT NULL DEFAULT 0,
+        escalation_reason TEXT,
+        outcome TEXT,
+        steps INTEGER NOT NULL DEFAULT 0,
+        calls INTEGER NOT NULL DEFAULT 0,
+        cost REAL,
+        calls_without_cost INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER,
+        files_changed INTEGER,
+        lines_added INTEGER,
+        lines_removed INTEGER,
+        approved INTEGER NOT NULL DEFAULT 0,
+        rejected INTEGER NOT NULL DEFAULT 0,
+        skill TEXT,
+        plan_id TEXT,
+        rating INTEGER,
+        rated_ts REAL
+    );
+    CREATE INDEX idx_tasks_ts ON tasks(ts);
+    CREATE INDEX idx_tasks_session ON tasks(session);
+    ALTER TABLE usage ADD COLUMN task_id TEXT;
+    CREATE INDEX idx_usage_task ON usage(task_id);
+    """,
 ]
 
 _ready_for: str | None = None

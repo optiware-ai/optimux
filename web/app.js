@@ -2762,6 +2762,7 @@ createApp({
         const enterSection = (id) => {
             if (['overview', 'usage', 'budgets', 'system'].includes(id)) fetchUsage();
             if (['overview', 'usage'].includes(id)) fetchDaily();
+            if (id === 'usage') fetchTaskStats();
             if (id === 'performance') fetchPerf();
             if (id === 'overview') { fetchRecentChats(); fetchDeleted(); fetchMonthSavings(); }
             if (id === 'projects') fetchProjectsOverview();
@@ -3295,6 +3296,37 @@ createApp({
             }
         };
         let loadSession = () => {};
+        // Dashboard -> Usage: task records (IM-09)
+        const taskStats = ref(null);
+        const taskDeleteAsk = ref(false);
+        const fetchTaskStats = async () => {
+            taskDeleteAsk.value = false;
+            try { const r = await fetch('/api/tasks'); if (r.ok) taskStats.value = await r.json(); }
+            catch (error) { console.error('Failed to load the task records', error); }
+        };
+        const deleteTasks = async () => {
+            try {
+                const r = await fetch('/api/tasks', { method: 'DELETE' });
+                if (!r.ok) throw new Error(r.status);
+            } catch (error) { console.error('Failed to delete the task records', error); }
+            fetchTaskStats();
+        };
+        let replayRatings = {};   // {task id: 1 | -1} of the chat being replayed (IM-09)
+        // 👍 / 👎 under a reply: click again to clear. Kept only on this machine, for routing that learns later.
+        const rateReply = async (msg, value) => {
+            if (!msg.taskId) return;
+            const next = msg.rating === value ? 0 : value;
+            const before = msg.rating;
+            msg.rating = next || null;
+            try {
+                const r = await fetch('/api/tasks/' + encodeURIComponent(msg.taskId) + '/rating', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating: next }) });
+                if (!r.ok) throw new Error(r.status);
+            } catch (error) {
+                msg.rating = before;
+                console.error('Failed to save the rating', error);
+            }
+        };
 
         // ---- Session history
         const currentSession = ref(null);
@@ -3642,6 +3674,12 @@ createApp({
                     // A saved key was pasted: show the message as it was sent and stored (IM-02b)
                     const mine = [...messages.value].reverse().find(m => m.role === 'user');
                     if (mine) mine.content = data.content;
+                } else if (data.type === "task_done") {
+                    // IM-09: this reply's request record, for 👍 / 👎
+                    if (lastMsg.role === 'agent') {
+                        lastMsg.taskId = data.task_id;
+                        lastMsg.rating = replay ? (replayRatings[data.task_id] ?? null) : null;
+                    }
                 } else if (data.type === "changes") {
                     const { type, ...rest } = data;
                     lastMsg.changes = rest;
@@ -3693,6 +3731,7 @@ createApp({
                     ? `Viewing "${data.session.title || 'Untitled chat'}" from ${when}, read only: its project ${data.session.project} is ${readOnlyChat.value.reason === 'archived' ? 'archived' : 'no longer in the Workspace'}.`
                     : `Reopened "${data.session.title || 'Untitled chat'}" from ${when}.`)];
                 messages.value = rebuilt;
+                replayRatings = data.ratings || {};
                 for (const ev of data.events) {
                     const last = messages.value[messages.value.length - 1];
                     if (ev.type === 'prompt' || ev.type === 'escalate' || ev.type === 'plan_action') {
@@ -4008,7 +4047,7 @@ createApp({
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
             snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
-            monthSavings, pageUpdated, reloadPage, dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
+            monthSavings, rateReply, taskStats, taskDeleteAsk, deleteTasks, pageUpdated, reloadPage, dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
             rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,

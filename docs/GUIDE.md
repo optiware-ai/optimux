@@ -760,6 +760,8 @@ The price per token comes from your model settings or LiteLLM's price list. When
 - **In the header**: the active project's month (and budget).
 - **Dashboard → Overview**: today, this month, the cache-hit rate, output and thinking, cost per day for the last 30 days, budgets, model status and recent chats.
 - **Dashboard → Usage**: totals for today, 7 days, this month or all time, broken down **by project, role, model, skill**, plus **skill drafting** and **memory updates**, with calls, input, cached, output, thinking, cost and average time. *Roles* are who made the call: `conductor`, `simple`, `complex`, `override` (a model you picked), `curator` (memory updates), `skill_draft`, `test`.
+- **Task records** (bottom of Dashboard → Usage): one row per request you send (a message, **Escalate**, or a plan's Run): the tier and model, what the Conductor decided, whether it escalated and why, how it ended (`ok`, `step_limit`, `stuck`, `stopped`, `error`, `provider_error`, `budget_paused`, or `plan_<status>`), steps, calls, cost, time, files and lines changed, commands approved and rejected, the skill and the plan. **No message text**: the chat keeps it, and the `session` column links them. **Download CSV** exports them all; **Delete all…** removes them (chats and usage stay). They are kept on this machine for routing that learns from outcomes later; nothing is sent anywhere.
+- **👍 / 👎** under each finished reply: one click rates it, a second click clears it. The rating goes into that request's record and comes back when you reopen the chat.
 - **Dashboard → Performance**: cost, speed and reliability of every model, per project (see below).
 - **History**: the cost of every chat.
 
@@ -771,7 +773,7 @@ The price per token comes from your model settings or LiteLLM's price list. When
   - The reference is the Complex model **at the time of each call**, so changing models later doesn't rewrite the past.
   - The **Conductor** counts as pure extra cost (without routing it wouldn't run), so its row shows a negative saving.
   - It assumes the Complex model would have used the same tokens, and it compares prices only, not quality or speed.
-  - Calls escalated after the Simple model got stuck are not subtracted yet: the Simple model's part of them was extra cost.
+  - When a model gets stuck and hands over to Complex (or you press **Escalate**), its calls in that request count as pure extra cost: with everything on Complex they wouldn't have happened. Escalations from before v0.6 can't be linked to their calls, so they are only counted in the note.
   - Calls made before v0.6 are **estimated** with today's Complex model and prices; calls with an unknown price are **not measured**. The note under the card counts both.
   - **Dashboard → Overview** shows the same figure for this month in the **Saved · month** tile.
 - **The tiles:** what you spent, how many calls, the average cost of a call, the median latency and the reliability. A **+** after an amount means some calls have no known price, so the real total is higher; add the price in **Models**.
@@ -913,7 +915,7 @@ Everything Optimux keeps is in one folder, `~/.optimux` (set `OPTIMUX_HOME` to m
 │   ├── routing.json              which model is Conductor, Simple and Complex
 │   └── budgets.json              monthly budget per project
 ├── data/
-│   └── optimux.db                SQLite: chats, every model call and its cost, failed calls and escalations, memory history, sign-ins
+│   └── optimux.db                SQLite: chats, every model call and its cost, task records (one per request, no text), failed calls and escalations, memory history, sign-ins
 ├── backups/
 │   ├── optimux-2026-10-07.db     one copy of the database per day…
 │   ├── optimux-2026-10-08.db     …the newest 14 are kept, each checked before it replaces anything
