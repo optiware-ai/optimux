@@ -8,6 +8,7 @@ from litellm import acompletion
 from optimux_backend.core.config_manager import get_routing_config, litellm_key_kwargs
 from optimux_backend.core.agents import get_router_prompt
 from optimux_backend.core import analytics, providers, ratelimits
+from optimux_backend.core.security import mask_messages
 
 CONDUCTOR_OFF = "off"
 
@@ -205,6 +206,7 @@ async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_m
     }
     if _supports_json_mode(conductor_model):
         kwargs["response_format"] = {"type": "json_object"}
+    kwargs["messages"] = mask_messages(kwargs["messages"])     # saved keys never reach a model (IM-02b)
 
     usage = None
     note = ""

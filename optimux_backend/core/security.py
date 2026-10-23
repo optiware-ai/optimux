@@ -123,6 +123,52 @@ def mask_secrets(text: str, edges: bool = False) -> tuple[str, int]:
     return text, hidden
 
 
+def mask_messages(messages: list) -> list:
+    """A copy of chat messages with saved keys hidden in every text a model gets:
+    contents (plain or text parts) and tool-call arguments. Messages without a
+    key are passed on as they are (same objects), so nothing changes for them;
+    Anthropic's signed thinking blocks are never touched. Used right before
+    each model call, so keys in chats stored before v0.5.1 don't reach a model."""
+    if not secret_values():
+        return messages
+    out, changed = [], False
+    for m in messages:
+        if not isinstance(m, dict):
+            out.append(m)
+            continue
+        new = m
+        content = m.get("content")
+        if isinstance(content, str):
+            masked, n = mask_secrets(content)
+            if n:
+                new = {**new, "content": masked}
+        elif isinstance(content, list):
+            parts, hit = [], False
+            for part in content:
+                if isinstance(part, dict) and isinstance(part.get("text"), str):
+                    masked, n = mask_secrets(part["text"])
+                    if n:
+                        part, hit = {**part, "text": masked}, True
+                parts.append(part)
+            if hit:
+                new = {**new, "content": parts}
+        calls = m.get("tool_calls")
+        if isinstance(calls, list):
+            fixed, hit = [], False
+            for tc in calls:
+                fn = tc.get("function") if isinstance(tc, dict) else None
+                if isinstance(fn, dict) and isinstance(fn.get("arguments"), str):
+                    masked, n = mask_secrets(fn["arguments"])
+                    if n:
+                        tc, hit = {**tc, "function": {**fn, "arguments": masked}}, True
+                fixed.append(tc)
+            if hit:
+                new = {**new, "tool_calls": fixed}
+        changed = changed or new is not m
+        out.append(new)
+    return out if changed else messages
+
+
 def secret_marks_in(text: str) -> list[str]:
     """Names of saved keys whose ••••(NAME) mark appears in text."""
     if not text or "••••(" not in text:

@@ -224,3 +224,56 @@ def test_events_are_stored_without_keys(saved, tmp_path):
     sid = sessions.create("alpha")
     sessions.append_events(sid, [{"type": "token", "content": f"k={KEY}"}])
     assert KEY not in _stored_text()
+
+
+def test_mask_messages(saved):
+    msgs = [{"role": "system", "content": "sys"},
+            {"role": "user", "content": f"key {KEY}"},
+            {"role": "user", "content": [{"type": "text", "text": f"again {GH}"}, {"type": "image_url", "image_url": "x"}]},
+            {"role": "assistant", "content": None, "thinking_blocks": [{"thinking": KEY, "signature": "s"}],
+             "tool_calls": [{"id": "1", "type": "function", "function": {"name": "execute_bash",
+                                                                          "arguments": json.dumps({"command": f"echo {KEY}"})}}]}]
+    out = security.mask_messages(msgs)
+    assert out[0] is msgs[0] and msgs[1]["content"] == f"key {KEY}"          # a copy; untouched ones stay the same object
+    assert out[1]["content"] == "key ••••(ANTHROPIC_API_KEY)"
+    assert out[2]["content"][0]["text"] == "again ••••(OPTIMUX_GITHUB_TOKEN)" and out[2]["content"][1] == msgs[2]["content"][1]
+    assert KEY not in out[3]["tool_calls"][0]["function"]["arguments"]
+    assert out[3]["thinking_blocks"][0]["thinking"] == KEY                    # signed: never changed
+    clean = [{"role": "user", "content": "hi"}]
+    assert security.mask_messages(clean) is clean
+
+
+def test_an_old_chat_with_a_key_in_its_history(saved, mocker, tmp_path):
+    """Chats stored before keys were hidden: the key in the history is hidden
+    in the call itself."""
+    from tests.test_routing_session import reply
+    import optimux_backend.main as main
+    chat, rec = _chat(mocker, tmp_path, reply("ok"))
+    old = [{"role": "user", "content": f"my key is {KEY}"}, {"role": "assistant", "content": f"noted {KEY}"}]
+    orig = main.build_messages
+    mocker.patch.object(main, "build_messages", side_effect=lambda ctx, hist, *a, **k: orig(ctx, old + hist, *a, **k))
+    chat.prompt("what was it?")
+    chat.close()
+    sent = json.dumps(rec.calls[0]["messages"])
+    contents = [m.get("content") for m in rec.calls[0]["messages"]]
+    assert "my key is ••••(ANTHROPIC_API_KEY)" in contents and "noted ••••(ANTHROPIC_API_KEY)" in contents
+    assert KEY not in sent
+
+
+@pytest.mark.asyncio
+async def test_the_conductor_gets_no_key(saved, mocker):
+    import optimux_backend.core.llm_client as llm
+    from unittest.mock import MagicMock
+    seen = {}
+
+    async def fake(**kw):
+        seen.update(kw)
+        r = MagicMock()
+        r.choices = [MagicMock()]
+        r.choices[0].message.content = '{"complexity": "simple"}'
+        r.usage = None
+        return r
+    mocker.patch.object(llm, "get_routing_config", return_value={"conductor_model": "test-conductor"})
+    mocker.patch.object(llm, "acompletion", side_effect=fake)
+    await llm.route_model_with_usage(f"deploy with {KEY}")
+    assert KEY not in json.dumps(seen["messages"])

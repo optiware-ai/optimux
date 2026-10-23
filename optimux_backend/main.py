@@ -54,7 +54,7 @@ from optimux_backend.core import changes as changes_lib
 from optimux_backend.core import gitsync
 from optimux_backend.core.security import (
     GITHUB_TOKEN_ENV, ScopeError, ValidationError, bearer_from_header, check_token,
-    get_or_create_token, mask_secrets, origin_allowed, secret_mark, paths_outside_scope, resolve_project_dir, rotate_token,
+    get_or_create_token, mask_messages, mask_secrets, origin_allowed, secret_mark, paths_outside_scope, resolve_project_dir, rotate_token,
     secret_values, validate_project_name,
 )
 
@@ -659,7 +659,7 @@ async def project_commit_message(name: str):
     started = time.monotonic()
     try:
         response = await litellm.acompletion(
-            model=model, messages=[{"role": "user", "content": gitsync.message_prompt(material)}],
+            model=model, messages=mask_messages([{"role": "user", "content": gitsync.message_prompt(material)}]),
             timeout=60, **litellm_key_kwargs(model), **thinking_kwargs(model))
     except Exception as e:
         ratelimits.record_error(model, e)
@@ -1465,7 +1465,7 @@ async def draft_skill(payload: SkillDraftPayload):
     started = time.monotonic()
     try:
         # The model's own thinking level (Gemini 3's default thinks a lot, which made drafts costly)
-        response = await litellm.acompletion(model=model, messages=[{"role": "user", "content": prompt}],
+        response = await litellm.acompletion(model=model, messages=mask_messages([{"role": "user", "content": prompt}]),
                                              timeout=60, **litellm_key_kwargs(model), **thinking_kwargs(model))
     except Exception as e:
         ratelimits.record_error(model, e)
@@ -1873,7 +1873,7 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
     await send(websocket, "system", f"Planning: {model} splits the task into steps for the cheaper model.",
                tier="complex", model=model)
     try:
-        result = await planner.make_plan(user_message, model, get_memory_context(), current_workdir())
+        result = await planner.make_plan(user_message, model, mask_secrets(get_memory_context())[0], current_workdir())
     except asyncio.CancelledError:
         raise
     except Exception as e:
@@ -2382,7 +2382,10 @@ class StreamResult:
 
 def prepare_messages(messages: list, model: str) -> list:
     """Provider-specific view of the messages: Anthropic gets cache
-    breakpoints and keeps thinking blocks; others never see thinking blocks."""
+    breakpoints and keeps thinking blocks; others never see thinking blocks.
+    Saved keys are hidden in every message first (IM-02b), also in chats stored
+    before keys were hidden."""
+    messages = mask_messages(messages)
     if is_anthropic(model):
         return with_cache_breakpoint(messages, model)
     if any("thinking_blocks" in m for m in messages):
@@ -2650,7 +2653,7 @@ async def curate_session(sid: str | None, websocket: WebSocket | None = None, fo
         notified = True
         started = time.monotonic()
         response = await litellm.acompletion(
-            model=model, messages=[{"role": "user", "content": curator.build_prompt(project, current, chat)}],
+            model=model, messages=mask_messages([{"role": "user", "content": curator.build_prompt(project, current, chat)}]),
             timeout=90, **litellm_key_kwargs(model), **thinking_kwargs(model))
         ratelimits.record_response(model, response)
         entry = usage_meter.record(sid, "curator", model, getattr(response, "usage", None),
