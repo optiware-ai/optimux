@@ -1,5 +1,6 @@
 import os
 import json
+import tempfile
 from optimux_backend.core.config_manager import get_settings
 from optimux_backend.core.security import ScopeError, validate_project_name
 
@@ -23,18 +24,56 @@ DEFAULT_PROJECT = """# Project Memory
 This file contains project-specific rules, architecture, and context.
 """
 
+# Memory is sent with every request, so a pasted log or document would make
+# every call expensive (v0.5.2, IM-04). About 5,000 tokens per file at most.
+MEMORY_MAX_CHARS = 20_000
+
+
+class MemoryTooLarge(ValueError):
+    """The text is over MEMORY_MAX_CHARS; the message says why that matters."""
+
+
+def check_size(content: str, what: str) -> None:
+    n = len(content or "")
+    if n > MEMORY_MAX_CHARS:
+        raise MemoryTooLarge(
+            f"{what} memory would be {n:,} characters; the limit is {MEMORY_MAX_CHARS:,}. Memory is sent with every "
+            f"request (about {n // 4:,} tokens each time), so keep it to the facts that matter and move long "
+            "texts into project files.")
+
+
+def write_atomic(path: str, content: str) -> None:
+    """Write through a temporary file and rename it over the target, so a crash
+    or a full disk never leaves a cut or empty memory file."""
+    folder = os.path.dirname(path) or "."
+    os.makedirs(folder, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".memory-", suffix=".tmp", dir=folder)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(path):
+            os.chmod(tmp, os.stat(path).st_mode & 0o777)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def init_memory():
     """Initialize centralized markdown memory directories and files."""
     if not os.path.exists(PROJECTS_DIR):
         os.makedirs(PROJECTS_DIR, exist_ok=True)
     
     if not os.path.exists(PERSONAL_MD):
-        with open(PERSONAL_MD, "w") as f:
-            f.write(DEFAULT_PERSONAL)
-            
+        write_atomic(PERSONAL_MD, DEFAULT_PERSONAL)
+
     if not os.path.exists(PROFESSIONAL_MD):
-        with open(PROFESSIONAL_MD, "w") as f:
-            f.write(DEFAULT_PROFESSIONAL)
+        write_atomic(PROFESSIONAL_MD, DEFAULT_PROFESSIONAL)
 
 def _read_md(filepath: str, default: str) -> str:
     try:
@@ -85,14 +124,17 @@ def update_memory(file_type: str, content: str):
     else:
         return "Error: Invalid file_type. Must be 'personal', 'professional', or 'project'."
         
-    before = _read_md(filepath, "") if file_type == "project" else None
-    with open(filepath, "a") as f:
-        f.write("\n" + content + "\n")
+    before = _read_md(filepath, "")
+    after = before + "\n" + content + "\n"
+    try:
+        check_size(after, file_type.capitalize())
+    except MemoryTooLarge as e:
+        return f"Error: {e} Nothing was saved; tell the user."
+    write_atomic(filepath, after)
     if file_type == "project":
         # project memory history (Feature 17): the model's own additions can be undone too
         from optimux_backend.core import curator
-        with open(filepath) as f:
-            curator.record_version(active_project, "model", before, f.read(), "Added by the model during a chat")
+        curator.record_version(active_project, "model", before, after, "Added by the model during a chat")
 
     return f"Successfully updated {file_type} memory."
 

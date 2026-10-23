@@ -61,13 +61,15 @@ def record_version(project: str, source: str, before: str, after: str,
 
 
 def write_memory(project: str, content: str, source: str, summary: str = "",
-                 session_id: str | None = None, cost: float | None = None) -> int | None:
-    """Replace the project's memory file and record the change."""
-    from optimux_backend.core.memory_manager import init_memory
+                 session_id: str | None = None, cost: float | None = None, check: bool = True) -> int | None:
+    """Replace the project's memory file and record the change. check=False for
+    undo and restore, which put back what the file already held once."""
+    from optimux_backend.core.memory_manager import check_size, init_memory, write_atomic
     init_memory()
+    if check:
+        check_size(content, "Project")        # MemoryTooLarge: nothing is written
     before = read_memory(project)
-    with open(memory_path(project), "w") as f:
-        f.write(content)
+    write_atomic(memory_path(project), content)
     return record_version(project, source, before, content, summary, session_id, cost)
 
 
@@ -97,7 +99,7 @@ def undo(version_id: int) -> dict:
         conn.close()
     if row is None:
         raise KeyError(version_id)
-    new_id = write_memory(row["project"], row["before"], "undo", f"Undid change #{version_id}")
+    new_id = write_memory(row["project"], row["before"], "undo", f"Undid change #{version_id}", check=False)
     return {"project": row["project"], "version_id": new_id}
 
 

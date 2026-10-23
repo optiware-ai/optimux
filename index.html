@@ -1564,8 +1564,8 @@
                             
                             <div class="mt-4 flex justify-between items-center">
                                 <span v-if="showMemorySaved" class="text-green-400 font-bold text-[15px] flex items-center gap-1">Saved!</span>
-                                <span v-else></span>
-                                <button @click="saveMemory" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold transition">Save Memory</button>
+                                <span v-else :class="['text-[13px] font-mono', memoryContent.length > MEMORY_MAX_CHARS ? 'text-red-400' : 'text-gray-500']" :title="'Memory is sent with every request. The limit is ' + MEMORY_MAX_CHARS.toLocaleString() + ' characters per file.'">{{ memoryContent.length.toLocaleString() }} / {{ MEMORY_MAX_CHARS.toLocaleString() }} characters · ≈{{ Math.round(memoryContent.length / 4).toLocaleString() }} tokens per request</span>
+                                <button @click="saveMemory" :disabled="memoryContent.length > MEMORY_MAX_CHARS" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white px-6 py-2 rounded-lg font-bold transition">Save Memory</button>
                             </div>
                         </div>
 

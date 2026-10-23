@@ -844,21 +844,23 @@ createApp({
 
         const saveMemory = async () => {
             try {
+                let resp;
                 if (memoryTab.value === 'project') {
                     if (!memoryProject.value) return;
-                    await fetch(memoryUrl(), {
+                    resp = await fetch(memoryUrl(), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ content: memoryContent.value })
                     });
-                    memoryProjectExists.value = true;
+                    if (resp.ok) memoryProjectExists.value = true;
                 } else {
-                    await fetch('/api/memory', {
+                    resp = await fetch('/api/memory', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ file_type: memoryTab.value, content: memoryContent.value })
                     });
                 }
+                if (!resp.ok) return;          // refused (e.g. too long): the message comes as a toast
                 showMemorySaved.value = true;
                 setTimeout(() => { showMemorySaved.value = false; }, 2000);
             } catch (error) {
@@ -866,6 +868,7 @@ createApp({
             }
         };
 
+        const MEMORY_MAX_CHARS = 20000;   // the server's limit (memory_manager.MEMORY_MAX_CHARS)
         const saveRouting = async () => {
             try {
                 await fetch('/api/routing', {
@@ -3851,7 +3854,7 @@ createApp({
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
             pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
-            pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
+            MEMORY_MAX_CHARS, pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
             pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
 					renderMarkdown,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashboardSections, dashboardGroups,

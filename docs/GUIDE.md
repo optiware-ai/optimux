@@ -680,6 +680,8 @@ Edit them in **Dashboard → Memory**. To have the model save something, just sa
 
 > Memory costs tokens on every single model call. Short, precise memory is cheaper **and** works better than long memory.
 
+Each memory file can hold up to **20,000 characters** (about 5,000 tokens on every request). The editor shows the count; a longer text is refused with a message, and so is a model's "remember this" that would go over it. Undo and restoring a snapshot can put back an older, longer file. Files are written in one step, so a crash or a full disk never leaves a half-written memory file.
+
 ### Automatic project memory
 
 When a chat ends (New chat, opening another chat, switching project, closing the page, or after the idle time you set, 10 minutes by default), the Simple model reads what is new in that chat and rewrites the project memory with durable facts only, in fixed sections and under about **1,500 tokens**. It ignores one-off details, guesses and secrets, and changes nothing when the chat taught nothing new. Workspace chats and very short chats are skipped. Personal and professional memory are never changed automatically.

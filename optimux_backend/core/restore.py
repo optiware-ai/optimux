@@ -512,7 +512,7 @@ def restore(sid: str, parts: list[str], confirm: str, replies_running=False) -> 
                     continue
                 from optimux_backend.core import curator
                 with open(mem, encoding="utf-8", errors="replace") as f:
-                    curator.write_memory(name, f.read(), "restore", summary=f"Restored from snapshot {sid}")
+                    curator.write_memory(name, f.read(), "restore", summary=f"Restored from snapshot {sid}", check=False)
         except (RestoreError, workspace.WorkspaceError, OSError) as e:
             what = f" Already restored: {', '.join(done)}." if done else ""
             kept = " The earlier copies are under Archived projects." if archived else ""

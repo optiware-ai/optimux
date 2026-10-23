@@ -298,9 +298,13 @@ async def save_memory_file(payload: MemoryPayload):
     from optimux_backend.core.memory_manager import PERSONAL_MD, PROFESSIONAL_MD
     if payload.file_type not in MEMORY_FILES:
         raise HTTPException(400, f"file_type must be one of {sorted(MEMORY_FILES)}")
+    from optimux_backend.core.memory_manager import MemoryTooLarge, check_size, write_atomic
     filepath = PERSONAL_MD if payload.file_type == "personal" else PROFESSIONAL_MD
-    with open(filepath, "w") as f:
-        f.write(payload.content)
+    try:
+        check_size(payload.content, payload.file_type.capitalize())
+    except MemoryTooLarge as e:
+        raise HTTPException(400, str(e))
+    write_atomic(filepath, payload.content)
     return {"status": "success"}
 
 class ModelTestPayload(BaseModel):
@@ -469,7 +473,11 @@ async def get_project_memory(name: str):
 @app.post("/api/memory/project/{name}")
 async def save_project_memory(name: str, payload: ProjectMemoryPayload):
     _project_memory_path(name)  # validates the name
-    version = curator.write_memory(name, payload.content, "user", "Edited in the dashboard")
+    from optimux_backend.core.memory_manager import MemoryTooLarge
+    try:
+        version = curator.write_memory(name, payload.content, "user", "Edited in the dashboard")
+    except MemoryTooLarge as e:
+        raise HTTPException(400, str(e))
     return {"status": "success", "version_id": version}
 
 
