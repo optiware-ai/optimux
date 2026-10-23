@@ -277,3 +277,70 @@ async def test_the_conductor_gets_no_key(saved, mocker):
     mocker.patch.object(llm, "acompletion", side_effect=fake)
     await llm.route_model_with_usage(f"deploy with {KEY}")
     assert KEY not in json.dumps(seen["messages"])
+
+
+# ---- keys in records stored before v0.5.1: hidden on the way out, then cleaned once
+
+def _old_chat():
+    """A chat as stored before keys were hidden (written straight to the database)."""
+    from optimux_backend.core import sessions, store
+    sid = sessions.create("alpha")
+    conn = store.connect()
+    try:
+        with conn:
+            conn.execute("UPDATE sessions SET title = ?, history = ? WHERE id = ?",
+                         (f"key {KEY}", json.dumps([{"role": "user", "content": f"key {KEY}"}]), sid))
+            conn.execute("INSERT INTO session_events (session_id, ts, data) VALUES (?, 0, ?)",
+                         (sid, json.dumps({"type": "prompt", "content": f"my key is {KEY}"})))
+            conn.execute("INSERT INTO memory_versions (project, ts, source, before, after) VALUES ('alpha', 0, 'x', '', ?)",
+                         (f"API key: {KEY}",))
+    finally:
+        conn.close()
+    return sid
+
+
+def _raw():
+    from optimux_backend.core import store
+    conn = store.connect()
+    try:
+        return " ".join(str(v) for t in ("sessions", "session_events", "memory_versions")
+                        for r in conn.execute(f"SELECT * FROM {t}") for v in tuple(r))
+    finally:
+        conn.close()
+
+
+def test_an_old_chat_never_shows_a_key(saved):
+    from optimux_backend.core import sessions
+    sid = _old_chat()
+    chat = sessions.get(sid)
+    assert KEY not in json.dumps(chat) and chat["events"][0]["content"] == "my key is ••••(ANTHROPIC_API_KEY)"
+    assert chat["title"] == "key ••••(ANTHROPIC_API_KEY)"
+    assert all(KEY not in (c["title"] or "") for c in sessions.list_sessions())
+
+
+def test_stored_records_are_cleaned_once(saved):
+    from optimux_backend.core import sessions
+    _old_chat()
+    assert KEY in _raw()
+    assert sessions.scrub_saved_keys() == 4                    # title, history, one event, one memory version
+    raw = _raw()
+    assert KEY not in raw and "(ANTHROPIC_API_KEY)" in raw
+    assert sessions.scrub_saved_keys() == 0                    # nothing to do while the keys stay the same
+    # a key saved later: records that hold it are cleaned at the next start
+    _old_chat()
+    saved.write_text(saved.read_text() + "MISTRAL_API_KEY=mistral-key-0000001\n")
+    from optimux_backend.core import store
+    conn = store.connect()
+    with conn:
+        conn.execute("INSERT INTO session_events (session_id, ts, data) VALUES ('x', 0, ?)",
+                     (json.dumps({"type": "token", "content": "mistral-key-0000001"}),))
+    conn.close()
+    assert sessions.scrub_saved_keys() == 5 and "mistral-key-0000001" not in _raw() and KEY not in _raw()
+
+
+def test_no_keys_nothing_to_clean(tmp_path, monkeypatch):
+    from optimux_backend.core import sessions
+    monkeypatch.setattr(paths, "SECRETS_FILE", str(tmp_path / "none.env"))
+    for k in [k for k in list(__import__("os").environ) if security.SECRET_ENV_NAME.search(k)]:
+        monkeypatch.delenv(k)
+    assert sessions.scrub_saved_keys() == 0

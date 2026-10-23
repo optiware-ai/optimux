@@ -21,3 +21,4 @@
 - Uses `store.py` (migration 2: `sessions` and `session_events`, plus an index on `usage.session`).
 - Used by `main.py`: recording in `send()` and `run_job`, `ensure_chat`, `save_chat`, `handle_open_session`, and the `/api/sessions` endpoints.
 - Feature 25: `project_created` is in `Recorder.SKIP` (it's a toast for the page that's watching, not part of the chat).
+- **Saved keys (v0.5.1):** events and history are stored through `_stored()` (masked JSON); `get()` and `list_sessions()` mask titles, history and events on the way out (`security.mask_obj`). `scrub_saved_keys(force)` rewrites stored records once (session events, history and titles, plan JSON and goals, memory history before/after/summary), only values that hold a key; it records `security.secrets_fingerprint()` in `meta` (`keys_scrubbed`) and runs again only when the saved keys change. main.py calls it at startup after the daily backup.

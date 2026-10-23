@@ -78,6 +78,12 @@ try:
 except Exception as e:
     print(f"[Optimux] database backup failed: {e}")
 try:
+    _n = chat_store.scrub_saved_keys()  # after the backup: keys in chats stored before v0.5.1 become ••••(NAME)
+    if _n:
+        print(f"[Optimux] saved keys hidden in {_n} stored record(s)")
+except Exception as e:
+    print(f"[Optimux] hiding saved keys in stored chats failed: {e}")
+try:
     _n = plans_lib.mark_interrupted()  # plans a stop left running wait, paused, for Resume
     if _n:
         print(f"[Optimux] plans: {_n} interrupted plan(s) paused; they can be resumed from the chat")

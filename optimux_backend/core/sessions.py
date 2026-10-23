@@ -14,7 +14,7 @@ import time
 import uuid
 
 from optimux_backend.core import store
-from optimux_backend.core.security import mask_secrets
+from optimux_backend.core.security import mask_obj, mask_secrets, secret_values, secrets_fingerprint
 
 
 def _stored(obj) -> str:
@@ -98,7 +98,7 @@ def list_sessions(project: str | None = None, archived: bool = False, query: str
                             [*args, limit]).fetchall()
     finally:
         conn.close()
-    return [dict(r) | {"archived": bool(r["archived"])} for r in rows]
+    return [dict(r) | {"archived": bool(r["archived"]), "title": mask_secrets(r["title"] or "")[0]} for r in rows]
 
 
 def get(sid: str) -> dict | None:
@@ -113,12 +113,15 @@ def get(sid: str) -> dict | None:
                   conn.execute("SELECT data FROM session_events WHERE session_id = ? ORDER BY id", (sid,))]
     finally:
         conn.close()
+    # Saved keys are hidden on the way out too (v0.5.1): a chat stored before
+    # keys were hidden, or before a key was saved, never shows one again
     return dict(row) | {
+        "title": mask_secrets(row["title"] or "")[0],
         "archived": bool(row["archived"]),
-        "history": json.loads(state["history"]),
+        "history": mask_obj(json.loads(state["history"]))[0],
         "tier_pinned": bool(state["tier_pinned"]),
         "last_turn_ok": bool(state["last_turn_ok"]),
-        "events": events,
+        "events": mask_obj(events)[0],
     }
 
 
@@ -201,3 +204,50 @@ class Recorder:
         if sid and self.pending:
             append_events(sid, self.pending)
         self.pending = []
+
+
+# ------------------------------------------------------------ saved keys in old records (v0.5.1)
+# What is stored since v0.5.1 is already hidden. Chats, plans and memory history
+# stored before, or before a key was saved, are cleaned once: at startup, after
+# the daily backup, and again whenever the saved keys change.
+SCRUB_META = "keys_scrubbed"
+_SCRUB_JSON = (("session_events", "id", "data"), ("sessions", "id", "history"), ("plans", "id", "plan"))
+_SCRUB_TEXT = (("sessions", "id", "title"), ("plans", "id", "goal"), ("memory_versions", "id", "before"),
+               ("memory_versions", "id", "after"), ("memory_versions", "id", "summary"))
+
+
+def scrub_saved_keys(force: bool = False) -> int:
+    """Replace saved keys with ••••(NAME) in stored records. Returns how many
+    values were changed; does nothing when the keys didn't change since the
+    last run (unless force)."""
+    if not secret_values():
+        return 0
+    mark = secrets_fingerprint()
+    conn = store.connect()
+    try:
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (SCRUB_META,)).fetchone()
+        if row and row["value"] == mark and not force:
+            return 0
+        changed = 0
+        with conn:
+            for table, key, col in _SCRUB_JSON + _SCRUB_TEXT:
+                is_json = (table, key, col) in _SCRUB_JSON
+                for r in conn.execute(f"SELECT {key} AS k, {col} AS v FROM {table}").fetchall():
+                    if not r["v"]:
+                        continue
+                    if is_json:
+                        try:
+                            value, n = mask_obj(json.loads(r["v"]))
+                        except ValueError:
+                            value, n = mask_secrets(r["v"])
+                        else:
+                            value = json.dumps(value) if n else value
+                    else:
+                        value, n = mask_secrets(r["v"])
+                    if n:
+                        conn.execute(f"UPDATE {table} SET {col} = ? WHERE {key} = ?", (value, r["k"]))
+                        changed += 1
+            conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (SCRUB_META, mark))
+        return changed
+    finally:
+        conn.close()

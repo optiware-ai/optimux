@@ -169,6 +169,37 @@ def mask_messages(messages: list) -> list:
     return out if changed else messages
 
 
+def mask_obj(obj):
+    """obj (parsed JSON: dicts, lists, strings) with saved keys hidden in every
+    string, and how many were hidden. Unchanged parts are returned as they are."""
+    if isinstance(obj, str):
+        return mask_secrets(obj)
+    if isinstance(obj, list):
+        out, total = [], 0
+        for x in obj:
+            y, n = mask_obj(x)
+            out.append(y)
+            total += n
+        return (out, total) if total else (obj, 0)
+    if isinstance(obj, dict):
+        out, total = {}, 0
+        for k, v in obj.items():
+            y, n = mask_obj(v)
+            out[k] = y
+            total += n
+        return (out, total) if total else (obj, 0)
+    return obj, 0
+
+
+def secrets_fingerprint() -> str:
+    """Changes when a saved key is added, changed or removed (never contains a key)."""
+    import hashlib
+    digest = hashlib.sha256()
+    for name, value in sorted(secret_values()):
+        digest.update(name.encode() + b"\0" + hashlib.sha256(value.encode()).digest())
+    return digest.hexdigest()
+
+
 def secret_marks_in(text: str) -> list[str]:
     """Names of saved keys whose ••••(NAME) mark appears in text."""
     if not text or "••••(" not in text:
