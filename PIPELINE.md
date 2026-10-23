@@ -27,6 +27,7 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 ├── install.sh_AGENT.md
 ├── scripts/optimux              (the optimux command: start/stop/status/update/uninstall…)
 ├── scripts/build-css.sh         (rebuilds web/app.css with Tailwind)
+├── scripts/smoke-test.py        (end-to-end check of an install with a fake model; CI "install" job)
 ├── docs/
 │   └── GUIDE.md                 (User guide, shown in Dashboard → Guide)
 ├── optimux_backend/

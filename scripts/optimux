@@ -23,7 +23,7 @@ help() {
   row "reset-password" "forget the password and two-step codes"
   row "token" "the access token (first sign-in, scripts)"
   row "github" "install the GitHub CLI and add a GitHub token"
-  row "uninstall" "remove Optimux (asks before deleting data)"
+  row "uninstall [--yes]" "remove Optimux (asks before deleting data; --yes keeps the data)"
   printf '\n'
   para "Everything else is in the web interface: Dashboard → Guide."
   printf '\n'
@@ -51,7 +51,7 @@ main_cli() {
     reset-password) admin reset-password ;;
     token) cli_token ;;
     github) cli_github ;;
-    uninstall) cli_uninstall ;;
+    uninstall) [[ "${2:-}" == --yes || "${2:-}" == -y ]] && CM_YES=1; cli_uninstall ;;
     version) app_version "${M[APP_DIR]}" ;;
     help|-h|--help) help ;;
     *) err "Unknown command: $1"; help; exit 2 ;;

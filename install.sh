@@ -868,10 +868,13 @@ finish_local() {
   fi
   if [[ -n "${CM_PW_SET:-}" ]]; then signin="Sign in with the password you just chose."
   elif password_is_set; then signin="Sign in with your password."
-  else signin="First visit: paste the access token ($(admin token 2>/dev/null)), then choose a password."; fi
+  else signin="First visit: paste this access token, then choose a password:"; fi
+  local token_line=()       # on its own line, so the box stays narrow enough for an 80-column terminal
+  [[ "$signin" == First* ]] && token_line=("           ${CA}$(admin token 2>/dev/null)${C0}")
   card "Optimux is installed" \
     "${CB}Open${C0}       ${CA}${M[URL]}${C0}" \
     "           $signin" \
+    "${token_line[@]}" \
     "" \
     "${CB}Commands${C0}   optimux start | stop | status | logs | open" \
     "           optimux update | password | uninstall" \
@@ -1405,7 +1408,22 @@ process_ctl() {
 
 cli_start()   { svc start; }
 cli_stop()    { svc stop; ok "Stopped"; }
-cli_restart() { svc restart; ok "Restarted"; }
+cli_restart() { svc restart; wait_answers "Restarted"; }
+
+# Where Optimux answers on this machine (the Unix socket behind Caddy, or 127.0.0.1:PORT),
+# and whether it does within $1 seconds (0 = yes)
+answer_place() {
+  if [[ "${M[MODE]}" == server && -n "${M[DOMAIN]:-}" ]]; then server_socket; else echo "127.0.0.1:${M[PORT]}"; fi
+}
+answers() {
+  local t="${1:-1}"
+  if [[ "${M[MODE]}" == server && -n "${M[DOMAIN]:-}" ]]; then wait_http "http://localhost/auth/status" "$(server_socket)" "$t"
+  else wait_http "http://127.0.0.1:${M[PORT]}/auth/status" "" "$t"; fi
+}
+# After a (re)start: say $1 once Optimux answers (a slow start can take a while), or why not
+wait_answers() {
+  if answers 60; then ok "$1"; else warn "Optimux doesn't answer on $(answer_place) yet. The log says why: $(ox) logs"; fi
+}
 
 # What an install runs: the release from VERSION and the exact commit, like
 # "v0.4.0 (5e0673b)" (installs are shallow clones, so git has no tags to show).
@@ -1420,16 +1438,10 @@ app_version() {
 }
 
 cli_status() {
-  local here answers=""
+  local here
   if svc is-active >/dev/null 2>&1; then ok "Running ${CM}(${M[SERVICE]})${C0}"; else warn "Not running. Start it with: $(ox) start"; fi
-  if [[ "${M[MODE]}" == server && -n "${M[DOMAIN]:-}" ]]; then
-    here="$(server_socket)"
-    wait_http "http://localhost/auth/status" "$here" 1 && answers=1
-  else
-    here="127.0.0.1:${M[PORT]}"
-    wait_http "http://$here/auth/status" "" 1 && answers=1
-  fi
-  if [[ -n "$answers" ]]; then ok "Answers on $here"; else warn "Doesn't answer on $here. The log says why: $(ox) logs"; fi
+  here="$(answer_place)"
+  if answers 1; then ok "Answers on $here"; else warn "Doesn't answer on $here. The log says why: $(ox) logs"; fi
   printf '\n'
   row "Version" "$(app_version "${M[APP_DIR]}")"
   row "Program" "${M[APP_DIR]}"
@@ -1714,7 +1726,7 @@ cli_update() {
     fi
   fi
   run "Restarting" svc restart
-  ok "Updated to $(app_version "${M[APP_DIR]}")"
+  wait_answers "Updated to $(app_version "${M[APP_DIR]}")"
 }
 
 cli_password() {

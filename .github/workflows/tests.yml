@@ -59,3 +59,63 @@ jobs:
           persist-credentials: false
       - name: Check the installer and the optimux command
         run: shellcheck -x -S warning install.sh scripts/optimux
+
+  # IM-11: install.sh on a fresh runner, then a chat with an approved command
+  # against a fake model (scripts/smoke-test.py: no API key, no network)
+  install:
+    name: install (${{ matrix.mode }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-22.04]
+        mode: [local, server]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install from this checkout
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          # The installer clones a branch: name this commit, and let root read the checkout
+          git branch -f ci-install HEAD
+          sudo git config --system --add safe.directory "$GITHUB_WORKSPACE"
+          export OPTIMUX_REPO="$GITHUB_WORKSPACE" OPTIMUX_REF=ci-install
+          if [ "$MODE" = server ]; then
+            sudo -E bash install.sh --server --no-domain --yes
+          else
+            bash install.sh --local --yes
+          fi
+      - name: Status
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          if [ "$MODE" = server ]; then sudo optimux status; else ~/.local/bin/optimux status; fi
+      - name: A chat with an approved command (fake model)
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          if [ "$MODE" = server ]; then
+            token="$(sudo optimux token | grep -oE '[A-Za-z0-9_-]{40,}' | head -1)"
+            /opt/optimux/.venv/bin/python scripts/smoke-test.py --token "$token"
+          else
+            ~/.local/share/optimux/.venv/bin/python scripts/smoke-test.py
+          fi
+      - name: Update and uninstall
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          # update reads the repository and branch from the install manifest
+          if [ "$MODE" = server ]; then
+            sudo optimux update && sudo optimux uninstall --yes
+          else
+            ~/.local/bin/optimux update && ~/.local/bin/optimux uninstall --yes
+          fi
+      - name: The install log, if something failed
+        if: failure()
+        run: |
+          for f in /tmp/optimux-install-*.log; do echo "== $f"; tail -n 80 "$f"; done
+          sudo journalctl -u optimux -n 80 --no-pager || true
+

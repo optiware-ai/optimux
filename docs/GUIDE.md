@@ -62,15 +62,29 @@ The installer adds an `optimux` command (on a server, run it with `sudo`):
 | `optimux logs` | Follow the server's log (Ctrl+C to leave) |
 | `optimux open` (also `tunnel`, `browser`) | The address, opened in your browser when there is one. On a server without a domain: the SSH tunnel command to run on your computer. Options: `--local-port N`, `--user NAME`, `--host ADDR`, `--background`, `--ssh-config`, `--quiet` (`optimux open --help`) |
 | `optimux port` | The ports in use. `optimux port N` moves Optimux to another port on this machine; `optimux port --local N` sets the port on your computer for the SSH tunnel (`optimux port --help`) |
-| `optimux update` | Download the latest version, update its packages, restart |
+| `optimux update` | Download the latest version, update its packages, restart, and wait until it answers |
 | `optimux version` | The installed version and commit, like `v0.4.0 (5e0673b)`; the same as Dashboard → System |
 | `optimux password` | Choose a new password (signs every browser out) |
 | `optimux reset-password` | Forget the password and two-step codes |
 | `optimux token` | Show the access token |
 | `optimux github` | Install the GitHub CLI and add (or replace) the GitHub token |
-| `optimux uninstall` | Remove Optimux; asks separately before deleting your data |
+| `optimux uninstall` | Remove Optimux; asks separately before deleting your data. `--yes` removes it without asking and keeps the data |
 
 Running the installer again offers the same: update, set up again, or uninstall.
+
+### Checking an install
+
+`scripts/smoke-test.py` checks a fresh install end to end without an API key: it starts a fake model on this machine (no network, no cost), adds it, creates a project called `smoke-test`, sends one message, approves the command the model asks for, and checks that it ran. Run it with Optimux's own Python:
+
+```bash
+~/.local/share/optimux/.venv/bin/python ~/.local/share/optimux/scripts/smoke-test.py           # your computer
+sudo optimux token                                                                             # a server: copy the token, then
+/opt/optimux/.venv/bin/python /opt/optimux/scripts/smoke-test.py --token <token>
+```
+
+It changes the install (a model, the routing, a key named `OPENAI_API_KEY`, the active project), so use it on a new install or a test machine, then set your real models in Dashboard → Models and Routing. Every change to Optimux runs the same check on fresh Ubuntu 22.04 and 24.04 machines, as a local install and as a server.
+
+**In a container or a VM without a login session** (Docker, a CI runner, `incus exec`), there is no user systemd, so a local install runs Optimux as a background process instead of a service (`optimux status` says *Running (process)*); it doesn't start again after a reboot until you run `optimux start`.
 
 ### Installing by hand
 
