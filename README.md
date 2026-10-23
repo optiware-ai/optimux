@@ -16,7 +16,7 @@ It isn't limited to code: you can ask it anything you would ask a chat AI, and i
 [![LiteLLM](https://img.shields.io/badge/LiteLLM-100%2B_providers-6E56CF)](https://github.com/BerriAI/litellm)
 [![Tests](https://github.com/optiware-ai/optimux/actions/workflows/tests.yml/badge.svg)](https://github.com/optiware-ai/optimux/actions/workflows/tests.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL_v3-blue.svg)](LICENSE)
-[![Status: beta](https://img.shields.io/badge/status-beta_v0.5-orange.svg)](#project-status)
+[![Status: beta](https://img.shields.io/badge/status-beta_v0.6-orange.svg)](#project-status)
 
 [Website](https://optimux.si) · [Features](#features) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Documentation](docs/GUIDE.md) · [Security](#security) · [Contributing](CONTRIBUTING.md)
 
@@ -50,7 +50,7 @@ It sends simple requests to cheap models, hands hard work to stronger models, tr
 ---
 
 > ### Project status
-> **Optimux is in beta (v0.5).** It is used every day on Linux and has a large test suite, but some paths have had little real-world use yet: server installs, macOS, and creating GitHub repositories from the app. Expect rough edges, and please [open an issue](https://github.com/optiware-ai/optimux/issues) when something breaks. What changed in each release: [CHANGELOG.md](CHANGELOG.md).
+> **Optimux is in beta (v0.6).** It is used every day on Linux and has a large test suite, but some paths have had little real-world use yet: server installs, macOS, and creating GitHub repositories from the app. Expect rough edges, and please [open an issue](https://github.com/optiware-ai/optimux/issues) when something breaks. What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
 ## Table of contents
 
@@ -159,6 +159,8 @@ Memory costs tokens on every model call, so short and precise memory is cheaper 
 - Live cost while a reply runs, and a cost line under every reply.
 - **Dashboard**: overview, usage by project, role, model and skill, a 30-day cost chart, budgets, history with filters.
 - **Model performance** (Dashboard → Performance): cost, latency (p10, median, p90), speed, cache use, reliability and escalations of every model, per project, with charts and a sortable table.
+- **What routing saved**: spent against what the same calls would have cost on your Complex model, per day, role and project, with a "Saved this month" tile on the Overview.
+- **Task records and 👍 / 👎**: one small record per request (no message text), exportable as CSV, for routing that learns from outcomes later.
 - **Model catalog**: pick a provider, then a model from its list with prices per million tokens and context size, in a sortable price table, offline. An opt-in online catalog refreshes prices (LiteLLM's public list) and asks the provider which models your key can use, only when you click Refresh.
 - **Monthly budgets** per project (block or warn) and **cost warnings** before paid one-off actions.
 - Every chat and every model call is stored in SQLite and **survives restarts**, with daily backups.

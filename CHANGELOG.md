@@ -2,6 +2,31 @@
 
 What each release of Optimux changed. The version rules are in [CONTRIBUTING.md](CONTRIBUTING.md#versions-and-releases); the newest release is at the top.
 
+## v0.6.0 (2026-10-23) — beta
+
+Measure. Optimux now shows what routing saves, keeps a small record of every request (for routing that learns from outcomes later), refuses requests for unknown host names, and every change is checked by a real install on fresh Ubuntu machines.
+
+**Before you update**
+
+- Nothing to do for a local install opened as `localhost` or by IP address, the SSH tunnel, or a server installed with a domain.
+- **Only if you reach Optimux by a name over TCP** (your own proxy to `127.0.0.1:PORT`, or `http://mybox.lan:8000`): add that name to `OPTIMUX_ALLOWED_HOSTS` in Optimux's environment, or it answers 400.
+- The first start adds two columns to the usage table and a new `tasks` table (automatic). Open tabs offer a reload.
+
+**New**
+
+- **What routing saved** (top of Dashboard → Performance): what you spent, what the same calls would have cost on your Complex model, and the difference, per day, per role and per project; a **Saved · month** tile on Overview. Calls from before this release are estimated with today's prices and marked so.
+- **Task records:** one row per request (tier, model, the Conductor's decision, escalation and why, outcome, steps, calls, cost, time, files changed, commands approved and rejected), with no message text. **Download CSV** or **Delete all** in Dashboard → Usage.
+- **👍 / 👎 under each reply:** saved in the request's record and shown again when you reopen the chat.
+- **Escalations count as overhead:** when a model gets stuck and hands over (or you press Escalate), its calls in that request count as extra cost in the savings.
+- **`scripts/smoke-test.py`:** checks an install end to end (a fake model, one approved command) without an API key. CI now runs install, status, this check, update and uninstall on fresh Ubuntu 22.04 and 24.04, local and server.
+
+**Fixed**
+
+- **DNS rebinding:** a website could point its own name at your computer and reach a local Optimux's sign-in page. Unknown host names now get 400 (localhost, IP addresses and `OPTIMUX_ALLOWED_HOSTS` are allowed).
+- `optimux uninstall --yes` asked anyway and failed without a terminal; it now removes the program and keeps your data.
+- `optimux update` and `restart` said they were done before Optimux answered; they now wait for it.
+- The installer's final box was too wide for an 80-column terminal.
+
 ## v0.5.2 (2026-10-23) — beta
 
 Small safety. The daily-backups screen is a small feature that grew out of checking the backups (IM-05), so this release is a little more than a patch, like v0.5.1.
