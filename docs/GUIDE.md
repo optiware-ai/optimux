@@ -561,7 +561,7 @@ Ollama models (`ollama/...`) cost nothing per token. They work for simple chat, 
 
 ### What the model can do
 
-The model has a terminal tool: it proposes a shell command, you approve it, Optimux runs it in the active project and gives the output back to the model. Commands time out after **30 seconds**, so very long builds or servers should be started by you.
+The model has a terminal tool: it proposes a shell command, you approve it, Optimux runs it in the active project and gives the output back to the model. Each command stops after **120 seconds** by default (**Dashboard → Execution → Timeout**, from 10 seconds to 30 minutes). Servers and watchers that never end should be started by you.
 
 ### Files changed
 
@@ -647,7 +647,9 @@ The same card sets **limits per command** (0 = none):
 | File size (MB) | 1024 | The largest file one command can write. |
 | Processes | 0 | Counts every process of the server's user, Optimux included, so set it well above what Optimux runs (a few hundred). |
 
-Open files are always capped at 4,096 and core dumps are off. Each command also stops after **30 seconds**. On a server, the systemd unit in `deploy/` limits Optimux as a whole as well.
+Open files are always capped at 4,096 and core dumps are off.
+
+**Timeout (seconds)** stops a command that runs too long: 120 by default, from 10 to 1800 (30 minutes). Raise it for long installs, builds or test suites. A command that hits it ends with exit code 124; what it printed until then is kept, and the model is told which setting to raise instead of retrying. **Stop** ends a command at any time. Plan steps and skills use the same limit. On a server, the systemd unit in `deploy/` limits Optimux as a whole as well.
 
 **Long output is cut in the middle.** The model sees a command's output again at every following step of the reply, so one huge output (a log, a minified file, `npm ls`) could cost more than the rest of the task. Optimux keeps the first 8 KB and the last 16 KB of the output (2 KB and 4 KB of the error output) and puts a note in between that says how much was cut and tells the model to look at a part with `grep`, `head`, `tail` or `sed -n`. The chat shows the same text with an **output cut** label. The rest is never kept, so a command that prints gigabytes can't fill the server's memory either. When a command times out, what it printed until then is kept too.
 
@@ -1192,7 +1194,7 @@ Only the project folder, the system and the folders you list are visible. Keep t
 SSH keys are hidden from sandboxed commands. Use an HTTPS remote with a credential helper, or run the push yourself.
 
 **A command was cut off with exit 124.**
-Commands time out after 30 seconds. Run long builds, servers or watchers yourself in a terminal.
+Commands stop after the **Timeout** in Dashboard → Execution (120 seconds by default, up to 30 minutes). Raise it for long builds and test runs; run servers and watchers yourself in a terminal.
 
 **The model did work I only asked about.**
 Ask as a question ("how do I…?") and it should explain and offer instead. If it still acts, Reject the command and say so; consider turning auto-approve off.

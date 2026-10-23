@@ -49,3 +49,4 @@
 
 - **Changing the Workspace folder:** a new `projects_root` must also be writable (`os.access` W_OK|X_OK; a read-only mount, as under systemd `ProtectSystem=strict`, fails it), else `workspace_not_writable` explains it, with the `/var/lib/<user>/projects` command on a server. An `active_project` that isn't in the new folder is cleared instead of refused; `main.save_app_settings` then returns `active_project: ""` and a `note`, and the page shows it and reopens the Workspace chat.
 - **List prices on cards (5p):** `list_prices(model_id)` returns LiteLLM's input, output and cached input prices per million tokens; `get_models_config` adds them as `list_prices` when `price_source` is `litellm` (else None).
+- **Command timeout (v0.5.1, IM-03):** `command_timeout` (default `DEFAULT_COMMAND_TIMEOUT` = 120 s) must be within `COMMAND_TIMEOUT_RANGE` (10–1800) to save; `command_timeout_for(settings)` reads it, clamped, for `executor.run_shell_command`.

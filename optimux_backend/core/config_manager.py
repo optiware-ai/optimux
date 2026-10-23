@@ -139,6 +139,8 @@ class SettingsPayload(BaseModel):
     limit_memory_mb: int = 0
     limit_file_mb: int = 1024
     limit_processes: int = 0
+    # v0.5.1: seconds a command may run before it is stopped (installs, builds, tests take a while)
+    command_timeout: int = 120
     # Feature 25: who commits (initial project commits and model-run git); empty = git's own config
     git_name: str = ""
     git_email: str = ""
@@ -154,6 +156,18 @@ class SettingsPayload(BaseModel):
 
 
 DEFAULT_MAX_STEPS = {"simple": 8, "complex": 25}
+DEFAULT_COMMAND_TIMEOUT = 120
+COMMAND_TIMEOUT_RANGE = (10, 1800)
+
+
+def command_timeout_for(settings: dict | None = None) -> int:
+    """Seconds a command may run (Dashboard -> Execution), within the allowed range."""
+    settings = get_settings() if settings is None else settings
+    try:
+        value = int(settings.get("command_timeout", DEFAULT_COMMAND_TIMEOUT))
+    except (TypeError, ValueError):
+        value = DEFAULT_COMMAND_TIMEOUT
+    return max(COMMAND_TIMEOUT_RANGE[0], min(value, COMMAND_TIMEOUT_RANGE[1]))
 PLAN_MODES = ("off", "ask", "auto")
 
 
@@ -206,6 +220,9 @@ def save_settings(payload: SettingsPayload):
     for field, top in (("limit_memory_mb", 1024 * 1024), ("limit_file_mb", 1024 * 1024), ("limit_processes", 100000)):
         if not 0 <= getattr(payload, field) <= top:
             raise ValidationError(f"{field} must be between 0 (no limit) and {top}.")
+    if not COMMAND_TIMEOUT_RANGE[0] <= payload.command_timeout <= COMMAND_TIMEOUT_RANGE[1]:
+        raise ValidationError(f"The command timeout must be between {COMMAND_TIMEOUT_RANGE[0]} and "
+                              f"{COMMAND_TIMEOUT_RANGE[1]} seconds.")
     if not 0.1 <= payload.snapshot_limit_gb <= 10000:
         raise ValidationError("snapshot_limit_gb must be between 0.1 and 10000.")
     # Checked only when it changes: a saved key never blocks unrelated saves

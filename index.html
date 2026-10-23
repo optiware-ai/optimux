@@ -1512,7 +1512,7 @@
                         <h3 class="font-bold text-gray-200 mb-3 flex items-center">Command environment and limits<help-tip wide>
                             <p>Commands get only a few basic variables (<code>PATH</code>, <code>HOME</code>, <code>LANG</code>, <code>TERM</code>…). Everything else in the server's environment, including every key and token, is left out.</p>
                             <p>List extra variable names a project needs (one per line). Keys Optimux keeps in <code>secrets.env</code> can't be added.</p>
-                            <p><b>Limits</b> apply to each command (0 = none). Memory caps address space, which some tools (Node, Go, Java) reserve generously, so leave it at 0 unless you need it. The process limit counts all processes of the server's user, so set it well above what Optimux itself runs. On a server, the systemd unit in <code>deploy/</code> also limits Optimux as a whole.</p>
+                            <p><b>Limits</b> apply to each command (0 = none; the timeout always applies). Memory caps address space, which some tools (Node, Go, Java) reserve generously, so leave it at 0 unless you need it. The process limit counts all processes of the server's user, so set it well above what Optimux itself runs. On a server, the systemd unit in <code>deploy/</code> also limits Optimux as a whole.</p>
                         </help-tip></h3>
                         <div class="grid md:grid-cols-2 gap-4">
                             <div>
@@ -1523,6 +1523,7 @@
                                 <label class="flex items-center gap-2"><span class="w-32 shrink-0">Memory (MB)</span><input v-model.number="appSettings.limit_memory_mb" type="number" min="0" class="w-28 bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500"></label>
                                 <label class="flex items-center gap-2"><span class="w-32 shrink-0">File size (MB)</span><input v-model.number="appSettings.limit_file_mb" type="number" min="0" class="w-28 bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500"></label>
                                 <label class="flex items-center gap-2"><span class="w-32 shrink-0">Processes</span><input v-model.number="appSettings.limit_processes" type="number" min="0" class="w-28 bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500"></label>
+                                <label class="flex items-center gap-2"><span class="w-32 shrink-0">Timeout (seconds)</span><input v-model.number="appSettings.command_timeout" type="number" min="10" max="1800" class="w-28 bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500"><help-tip>How long one command may run before it is stopped: 10 to 1800 seconds (30 minutes), 120 by default. Raise it for long installs, builds or test runs. The model is told the limit when a command hits it, and Stop ends a command at any time.</help-tip></label>
                             </div>
                         </div>
                         <button @click="saveCommandSettings" class="mt-3 bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg font-bold transition text-[13px]">Save</button>

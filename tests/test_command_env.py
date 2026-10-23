@@ -75,3 +75,44 @@ def test_bad_limits_refused(field, value, monkeypatch, tmp_path):
     monkeypatch.setattr(cm, "SETTINGS_FILE", str(tmp_path / "settings.json"))
     with pytest.raises(ValidationError):
         cm.save_settings(cm.SettingsPayload(**{field: value}))
+
+
+# ---- IM-03 (v0.5.1): the command timeout is a setting
+
+@pytest.mark.parametrize("value", [9, 1801, -1])
+def test_bad_timeouts_refused(value, monkeypatch, tmp_path):
+    monkeypatch.setattr(cm, "SETTINGS_FILE", str(tmp_path / "settings.json"))
+    with pytest.raises(ValidationError, match="command timeout must be between 10 and 1800"):
+        cm.save_settings(cm.SettingsPayload(command_timeout=value))
+
+
+def test_timeout_setting_saved_and_read(monkeypatch, tmp_path):
+    monkeypatch.setattr(cm, "SETTINGS_FILE", str(tmp_path / "settings.json"))
+    assert cm.command_timeout_for() == 120                       # the default, with nothing saved
+    cm.save_settings(cm.SettingsPayload(command_timeout=600))
+    assert cm.get_settings()["command_timeout"] == 600 and cm.command_timeout_for() == 600
+    assert cm.command_timeout_for({"command_timeout": "x"}) == 120
+    assert cm.command_timeout_for({"command_timeout": 99999}) == 1800     # a hand-edited file stays in range
+
+
+@pytest.mark.asyncio
+async def test_commands_use_the_setting(tmp_path, mocker):
+    mocker.patch.object(executor, "get_settings", return_value={"command_timeout": 10})
+    seen = {}
+    real = executor.asyncio.wait_for
+
+    async def spy(aw, timeout):
+        seen["timeout"] = timeout
+        return await real(aw, timeout)
+    mocker.patch.object(executor.asyncio, "wait_for", side_effect=spy)
+    r = await executor.run_shell_command("echo hi", cwd=str(tmp_path))
+    assert r["stdout"] == "hi\n" and seen["timeout"] == 10
+
+
+@pytest.mark.asyncio
+async def test_the_timeout_message_names_the_setting(tmp_path, mocker):
+    mocker.patch.object(executor, "command_timeout_for", return_value=1)
+    r = await executor.run_shell_command("sleep 5", cwd=str(tmp_path))
+    assert r["exit_code"] == 124
+    assert "timed out after 1s (the limit set in Dashboard → Execution → Command timeout)" in r["stderr"]
+    assert "don't retry the same command" in r["stderr"]

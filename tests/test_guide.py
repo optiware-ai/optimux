@@ -36,7 +36,10 @@ def test_guide_defaults_match_code():
     assert f"| Idle minutes | Memory → Project | {d.curator_idle_minutes} |" in text
     assert f"{curator.MAX_TOKENS:,} tokens" in text
     assert f"the newest {store.KEEP_BACKUPS} are kept" in text
-    assert inspect.signature(run_shell_command).parameters["timeout"].default == 30 and "**30 seconds**" in text
+    from optimux_backend.core import config_manager as cmgr
+    assert inspect.signature(run_shell_command).parameters["timeout"].default is None     # the setting decides
+    assert cmgr.DEFAULT_COMMAND_TIMEOUT == 120 and "**120 seconds** by default" in text
+    assert cmgr.COMMAND_TIMEOUT_RANGE == (10, 1800) and "from 10 to 1800 (30 minutes)" in text
     assert skills.RESERVED >= {"new", "simple", "complex", "skill"}
     assert re.search(r"\| `/new` \|", text) and "/skill <name>" in text
     assert "| Sandbox | Execution | Off |" in text and not d.sandbox and d.sandbox_network is None

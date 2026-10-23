@@ -6,7 +6,7 @@ import signal
 from optimux_backend.core import sandbox
 import resource
 
-from optimux_backend.core.config_manager import get_settings, command_env
+from optimux_backend.core.config_manager import command_env, command_timeout_for, get_settings
 from optimux_backend.core.security import ScopeError, mask_secrets, resolve_project_dir, resolve_scope_root
 
 
@@ -167,7 +167,7 @@ async def _drain(stream, sink: _Capped) -> None:
         sink.add(chunk)
 
 
-async def run_shell_command(command: str, timeout: int = 30, cwd: str | None = None) -> dict:
+async def run_shell_command(command: str, timeout: int | None = None, cwd: str | None = None) -> dict:
     """Execute a bash command asynchronously inside the configured scope.
 
     With the sandbox on (sandbox.py), the command runs in bubblewrap and can
@@ -181,6 +181,9 @@ async def run_shell_command(command: str, timeout: int = 30, cwd: str | None = N
         return {"stdout": "", "stderr": f"Scope error: {e}", "exit_code": 126}
 
     settings = get_settings()
+    # The setting (Dashboard -> Execution) unless a caller sets its own
+    named = timeout is None
+    timeout = command_timeout_for(settings) if named else timeout
     argv = None
     if sandbox.enabled(settings):
         st = sandbox.status()
@@ -227,7 +230,9 @@ async def run_shell_command(command: str, timeout: int = 30, cwd: str | None = N
         _kill_group(process)
         # What the command printed before it was stopped helps to see where it hung
         result = {"stdout": out_buf.text(), "stderr": (err_buf.text() + "\n" if err_buf.total else "")
-                  + f"Command timed out after {timeout}s.", "exit_code": 124}
+                  + f"Command timed out after {timeout}s"
+                  + (" (the limit set in Dashboard → Execution → Command timeout). If it needs longer, ask the user "
+                     "to raise that limit; don't retry the same command." if named else "."), "exit_code": 124}
         return _extras(result, out_buf, err_buf)
     except asyncio.CancelledError:
         # The user pressed Stop: don't leave the command running

@@ -668,7 +668,7 @@ createApp({
                 routingConfig.value = await routingResponse.json();
 
                 const settingsResponse = await fetch('/api/settings');
-                appSettings.value = { max_steps_simple: 8, max_steps_complex: 25, memory_curator: true, curator_idle_minutes: 10, skills_mode: 'auto', confirm_update_memory: true, confirm_escalate: true, sandbox: false, sandbox_network: true, sandbox_ro_paths: [], command_env: [], limit_memory_mb: 0, limit_file_mb: 1024, limit_processes: 0, ...(await settingsResponse.json()) };
+                appSettings.value = { max_steps_simple: 8, max_steps_complex: 25, memory_curator: true, curator_idle_minutes: 10, skills_mode: 'auto', confirm_update_memory: true, confirm_escalate: true, sandbox: false, sandbox_network: true, sandbox_ro_paths: [], command_env: [], limit_memory_mb: 0, limit_file_mb: 1024, limit_processes: 0, command_timeout: 120, ...(await settingsResponse.json()) };
                 fetchProjectUsage();
                 fetchSkills();   // for /name suggestions in the chat input
 

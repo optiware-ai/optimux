@@ -365,7 +365,6 @@ The same tests and `shellcheck` run on GitHub Actions for every push and pull re
 - **Measured local-model delegation**: hand narrow, checkable tasks (output compression, titles, embeddings) to free local models where it pays off.
 - **Security, phase 2** (before 1.0): an audit log, dependency scanning and signed releases, then an independent penetration test.
 - **Teams** (a later generation): several users, roles, and keys and budgets per user.
-- **Configurable command timeout** (30 seconds today).
 
 ## Contributing
 
