@@ -909,7 +909,9 @@ Everything Optimux keeps is in one folder, `~/.optimux` (set `OPTIMUX_HOME` to m
 │   └── optimux.db                SQLite: chats, every model call and its cost, failed calls and escalations, memory history, sign-ins
 ├── backups/
 │   ├── optimux-2026-10-07.db     one copy of the database per day…
-│   └── optimux-2026-10-08.db     …the newest 14 are kept
+│   ├── optimux-2026-10-08.db     …the newest 14 are kept, each checked before it replaces anything
+│   ├── last-check.json           the result of the last check (shown in Dashboard → System)
+│   └── failed/                   a copy that failed its check, kept aside (only if it ever happens)
 ├── snapshots/                    snapshots taken in Dashboard → Backups
 │   ├── 2026-10-14_093000-data.tar.gz
 │   └── 2026-10-14_093000-data.json   what the snapshot holds (for the list)
@@ -1022,6 +1024,8 @@ If you encrypted the download to your **SSH key**, don't paste your private SSH 
 ### Backing up, starting over, moving
 
 **Back up** by copying the whole folder while the server is stopped, or just `~/.optimux/backups/` (a daily copy of the database) to another disk from time to time. The backups live in the same folder, so they don't protect you against deleting it.
+
+**Every daily backup is checked** (SQLite's `quick_check`) before it replaces anything. Dashboard → System shows **✓ checked** next to the latest backup. If a new copy fails, it is kept aside in `backups/failed/`, today's earlier backup and all older ones are kept (nothing is pruned), the log says so at start, and Dashboard → System shows a red warning. A failed check usually means the database itself is damaged (a bad disk, a full disk during a write): take a snapshot of what's there, stop Optimux, and copy the newest good backup over `data/optimux.db` (keep the damaged file aside), then start again.
 
 **Starting over.** If `~/.optimux` disappears, the next start rebuilds the structure: a **new access token** (printed in the terminal; the sign-in page asks for it to set a new password), an empty database, default personal and professional memory, the starter skills and the example models. **Everything else is gone for good**: API keys, chats, usage and cost history, memory and its history, your skills, models, routing, budgets and settings. Your projects and their `.optimux-skills/` are untouched. To start fresh without losing anything, **rename** the folder instead of deleting it:
 

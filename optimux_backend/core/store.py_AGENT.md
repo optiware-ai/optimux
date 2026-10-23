@@ -18,3 +18,4 @@
 
 ## Feature 23
 - Migration 6: table `logins` (browser sign-ins; `id` is the SHA-256 of the cookie). See `auth.py_AGENT.md`.
+- **Checked backups (v0.5.2, IM-05):** `backup()` copies to `<name>.new`, runs `PRAGMA quick_check` on it read-only (`_quick_check`), and only then renames it over today's file and prunes. A failed copy goes to `BACKUP_DIR/failed/optimux-DATE-HHMMSS.db` (kept), nothing is replaced or pruned, and `BackupCheckFailed` is raised (main.py logs a WARNING). Each result is written to `BACKUP_DIR/last-check.json` (`backup_status()`, also in `info()` as `backup_check`); Dashboard → System shows ✓ checked or a red warning.

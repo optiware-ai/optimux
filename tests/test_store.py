@@ -63,7 +63,7 @@ def test_backup_and_rotation(monkeypatch):
     monkeypatch.setattr(store, "KEEP_BACKUPS", 3)
     day = 86400
     paths = [store.backup(now=1_700_000_000 + i * day) for i in range(5)]
-    files = sorted(os.listdir(store.BACKUP_DIR))
+    files = sorted(n for n in os.listdir(store.BACKUP_DIR) if n.endswith(".db"))     # last-check.json beside them
     assert len(files) == 3 and os.path.basename(paths[-1]) == files[-1]
     import sqlite3
     conn = sqlite3.connect(paths[-1])
@@ -91,3 +91,40 @@ async def test_conductor_uses_minimal_thinking_for_gemini(mocker):
         call = mocker.patch.object(llm, "acompletion", return_value=create_mock_response('{"complexity": "simple"}'))
         await llm.route_model("hi")
         assert call.call_args.kwargs.get("reasoning_effort") == expected.get("reasoning_effort")
+
+
+# ---- IM-05 (v0.5.2): every backup is checked before it replaces anything
+
+def test_a_backup_is_checked(tmp_path):
+    from optimux_backend.core import store
+    path = store.backup(now=1_700_000_000)
+    st = store.backup_status()
+    assert st["ok"] is True and st["file"] == path and st["error"] == ""
+    assert store.info()["backup_check"]["ok"] is True
+    assert not [n for n in os.listdir(store.BACKUP_DIR) if n.endswith(".new")]
+
+
+def test_a_failed_check_keeps_the_good_backups(tmp_path, monkeypatch):
+    from optimux_backend.core import store
+    day = 86400
+    good = [store.backup(now=1_700_000_000 + i * day) for i in range(3)]
+    before = {p: open(p, "rb").read() for p in good}
+    monkeypatch.setattr(store, "KEEP_BACKUPS", 2)          # a successful backup would prune now
+    monkeypatch.setattr(store, "_quick_check", lambda p: "*** in database main ***\nPage 7: btree corrupt")
+    with pytest.raises(store.BackupCheckFailed, match="failed its check"):
+        store.backup(now=1_700_000_000 + 2 * day)           # same day as the newest good one
+    assert all(open(p, "rb").read() == b for p, b in before.items())   # not replaced, not pruned
+    failed = os.listdir(os.path.join(store.BACKUP_DIR, "failed"))
+    assert len(failed) == 1 and failed[0].startswith("optimux-")
+    st = store.backup_status()
+    assert st["ok"] is False and "btree corrupt" in st["error"] and st["file"].endswith(failed[0])
+    assert store.info()["backups"] == 3                     # failed/ isn't counted as a backup
+
+
+def test_quick_check_on_a_damaged_file(tmp_path):
+    from optimux_backend.core import store
+    bad = tmp_path / "bad.db"
+    bad.write_bytes(b"SQLite format 3\x00" + b"\xff" * 4000)
+    assert store._quick_check(str(bad)) != "ok"
+    good = store.backup(now=1_700_000_000)
+    assert store._quick_check(good) == "ok"

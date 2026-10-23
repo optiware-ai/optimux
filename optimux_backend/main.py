@@ -74,7 +74,9 @@ except Exception as e:
 try:
     usage_meter.ensure_ready()  # schema + one-time import of the old usage log, before the backup
     # Daily copy of the database (sessions, usage), newest 14 kept
-    print(f"[Optimux] database backup: {store.backup()}")
+    print(f"[Optimux] database backup: {store.backup()} (checked)")
+except store.BackupCheckFailed as e:
+    print(f"[Optimux] WARNING: database backup: {e}")
 except Exception as e:
     print(f"[Optimux] database backup failed: {e}")
 try:

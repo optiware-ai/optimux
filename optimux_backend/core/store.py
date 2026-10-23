@@ -6,6 +6,7 @@ the meta table. backup() copies the database with SQLite's online backup API
 (safe while in use) to ~/.optimux/backups/, keeping the newest KEEP_BACKUPS.
 Uses only the standard library.
 """
+import json
 import os
 import sqlite3
 import time
@@ -187,20 +188,81 @@ def set_meta(key: str, value: str) -> None:
         conn.close()
 
 
+class BackupCheckFailed(RuntimeError):
+    """The new backup didn't pass PRAGMA quick_check; it was kept aside."""
+
+
+STATUS_FILE = "last-check.json"     # in BACKUP_DIR: the result of the last backup's check
+
+
+def _quick_check(path: str) -> str:
+    """'ok', or what SQLite's quick_check reports (or why it couldn't run)."""
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            rows = [r[0] for r in conn.execute("PRAGMA quick_check").fetchall()]
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        return f"couldn't be read: {e}"
+    return "ok" if rows == ["ok"] else "; ".join(str(r) for r in rows[:5])
+
+
+def _write_status(status: dict) -> None:
+    try:
+        with open(os.path.join(BACKUP_DIR, STATUS_FILE), "w") as f:
+            json.dump(status, f)
+    except OSError as e:
+        print(f"[Optimux] backup check status not saved: {e}")
+
+
+def backup_status() -> dict | None:
+    """The last backup's check: {"time", "ok", "file", "error"}, or None."""
+    try:
+        with open(os.path.join(BACKUP_DIR, STATUS_FILE)) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
 def backup(now: float | None = None) -> str:
     """Copy the database to BACKUP_DIR/optimux-YYYY-MM-DD.db (one per day,
-    refreshed on each call) and delete all but the newest KEEP_BACKUPS."""
+    refreshed on each call) and delete all but the newest KEEP_BACKUPS.
+
+    The copy is checked (PRAGMA quick_check) before it replaces anything
+    (v0.5.2, IM-05). A copy that fails is moved to BACKUP_DIR/failed/ (kept,
+    never deleted), today's earlier backup and all older ones stay, nothing is
+    pruned, and BackupCheckFailed is raised; Dashboard -> System shows it."""
     os.makedirs(BACKUP_DIR, exist_ok=True)
-    name = time.strftime("optimux-%Y-%m-%d.db", time.localtime(now or time.time()))
+    stamp = now or time.time()
+    name = time.strftime("optimux-%Y-%m-%d.db", time.localtime(stamp))
     target = os.path.join(BACKUP_DIR, name)
+    fresh = target + ".new"
+    for leftover in (fresh, fresh + "-wal", fresh + "-shm"):
+        if os.path.exists(leftover):
+            os.remove(leftover)             # left by an interrupted backup
     src = connect()
-    dst = sqlite3.connect(target)
+    dst = sqlite3.connect(fresh)
     try:
         with dst:
             src.backup(dst)
+        dst.execute("PRAGMA journal_mode=DELETE")     # one self-contained file, no -wal/-shm beside it
     finally:
         dst.close()
         src.close()
+    result = _quick_check(fresh)
+    if result != "ok":
+        failed_dir = os.path.join(BACKUP_DIR, "failed")
+        os.makedirs(failed_dir, exist_ok=True)
+        kept = os.path.join(failed_dir, time.strftime("optimux-%Y-%m-%d-%H%M%S.db", time.localtime(stamp)))
+        os.replace(fresh, kept)
+        _write_status({"time": stamp, "ok": False, "file": kept, "error": result})
+        raise BackupCheckFailed(f"the new backup failed its check ({result}); it was kept as {kept}, and the "
+                                "older backups were kept. The database itself may be damaged: see Dashboard → "
+                                "System.")
+    os.replace(fresh, target)
+    _write_status({"time": stamp, "ok": True, "file": target, "error": ""})
     backups = paths.backup_files(BACKUP_DIR)       # oldest first
     for old in backups[:-KEEP_BACKUPS]:
         os.remove(os.path.join(BACKUP_DIR, old))
@@ -225,4 +287,5 @@ def info() -> dict:
         "backups": len(backups),
         "latest_backup": latest,
         "latest_backup_time": os.path.getmtime(latest) if latest else None,
+        "backup_check": backup_status(),
     }

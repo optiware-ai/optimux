@@ -1818,8 +1818,12 @@
                             <h3 class="font-bold text-gray-200 text-[15px] mb-1">Storage</h3>
                             <div class="text-xs text-gray-400 font-mono space-y-0.5">
                                 <div>Database: {{ storageInfo.path }} · {{ fmtBytes(storageInfo.size_bytes) }} · {{ (storageInfo.usage_rows || 0).toLocaleString() }} usage rows</div>
-                                <div v-if="storageInfo.latest_backup">Latest backup: {{ storageInfo.latest_backup }} ({{ new Date(storageInfo.latest_backup_time * 1000).toLocaleString() }}) · {{ storageInfo.backups }} kept</div>
+                                <div v-if="storageInfo.latest_backup">Latest backup: {{ storageInfo.latest_backup }} ({{ new Date(storageInfo.latest_backup_time * 1000).toLocaleString() }}) · {{ storageInfo.backups }} kept<span v-if="storageInfo.backup_check && storageInfo.backup_check.ok" class="text-green-400" title="The last backup passed SQLite's quick_check before it replaced anything."> · ✓ checked</span></div>
                                 <div v-else class="text-yellow-400">No backup yet; one is made on every server start.</div>
+                            </div>
+                            <div v-if="storageInfo.backup_check && !storageInfo.backup_check.ok" role="alert" class="mt-2 rounded-lg border border-red-800 bg-red-950/40 p-3 text-[13px] text-red-200">
+                                <b class="text-red-300">✕ The last backup failed its check</b> ({{ new Date(storageInfo.backup_check.time * 1000).toLocaleString() }}): <span class="font-mono">{{ storageInfo.backup_check.error }}</span>.
+                                It was kept aside as <span class="font-mono break-all">{{ storageInfo.backup_check.file }}</span>, and the older backups were kept. The database itself may be damaged: take a snapshot in Dashboard → Backups, then see <i>Backing up, starting over, moving</i> in the Guide.
                             </div>
                         </div>
                         <div v-if="settingsTab === 'system'">
