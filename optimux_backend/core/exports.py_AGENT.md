@@ -28,3 +28,4 @@
 - `snapshots.py` (`get`, `archive_path`, `free_bytes`), `paths.py` (`SNAPSHOT_DIR`, `write_private`), `pyrage==1.4.0` (wheels for Linux x86_64/aarch64 and macOS, Python 3.10–3.13).
 - Used by `main.py`: `POST /api/snapshots/{id}/export`, `GET /api/snapshots/exports/{token}`, `GET /api/snapshots/{id}/download`; `config_manager.py` validates the remembered `snapshot_recipient` with `parse_recipient`.
 - Tests: `tests/test_exports.py` (including one that opens a download with the `age` command when it is installed; the SSH RSA tests make their key with `openssl`; `tests/data/test-only-ssh-ed25519.pub` is a throwaway public key).
+- **`prepare_file(owner, path, filename, mode, recipient)` (v0.5.2):** an encrypted download of any file Optimux keeps (a daily backup: owner `daily-<name>`); only `key` and `recipient` modes. `prepare` and it share `_encrypt`.

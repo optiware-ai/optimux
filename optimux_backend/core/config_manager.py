@@ -148,6 +148,8 @@ class SettingsPayload(BaseModel):
     github_login: str = ""
     # v0.3: how much disk the snapshots (Dashboard -> Backups) may use, in GB
     snapshot_limit_gb: float = 5
+    # v0.5.2: how many daily database backups to keep (Dashboard -> Backups)
+    backups_keep: int = 14
     snapshot_recipient: str = ""      # a public key remembered for encrypted downloads
     online_catalog: bool = False      # may the Models screen ask providers and GitHub (on Refresh only)
     # v0.4 plan mode: off | ask (show the plan, wait for Run) | auto (show it and start).
@@ -157,6 +159,17 @@ class SettingsPayload(BaseModel):
 
 DEFAULT_MAX_STEPS = {"simple": 8, "complex": 25}
 DEFAULT_COMMAND_TIMEOUT = 120
+BACKUPS_KEEP_RANGE = (3, 60)
+
+
+def backups_keep_for(settings: dict | None = None) -> int:
+    """How many daily backups to keep (Dashboard -> Backups), within the range."""
+    settings = get_settings() if settings is None else settings
+    try:
+        value = int(settings.get("backups_keep", 14))
+    except (TypeError, ValueError):
+        value = 14
+    return max(BACKUPS_KEEP_RANGE[0], min(value, BACKUPS_KEEP_RANGE[1]))
 COMMAND_TIMEOUT_RANGE = (10, 1800)
 
 
@@ -223,6 +236,8 @@ def save_settings(payload: SettingsPayload):
     if not COMMAND_TIMEOUT_RANGE[0] <= payload.command_timeout <= COMMAND_TIMEOUT_RANGE[1]:
         raise ValidationError(f"The command timeout must be between {COMMAND_TIMEOUT_RANGE[0]} and "
                               f"{COMMAND_TIMEOUT_RANGE[1]} seconds.")
+    if not BACKUPS_KEEP_RANGE[0] <= payload.backups_keep <= BACKUPS_KEEP_RANGE[1]:
+        raise ValidationError(f"Keep between {BACKUPS_KEEP_RANGE[0]} and {BACKUPS_KEEP_RANGE[1]} daily backups.")
     if not 0.1 <= payload.snapshot_limit_gb <= 10000:
         raise ValidationError("snapshot_limit_gb must be between 0.1 and 10000.")
     # Checked only when it changes: a saved key never blocks unrelated saves

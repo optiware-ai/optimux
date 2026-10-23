@@ -163,6 +163,22 @@ def prepare(sid: str, mode: str, recipient: str = "") -> dict:
         return {"mode": "plain", "url": f"/api/snapshots/{sid}/download", "filename": download_name(sid, False),
                 "size": os.path.getsize(archive), "key": None}
 
+    return _encrypt(sid, archive, download_name(sid, True), mode, recipient)
+
+
+def prepare_file(owner: str, path: str, filename: str, mode: str, recipient: str = "") -> dict:
+    """An encrypted download of any file Optimux keeps (v0.5.2: a daily database
+    backup). owner identifies it, for replacing an earlier download; only "key"
+    and "recipient" modes: these files hold your chats, never sent in the clear."""
+    if mode not in ("key", "recipient"):
+        raise ExportError("This file can only be downloaded encrypted.")
+    if not os.path.isfile(path):
+        raise ExportError("This file doesn't exist anymore.")
+    return _encrypt(owner, path, filename + ".age", mode, recipient)
+
+
+def _encrypt(sid: str, archive: str, filename: str, mode: str, recipient: str) -> dict:
+    """Encrypt archive into a download (see the module notes); sid: whose download it is."""
     recipients, secret = None, None
     if mode == "key":
         identity = pyrage.x25519.Identity.generate()
@@ -196,7 +212,7 @@ def prepare(sid: str, mode: str, recipient: str = "") -> dict:
             # The snapshot was deleted while this was encrypted: its download goes too
             remove(token)
             raise ExportError("This snapshot was deleted while the download was being prepared.")
-        info = {"sid": sid, "created": time.time(), "filename": download_name(sid, True),
+        info = {"sid": sid, "created": time.time(), "filename": filename,
                 "mode": mode, "size": os.path.getsize(out)}
         paths.write_private(_token_path(token, ".json"), json.dumps(info))
         for old_token, _ in earlier:                # one prepared download per snapshot,

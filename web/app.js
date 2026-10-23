@@ -1307,6 +1307,69 @@ createApp({
             s.unreadable_count ? `${s.unreadable_count} file(s) couldn't be read and are not inside: ${(s.unreadable || []).join(', ')}` : '',
             s.changed_count ? `${s.changed_count} file(s) changed while they were copied (stored as they were when the copy began): ${(s.changed || []).join(', ')}` : '',
         ].filter(Boolean).join('\n');
+        // v0.5.2: the daily database backups, in Dashboard -> Backups
+        const dailyInfo = ref({ backups: [], keep: 14, keep_range: [3, 60], dir: '', last_check: null });
+        const dailyKeep = ref(14);
+        const dailyBusy = ref(false);
+        const dailyMsg = ref(null);              // { ok, text }
+        const dailyDeleting = ref('');
+        const dailyRestore = ref({});            // name -> { confirm, busy, error }
+        const dailyItem = (b) => ({ id: 'daily-' + b.name.slice(8, 18), kind: 'daily', includes_secrets: false,
+                                    exportUrl: `/api/backups/${encodeURIComponent(b.name)}/export`,
+                                    outName: `optimux-backup-${b.name.slice(8, 18)}.db` });
+        const fetchBackups = async () => {
+            try {
+                const r = await fetch('/api/backups');
+                if (r.ok) { dailyInfo.value = await r.json(); dailyKeep.value = dailyInfo.value.keep; }
+            } catch (error) { console.error('Failed to load the daily backups', error); }
+        };
+        const dailyPost = async (url, body) => {
+            const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                         body: body ? JSON.stringify(body) : undefined });
+            return { ok: r.ok, body: await readJson(r) };
+        };
+        const backupNow = async () => {
+            dailyBusy.value = true; dailyMsg.value = null;
+            const { ok, body } = await dailyPost('/api/backups');
+            dailyBusy.value = false;
+            dailyMsg.value = ok ? { ok: true, text: 'Backup taken and checked.' }
+                                : { ok: false, text: detailText(body.detail, 'The backup failed.') };
+            fetchBackups();
+        };
+        const saveDailyKeep = async () => {
+            const { ok, body } = await dailyPost('/api/backups/keep', { keep: Number(dailyKeep.value) });
+            dailyMsg.value = ok ? { ok: true, text: `Keeping the newest ${dailyKeep.value}; extra ones go at the next backup.` }
+                                : { ok: false, text: detailText(body.detail, 'Not saved.') };
+            if (ok) appSettings.value.backups_keep = Number(dailyKeep.value);
+        };
+        const checkDaily = async (b) => {
+            b.checking = true;
+            const { ok, body } = await dailyPost(`/api/backups/${encodeURIComponent(b.name)}/check`);
+            b.checking = false;
+            if (ok) { b.checked = body.ok; b.error = body.error; }
+            else dailyMsg.value = { ok: false, text: detailText(body.detail, 'The check failed to run.') };
+        };
+        const deleteDaily = async (b) => {
+            const { ok, body } = await dailyPost(`/api/backups/${encodeURIComponent(b.name)}/delete`);
+            dailyDeleting.value = '';
+            if (!ok) dailyMsg.value = { ok: false, text: detailText(body.detail, 'Not deleted.') };
+            fetchBackups();
+        };
+        const toggleDailyRestore = (b) => {
+            if (dailyRestore.value[b.name]) delete dailyRestore.value[b.name];
+            else dailyRestore.value[b.name] = { confirm: '', busy: false, error: '' };
+        };
+        const restoreDaily = async (b) => {
+            const st = dailyRestore.value[b.name];
+            st.busy = true; st.error = '';
+            const { ok, body } = await dailyPost(`/api/backups/${encodeURIComponent(b.name)}/restore`, { confirm: st.confirm });
+            st.busy = false;
+            if (!ok) { st.error = detailText(body.detail, 'The restore failed.'); return; }
+            delete dailyRestore.value[b.name];
+            await fetchRestoreStatus();
+            fetchSnapshots();                    // the snapshot of the current state taken first
+            document.getElementById('dash-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
+        };
         const fetchSnapshots = async () => {
             try {
                 const r = await fetch('/api/snapshots');
@@ -1370,7 +1433,7 @@ createApp({
             const d = snapDl.value[s.id];
             d.busy = true; d.error = '';
             try {
-                const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/export`, { method: 'POST',
+                const r = await fetch(s.exportUrl || `/api/snapshots/${encodeURIComponent(s.id)}/export`, { method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ mode: d.mode, recipient: d.recipient, remember: d.remember }) });
                 const body = await readJson(r);
@@ -1388,7 +1451,7 @@ createApp({
         };
         const dlSaveKey = (s) => {
             const d = snapDl.value[s.id];
-            const text = `# Optimux snapshot key for ${d.result.filename}\n# Open with: age -d -i optimux-key-${s.id}.txt -o snapshot.tar.gz ${d.result.filename}\n${d.result.key}\n`;
+            const text = `# Optimux key for ${d.result.filename}\n# Open with: age -d -i optimux-key-${s.id}.txt -o ${s.outName || 'snapshot.tar.gz'} ${d.result.filename}\n${d.result.key}\n`;
             const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
             const a = document.createElement('a');
             a.href = url; a.download = `optimux-key-${s.id}.txt`;
@@ -1410,7 +1473,7 @@ createApp({
             const keyArg = d.result.mode === 'key' ? `optimux-key-${s.id}.txt`
                 : rec.includes('ssh-ed25519') ? '~/.ssh/id_ed25519'
                 : rec.includes('ssh-rsa') ? '~/.ssh/id_rsa' : '<your-age-key-file>';
-            return `age -d -i ${keyArg} -o snapshot.tar.gz ${d.result.filename}`;
+            return `age -d -i ${keyArg} -o ${s.outName || 'snapshot.tar.gz'} ${d.result.filename}`;
         };
         // Leaving Backups drops any download panel (and a one-time key still shown in it)
         watch(() => [showSettingsModal.value, settingsTab.value], ([open, tab]) => {
@@ -2650,7 +2713,7 @@ createApp({
             if (id === 'execution') { fetchSandbox(); commandEnvText.value = (appSettings.value.command_env || []).join('\n'); }
             if (id === 'skills') fetchSkills();
             if (id === 'models') { fetchCatalog(); loadProviderModels(); }
-            if (id === 'backups') { fetchSnapshots(); fetchRestoreStatus(); fetchProjectsList().then(snapSyncProjects); }
+            if (id === 'backups') { fetchSnapshots(); fetchBackups(); fetchRestoreStatus(); fetchProjectsList().then(snapSyncProjects); }
         };
         const dashboardHash = () => `#/dashboard/${settingsTab.value}`;
         const openSettings = (section) => {
@@ -3880,6 +3943,7 @@ createApp({
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
             snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
+            dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
             rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,

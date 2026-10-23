@@ -546,6 +546,58 @@ def restore(sid: str, parts: list[str], confirm: str, replies_running=False) -> 
             _busy = False
 
 
+def restore_daily(name: str, confirm: str, replies_running=False) -> dict:
+    """Put a daily database backup back (v0.5.2, Dashboard -> Backups). The same
+    rules as a snapshot's database part: the confirm phrase, a Data snapshot of
+    the current state first, staged and put in place at the next start, and the
+    current usage and cost history and sign-ins kept (never rolled back)."""
+    global _busy
+    from optimux_backend.core import snapshots, store
+    if (confirm or "").strip() != CONFIRM_PHRASE:
+        raise RestoreError(f'Type "{CONFIRM_PHRASE}" to confirm.')
+    if pending():
+        raise RestoreError("Another restore is waiting for the restart. Restart Optimux, or cancel it first.")
+    if snapshots.summary()["running"]:
+        raise RestoreError("A snapshot is being taken. Wait for it to finish.")
+    try:
+        source = store.backup_path(name)
+    except store.BackupError as e:
+        raise RestoreError(str(e))
+    if snapshots.free_bytes() < os.path.getsize(source) + FREE_MARGIN:
+        raise RestoreError("Not enough free disk space to restore this backup.")
+    with _lock:
+        if _busy:
+            raise RestoreError("A restore is already running.")
+        _busy = True                        # from here on no chat turn starts
+    staging = _home(STAGING_NAME)
+    try:
+        if replies_running() if callable(replies_running) else replies_running:
+            raise RestoreError("A reply is running. Wait for it to finish (or stop it), then restore.")
+        _rmtree(staging)
+        os.makedirs(os.path.join(staging, "data"), mode=0o700)
+        staged = os.path.join(staging, "data", "optimux.db")
+        shutil.copy2(source, staged)        # a copy: the backup itself stays in the list
+        check_database(staged)
+        try:
+            before = snapshots.create("data", note=f"Before restoring the daily backup of {name[8:18]}")["id"]
+        except snapshots.SnapshotError as e:
+            raise RestoreError(f"The snapshot of the current state, taken before every restore, failed: {e} "
+                               "Nothing was restored.")
+        pend = pending_dir()
+        _rmtree(pend)
+        os.makedirs(os.path.join(pend, "data"), mode=0o700)
+        os.replace(staged, os.path.join(pend, "data", "optimux.db"))
+        plan = {"source": f"daily backup {name[8:18]}", "parts": ["data/optimux.db"], "before_snapshot": before,
+                "created": time.time(), "projects": [], "project_memory": [], "daily": name}
+        paths.write_private(os.path.join(pend, PLAN_NAME), json.dumps(plan, indent=2))
+        return {"source": plan["source"], "projects": [], "archived": [], "before_snapshot": before,
+                "data": ["data/optimux.db"], "restart_needed": True, "skipped_links": []}
+    finally:
+        _rmtree(staging)
+        with _lock:
+            _busy = False
+
+
 def cancel_pending() -> str:
     """Drop a staged data restore: its files move to the legacy folder (nothing is deleted)."""
     if not pending():
@@ -663,7 +715,8 @@ def _apply_pending() -> list[str]:
                   "projects": plan.get("projects", []), "before_snapshot": plan.get("before_snapshot"),
                   "aside": aside}
         paths.write_private(_home(LAST_NAME), json.dumps(result, indent=2))
-        return [f"restore: restored {', '.join(result['parts'])} from snapshot {result['source']}; "
+        origin = result["source"] if plan.get("daily") else f"snapshot {result['source']}"
+        return [f"restore: restored {', '.join(result['parts'])} from {origin}; "
                 f"the previous files are in {aside}"]
     except Exception as e:
         undone = True

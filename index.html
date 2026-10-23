@@ -1057,7 +1057,7 @@
                         <span class="text-2xl leading-none text-yellow-400" aria-hidden="true">⚠</span>
                         <div class="flex-1 min-w-0 space-y-2">
                             <div class="font-bold text-yellow-300">Restart Optimux to finish the restore</div>
-                            <p class="text-[14px] text-yellow-100">Ready to put back: <b>{{ rsStatus.pending.parts.join(', ') }}</b>, from the snapshot of {{ new Date(rsStatus.pending.created * 1000).toLocaleString() }}<template v-if="rsStatus.pending.projects && rsStatus.pending.projects.length"> (projects already restored: {{ rsStatus.pending.projects.join(', ') }})</template>. Chat replies wait until then, so nothing new is lost.</p>
+                            <p class="text-[14px] text-yellow-100">Ready to put back: <b>{{ rsStatus.pending.parts.join(', ') }}</b>, {{ rsStatus.pending.daily ? 'from the ' + rsStatus.pending.source + ' (chosen' : 'from the snapshot of' }} {{ new Date(rsStatus.pending.created * 1000).toLocaleString() }}{{ rsStatus.pending.daily ? ')' : '' }}<template v-if="rsStatus.pending.projects && rsStatus.pending.projects.length"> (projects already restored: {{ rsStatus.pending.projects.join(', ') }})</template>. Chat replies wait until then, so nothing new is lost.</p>
                             <p v-if="rsStatus.pending.before_snapshot" class="text-[13px] text-yellow-200/80">Your current data was saved first, in the snapshot <code>{{ rsStatus.pending.before_snapshot }}</code>.</p>
                             <div class="flex flex-wrap items-center gap-2">
                                 <button v-if="rsStatus.can_restart" @click="restartForRestore" :disabled="rsRestarting" class="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-3 py-1.5 rounded-lg font-bold text-[14px] disabled:opacity-60">{{ rsRestarting ? 'Restarting… the page reloads by itself' : 'Restart now' }}</button>
@@ -1362,6 +1362,151 @@
                                     </div>
                                 </div>
                             </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- v0.5.2: the daily database backups -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                        <h3 class="font-bold text-gray-200 mb-1 flex items-center">Daily backups of the database<help-tip wide>
+                            <p>Optimux copies its <b>database</b> every time it starts (one file per day): your chats, usage and costs, memory history and sign-ins. Settings, keys, memory files and projects are not in them: use snapshots for those.</p>
+                            <p>Each copy is <b>checked</b> (SQLite's quick_check) before it replaces anything; a copy that fails is kept aside in <code>failed/</code>.</p>
+                            <p><b>Restore</b> puts that day's chats and memory history back when Optimux restarts. Your current data is saved in a snapshot first, and usage, costs and sign-ins are never rolled back.</p>
+                        </help-tip></h3>
+                        <p class="text-[15px] text-gray-400 mb-3">An automatic copy of your chats and history each day, kept on this machine.</p>
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[14px] text-gray-400 mb-3">
+                            <button @click="backupNow" :disabled="dailyBusy" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg font-bold text-[14px] disabled:opacity-50">{{ dailyBusy ? 'Backing up…' : 'Back up now' }}</button>
+                            <span class="flex items-center gap-1">Keep the newest
+                                <input v-model="dailyKeep" type="number" :min="dailyInfo.keep_range[0]" :max="dailyInfo.keep_range[1]" class="w-16 bg-gray-950 border border-gray-700 rounded px-2 py-0.5 text-gray-200 outline-none focus:border-blue-500">
+                                <button @click="saveDailyKeep" class="text-[13px] px-2 py-0.5 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Save</button>
+                                <help-tip>From {{ dailyInfo.keep_range[0] }} to {{ dailyInfo.keep_range[1] }}. When there are more, the oldest go at the next backup.</help-tip></span>
+                            <span v-if="dailyMsg" :class="dailyMsg.ok ? 'text-green-400' : 'text-red-400'">{{ dailyMsg.text }}</span>
+                        </div>
+                        <div v-if="dailyInfo.dir" class="flex flex-wrap items-center gap-2 text-[13px] text-gray-500 mb-2">
+                            <span>Stored in</span>
+                            <span class="cm-path-box"><code>{{ dailyInfo.dir }}</code>
+                                <button type="button" @click="snapCopy('daily-dir', dailyInfo.dir)" :class="['cm-copy-btn', snapCopied['daily-dir'] ? 'cm-copied' : '']">{{ snapCopied['daily-dir'] ? 'Copied ✓' : 'Copy' }}</button></span>
+                        </div>
+                        <div v-if="dailyInfo.last_check && !dailyInfo.last_check.ok" role="alert" class="mb-2 rounded-lg border border-red-800 bg-red-950/40 p-3 text-[13px] text-red-200">
+                            <b class="text-red-300">✕ The last backup failed its check</b>: <span class="font-mono">{{ dailyInfo.last_check.error }}</span>. It was kept aside as <span class="font-mono break-all">{{ dailyInfo.last_check.file }}</span>; the backups below were kept.
+                        </div>
+                        <div v-if="!dailyInfo.backups.length" class="text-[16px] text-gray-500 italic">No daily backup yet. Back up now, or restart Optimux.</div>
+                        <div v-else class="divide-y divide-gray-800">
+                            <div v-for="b in dailyInfo.backups" :key="b.name" class="py-2 text-[14px]">
+                                <div class="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1">
+                                    <span class="text-gray-200 sm:w-28 shrink-0 font-mono">{{ b.date }}</span>
+                                    <span class="text-gray-500 sm:w-44 shrink-0" title="When the copy was written">{{ new Date(b.mtime * 1000).toLocaleTimeString() }}</span>
+                                    <span class="flex-1 min-w-0">
+                                        <span v-if="b.checked === true" class="text-[12px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400" :title="b.checked_at ? 'Checked ' + new Date(b.checked_at * 1000).toLocaleString() : ''">✓ checked</span>
+                                        <span v-else-if="b.checked === false" class="text-[12px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400" :title="b.error">✕ damaged</span>
+                                        <button v-else @click="checkDaily(b)" :disabled="b.checking" class="text-[12px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-400 hover:border-gray-500" title="Made before checks existed (v0.5.2): check it now">{{ b.checking ? 'checking…' : 'not checked: check now' }}</button>
+                                    </span>
+                                    <span class="text-gray-400 w-20 text-right shrink-0">{{ fmtBytes(b.size_bytes) }}</span>
+                                    <button @click="toggleDailyRestore(b)" :disabled="b.checked === false" :aria-expanded="!!dailyRestore[b.name]" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-blue-500 hover:text-blue-300 disabled:opacity-40 shrink-0">{{ dailyRestore[b.name] ? 'Close restore' : 'Restore…' }}</button>
+                                    <button @click="snapDl[dailyItem(b).id] ? dlClose(dailyItem(b)) : dlOpen(dailyItem(b))" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 shrink-0">{{ snapDl[dailyItem(b).id] ? 'Hide' : 'Download…' }}</button>
+                                    <button v-if="dailyDeleting !== b.name" @click="dailyDeleting = b.name" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-red-500 hover:text-red-400 shrink-0">Delete</button>
+                                </div>
+                                <div v-if="dailyRestore[b.name]" class="mt-2 rounded-xl border border-blue-500/40 bg-blue-500/5 p-4 space-y-3" role="region" aria-label="Restore this daily backup">
+                                    <div class="font-semibold text-gray-100 text-[15px]">Restore the database of {{ b.date }}</div>
+                                    <p v-if="rsStatus.pending" class="text-[14px] text-yellow-300">Another restore is waiting for the restart (see the top of this page). Restart Optimux or cancel it first.</p>
+                                    <ul class="text-[13px] text-gray-400 list-disc pl-5 space-y-0.5">
+                                        <li>Chats and memory history go back to how they were on {{ b.date }}. Chats from after that day leave the list.</li>
+                                        <li>Your current data is saved first, in a new Data snapshot, so this can be undone. The database is put back when Optimux <b>restarts</b>; chat replies wait until then.</li>
+                                        <li>Usage and cost history and your sign-ins are never rolled back. Settings, keys, memory files and projects don't change.</li>
+                                    </ul>
+                                    <div>
+                                        <label :for="'drs-' + b.name" class="block text-gray-300 mb-1">To confirm, type <span class="font-mono text-red-300 select-none">{{ rsStatus.confirm_phrase }}</span></label>
+                                        <input :id="'drs-' + b.name" v-model="dailyRestore[b.name].confirm" @keydown.enter="restoreDaily(b)" autocomplete="off" spellcheck="false" :placeholder="rsStatus.confirm_phrase" @paste.prevent @drop.prevent
+                                               class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-gray-100 focus:outline-none focus:border-red-600">
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <button @click="restoreDaily(b)" :disabled="dailyRestore[b.name].busy || dailyRestore[b.name].confirm.trim() !== rsStatus.confirm_phrase || !!rsStatus.pending" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-[14px] disabled:opacity-50">{{ dailyRestore[b.name].busy ? 'Restoring… (saving the current state first)' : 'Restore this backup' }}</button>
+                                        <span v-if="dailyRestore[b.name].error" class="text-[13px] text-red-400">{{ dailyRestore[b.name].error }}</span>
+                                    </div>
+                                </div>
+                                <div v-if="dailyDeleting === b.name" role="alertdialog" aria-label="Delete this daily backup" class="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2">
+                                    <span class="flex-1 min-w-0 text-red-200">Delete the daily backup of {{ b.date }}? The file will be removed from the server, and this can't be undone.</span>
+                                    <button @click="deleteDaily(b)" class="text-[13px] px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-white font-semibold">Delete</button>
+                                    <button @click="dailyDeleting = ''" class="text-[13px] px-3 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Cancel</button>
+                                </div>
+                                <div v-if="snapDl[dailyItem(b).id]" class="mt-2 bg-gray-950 border border-gray-800 rounded-lg p-3">
+                                    <p class="text-[13px] text-gray-400 mb-2">It holds your chats, so it can only leave this server encrypted. Open it with <code>age</code>; the result is an SQLite file.</p>
+                                    <button v-if="!snapDl[dailyItem(b).id]" @click="dlOpen(dailyItem(b))" class="text-[14px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500">⬇ Download this backup…</button>
+                                    <div v-else class="space-y-3">
+                                        <div class="flex items-center justify-between">
+                                            <div class="text-[14px] font-semibold text-gray-200">Download this backup</div>
+                                            <button @click="dlClose(dailyItem(b))" class="text-[13px] text-gray-400 hover:text-gray-200">Close</button>
+                                        </div>
+                                        <template v-if="!snapDl[dailyItem(b).id].result">
+                                            <p v-if="false" class="text-[13px] text-yellow-300">It holds your API keys and sign-in data, so it can only leave this server encrypted.</p>
+                                            <div role="radiogroup" aria-label="How to protect the download" class="space-y-2">
+                                                <label :class="['flex gap-2.5 px-3 py-2 rounded-lg border cursor-pointer', snapDl[dailyItem(b).id].mode === 'key' ? 'border-blue-500 bg-blue-500/10' : 'border-gray-700']">
+                                                    <input type="radio" value="key" v-model="snapDl[dailyItem(b).id].mode" class="mt-1 w-3.5 h-3.5 shrink-0">
+                                                    <span><span class="text-[14px] text-gray-100 font-semibold">Encrypt with a one-time key</span> <span class="ml-1 text-[12px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400">recommended</span>
+                                                        <span class="block text-[13px] text-gray-400">Optimux makes a key and shows it to you once. Without it, nobody can open the file: not Optimux, not anyone who intercepts it, and not you if you lose it.</span></span>
+                                                </label>
+                                                <label :class="['flex gap-2.5 px-3 py-2 rounded-lg border cursor-pointer', snapDl[dailyItem(b).id].mode === 'recipient' ? 'border-blue-500 bg-blue-500/10' : 'border-gray-700']">
+                                                    <input type="radio" value="recipient" v-model="snapDl[dailyItem(b).id].mode" class="mt-1 w-3.5 h-3.5 shrink-0">
+                                                    <span class="flex-1 min-w-0"><span class="text-[14px] text-gray-100 font-semibold">Encrypt to my public key</span>
+                                                        <span class="block text-[13px] text-gray-400">An <code>age1…</code> key, or your SSH key (<code>ssh-ed25519 …</code> or <code>ssh-rsa …</code>, from <code>~/.ssh/id_ed25519.pub</code>). Only your secret key opens it.</span>
+                                                        <template v-if="snapDl[dailyItem(b).id].mode === 'recipient'">
+                                                            <details class="mt-2 rounded-lg border border-gray-800 bg-gray-950/60 px-3 py-2 text-[13px] text-gray-300" :open="!snapDl[dailyItem(b).id].recipient">
+                                                                <summary class="cursor-pointer text-blue-400 select-none">How do I get a public key?</summary>
+                                                                <div class="mt-2 space-y-2.5">
+                                                                    <p class="text-yellow-200">Use a key from <b>the computer where you will open the download</b> (your laptop), never one made on this server: the secret half must not live next to the backup.</p>
+                                                                    <div><b>1. Do you already have one?</b> Most developers have an SSH key. On your computer, run:</div>
+                                                                    <span class="cm-path-box"><code>cat ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub 2>/dev/null</code>
+                                                                        <button type="button" @click="snapCopy('k1-' + dailyItem(b).id, 'cat ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub 2>/dev/null')" :class="['cm-copy-btn', snapCopied['k1-' + dailyItem(b).id] ? 'cm-copied' : '']">{{ snapCopied['k1-' + dailyItem(b).id] ? 'Copied ✓' : 'Copy' }}</button></span>
+                                                                    <div class="text-gray-400">On Windows (PowerShell): <code>type $env:USERPROFILE\.ssh\id_ed25519.pub</code>. A line starting with <code>ssh-ed25519</code> or <code>ssh-rsa</code> is your public key: paste it below.</div>
+                                                                    <div><b>2. None yet? Make one</b> on your computer (press Enter for the defaults; a passphrase is a good idea):</div>
+                                                                    <span class="cm-path-box"><code>ssh-keygen -t ed25519</code>
+                                                                        <button type="button" @click="snapCopy('k2-' + dailyItem(b).id, 'ssh-keygen -t ed25519')" :class="['cm-copy-btn', snapCopied['k2-' + dailyItem(b).id] ? 'cm-copied' : '']">{{ snapCopied['k2-' + dailyItem(b).id] ? 'Copied ✓' : 'Copy' }}</button></span>
+                                                                    <div class="text-gray-400">Or a key only for backups, with age: <code>age-keygen -o ~/optimux-backup.key</code>. It prints <code>Public key: age1…</code>: paste the <code>age1…</code> part.</div>
+                                                                    <div><b>3. Paste only the public part</b>: the <code>.pub</code> file's line or the <code>age1…</code> key. Never the file without <code>.pub</code>, and never a line starting with <code>AGE-SECRET-KEY</code>: those stay on your computer.</div>
+                                                                    <div class="text-gray-400">To open the download later you need the secret half: <code>~/.ssh/id_ed25519</code> (or <code>id_rsa</code>, or your age key file). Keys in a hardware token (<code>sk-ssh-…</code>) don't work with age.</div>
+                                                                </div>
+                                                            </details>
+                                                            <input v-model="snapDl[dailyItem(b).id].recipient" placeholder="age1… or ssh-ed25519 AAAA…" spellcheck="false" class="mt-2 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-[13px] text-gray-200 outline-none focus:border-blue-500">
+                                                            <label class="mt-1.5 flex items-center gap-2 text-[13px] text-gray-400"><input type="checkbox" v-model="snapDl[dailyItem(b).id].remember" class="w-3.5 h-3.5"> Remember this public key for next time</label>
+                                                        </template></span>
+                                                </label>
+                                                <label v-if="false" :class="['flex gap-2.5 px-3 py-2 rounded-lg border cursor-pointer', snapDl[dailyItem(b).id].mode === 'plain' ? 'border-yellow-500/60 bg-yellow-500/10' : 'border-gray-700']">
+                                                    <input type="radio" value="plain" v-model="snapDl[dailyItem(b).id].mode" class="mt-1 w-3.5 h-3.5 shrink-0">
+                                                    <span><span class="text-[14px] text-gray-100 font-semibold">No encryption</span>
+                                                        <span class="block text-[13px] text-gray-400">A plain <code>.tar.gz</code>. Anyone who gets the file can read your code.</span></span>
+                                                </label>
+                                            </div>
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <button @click="dlPrepare(dailyItem(b))" :disabled="snapDl[dailyItem(b).id].busy" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-[14px] disabled:opacity-50">{{ snapDl[dailyItem(b).id].busy ? 'Encrypting…' : (snapDl[dailyItem(b).id].mode === 'plain' ? 'Download' : 'Encrypt and prepare the download') }}</button>
+                                                <span v-if="snapDl[dailyItem(b).id].error" class="text-[13px] text-red-400">{{ snapDl[dailyItem(b).id].error }}</span>
+                                            </div>
+                                        </template>
+                                        <template v-else>
+                                            <div v-if="snapDl[dailyItem(b).id].keyCleared" class="text-[13px] text-gray-400">The key was removed from this page when the download started. Use the copy you saved.</div>
+                                            <div v-if="snapDl[dailyItem(b).id].result.key" class="rounded-xl border-2 border-yellow-500/60 bg-yellow-500/10 p-4 space-y-2">
+                                                <div class="font-bold text-yellow-300 text-[15px]">⚠ Save this key now: it is shown only once</div>
+                                                <p class="text-[13px] text-yellow-100">Optimux doesn't keep it. Without it the download can't be opened, by anyone. Store it apart from the file (a password manager is a good place).</p>
+                                                <span class="cm-path-box w-full"><code>{{ snapDl[dailyItem(b).id].result.key }}</code>
+                                                    <button type="button" @click="snapCopy('key-' + dailyItem(b).id, snapDl[dailyItem(b).id].result.key)" :class="['cm-copy-btn', snapCopied['key-' + dailyItem(b).id] ? 'cm-copied' : '']">{{ snapCopied['key-' + dailyItem(b).id] ? 'Copied ✓' : 'Copy' }}</button></span>
+                                                <div class="flex flex-wrap items-center gap-3">
+                                                    <button @click="dlSaveKey(dailyItem(b))" class="text-[13px] px-3 py-1 rounded border border-yellow-500/40 text-yellow-100 hover:border-yellow-400">Save the key as a file</button>
+                                                    <label class="flex items-center gap-2 text-[14px] text-yellow-100"><input type="checkbox" v-model="snapDl[dailyItem(b).id].saved" class="w-4 h-4"> I have saved the key</label>
+                                                </div>
+                                            </div>
+                                            <div class="flex flex-wrap items-center gap-3">
+                                                <a :href="snapDl[dailyItem(b).id].result.url" :download="snapDl[dailyItem(b).id].result.filename" @click="dlStarted(dailyItem(b), $event)" @auxclick="dlStarted(dailyItem(b), $event)"
+                                                   :class="['px-4 py-2 rounded-lg font-bold text-[14px]', (snapDl[dailyItem(b).id].result.key && !snapDl[dailyItem(b).id].saved) ? 'bg-gray-700 text-gray-400 pointer-events-none' : 'bg-blue-600 hover:bg-blue-500 text-white']"
+                                                   :aria-disabled="!!(snapDl[dailyItem(b).id].result.key && !snapDl[dailyItem(b).id].saved)">⬇ Download {{ snapDl[dailyItem(b).id].result.filename }}</a>
+                                                <span class="text-[13px] text-gray-400">{{ fmtBytes(snapDl[dailyItem(b).id].result.size) }}<template v-if="snapDl[dailyItem(b).id].result.expires_in"> · the link works for 1 hour</template></span>
+                                            </div>
+                                            <div v-if="snapDl[dailyItem(b).id].result.mode !== 'plain'" class="text-[13px] text-gray-400 space-y-1">
+                                                <div>To open it on your computer, with <a href="https://age-encryption.org" target="_blank" rel="noopener" class="text-blue-400 hover:underline">age</a> (<code>apt install age</code>, <code>brew install age</code>):</div>
+                                                <span class="cm-path-box"><code>{{ dlCommand(dailyItem(b)) }}</code>
+                                                    <button type="button" @click="snapCopy('cmd-' + dailyItem(b).id, dlCommand(dailyItem(b)))" :class="['cm-copy-btn', snapCopied['cmd-' + dailyItem(b).id] ? 'cm-copied' : '']">{{ snapCopied['cmd-' + dailyItem(b).id] ? 'Copied ✓' : 'Copy' }}</button></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1818,7 +1963,7 @@
                             <h3 class="font-bold text-gray-200 text-[15px] mb-1">Storage</h3>
                             <div class="text-xs text-gray-400 font-mono space-y-0.5">
                                 <div>Database: {{ storageInfo.path }} · {{ fmtBytes(storageInfo.size_bytes) }} · {{ (storageInfo.usage_rows || 0).toLocaleString() }} usage rows</div>
-                                <div v-if="storageInfo.latest_backup">Latest backup: {{ storageInfo.latest_backup }} ({{ new Date(storageInfo.latest_backup_time * 1000).toLocaleString() }}) · {{ storageInfo.backups }} kept<span v-if="storageInfo.backup_check && storageInfo.backup_check.ok" class="text-green-400" title="The last backup passed SQLite's quick_check before it replaced anything."> · ✓ checked</span></div>
+                                <div v-if="storageInfo.latest_backup">Latest backup: {{ storageInfo.latest_backup }} ({{ new Date(storageInfo.latest_backup_time * 1000).toLocaleString() }}) · {{ storageInfo.backups }} kept<span v-if="storageInfo.backup_check && storageInfo.backup_check.ok" class="text-green-400" title="The last backup passed SQLite's quick_check before it replaced anything."> · ✓ checked</span> · <button @click="openSettings('backups')" class="text-blue-400 hover:underline font-sans">manage in Backups</button></div>
                                 <div v-else class="text-yellow-400">No backup yet; one is made on every server start.</div>
                             </div>
                             <div v-if="storageInfo.backup_check && !storageInfo.backup_check.ok" role="alert" class="mt-2 rounded-lg border border-red-800 bg-red-950/40 p-3 text-[13px] text-red-200">

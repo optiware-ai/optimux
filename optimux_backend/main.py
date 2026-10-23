@@ -25,7 +25,7 @@ from optimux_backend.core.config_manager import (
     delete_api_key_from_env, get_routing_config, save_routing_config, RoutingPayload,
     get_settings, save_settings, SettingsPayload, model_id_problem, get_all_models,
     litellm_key_kwargs, max_steps_for, thinking_kwargs, set_thinking, _read_settings, GITHUB_FIELDS,
-    set_github_fields, update_settings, PLAN_MODES, command_timeout_for,
+    set_github_fields, update_settings, PLAN_MODES, command_timeout_for, backups_keep_for, BACKUPS_KEEP_RANGE,
 )
 from optimux_backend.core.executor import run_shell_command, get_active_cwd
 from optimux_backend.core import executor as executor_lib
@@ -74,7 +74,8 @@ except Exception as e:
 try:
     usage_meter.ensure_ready()  # schema + one-time import of the old usage log, before the backup
     # Daily copy of the database (sessions, usage), newest 14 kept
-    print(f"[Optimux] database backup: {store.backup()} (checked)")
+    from optimux_backend.core.config_manager import backups_keep_for as _keep
+    print(f"[Optimux] database backup: {store.backup(keep=_keep())} (checked)")
 except store.BackupCheckFailed as e:
     print(f"[Optimux] WARNING: database backup: {e}")
 except Exception as e:
@@ -1026,6 +1027,89 @@ async def restore_import_api(payload: ImportPayload):
         return await asyncio.to_thread(restore_lib.import_upload, payload.token, payload.key, payload.filename)
     except (restore_lib.RestoreError, snapshots.SnapshotError) as e:
         raise HTTPException(422, str(e))
+
+
+# ---- Daily database backups (v0.5.2): listed, checked, restored, downloaded and deleted in Dashboard -> Backups
+
+class DailyRestorePayload(BaseModel):
+    confirm: str = ""
+
+
+class BackupsKeepPayload(BaseModel):
+    keep: int
+
+
+@app.get("/api/backups")
+async def list_backups_api():
+    """The daily backups, newest first, with how many are kept and the folder."""
+    return {"backups": await asyncio.to_thread(store.list_backups), "keep": backups_keep_for(),
+            "keep_range": list(BACKUPS_KEEP_RANGE), "dir": store.BACKUP_DIR, "last_check": store.backup_status()}
+
+
+@app.post("/api/backups")
+async def backup_now_api():
+    """Take today's backup now (checked, like the one at start)."""
+    try:
+        path = await asyncio.to_thread(store.backup, None, backups_keep_for())
+    except store.BackupCheckFailed as e:
+        raise HTTPException(422, str(e))
+    return {"path": path}
+
+
+@app.post("/api/backups/keep")
+async def backups_keep_api(payload: BackupsKeepPayload):
+    """Change only how many daily backups are kept; the extra ones go at the next backup."""
+    try:
+        update_settings(backups_keep=payload.keep)
+    except (ValidationError, ScopeError) as e:
+        raise HTTPException(422, str(e))
+    return {"keep": payload.keep}
+
+
+@app.post("/api/backups/{name}/check")
+async def check_backup_api(name: str):
+    try:
+        return await asyncio.to_thread(store.check_backup, name)
+    except store.BackupError as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/api/backups/{name}/restore")
+async def restore_backup_api(name: str, payload: DailyRestorePayload):
+    """Put a daily backup's database back at the next start (see restore.restore_daily)."""
+    try:
+        return await asyncio.to_thread(restore_lib.restore_daily, name, payload.confirm, replies_running)
+    except restore_lib.RestoreError as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/api/backups/{name}/export")
+async def export_backup_api(name: str, payload: ExportPayload):
+    """An encrypted download of a daily backup (it holds your chats: never plain)."""
+    try:
+        path = store.backup_path(name)
+        result = await asyncio.to_thread(exports.prepare_file, f"daily-{name}", path,
+                                         f"optimux-backup-{name[8:18]}.db", payload.mode, payload.recipient)
+    except store.BackupError as e:
+        raise HTTPException(422, str(e))
+    except exports.ExportError as e:
+        raise HTTPException(422, str(e))
+    if payload.mode == "recipient" and payload.remember:
+        try:
+            update_settings(snapshot_recipient=payload.recipient.strip())
+        except (ValidationError, ScopeError):
+            pass
+    return result
+
+
+@app.post("/api/backups/{name}/delete")
+async def delete_backup_api(name: str):
+    try:
+        await asyncio.to_thread(store.delete_backup, name)
+    except store.BackupError as e:
+        raise HTTPException(422, str(e))
+    exports.remove_for(f"daily-{name}")
+    return {"status": "deleted"}
 
 
 @app.post("/api/snapshots/{sid}/delete")

@@ -972,6 +972,16 @@ A file that changes while it is copied (a log, a database in use) is stored as i
 
 A snapshot lives on the same disk as the data, so it doesn't protect you against losing the disk. Keep a copy elsewhere too: download it.
 
+### Daily backups of the database
+
+Besides snapshots, Optimux copies its **database** every time it starts (one file per day, in `backups/`): your chats, usage and costs, memory history and sign-ins. Settings, keys, memory files and projects are not in them; snapshots cover those. **Dashboard → Backups → Daily backups of the database** lists them, newest first:
+
+- **✓ checked**: the copy passed SQLite's check when it was made. Copies made before v0.5.2 show **not checked: check now**.
+- **Back up now** takes today's copy right away (checked, like the one at start). **Keep the newest** sets how many are kept, from 3 to 60 (14 by default); the oldest go at the next backup.
+- **Restore…** puts that day's database back: chats and memory history return to how they were that day. As with a snapshot, you type the confirmation, your current data is saved in a Data snapshot first, the database is put back when Optimux restarts, and usage, costs and sign-ins are never rolled back.
+- **Download…** gives an encrypted copy (a one-time key or your public key, as for snapshots): it holds your chats, so it never leaves the server unencrypted. `age -d` turns it into an SQLite file.
+- **Delete** removes one, after asking in the row.
+
 ### Downloading a snapshot
 
 In a snapshot's **Details**, **Download this snapshot…** prepares a copy to keep on your computer or another disk. A snapshot with your keys (Data, Everything) only leaves the server **encrypted**, with [age](https://age-encryption.org):

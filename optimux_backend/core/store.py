@@ -198,7 +198,8 @@ STATUS_FILE = "last-check.json"     # in BACKUP_DIR: the result of the last back
 def _quick_check(path: str) -> str:
     """'ok', or what SQLite's quick_check reports (or why it couldn't run)."""
     try:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        # immutable: a backup never changes, so no lock and no -wal/-shm files beside it
+        conn = sqlite3.connect(f"file:{path}?mode=ro&immutable=1", uri=True)
         try:
             rows = [r[0] for r in conn.execute("PRAGMA quick_check").fetchall()]
         finally:
@@ -209,6 +210,14 @@ def _quick_check(path: str) -> str:
 
 
 def _write_status(status: dict) -> None:
+    """Save the last check, and keep each backup's own result in "files"."""
+    old = backup_status() or {}
+    files = {k: v for k, v in (old.get("files") or {}).items()
+             if isinstance(v, dict) and os.path.exists(os.path.join(BACKUP_DIR, k))}
+    name = os.path.basename(status.get("file") or "")
+    if paths._BACKUP_NAME.fullmatch(name):
+        files[name] = {"ok": status["ok"], "time": status["time"], "error": status.get("error", "")}
+    status = {**status, "files": files}
     try:
         with open(os.path.join(BACKUP_DIR, STATUS_FILE), "w") as f:
             json.dump(status, f)
@@ -226,7 +235,7 @@ def backup_status() -> dict | None:
         return None
 
 
-def backup(now: float | None = None) -> str:
+def backup(now: float | None = None, keep: int | None = None) -> str:
     """Copy the database to BACKUP_DIR/optimux-YYYY-MM-DD.db (one per day,
     refreshed on each call) and delete all but the newest KEEP_BACKUPS.
 
@@ -264,9 +273,62 @@ def backup(now: float | None = None) -> str:
     os.replace(fresh, target)
     _write_status({"time": stamp, "ok": True, "file": target, "error": ""})
     backups = paths.backup_files(BACKUP_DIR)       # oldest first
-    for old in backups[:-KEEP_BACKUPS]:
+    for old in backups[:-(keep or KEEP_BACKUPS)]:
         os.remove(os.path.join(BACKUP_DIR, old))
     return target
+
+
+# ------------------------------------------------------------ daily backups in Dashboard -> Backups (v0.5.2)
+
+class BackupError(ValueError):
+    """A daily backup that doesn't exist or can't be used; the message is shown."""
+
+
+def backup_path(name: str) -> str:
+    """The path of a daily backup by its file name (optimux-YYYY-MM-DD.db), checked."""
+    if not paths._BACKUP_NAME.fullmatch(name or "") or name not in paths.backup_files(BACKUP_DIR):
+        raise BackupError("There is no daily backup with that name.")
+    return os.path.join(BACKUP_DIR, name)
+
+
+def list_backups() -> list[dict]:
+    """The daily backups, newest first: name, date, size, time and whether the
+    last check of that file passed (only the latest is checked each day; older
+    ones passed their check when they were made, since v0.5.2)."""
+    status = backup_status() or {}
+    out = []
+    for name in reversed(paths.backup_files(BACKUP_DIR)):
+        full = os.path.join(BACKUP_DIR, name)
+        try:
+            st = os.stat(full)
+        except OSError:
+            continue
+        check = (status.get("files") or {}).get(name) or {}
+        out.append({"name": name, "date": name[8:18], "size_bytes": st.st_size, "mtime": st.st_mtime,
+                    "checked": check.get("ok"), "checked_at": check.get("time"), "error": check.get("error", "")})
+    return out
+
+
+def check_backup(name: str) -> dict:
+    """Run the check on one daily backup now (also older ones, made before
+    v0.5.2) and remember the result for the list. The last-backup status of
+    Dashboard -> System is left as it is."""
+    full = backup_path(name)
+    result = _quick_check(full)
+    now = time.time()
+    old = backup_status() or {}
+    files = dict(old.get("files") or {})
+    files[name] = {"ok": result == "ok", "time": now, "error": "" if result == "ok" else result}
+    try:
+        with open(os.path.join(BACKUP_DIR, STATUS_FILE), "w") as f:
+            json.dump({**old, "files": files}, f)
+    except OSError as e:
+        print(f"[Optimux] backup check status not saved: {e}")
+    return files[name] | {"name": name}
+
+
+def delete_backup(name: str) -> None:
+    os.remove(backup_path(name))
 
 
 def info() -> dict:
