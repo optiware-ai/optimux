@@ -696,7 +696,9 @@ def test_port_moves_optimux_and_prints_the_new_tunnel(tmp_path):
 
 
 def test_a_busy_port_is_refused_with_its_owner(tmp_path):
-    r = tunnel_lib(tmp_path, FAKE_SVC + 'port_free() { return 1; }; port_owner() { echo nginx; }; cli_port 8100')
+    # optimux_answers is faked too: a real Optimux on this machine's port 8100 must not change the result
+    r = tunnel_lib(tmp_path, FAKE_SVC + 'port_free() { return 1; }; port_owner() { echo nginx; }; '
+                             'optimux_answers() { return 1; }; cli_port 8100')
     assert r.returncode != 0 and "Port 8100 is already used on this machine by nginx" in clean(r)
     assert "UNIT" not in clean(r)
 
