@@ -483,6 +483,17 @@
                             <div class="text-xs text-gray-500 mt-1">{{ k.sub }}</div>
                         </div>
                     </div>
+                    <details v-if="onboard" :open="!onboard.ready && !onboard.existing" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                        <summary class="cursor-pointer flex items-center gap-3">
+                            <h3 class="text-[15px] font-bold text-gray-200">Getting started</h3>
+                            <span :class="['text-[12px] font-mono', onboard.ready ? 'text-green-400' : 'text-gray-400']">{{ onboard.ready ? '✓ all set' : onboard.done + '/' + onboard.total }}</span>
+                            <span class="flex-1"></span>
+                            <button v-if="onboard.dismissed || onboard.existing" @click.prevent="onboardAct('reopen')" class="text-[12px] text-blue-400 hover:text-blue-300" title="Show the checklist on the chat page again">Show in the chat</button>
+                        </summary>
+                        <div class="mt-3 max-w-2xl">
+                            <onboard-steps :data="onboard" :settings="appSettings" @go="onboardGo" @act="onboardAct" @save="onboardSave"></onboard-steps>
+                        </div>
+                    </details>
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                         <div class="flex items-center justify-between mb-3">
                             <h3 class="text-[15px] font-bold text-gray-200">Cost per day · last 30 days</h3>
@@ -2155,6 +2166,33 @@
                     <button type="submit" :disabled="!deletePhraseOk || deleteBox.busy" class="px-5 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white font-bold disabled:opacity-40">{{ deleteBox.busy ? 'Deleting…' : 'Delete permanently' }}</button>
                 </div>
             </form>
+        </div>
+
+        <!-- Getting started (v0.6.1): the first-run checklist, on the chat page of a new install -->
+        <div v-if="onboard && onboard.show_in_chat && !showSettingsModal" class="fixed right-4 bottom-36 z-30 max-w-[calc(100vw-2rem)]">
+            <button v-if="onboardSmall" @click="onboardSmall = false" class="flex items-center gap-2 rounded-full border border-blue-700 bg-gray-900 shadow-lg px-3 py-1.5 text-[13px] text-blue-200 hover:bg-gray-800" title="Show the Getting started checklist">
+                <span aria-hidden="true">◆</span>{{ onboard.ready ? "You're ready" : 'Setup ' + onboard.done + '/' + onboard.total }}
+            </button>
+            <div v-else class="w-80 max-w-full rounded-xl border border-gray-700 bg-gray-900 shadow-2xl" role="dialog" aria-label="Getting started">
+                <div class="flex items-center gap-2 px-4 pt-3 pb-2">
+                    <h3 class="text-[14px] font-bold text-gray-100 flex-1">{{ onboard.ready ? "You're ready" : 'Getting started' }}</h3>
+                    <span v-if="!onboard.ready" class="text-[12px] text-gray-400 font-mono">{{ onboard.done }}/{{ onboard.total }}</span>
+                    <button @click="onboardSmall = true" class="text-gray-500 hover:text-gray-200 px-1" title="Make it small" aria-label="Make it small">–</button>
+                </div>
+                <div v-if="!onboard.ready" class="h-1 mx-4 rounded bg-gray-800 overflow-hidden"><div class="h-full bg-blue-500" :style="{ width: (100 * onboard.done / onboard.total) + '%' }"></div></div>
+                <div v-if="onboard.ready" class="px-4 pb-3 text-[13px] text-gray-300 space-y-2">
+                    <p>Everything needed is set. Type a request below; commands and file changes wait for your approval.</p>
+                    <p class="text-gray-400">The list stays in Dashboard → Overview, and Dashboard → Guide explains everything.</p>
+                    <button @click="onboardAct('ready_seen')" class="w-full text-[13px] px-3 py-1.5 rounded-lg border border-blue-600 text-blue-200 hover:bg-blue-900/40">Close</button>
+                </div>
+                <div v-else class="px-3 py-3 max-h-[60vh] overflow-y-auto">
+                    <onboard-steps compact :data="onboard" :settings="appSettings" @go="onboardGo" @act="onboardAct" @save="onboardSave"></onboard-steps>
+                    <div class="flex items-center justify-between mt-3 px-1 text-[12px]">
+                        <button @click="openSettings('guide')" class="text-gray-400 hover:text-gray-200">Open the Guide</button>
+                        <button @click="onboardAct('dismiss')" class="text-gray-500 hover:text-gray-300" title="It stays in Dashboard → Overview">Don't show again</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Feature 25: New project dialog (no model involved) -->

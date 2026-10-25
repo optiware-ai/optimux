@@ -55,6 +55,7 @@ from optimux_backend.core import files as files_lib
 from optimux_backend.core import changes as changes_lib
 from optimux_backend.core import gitsync
 from optimux_backend.core import tasks as tasks_lib
+from optimux_backend.core import onboarding
 from optimux_backend.core.security import (
     GITHUB_TOKEN_ENV, ScopeError, ValidationError, bearer_from_header, check_token,
     get_or_create_token, host_allowed, mask_messages, mask_secrets, origin_allowed, secret_mark, paths_outside_scope, resolve_project_dir, rotate_token,
@@ -1691,11 +1692,30 @@ async def save_app_settings(payload: SettingsPayload):
         setattr(payload, field, stored.get(field, "") or "")
     asked = payload.active_project
     save_settings(payload)
+    onboarding.note_settings_change(stored, get_settings())     # memory, plan mode, skills chosen
     if asked and not payload.active_project:
         # A new Workspace folder without that project: the Workspace itself is now active
         return {"status": "success", "active_project": "",
                 "note": f"{asked} isn't in the new Workspace folder, so no project is selected now."}
     return {"status": "success", "active_project": payload.active_project}
+
+class OnboardingPayload(BaseModel):
+    action: str
+
+
+@app.get("/api/onboarding")
+async def onboarding_status():
+    """Getting started: the first-run checklist (v0.6.1)."""
+    return await asyncio.to_thread(onboarding.status)
+
+
+@app.post("/api/onboarding")
+async def onboarding_action(payload: OnboardingPayload):
+    try:
+        return await asyncio.to_thread(onboarding.act, payload.action)
+    except onboarding.OnboardingError as e:
+        return JSONResponse({"detail": str(e)}, status_code=422)
+
 
 @app.get("/api/projects")
 async def get_projects():

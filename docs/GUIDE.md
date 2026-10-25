@@ -124,12 +124,16 @@ The token stays useful for scripts: they can call the API with the header `Autho
 
 ### First-time setup (5 minutes)
 
+A new install shows a **Getting started** card in the chat with these same steps. Each step ticks itself when it's really done, and **Go →** opens the right page; **–** makes the card small, **Don't show again** hides it, and it always stays in **Dashboard → Overview** (with **Show in the chat** to bring it back). An install that already had requests before this card existed doesn't get the pop-up, only the list on Overview. The card never calls a model.
+
 1. **Add your models.** Open **Dashboard → Models**, add a model (for example `gemini/gemini-3.6-flash`) and paste its API key. Click **Test**: a tiny call (a fraction of a cent) checks that the model and key work. See *Models* for details.
 2. **Choose who does what.** In **Dashboard → Routing**, pick the Conductor, the Simple model and the Complex model. A good start: a fast, cheap model for the Conductor and Simple, a strong one for Complex.
 3. **Set your Workspace folder.** In **Dashboard → Scope**, set the folder that holds your projects, for example `/home/you/git`. Every folder inside it becomes a project. Optimux must be able to write in it, or the folder is refused. On a server, the service may only write inside `/var/lib/optimux`, so use a folder there that the `optimux` user owns: `sudo install -d -m 750 -o optimux -g optimux /var/lib/optimux/projects`. (Another place, such as a second disk, works after allowing it with a drop-in: `sudo systemctl edit optimux`, then `[Service]` and `ReadWritePaths=/srv/work`; a drop-in survives `optimux update`.) Changing the folder keeps your chats, costs and memory, which belong to project names; if the active project isn't in the new folder, the Workspace itself becomes active.
 4. **Turn on the sandbox** (recommended): install bubblewrap (`sudo apt install bubblewrap` on Debian/Ubuntu), then tick **Dashboard → Execution → Sandbox**. Commands can then only change the project they work in. See *The sandbox*.
-5. **Pick a project** in the drop-down next to the logo, or create one with the **+** next to it (or by asking: *"create a new python project called notes-api"*).
-6. **Optional but wise:** set a monthly **budget** for the project in **Dashboard → Budgets**.
+5. **Choose your features:** automatic **memory** updates after each chat (a small cost per chat), **plan mode** for big tasks, and **skills**. The defaults are fine to start; the card has the three switches and a **These are fine** button.
+6. **Pick a project** in the drop-down next to the logo, or create one with the **+** next to it (or by asking: *"create a new python project called notes-api"*).
+7. **Send your first request.**
+8. **Optional but wise:** set a monthly **budget** for the project in **Dashboard → Budgets**, and on a server turn on **two-step codes** in **Dashboard → System**.
 
 You're ready. Type a request and press **Enter**.
 

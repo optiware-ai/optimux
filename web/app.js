@@ -404,6 +404,50 @@ const DeletedTag = {
     props: { at: { type: Number, default: 0 } },
     template: `<span v-if="at" class="ml-1.5 inline-block align-middle text-[10px] font-sans uppercase tracking-wider text-red-300/90 bg-red-950/50 border border-red-900/70 rounded px-1 py-px" :title="'Deleted on ' + new Date(at * 1000).toLocaleDateString() + '. Its folder is gone; its chats, costs and memory were kept.'">deleted</span>`,
 };
+// Getting started (v0.6.1): the checklist, used by the chat card and Dashboard -> Overview.
+// Steps tick themselves from the real settings; "Choose your features" has its controls inline.
+const OnboardSteps = {
+    // compact (the chat card): only the next step shows its explanation and controls
+    props: { data: { type: Object, required: true }, settings: { type: Object, required: true }, compact: Boolean },
+    emits: ['go', 'act', 'save'],
+    data: () => ({ opened: '', planModes: [['off', 'Off'], ['ask', 'Ask first'], ['auto', 'Automatic']],
+                   skillModes: [['off', 'Off'], ['manual', 'Manual only'], ['auto', 'Auto allowed']] }),
+    methods: {
+        set(field, value) { this.settings[field] = value; this.$emit('save'); },
+        full(s) { return !this.compact || s.id === this.data.next || s.id === this.opened; },
+        go(s) { if (s.id === 'features') this.opened = this.opened === s.id ? '' : s.id; else this.$emit('go', s); },
+    },
+    template: `<ol class="space-y-1.5">
+        <li v-for="(s, i) in data.steps" :key="s.id"
+            :class="['rounded-lg border px-3 py-2', s.id === data.next ? 'border-blue-700 bg-blue-950/30' : 'border-gray-800 bg-gray-950/40']">
+            <div class="flex items-start gap-2">
+                <span :class="['mt-0.5 flex-shrink-0 w-5 h-5 rounded-full text-[11px] flex items-center justify-center border', s.done ? 'bg-green-900/60 border-green-700 text-green-300' : (s.id === data.next ? 'border-blue-500 text-blue-300' : 'border-gray-700 text-gray-500')]"
+                      :aria-label="s.done ? 'done' : 'to do'">{{ s.done ? '✓' : (s.optional ? '·' : i + 1) }}</span>
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2">
+                        <span :class="['text-[13px] font-semibold', s.done ? 'text-gray-400' : 'text-gray-100']">{{ s.title }}</span>
+                        <span v-if="s.optional" class="text-[10px] uppercase tracking-wider text-gray-500">optional</span>
+                        <span class="flex-1"></span>
+                        <button v-if="!s.done && (s.id !== 'features' || !full(s))" @click="go(s)" :class="['text-[12px] px-2 py-0.5 rounded border flex-shrink-0', s.id === data.next ? 'border-blue-600 text-blue-200 hover:bg-blue-900/40' : 'border-gray-700 text-gray-400 hover:text-gray-200']">Go →</button>
+                    </div>
+                    <p v-if="(!s.done && full(s)) || s.info" class="text-[12px] text-gray-400 mt-0.5 leading-snug">{{ s.info || s.why }}</p>
+                    <div v-if="s.id === 'features' && !s.done && full(s)" class="mt-2 space-y-1.5 text-[12px]">
+                        <label class="flex items-center justify-between gap-2 text-gray-300">Update memory after each chat
+                            <input type="checkbox" :checked="settings.memory_curator !== false" @change="set('memory_curator', $event.target.checked)" class="w-4 h-4"></label>
+                        <label class="flex items-center justify-between gap-2 text-gray-300">Plan big tasks
+                            <select :value="settings.plan_mode || 'off'" @change="set('plan_mode', $event.target.value)" class="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200">
+                                <option v-for="m in planModes" :key="m[0]" :value="m[0]" class="bg-gray-900">{{ m[1] }}</option></select></label>
+                        <label class="flex items-center justify-between gap-2 text-gray-300">Skills
+                            <select :value="settings.skills_mode || 'auto'" @change="set('skills_mode', $event.target.value)" class="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200">
+                                <option v-for="m in skillModes" :key="m[0]" :value="m[0]" class="bg-gray-900">{{ m[1] }}</option></select></label>
+                        <button @click="$emit('act', 'features_ok')" class="mt-1 w-full text-[12px] px-2 py-1 rounded border border-blue-600 text-blue-200 hover:bg-blue-900/40">These are fine</button>
+                    </div>
+                </div>
+            </div>
+        </li>
+    </ol>`,
+};
+
 createApp({
     setup() {
         const ws = ref(null);
@@ -1989,6 +2033,34 @@ createApp({
                     sub: monthSavings.value.saved_share !== null ? `${fmtPct(monthSavings.value.saved_share)} less than all on Complex` : '' }] : []),
             ];
         });
+        // Getting started (v0.6.1): the first-run checklist
+        const onboard = ref(null);
+        let onboardFolded = false;
+        try { onboardFolded = localStorage.getItem('optimux.onboardFolded') === '1'; } catch (_) {}
+        const onboardSmall = ref(onboardFolded);
+        Vue.watch(onboardSmall, (v) => { try { localStorage.setItem('optimux.onboardFolded', v ? '1' : '0'); } catch (_) {} });
+        const fetchOnboarding = async () => {
+            try { const r = await fetch('/api/onboarding'); if (r.ok) onboard.value = await r.json(); }
+            catch (error) { console.error('Failed to load Getting started', error); }
+        };
+        const onboardAct = async (action) => {
+            try {
+                const r = await fetch('/api/onboarding', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                           body: JSON.stringify({ action }) });
+                if (r.ok) onboard.value = await r.json();
+            } catch (error) { console.error('Failed to update Getting started', error); }
+        };
+        const onboardSave = async () => { await saveSettings(); fetchOnboarding(); };
+        const onboardGo = (step) => {
+            if (step.target === 'chat') {
+                showSettingsModal.value = false;
+                nextTick(() => { if (chatInputRef.value) chatInputRef.value.focus(); });
+                return;
+            }
+            openSettings(step.target);
+        };
+        Vue.watch(showSettingsModal, (open) => { if (!open) fetchOnboarding(); });
+        Vue.watch(() => appSettings.value.active_project, () => { if (onboard.value && !onboard.value.ready) fetchOnboarding(); });
         // IM-08: this month's savings, for the Overview tile
         const monthSavings = ref(null);
         const fetchMonthSavings = async () => {
@@ -2764,7 +2836,7 @@ createApp({
             if (['overview', 'usage'].includes(id)) fetchDaily();
             if (id === 'usage') fetchTaskStats();
             if (id === 'performance') fetchPerf();
-            if (id === 'overview') { fetchRecentChats(); fetchDeleted(); fetchMonthSavings(); }
+            if (id === 'overview') { fetchRecentChats(); fetchDeleted(); fetchMonthSavings(); fetchOnboarding(); }
             if (id === 'projects') fetchProjectsOverview();
             if (id === 'history') fetchHistoryPage();
             if (id === 'memory') { fetchMemory(); fetchCostEstimates(); }
@@ -3471,6 +3543,7 @@ createApp({
                         else if (data.build !== pageBuild) pageUpdated.value = { version: data.version || '' };
                     }
                     sandboxProblem.value = '';   // told again right after, if still true
+                    fetchOnboarding();
                     // Reopen where we left off: the active project's latest session
                     moveChatTo = null;   // a reconnect opens the right chat already
                     isGenerating.value = true;
@@ -3694,7 +3767,7 @@ createApp({
                     scrollToBottom();
                 } else if (data.type === "done") {
                     finalizeReply(lastMsg);
-                    if (!replay) { fetchProjectUsage(); if (currentSession.value) fetchSessions(); }
+                    if (!replay) { fetchProjectUsage(); if (currentSession.value) fetchSessions(); if (onboard.value && !onboard.value.ready) fetchOnboarding(); }
                     isGenerating.value = false;
                     isStopping.value = false;
                     pendingApproval.value = false;
@@ -4047,7 +4120,7 @@ createApp({
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
             snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
-            monthSavings, rateReply, taskStats, taskDeleteAsk, deleteTasks, pageUpdated, reloadPage, dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
+            monthSavings, onboard, onboardSmall, onboardAct, onboardGo, onboardSave, rateReply, taskStats, taskDeleteAsk, deleteTasks, pageUpdated, reloadPage, dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
             rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
@@ -4072,4 +4145,4 @@ createApp({
             projectLabel, viewer, viewerLanguages, openCmdViewer, onChatClick, closeViewer, rehighlightViewer, copyViewerSection
         };
     }
-}).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).mount('#app');
+}).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).component('onboard-steps', OnboardSteps).mount('#app');
