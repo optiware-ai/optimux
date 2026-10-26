@@ -36,8 +36,7 @@ SCAN_MAX = 5 * 1024 * 1024            # files larger than this aren't scanned fo
 MAX_COMMITS = 30                      # incoming commits listed by Update
 DIFF_CHARS = 15_000                   # diff sent to the model that writes the message
 TEMPLATE_CHARS = 4_000
-SECRET_NAME = re.compile(r"(^|/)(\.env(\.[^/]*)?|secrets\.env|[^/]*\.pem|[^/]*\.key|id_rsa|id_ed25519|id_ecdsa)$",
-                         re.IGNORECASE)
+SECRET_NAME = changes_lib.SECRET_NAME
 TEMPLATE_FILES = ("commit-template.txt", ".gitmessage", ".github/commit-template.txt")
 
 _locks: dict[str, threading.Lock] = {}

@@ -8,6 +8,7 @@ touched; only objects are added to .git/objects, as `git stash` would. Files
 that .gitignore excludes are not seen. A project without git has no summary.
 """
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -16,6 +17,10 @@ TIMEOUT = 20            # seconds for each git call; a slower project gets no su
 MAX_FILES = 30          # files listed; the rest are counted
 SHRINK_MIN_LINES = 20   # a file this long that loses half its lines or more is flagged
 MAX_COUNTED = 200       # files whose lines are counted (the shrink check); more is a mass change
+IGNORE_LINES_SHOWN = 10  # lines removed from a .gitignore that the summary lists
+# A file of secrets by its name (also used by Push, gitsync.py)
+SECRET_NAME = re.compile(r"(^|/)(\.env(\.[^/]*)?|secrets\.env|[^/]*\.pem|[^/]*\.key|id_rsa|id_ed25519|id_ecdsa)$",
+                         re.IGNORECASE)
 
 
 def _git(args: list[str], cwd: str, env: dict | None = None, data: bytes | None = None) -> subprocess.CompletedProcess:
@@ -69,11 +74,24 @@ def _lines(top: str, tree: str, path: str) -> int:
     return blob.count(b"\n") + (1 if blob and not blob.endswith(b"\n") else 0)
 
 
+def _removed_lines(top: str, old: str, new: str, path: str) -> list[str]:
+    """The rules a .gitignore lost (not comments or blank lines): what git may see now."""
+    def rules(tree):
+        if tree is None:
+            return []
+        blob = _git(["cat-file", "blob", f"{tree}:{path}"], top, _clean_env()).stdout.decode(errors="replace")
+        return [line.strip() for line in blob.splitlines() if line.strip() and not line.strip().startswith("#")]
+    after = set(rules(new))
+    return [r for r in dict.fromkeys(rules(old)) if r not in after]
+
+
 def compare(before: dict) -> dict:
     """What changed since `snapshot()`: {"git": False}, {"error"}, or
     {"files": [...], "more": n}. Each file: path, status (new | deleted |
     changed), added, removed (None for binary), lines_before, lines_after,
-    warn (deleted, emptied or shrunk by half or more)."""
+    warn (deleted, emptied or shrunk by half or more, or a file of secrets git
+    now sees: `secret`), and for a .gitignore that lost lines, `unignored`
+    (those lines: what git may now see)."""
     if not before.get("git"):
         return {"git": False}
     if before.get("error"):
@@ -105,8 +123,16 @@ def compare(before: dict) -> dict:
         after_n = _lines(top, new, path) if count and kind != "deleted" else 0
         warn = kind == "deleted" or (kind == "changed" and count and before_n >= SHRINK_MIN_LINES
                                      and after_n * 2 <= before_n)
-        files.append({"path": path, "status": kind, "added": added, "removed": removed,
-                      "lines_before": before_n, "lines_after": after_n, "warn": warn})
+        entry = {"path": path, "status": kind, "added": added, "removed": removed,
+                 "lines_before": before_n, "lines_after": after_n, "warn": warn}
+        # A file of secrets that git sees now (new, or no longer ignored): a Push would include it
+        if kind == "new" and SECRET_NAME.search(path):
+            entry.update(warn=True, secret=True)
+        if os.path.basename(path) == ".gitignore" and kind != "new" and removed:
+            gone = _removed_lines(top, old, new, path)
+            if gone:
+                entry.update(warn=True, unignored=gone[:IGNORE_LINES_SHOWN], unignored_more=max(0, len(gone) - IGNORE_LINES_SHOWN))
+        files.append(entry)
     # Warnings first, so a damaged file is never hidden behind "and N more"
     files.sort(key=lambda f: (not f["warn"], f["path"]))
     return {"git": True, "files": files[:MAX_FILES], "more": max(0, len(files) - MAX_FILES)}

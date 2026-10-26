@@ -564,6 +564,7 @@ createApp({
         const pendingApproval = ref(false);
         const pendingCommand = ref('');
         const pendingFile = ref(null);    // write_file / edit_file: path, op, counts and the diff (v0.4-5i)
+        const pendingStillAsking = ref(false);   // an overwrite after "Approve all edits" (it always asks)
         const pendingOutside = ref([]);
         const pendingWorkdir = ref('');
         const pendingSandboxed = ref(false);
@@ -1092,7 +1093,9 @@ createApp({
             if (f.warn) return `${f.lines_before} → ${f.lines_after} lines`;
             return `+${f.added} −${f.removed}`;
         };
-        const changeTitle = (f) => f.warn ? (f.status === 'deleted' ? 'This file was deleted in this reply.'
+        const changeTitle = (f) => f.secret ? 'This looks like a file of secrets, and git sees it now: a Push would include it. Delete it, or add it to .gitignore.'
+            : f.unignored ? 'This .gitignore lost rules in this reply, so git may now see files it ignored before.'
+            : f.warn ? (f.status === 'deleted' ? 'This file was deleted in this reply.'
             : `This file lost ${f.lines_before - f.lines_after} of its ${f.lines_before} lines in this reply. Check it.`)
             : (f.status === 'changed' && f.added !== null ? `${f.lines_before} → ${f.lines_after} lines` : '');
         const gitBox = Vue.reactive({ project: '', kind: '', data: null, error: '', loading: false, ssh: false, copied: false });
@@ -3680,6 +3683,7 @@ createApp({
                     pendingWorkdir.value = data.workdir || '';
                     pendingAction.value = data.action || '';  // project actions always ask
                     pendingFile.value = data.file_change || null;
+                    pendingStillAsking.value = !!data.still_asking;
                     pendingForm.value = data.form ? { form: data.form, error: data.error || '', github: data.github || {},
                                                       active_project: data.active_project || '', key: ++formSeq } : null;
                     if (appSettings.value.auto_approve && pendingOutside.value.length === 0 && !data.always_ask) {
@@ -3952,7 +3956,9 @@ createApp({
                 lines.push('**Files changed**', '');
                 if (c.git === false) lines.push('- (no git in this project, so changed files can\'t be listed)');
                 else if (c.error) lines.push('- (couldn\'t list the changed files: git failed)');
-                else (c.files || []).forEach(f => lines.push(`- \`${f.path}\`: ${changeLabel(f)}${f.warn ? ' ⚠' : ''}`));
+                else (c.files || []).forEach(f => lines.push(`- \`${f.path}\`: ${changeLabel(f)}${f.warn ? ' ⚠' : ''}`
+                    + (f.secret ? ' (a file of secrets git now sees)' : '')
+                    + (f.unignored ? ` (no longer ignored: ${f.unignored.join(', ')}${f.unignored_more ? ` and ${f.unignored_more} more` : ''})` : '')));
                 if (c.more) lines.push(`- and ${c.more} more`);
                 lines.push('');
             }
@@ -4091,7 +4097,7 @@ createApp({
 
         return { 
             userInput, chatInputRef, messages, sendMessage, handleEnter, isGenerating,
-            selectedModel, availableModels, setupModels, handleModelChange,
+            pendingStillAsking, selectedModel, availableModels, setupModels, handleModelChange,
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
             pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, rejectReason, showTrail,

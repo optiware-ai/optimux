@@ -59,3 +59,22 @@ def test_a_plain_approve_keeps_asking(mocker, client, proj):  # noqa: F811
     collect(chat.ws)
     chat.close()
     assert (proj / "b.txt").exists()
+
+
+def test_an_overwrite_still_asks_after_approve_all(mocker, client, proj):  # noqa: F811
+    (proj / ".gitignore").write_text(".env\n__pycache__/\n")
+    responses = iter([_tool("write_file", {"path": "a.txt", "content": "a\n"}),
+                      _tool("write_file", {"path": ".gitignore", "content": "node_modules/\n"}),
+                      _tool("write_file", {"path": "b.txt", "content": "b\n"}),
+                      reply("Done.")])
+    mocker.patch("litellm.acompletion", side_effect=lambda **kw: next(responses))
+    chat = Conversation(client)
+    chat.ws.send_text(json.dumps({"prompt": "write things", "model": "auto"}))
+    answer(chat, all_edits=True)
+    second = answer(chat)                                       # the rewrite of an existing file asks
+    msgs = collect(chat.ws)
+    chat.close()
+    assert second["file_change"]["path"] == ".gitignore" and second["file_change"]["op"] == "replace"
+    assert second["still_asking"] is True
+    assert not [m for m in msgs if m["type"] == "approval_request"]   # b.txt (new) didn't ask
+    assert (proj / "b.txt").exists()

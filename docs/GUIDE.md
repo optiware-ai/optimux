@@ -206,7 +206,7 @@ Before a command runs you see **Approval Required** with the full command:
 - A red **Outside the project** box appears when the command touches paths outside the active project. These are never auto-approved, and *Always Approve* is hidden.
 - Creating a project shows a **form** instead (see *Creating a project*); creating and archiving always wait for you, even with auto-approve on.
 - A **file change** (marked **✎ project file**) shows the file and its diff: removed lines in red, added lines in green. Nothing is written before you press **Approve**. See *Writing files*.
-- **Approve all edits in this reply** (file changes only) approves this change and the next file changes of the same reply, so a reply that edits five files asks once. Their diffs are still shown in the chat. Commands still ask one by one, and the next reply asks again. File changes can never reach outside the project, so this never covers anything else.
+- **Approve all edits in this reply** (file changes only) approves this change and the next file changes of the same reply, so a reply that edits five files asks once. Their diffs are still shown in the chat. Commands still ask one by one, and the next reply asks again. File changes can never reach outside the project, so this never covers anything else. A **rewrite of a file that already exists** (the whole file written again) still asks, with a yellow note: a model that rewrites a file from scratch can drop what mattered, such as `.env` from a `.gitignore`.
 
 ### When a reply stops early
 
@@ -585,7 +585,7 @@ The model has a terminal tool: it proposes a shell command, you approve it, Opti
 
 ### Files changed
 
-After a reply that ran commands or changed files, a **Files changed** box under it lists what changed, from git: `+12 −1` for an edited file, `new, 23 lines`, `deleted`. A file that was deleted, or lost half of its lines or more (for example `285 → 0 lines`), is shown first and in **red**, because that is how a broken edit usually looks, even when the reply says it's done. It costs nothing (no model call) and doesn't touch what you staged with `git add`. It compares with the files as they were just before the reply's first command, so changes you make yourself meanwhile appear too; files your `.gitignore` excludes don't. A project without git gets no list (`git init` in the project makes it possible). The list is also in the chat export.
+After a reply that ran commands or changed files, a **Files changed** box under it lists what changed, from git: `+12 −1` for an edited file, `new, 23 lines`, `deleted`. A file that was deleted, or lost half of its lines or more (for example `285 → 0 lines`), is shown first and in **red** with ⚠, because that is how a broken edit usually looks, even when the reply says it's done. Two more cases get the same warning: a **file of secrets** (`.env`, `*.pem`, `*.key`, `id_rsa`…) that git now sees, because a Push would include it (delete it, or add it back to `.gitignore`); and a **`.gitignore` that lost rules**, with the rules it lost (*No longer ignored: .env, __pycache__/*), since git may now see files it ignored before. It costs nothing (no model call) and doesn't touch what you staged with `git add`. It compares with the files as they were just before the reply's first command, so changes you make yourself meanwhile appear too; files your `.gitignore` excludes don't. A project without git gets no list (`git init` in the project makes it possible). The list is also in the chat export.
 
 ### Writing files
 

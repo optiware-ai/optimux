@@ -238,3 +238,24 @@ def test_a_same_size_edit_right_after_a_clone_is_seen(repo, tmp_path):
         (dest / "old.txt").write_text("bey\n")                 # same size as "bye\n"
         time.sleep(1.05 - time.time() % 1)                      # the snapshot in the next second
         assert changes._tree(str(dest)) != head, f"missed on round {i}"
+
+
+def test_a_gitignore_that_loses_rules_and_the_secrets_git_now_sees(repo):
+    (repo / ".gitignore").write_text("# local\n.env\n__pycache__/\nbuild/\n")
+    git("add", "-A", cwd=repo)
+    git("commit", "-qm", "ignore", cwd=repo)
+    (repo / ".env").write_text("TOKEN=x\n")                 # ignored: not in the summary
+    base = changes.snapshot(str(repo))
+    (repo / ".gitignore").write_text("node_modules/\nbuild/\n")
+    files = by_path(changes.compare(base))
+    gi, env = files[".gitignore"], files[".env"]
+    assert gi["warn"] and gi["unignored"] == [".env", "__pycache__/"] and gi["unignored_more"] == 0
+    assert env["status"] == "new" and env["warn"] and env["secret"]
+    assert list(files)[:2] == [".env", ".gitignore"]           # warnings first
+
+
+def test_a_gitignore_that_only_grows_is_fine(repo):
+    base = changes.snapshot(str(repo))
+    (repo / ".gitignore").write_text("build/\ndist/\n")
+    gi = by_path(changes.compare(base))[".gitignore"]
+    assert not gi["warn"] and "unignored" not in gi

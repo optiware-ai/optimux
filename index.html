@@ -2615,10 +2615,14 @@
                         <div v-if="msg.changes.git === false" class="text-gray-500">This project has no git, so changed files can't be listed. <span class="text-gray-400">git init</span> in the project makes it possible.</div>
                         <div v-else-if="msg.changes.error" class="text-gray-500" :title="msg.changes.error">Couldn't list the changed files (git failed).</div>
                         <template v-else>
-                            <div v-for="f in msg.changes.files" :key="f.path" :class="['flex items-baseline gap-3', f.warn ? 'text-red-300' : 'text-gray-300']" :title="changeTitle(f)">
-                                <span class="truncate min-w-0 flex-1">{{ f.path }}</span>
-                                <span class="flex-shrink-0 whitespace-nowrap">{{ changeLabel(f) }}</span>
-                            </div>
+                            <template v-for="f in msg.changes.files" :key="f.path">
+                                <div :class="['flex items-baseline gap-3', f.warn ? 'text-red-300' : 'text-gray-300']" :title="changeTitle(f)">
+                                    <span class="truncate min-w-0 flex-1">{{ f.warn ? '⚠ ' : '' }}{{ f.path }}</span>
+                                    <span class="flex-shrink-0 whitespace-nowrap">{{ changeLabel(f) }}</span>
+                                </div>
+                                <div v-if="f.secret" class="text-[11px] text-red-300/80 pl-4 mb-0.5">Looks like a file of secrets, and git sees it now: a Push would include it.</div>
+                                <div v-if="f.unignored" class="text-[11px] text-red-300/80 pl-4 mb-0.5">No longer ignored: {{ f.unignored.join(', ') }}<template v-if="f.unignored_more"> and {{ f.unignored_more }} more</template></div>
+                            </template>
                             <div v-if="msg.changes.more" class="text-gray-500">and {{ msg.changes.more }} more</div>
                             <div v-if="msg.changes.files && msg.changes.files.length && chatProject && !readOnlyChat && !isGenerating" class="mt-1.5 text-right">
                                 <button @click="openSync(chatProject, 'push')" class="text-blue-400 hover:text-blue-300" title="Commit and push this project to GitHub, after you check what goes">Push…</button>
@@ -2721,6 +2725,7 @@
                             <span v-else-if="pendingFile" class="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border text-green-300 border-green-800 bg-green-950/40" title="Optimux writes it itself, only inside the active project (never .git), and replaces the file in one step">✎ project file</span>
                             <span v-else-if="!pendingAction" :class="['text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border', pendingSandboxed ? 'text-green-300 border-green-800 bg-green-950/40' : 'text-gray-400 border-gray-700']" :title="pendingSandboxed ? 'Runs in the sandbox: it can only change the working folder' : 'The sandbox is off: the command runs with all your permissions'">{{ pendingSandboxed ? '🔒 sandboxed' : 'not sandboxed' }}</span></h3>
                         <p class="text-sm text-gray-300 mb-2">{{ pendingAction ? 'The assistant wants to do this (always asked, even with auto-approve on):' : (pendingFile ? 'The assistant wants to change this file in the project:' : 'The assistant wants to run this command on your machine:') }}</p>
+                        <p v-if="pendingFile && pendingStillAsking" class="text-[12px] text-yellow-300/90 mb-2">This rewrites a file that already exists, so it asks even after "Approve all edits": check that nothing important is dropped.</p>
                         <div class="bg-black/60 p-3 rounded font-mono text-sm text-yellow-200 whitespace-pre-wrap break-all max-h-96 overflow-y-auto">{{ pendingCommand }}</div>
                         <pre v-if="pendingFile && pendingFile.diff" class="mt-2 bg-black/60 p-3 rounded font-mono text-xs whitespace-pre overflow-auto max-h-96"><span v-for="(l, i) in pendingFile.diff.split('\n')" :key="i" :class="diffLineClass(l)">{{ l }}
 </span></pre>

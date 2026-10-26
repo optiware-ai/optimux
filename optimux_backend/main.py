@@ -3113,15 +3113,18 @@ async def run_file_tool(websocket: WebSocket, session: dict, name: str, args_str
         return {"ok": False, "error": str(e)}
     label = files_lib.describe(change)
     info = files_lib.public(change)
-    if session.get("approve_edits"):
+    overwrite = info.get("op") not in ("create", "edit")   # write_file over an existing file
+    if session.get("approve_edits") and not overwrite:
         # IM-12: the user approved this and the next file edits of this reply; the diff is still shown
         answer = {"approved": True}
         info = {**info, "auto": True}
         if session.get("task") is not None:
             session["task"]["approved"] += 1
     else:
+        # An overwrite of an existing file always asks, even after "Approve all edits": a model that
+        # rewrites a file from scratch can drop what mattered (a .gitignore losing .env)
         answer = await wait_for_answer(websocket, session, tc_id, label, file_change={**info, "diff": change["diff"]},
-                                       workdir=workdir)
+                                       workdir=workdir, still_asking=bool(session.get("approve_edits")))
         if answer["approved"] and answer.get("all_edits") is True:
             session["approve_edits"] = True
             await send(websocket, "system", "Approved: this and the next file edits of this reply. "
