@@ -2746,6 +2746,7 @@
                            class="flex-1 min-w-[16rem] bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-500 outline-none focus:border-red-700">
                     <button @click="sendApprovalResponse(false)" class="px-5 py-2 bg-gray-800 hover:bg-gray-700 text-red-400 font-bold rounded transition border border-red-900/50 text-sm" :title="rejectReason.trim() ? 'Reject and send the reason to the model' : 'Reject'">{{ rejectReason.trim() ? 'Reject with reason' : 'Reject' }}</button>
                     <button v-if="!pendingOutside.length && !pendingAction && !pendingFile && !sandboxInfo.server_mode" @click="sendApprovalResponse(true, true)" class="px-5 py-2 bg-green-900/30 hover:bg-green-800/50 text-green-400 font-bold rounded transition border border-green-800 text-sm">Always Approve</button>
+                    <button v-if="pendingFile" @click="sendApprovalResponse(true, false, true)" class="px-5 py-2 bg-green-900/30 hover:bg-green-800/50 text-green-400 font-bold rounded transition border border-green-800 text-sm" title="Approve this change and the next file edits of this reply. Commands still ask, and the next reply asks again.">Approve all edits in this reply</button>
                     <button @click="sendApprovalResponse(true)" class="px-5 py-2 bg-green-700 hover:bg-green-600 text-white font-bold rounded transition shadow-lg shadow-green-900/20 text-sm">Approve</button>
                 </div>
             </div>

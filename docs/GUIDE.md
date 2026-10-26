@@ -206,6 +206,7 @@ Before a command runs you see **Approval Required** with the full command:
 - A red **Outside the project** box appears when the command touches paths outside the active project. These are never auto-approved, and *Always Approve* is hidden.
 - Creating a project shows a **form** instead (see *Creating a project*); creating and archiving always wait for you, even with auto-approve on.
 - A **file change** (marked **✎ project file**) shows the file and its diff: removed lines in red, added lines in green. Nothing is written before you press **Approve**. See *Writing files*.
+- **Approve all edits in this reply** (file changes only) approves this change and the next file changes of the same reply, so a reply that edits five files asks once. Their diffs are still shown in the chat. Commands still ask one by one, and the next reply asks again. File changes can never reach outside the project, so this never covers anything else.
 
 ### When a reply stops early
 

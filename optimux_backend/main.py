@@ -3113,8 +3113,19 @@ async def run_file_tool(websocket: WebSocket, session: dict, name: str, args_str
         return {"ok": False, "error": str(e)}
     label = files_lib.describe(change)
     info = files_lib.public(change)
-    answer = await wait_for_answer(websocket, session, tc_id, label, file_change={**info, "diff": change["diff"]},
-                                   workdir=workdir)
+    if session.get("approve_edits"):
+        # IM-12: the user approved this and the next file edits of this reply; the diff is still shown
+        answer = {"approved": True}
+        info = {**info, "auto": True}
+        if session.get("task") is not None:
+            session["task"]["approved"] += 1
+    else:
+        answer = await wait_for_answer(websocket, session, tc_id, label, file_change={**info, "diff": change["diff"]},
+                                       workdir=workdir)
+        if answer["approved"] and answer.get("all_edits") is True:
+            session["approve_edits"] = True
+            await send(websocket, "system", "Approved: this and the next file edits of this reply. "
+                                            "Commands still ask; the next reply asks again.")
     if not answer["approved"]:
         reason = answer.get("reason", "")
         await send(websocket, "system", declined_line(f"Change to {change['path']} rejected", reason))
@@ -4015,6 +4026,7 @@ async def websocket_endpoint(websocket: WebSocket):
         recorder.pending = []
         turns_added = 0
         session["changes_base"] = None
+        session["approve_edits"] = False     # "Approve all edits in this reply" lasts one reply (IM-12)
         session["task"] = None
         if kind in ("escalate", "plan_action") or (kind not in ("new_chat", "open_session")
                                                    and payload.get("prompt", "").strip().lower() != NEW_CHAT_COMMAND):

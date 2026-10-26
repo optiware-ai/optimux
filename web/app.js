@@ -3858,7 +3858,7 @@ createApp({
 
         // Reject can carry a reason, sent to the model with the refusal (v0.5.1)
         const rejectReason = ref('');
-        const sendApprovalResponse = async (isApproved, alwaysApprove = false) => {
+        const sendApprovalResponse = async (isApproved, alwaysApprove = false, allEdits = false) => {
             if (alwaysApprove && isApproved) {
                 appSettings.value.auto_approve = true;
                 await saveSettings();
@@ -3867,8 +3867,9 @@ createApp({
             rejectReason.value = '';
             const limit = isApproved && pendingTimeLimit.value !== '' ? { time_limit: Number(pendingTimeLimit.value) } : {};
             pendingTimeLimit.value = '';
+            const edits = isApproved && allEdits ? { all_edits: true } : {};   // IM-12: this reply's file edits
             ws.value.send(JSON.stringify(reason ? { type: 'approval_response', approved: false, reason }
-                                                : { type: 'approval_response', approved: isApproved, ...limit }));
+                                                : { type: 'approval_response', approved: isApproved, ...limit, ...edits }));
             pendingApproval.value = false;
             pendingForm.value = null;
             pendingCommand.value = ''; pendingFile.value = null;
