@@ -22,9 +22,9 @@ It isn't limited to code: you can ask it anything you would ask a chat AI, and i
 
 <br>
 
-<img src="docs/images/demo.gif" alt="Optimux in action: a request is routed to the cheap Simple model, two sandboxed commands wait for approval, the failing test is fixed, then the Dashboard shows usage per project, role and model, and the routing settings" width="900">
+<img src="docs/images/demo.gif" alt="Optimux in action: the Conductor routes a request to the cheap Simple model; a sandboxed test run, a file edit with its diff (Approve all edits in this reply) and a second test run each wait for approval; the reply lists the files it changed and gets a thumbs up; then the Dashboard shows what routing saved against the Complex model" width="900">
 
-<sub>The cheap model takes the request, every command waits for your approval, and every call is metered.</sub>
+<sub>The cheap model takes the request, every command and file edit waits for your approval, and every call is metered against what the Complex model would have cost.</sub>
 
 </div>
 
