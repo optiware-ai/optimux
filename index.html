@@ -536,8 +536,8 @@
                             <!-- 2. Cost vs latency -->
                         <template v-for="P in [perfOf('sc')]" :key="'pf-sc'">
                             <div :class="perfBusy.sc ? 'cm-pf-loading' : ''" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                                <div class="flex items-start justify-between gap-3"><h3 class="text-[15px] font-bold text-gray-200">Price and speed</h3><chart-pick :model-value="perfPick.sc" @update:model-value="setPerfPick('sc', $event)" :options="perfProjects" label="Price and speed: project"></chart-pick></div>
-                                <p class="text-xs text-gray-500 mt-1 mb-5">Each dot is a model: cost per call against its median latency. Bigger dot, more calls. Lower left is cheap and fast.</p>
+                                <div class="flex items-start justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">Price and speed</h3><chart-pick :model-value="perfPick.sc" @update:model-value="setPerfPick('sc', $event)" :options="perfProjects" label="Price and speed: project"></chart-pick></div>
+                                <p class="text-xs text-gray-500 mb-5">Each dot is a model: cost per call against its median latency. Bigger dot, more calls. Lower left is cheap and fast.</p>
                             <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.sc) + " in this period." : "Loading…" }}</p>
                             <template v-else-if="P">
                                 <svg v-if="!P.sc.empty" :width="P.sc.W" :height="P.sc.H" class="cm-pf-svg" role="img" aria-label="Cost per call against median latency" @mouseleave="hideTip">
@@ -566,8 +566,8 @@
                             <!-- 6. Who does the work -->
                         <template v-for="P in [perfOf('work')]" :key="'pf-work'">
                             <div :class="perfBusy.work ? 'cm-pf-loading' : ''" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                                <div class="flex items-start justify-between gap-3"><h3 class="text-[15px] font-bold text-gray-200">Who does the work</h3><chart-pick :model-value="perfPick.work" @update:model-value="setPerfPick('work', $event)" :options="perfProjects" label="Who does the work: project"></chart-pick></div>
-                                <p class="text-xs text-gray-500 mt-1 mb-4">Each role's share of the calls against its share of the spending. Routing pays off when the cheap roles carry most of the calls for a small part of the money.</p>
+                                <div class="flex items-start justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">Who does the work</h3><chart-pick :model-value="perfPick.work" @update:model-value="setPerfPick('work', $event)" :options="perfProjects" label="Who does the work: project"></chart-pick></div>
+                                <p class="text-xs text-gray-500 mb-4">Each role's share of the calls against its share of the spending. Routing pays off when the cheap roles carry most of the calls for a small part of the money.</p>
                             <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.work) + " in this period." : "Loading…" }}</p>
                             <template v-else-if="P">
                                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mb-2">
@@ -596,8 +596,8 @@
                         <!-- 3. Latency spread -->
                         <template v-for="P in [perfOf('lat')]" :key="'pf-lat'">
                         <div :class="perfBusy.lat ? 'cm-pf-loading' : ''" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <div class="flex items-start justify-between gap-3"><h3 class="text-[15px] font-bold text-gray-200">How long a call takes</h3><chart-pick :model-value="perfPick.lat" @update:model-value="setPerfPick('lat', $event)" :options="perfProjects" label="How long a call takes: project"></chart-pick></div>
-                            <p class="text-xs text-gray-500 mt-0.5 mb-3">The line runs from fast calls (p10) to slow ones (p90); the dot is the median. A long line means an unpredictable model.</p>
+                            <div class="flex items-start justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">How long a call takes</h3><chart-pick :model-value="perfPick.lat" @update:model-value="setPerfPick('lat', $event)" :options="perfProjects" label="How long a call takes: project"></chart-pick></div>
+                            <p class="text-xs text-gray-500 mb-3">The line runs from fast calls (p10) to slow ones (p90); the dot is the median. A long line means an unpredictable model.</p>
                             <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.lat) + " in this period." : "Loading…" }}</p>
                             <template v-else-if="P">
                             <svg :width="P.lat.W" :height="P.lat.H" class="cm-pf-svg" role="img" aria-label="Latency range per model" @mouseleave="hideTip">
@@ -623,8 +623,8 @@
                         <!-- 4. Token mix -->
                         <template v-for="P in [perfOf('mix')]" :key="'pf-mix'">
                         <div :class="perfBusy.mix ? 'cm-pf-loading' : ''" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <div class="flex items-start justify-between gap-3"><h3 class="text-[15px] font-bold text-gray-200">What the tokens are</h3><chart-pick :model-value="perfPick.mix" @update:model-value="setPerfPick('mix', $event)" :options="perfProjects" label="What the tokens are: project"></chart-pick></div>
-                            <p class="text-xs text-gray-500 mt-0.5 mb-2">Cached input is the cheapest; output and thinking cost the most per token.</p>
+                            <div class="flex items-start justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">What the tokens are</h3><chart-pick :model-value="perfPick.mix" @update:model-value="setPerfPick('mix', $event)" :options="perfProjects" label="What the tokens are: project"></chart-pick></div>
+                            <p class="text-xs text-gray-500 mb-2">Cached input is the cheapest; output and thinking cost the most per token.</p>
                             <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.mix) + " in this period." : "Loading…" }}</p>
                             <template v-else-if="P">
                             <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mb-2">
