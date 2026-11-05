@@ -37,6 +37,8 @@ const ROLE_HELP = {
     curator: 'automatic project memory updates when a chat ends (and "Update memory now").',
     skill_draft: 'drafting a skill from a chat with "Save as skill".',
     test: 'the Test button on a model in Dashboard → Models (one tiny call).',
+    planner: 'plan mode: the Complex model splitting a big task into steps before any work starts (one call per plan).',
+    commit_message: 'not a routing role, a job: the Simple model writing a commit message when you click "Write it for me" in Push….',
 };
 const PROJECT_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 // The logo while Optimux works: a green ball runs along the trunk and takes one of the
@@ -603,13 +605,136 @@ const ScatterPlot = {
     </div>`,
 };
 // A chart's own project filter: quiet blue text with its ▾, no box (the page-level pickers keep the boxed select)
+// v0.8: a chart's own filter. The button keeps one size whatever is chosen (a long
+// name is cut, the whole name in its tooltip), and the list opens over the page with
+// rounded corners, the app's scrollbar, a filter box when it is long, and the keyboard.
+let chartPickSeq = 0;
 const ChartPick = {
     props: { modelValue: String, options: { type: Array, default: () => [] }, label: String, all: { type: String, default: 'All projects' } },
     emits: ['update:modelValue'],
-    template: `<select class="cm-chart-pick" :aria-label="label" :value="modelValue" @change="$emit('update:modelValue', $event.target.value)">
-        <option v-if="all" value="">{{ all }}</option>
-        <option v-for="o in options" :key="o.value === undefined ? o : o.value" :value="o.value === undefined ? o : o.value">{{ o.label === undefined ? o : o.label }}</option>
-    </select>`,
+    data: () => ({ open: false, active: 0, q: '', pos: { top: 0, left: 0, width: 240, maxHeight: 320 }, up: false, id: 'cm-pick-' + (++chartPickSeq) }),
+    computed: {
+        items() {
+            const list = this.all ? [{ value: '', label: this.all }] : [];
+            for (const o of this.options || []) list.push(o && o.value !== undefined ? { value: String(o.value), label: String(o.label === undefined ? o.value : o.label) } : { value: String(o), label: String(o) });
+            return list;
+        },
+        shown() {
+            const q = this.q.trim().toLowerCase();
+            return q ? this.items.filter(i => i.label.toLowerCase().includes(q)) : this.items;
+        },
+        current() {
+            const v = this.modelValue || '';
+            const it = this.items.find(i => i.value === v);
+            return it ? it.label : (v || this.all || '');
+        },
+        searchable() { return this.items.length > 8; },
+    },
+    methods: {
+        toggle() { if (this.open) this.close(); else this.show(); },
+        show() {
+            this.q = '';
+            const i = this.items.findIndex(x => x.value === (this.modelValue || ''));
+            this.active = i < 0 ? 0 : i;
+            this.open = true;
+            this.place();
+            document.addEventListener('mousedown', this.outside, true);
+            window.addEventListener('scroll', this.onScroll, true);
+            window.addEventListener('resize', this.close);
+            this.$nextTick(() => {
+                if (this.searchable && this.$refs.search) this.$refs.search.focus();
+                this.reveal();
+            });
+        },
+        close(refocus) {
+            if (!this.open) return;
+            this.open = false;
+            document.removeEventListener('mousedown', this.outside, true);
+            window.removeEventListener('scroll', this.onScroll, true);
+            window.removeEventListener('resize', this.close);
+            if (refocus === true && this.$refs.button) this.$refs.button.focus();
+        },
+        place() {
+            const b = this.$refs.button;
+            if (!b) return;
+            const r = b.getBoundingClientRect();
+            const width = Math.min(Math.max(r.width, 240), 360, window.innerWidth - 16);
+            const below = window.innerHeight - r.bottom - 12, above = r.top - 12;
+            this.up = below < 220 && above > below;
+            const maxHeight = Math.max(140, Math.min(360, this.up ? above : below));
+            const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8));
+            this.pos = { left, width, maxHeight, top: this.up ? null : r.bottom + 6, bottom: this.up ? window.innerHeight - r.top + 6 : null };
+        },
+        style() {
+            const p = this.pos;
+            return { left: p.left + 'px', width: p.width + 'px', maxHeight: p.maxHeight + 'px',
+                     ...(p.top !== null ? { top: p.top + 'px' } : { bottom: p.bottom + 'px' }) };
+        },
+        outside(e) {
+            const panel = this.$refs.panel, button = this.$refs.button;
+            if ((panel && panel.contains(e.target)) || (button && button.contains(e.target))) return;
+            this.close();
+        },
+        onScroll(e) { if (!(this.$refs.panel && this.$refs.panel.contains(e.target))) this.close(); },
+        pick(it) {
+            if (it.value !== (this.modelValue || '')) this.$emit('update:modelValue', it.value);
+            this.close(true);
+        },
+        reveal() {
+            this.$nextTick(() => {
+                const el = this.$refs.panel && this.$refs.panel.querySelector('[data-active="true"]');
+                if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+            });
+        },
+        key(e) {
+            const n = this.shown.length;
+            if (!this.open) {
+                if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) { e.preventDefault(); this.show(); }
+                return;
+            }
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.close(true); }
+            else if (e.key === 'Tab') this.close();
+            else if (e.key === 'ArrowDown') { e.preventDefault(); this.active = n ? (this.active + 1) % n : 0; this.reveal(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); this.active = n ? (this.active + n - 1) % n : 0; this.reveal(); }
+            else if (e.key === 'Home') { e.preventDefault(); this.active = 0; this.reveal(); }
+            else if (e.key === 'End') { e.preventDefault(); this.active = Math.max(0, n - 1); this.reveal(); }
+            else if (e.key === 'Enter' || (e.key === ' ' && !this.searchable)) { e.preventDefault(); if (this.shown[this.active]) this.pick(this.shown[this.active]); }
+            else if (!this.searchable && e.key.length === 1) {
+                // type-ahead: the next item starting with the letter
+                const k = e.key.toLowerCase();
+                for (let j = 1; j <= n; j++) {
+                    const it = this.shown[(this.active + j) % n];
+                    if (it.label.toLowerCase().startsWith(k)) { this.active = (this.active + j) % n; this.reveal(); break; }
+                }
+            }
+        },
+    },
+    watch: { q() { this.active = 0; } },
+    beforeUnmount() { this.close(); },
+    template: `<span class="cm-pick-wrap">
+        <button ref="button" type="button" :class="['cm-pick', open ? 'cm-pick-open' : '']" aria-haspopup="listbox" :aria-expanded="open ? 'true' : 'false'"
+                :aria-controls="open ? id : null" :aria-label="label ? label + ': ' + current : current" :title="current" @click="toggle" @keydown="key">
+            <span class="cm-pick-text">{{ current }}</span>
+            <svg class="cm-pick-chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <teleport to="body">
+            <div v-if="open" ref="panel" :id="id" :class="['cm-pick-panel', up ? 'cm-pick-up' : '']" :style="style()" @keydown="key">
+                <div v-if="searchable" class="cm-pick-search">
+                    <input ref="search" v-model="q" type="search" placeholder="Filter…" :aria-label="'Filter ' + (label || 'the list')" autocomplete="off" spellcheck="false"
+                           role="combobox" aria-autocomplete="list" :aria-controls="id + '-list'" :aria-activedescendant="shown[active] ? id + '-' + active : null">
+                </div>
+                <ul :id="id + '-list'" class="cm-pick-list" role="listbox" :aria-label="label || 'Choose'">
+                    <li v-for="(it, i) in shown" :key="it.value" :id="id + '-' + i" role="option" :aria-selected="it.value === (modelValue || '') ? 'true' : 'false'"
+                        :data-active="i === active ? 'true' : 'false'" :class="['cm-pick-item', i === active ? 'cm-pick-active' : '', it.value === (modelValue || '') ? 'cm-pick-chosen' : '']"
+                        :title="it.label" @mousemove="active = i" @click="pick(it)">
+                        <span class="cm-pick-check" aria-hidden="true">{{ it.value === (modelValue || '') ? '✓' : '' }}</span>
+                        <span class="cm-pick-label">{{ it.label }}</span>
+                    </li>
+                    <li v-if="!shown.length" class="cm-pick-none">Nothing matches.</li>
+                </ul>
+            </div>
+        </teleport>
+    </span>`,
 };
 // fix25a: marks a deleted project whose chats, costs and memory were kept
 const DeletedTag = {
@@ -2850,8 +2975,8 @@ createApp({
             return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, sv, wt, scatters, empty: !models.length,
                      maxShare: Math.max(0.0001, ...models.map(m => m.share)) };
         });
-        const PERF_ROLES = { conductor: 'Conductor', scout: 'Scout', simple: 'Simple', complex: 'Complex', override: 'chosen by you', curator: 'memory',
-                             skill_draft: 'skill drafts', test: 'tests', commit_message: 'commit messages', planner: 'Planner' };
+        const PERF_ROLES = { conductor: 'Conductor', scout: 'Scout', simple: 'Simple', complex: 'Complex', override: 'Chosen by you', curator: 'Memory',
+                             skill_draft: 'Skill drafts', test: 'Tests', commit_message: 'Commit messages', planner: 'Planner' };
         const perfRole = (r) => PERF_ROLES[r] || r;
         const PERF_PROVIDERS = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini', vertex_ai: 'Google Vertex AI',
                                  ollama: 'Ollama (this machine)', ollama_chat: 'Ollama (this machine)', deepseek: 'DeepSeek', mistral: 'Mistral',

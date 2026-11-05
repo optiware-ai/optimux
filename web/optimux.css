@@ -155,13 +155,31 @@
 .cm-chart-label { fill: #6b7280; font-size: 11px; }
 .cm-tile-label { fill: #0b1220; font: 600 12px ui-sans-serif, system-ui, sans-serif; pointer-events: none; }
 .cm-tile-value { fill: #0b1220; font: 12px ui-monospace, monospace; pointer-events: none; }
-/* A chart's own picker: quiet blue text with a ▾ of the same colour, no box */
-.cm-chart-pick { appearance: none; -webkit-appearance: none; border: 0; background: none; padding: 0 14px 0 0; color: #60a5fa; font-size: 13px; cursor: pointer;
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: right 5px top 55%, right 1px top 55%; background-size: 4px 4px; background-repeat: no-repeat; max-width: 14rem; text-overflow: ellipsis; }
-.cm-chart-pick:hover { color: #93c5fd; }
-.cm-chart-pick:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; border-radius: 3px; }
-.cm-chart-pick option { background: #111827; color: #e5e7eb; }
+/* v0.8: a chart's own filter: a fixed-size button, the list over the page */
+.cm-pick-wrap { display: inline-flex; flex-shrink: 0; }
+.cm-pick { display: inline-flex; align-items: center; gap: 6px; width: 11rem; padding: 3px 8px 3px 10px; border-radius: 8px; border: 1px solid #1e2a3d;
+  background: #0b1220; color: #93c5fd; font-size: 13px; line-height: 1.4; text-align: left; transition: border-color .12s, background-color .12s; }
+.cm-pick:hover { border-color: #3b82f6; background: #0f1a2e; }
+.cm-pick:focus-visible { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, .35); }
+.cm-pick-open { border-color: #3b82f6; background: #0f1a2e; }
+.cm-pick-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-pick-chev { width: 12px; height: 12px; flex-shrink: 0; color: #60a5fa; transition: transform .15s; }
+.cm-pick-open .cm-pick-chev { transform: rotate(180deg); }
+.cm-pick-panel { position: fixed; z-index: 96; display: flex; flex-direction: column; background: #111827; border: 1px solid #2b3646; border-radius: 12px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .6); overflow: hidden; animation: cm-pick-in .12s ease-out; transform-origin: top right; }
+.cm-pick-up { transform-origin: bottom right; }
+@keyframes cm-pick-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.cm-pick-search { padding: 6px; border-bottom: 1px solid #1f2937; flex-shrink: 0; }
+.cm-pick-search input { width: 100%; background: #030712; border: 1px solid #1f2937; border-radius: 8px; padding: 4px 9px; color: #e5e7eb; font-size: 13px; outline: none; }
+.cm-pick-search input:focus { border-color: #3b82f6; }
+.cm-pick-list { list-style: none; margin: 0; padding: 4px; overflow-y: auto; min-height: 0; }
+.cm-pick-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 7px; color: #d1d5db; font-size: 13px; cursor: pointer; }
+.cm-pick-active { background: rgba(59, 130, 246, .22); color: #f3f4f6; }
+.cm-pick-chosen { color: #93c5fd; font-weight: 600; }
+.cm-pick-check { width: 14px; flex-shrink: 0; color: #60a5fa; font-size: 12px; }
+.cm-pick-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-pick-none { padding: 8px 10px; color: #6b7280; font-size: 13px; font-style: italic; }
+@media (prefers-reduced-motion: reduce) { .cm-pick-panel { animation: none; } .cm-pick-chev { transition: none; } }
 /* Model status: the roles a model plays, as small badges that open Routing */
 .cm-role-badge { display: inline-flex; align-items: center; font: 600 10px/1.6 ui-sans-serif, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .04em;
   padding: 0 6px; border-radius: 4px; border: 1px solid rgba(59, 130, 246, .3); background: rgba(59, 130, 246, .12); color: #bfdbfe; cursor: pointer; white-space: nowrap; }
