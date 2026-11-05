@@ -461,6 +461,18 @@ For every new message, the Conductor (one short, cheap call) classifies the requ
 - **Escalation (Simple → Complex)** happens automatically when the Simple model reaches its step limit or keeps repeating the same action. The Complex model receives the whole conversation so far and continues. You can also click **Escalate ↑** yourself.
 - **Fallback** handles provider trouble: if a model fails (outage, quota), Optimux retries once, then switches to the other tier for that request. A model that keeps failing goes into a **cooldown** and is skipped until it recovers (see *Models*).
 
+### Scout before Complex
+
+*New in v0.8.* In an agent loop, every step re-reads the whole conversation so far, so a strong model that spends its first steps listing and reading files pays its own price for each of them. With the scout on (**Dashboard → Routing → Scout before Complex**, on by default), a new task the Conductor sends to Complex is first looked over by the Simple model:
+
+- It may only list, read and search the project's files: no commands, nothing to approve, at most 8 lookups. It reads in Optimux itself, with the same limits as the file tools (inside the project, never `.git`, never Optimux's own data).
+- It writes a short brief: the relevant files, the key lines, what exists and what is missing. It doesn't do the task.
+- Optimux adds the project's file list and every lookup with its real result, and tells the Complex model to rely on them instead of searching again. When what the task works on doesn't exist, the Complex model says so and asks you how to go on.
+
+The brief is folded under *Scout brief* in the chat. The reply's cost line shows the scout's share (*scout $…*, with the details on hover), and Usage and Performance list it as **scout**. In the savings view the scout's calls are compared with the Complex model's prices, because with everything on Complex the Complex model would have done this reading itself.
+
+It runs only when the Conductor itself chose Complex: never with the Conductor *Off*, after `/complex`, with a model picked by hand, or for an escalation. It is skipped, and the chat says why, when the request already names its files, when the chat was already on Complex, with no project or an empty one, and when Simple and Complex are the same model or the Simple model is unavailable. It adds a few seconds before the Complex model starts. A passing error (Gemini's *503 overloaded*) is tried twice more, after 2 and 5 seconds; if the scout still fails, or takes longer than 150 seconds, the Complex model starts without a brief.
+
 ### Pinning and overrides
 
 - `/simple` or `/complex` **pins** the tier for the rest of the chat; the Conductor stops switching. **New chat** unpins.
@@ -886,6 +898,7 @@ Every page has **?** marks: hover one for an explanation, click to keep it open.
 |---|---|---|---|
 | Workspace folder | Scope | (none) | The folder that holds your projects; each folder inside is a project. |
 | Conductor / Simple / Complex | Routing | (none) | Which model does what. Conductor can be *Off*. |
+| Scout before Complex | Routing | On | The Simple model reads the project and writes a brief before a new Complex task. |
 | Thinking per model | Models | Default | Reasoning effort: Default, Minimal, Low, Medium, High. |
 | Prices per model | Models | LiteLLM list | USD per million input, output, cached-input tokens. |
 | Auto-approve commands | Execution | Off | Run commands without asking (never outside the project, never creating or archiving projects). |

@@ -32,6 +32,11 @@ def test_guide_defaults_match_code():
     text = open(main.GUIDE_PATH).read()
     d = SettingsPayload()
     assert f"| Steps per turn: Simple | Execution | {d.max_steps_simple} |" in text
+    assert d.scout is True and "| Scout before Complex | Routing | On |" in text
+    from optimux_backend.core import scout
+    assert scout.MAX_TOOL_CALLS == 8 and "at most 8 lookups" in text
+    assert main.SCOUT_TIMEOUT == 150 and "longer than 150 seconds" in text
+    assert scout.RETRY_DELAYS == (2.0, 5.0) and "after 2 and 5 seconds" in text
     assert f"| Steps per turn: Complex | Execution | {d.max_steps_complex} |" in text
     assert f"| Idle minutes | Memory → Project | {d.curator_idle_minutes} |" in text
     assert f"{curator.MAX_TOKENS:,} tokens" in text

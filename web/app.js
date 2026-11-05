@@ -30,6 +30,7 @@ const HelpTip = {
 // What each role in Usage → By role is (shown on hover)
 const ROLE_HELP = {
     conductor: 'the small call per message that decides whether the Simple or the Complex model handles it.',
+    scout: 'the Simple model reading the project before a new Complex task, so the Complex model starts with a brief.',
     simple: 'replies and tool steps by the Simple model (most everyday requests).',
     complex: 'replies and tool steps by the Complex model: hard tasks, escalations (automatic or Escalate ↑) and /complex.',
     override: 'requests where you picked a specific model in the chat instead of the Auto-Router.',
@@ -2439,7 +2440,7 @@ createApp({
             })();
 
             // 6. Who does the work: share of the calls against share of the spending, per role
-            const ROLE_ORDER = ['conductor', 'simple', 'complex', 'override'];
+            const ROLE_ORDER = ['conductor', 'scout', 'simple', 'complex', 'override'];
             const work = (() => {
                 const list = [...(d.roles || [])].sort((a, b) => {
                     const ia = ROLE_ORDER.indexOf(a.role), ib = ROLE_ORDER.indexOf(b.role);
@@ -2525,7 +2526,7 @@ createApp({
             return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, sv, empty: !models.length,
                      maxShare: Math.max(0.0001, ...models.map(m => m.share)) };
         });
-        const PERF_ROLES = { conductor: 'Conductor', simple: 'Simple', complex: 'Complex', override: 'chosen by you', curator: 'memory',
+        const PERF_ROLES = { conductor: 'Conductor', scout: 'Scout', simple: 'Simple', complex: 'Complex', override: 'chosen by you', curator: 'memory',
                              skill_draft: 'skill drafts', test: 'tests', commit_message: 'commit messages', planner: 'Planner' };
         const perfRole = (r) => PERF_ROLES[r] || r;
         const PERF_PROVIDERS = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini', vertex_ai: 'Google Vertex AI',
@@ -3499,9 +3500,9 @@ createApp({
             userInput.value = 'Continue from where you stopped.';
             sendMessage();
         };
-        const addEvent = (msg, text, kind) => {
+        const addEvent = (msg, text, kind, detail) => {
             if (!msg.events) msg.events = [];
-            msg.events.push({ text, kind });
+            msg.events.push(detail ? { text, kind, detail } : { text, kind });   // detail: v0.8 the scout's brief, folded
         };
 
         onMounted(() => {
@@ -3622,7 +3623,7 @@ createApp({
                         if (lastMsg.blocks) lastMsg.blocks.push({ kind: 'note', text: data.content });
                         else lastMsg.content += `\n\n---\n\n*↪ ${data.content}*\n\n`;
                     }
-                    addEvent(lastMsg, data.content, kind);
+                    addEvent(lastMsg, data.content, kind, data.brief ? String(data.brief) : '');
                     if (data.tier) { lastMsg.tier = data.tier; lastMsg.model = data.model; }
                     else if (/^Escalated to /.test(data.content)) lastMsg.tier = 'complex';
                 }
@@ -3636,11 +3637,18 @@ createApp({
                     u.calls += 1;
                     u.tokens += (data.prompt_tokens || 0) + (data.completion_tokens || 0);
                     u.reasoning = (u.reasoning || 0) + (data.reasoning_tokens || 0);
-                    if (data.role !== 'conductor') u.replyReasoning = (u.replyReasoning || 0) + (data.reasoning_tokens || 0);
+                    const helper = data.role === 'conductor' || data.role === 'scout';   // not the model that answers
+                    if (!helper) u.replyReasoning = (u.replyReasoning || 0) + (data.reasoning_tokens || 0);
                     if (data.cost === null || data.cost === undefined) u.costKnown = false; else u.cost += data.cost;
                     u.ms += data.duration_ms || 0;
                     if (data.estimated) u.estimated = true;
-                    if (data.role !== 'conductor') lastMsg.model = data.model;
+                    if (data.role === 'scout') {      // v0.8: the scout's share, shown apart (it is included above)
+                        const sc = u.scout || (u.scout = { calls: 0, tokens: 0, cost: 0 });
+                        sc.calls += 1;
+                        sc.tokens += (data.prompt_tokens || 0) + (data.completion_tokens || 0);
+                        sc.cost += data.cost || 0;
+                    }
+                    if (!helper) lastMsg.model = data.model;
                 }
                 else if (data.type === "plan") {
                     // v0.4: a plan card; a later event for the same plan updates it in place, in any message
@@ -3925,7 +3933,10 @@ createApp({
             }
             lines.push('## Optimux', '');
             if (m.events && m.events.length) {
-                m.events.forEach(ev => lines.push(`> ${ev.text}`));
+                m.events.forEach(ev => {
+                    lines.push(`> ${ev.text}`);
+                    if (ev.detail) ev.detail.split('\n').forEach(l => lines.push(l ? `> ${l}` : '>'));   // v0.8: the scout's brief
+                });
                 lines.push('');
             } else if (m.system_note) {
                 lines.push(`> ${m.system_note}`, '');

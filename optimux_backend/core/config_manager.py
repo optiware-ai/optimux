@@ -155,6 +155,8 @@ class SettingsPayload(BaseModel):
     # v0.4 plan mode: off | ask (show the plan, wait for Run) | auto (show it and start).
     # Off by default since v0.4-5h: measured on six tasks, plans didn't pay off.
     plan_mode: str = "off"
+    # v0.8: before a new Complex task, the Simple model reads the project and writes a brief
+    scout: bool = True
 
 
 DEFAULT_MAX_STEPS = {"simple": 8, "complex": 25}

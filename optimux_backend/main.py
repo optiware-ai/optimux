@@ -46,6 +46,7 @@ from optimux_backend.core import curator
 from optimux_backend.core import catalog, exports, snapshots
 from optimux_backend.core import plans as plans_lib
 from optimux_backend.core import planner
+from optimux_backend.core import scout as scout_lib
 from optimux_backend.core import auth
 from optimux_backend.core import sessions as chat_store
 from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
@@ -3676,12 +3677,15 @@ async def resolve_tier(websocket: WebSocket, session: dict, user_message: str) -
     previous turn finished normally, so an unfinished task (stopped, paused
     at the step limit, failed) is never handed to a weaker model halfway.
     """
+    session["tier_before"] = session["tier"]
     if session["tier_pinned"]:
         return session["tier"]
     ask_plan = plan_mode() != "off" and session.get("plan_cmd") is not False
     result = await route_model_with_usage(user_message, session.get("skills") or None,
                                           **({"plan_mode": True} if ask_plan else {}))
     tier, conductor_model, conductor_usage, duration = result[:4]
+    # v0.8: what the Conductor itself decided (None when it is off or failed): only its "complex" is scouted
+    session["conductor_tier"] = tier if conductor_model != "off" and not (len(result) > 6 and result[6]) else None
     session["picked_skill"] = result[4] if len(result) > 4 else None
     session["conductor_plan"] = bool(result[5]) if len(result) > 5 else False
     if conductor_usage is not None:
@@ -3727,6 +3731,7 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
     session["skill"] = None          # the skill active for this request, if any
     session["picked_skill"] = None
     session["conductor_plan"] = False
+    session["conductor_tier"] = None   # set by resolve_tier when the Conductor decides (v0.8 scout)
 
     plan_cmd, user_message = parse_plan_command(user_message)
     session["plan_cmd"] = plan_cmd
@@ -3777,6 +3782,9 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
             await send(websocket, "system", note, skill=picked)
         except skills_lib.SkillError:
             session["skill"] = None
+    # v0.8: a new Complex task is scouted first on the Simple model (read-only)
+    if role == "complex" and session.get("conductor_tier") == "complex":
+        user_message = await scout_first(websocket, session, routing, user_message)
     # v0.4 plan mode: a big task the Conductor marks (or /plan) is split into steps
     wants_plan = plan_cmd is True or (plan_cmd is None and plan_mode() != "off" and session.get("conductor_plan")
                                        and role == "complex")
@@ -3790,6 +3798,56 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
     await send(websocket, "system", f"Routed to: {model} ({role})", tier=role, model=model)
     task_route(session, role, model)
     await run_with_fallback(websocket, session, routing, model, role, user_message)
+
+
+SCOUT_TIMEOUT = 150              # seconds for the whole scout; past it the Complex model starts without a brief
+
+
+async def scout_first(websocket: WebSocket, session: dict, routing: dict, user_message: str) -> str:
+    """Before a Complex task (v0.8): the Simple model reads the project with read-only
+    tools and writes a brief, which goes after the request to the Complex model.
+    Returns the request to run (with the brief, or unchanged when the scout is off,
+    skipped or failed; the chat says which)."""
+    if not get_settings().get("scout", True):
+        return user_message
+    if session.get("tier_before") == "complex" and session["history"]:
+        # Its earlier turns in this chat already hold what it read: a new look would be paid twice
+        await send(websocket, "system", "Scout skipped: the chat was already on Complex, which has the project in view.")
+        return user_message
+    workdir = current_workdir() if active_project() else ""
+    files = (await asyncio.to_thread(planner.file_list, workdir))[0] if workdir else []
+    why = scout_lib.skip_reason(user_message, routing, workdir, files)
+    model, strong = routing.get("simple_model", ""), routing.get("complex_model", "")
+    if not why and not providers.is_available(model):
+        why = unavailable_note(model)
+    if why:
+        await send(websocket, "system", f"Scout skipped: {why}.")
+        return user_message
+    await send(websocket, "system", f"Scout: {model} reads the project first, so {strong} starts with a brief.")
+    try:
+        result = await asyncio.wait_for(
+            scout_lib.run(user_message, model, mask_secrets(get_memory_context())[0], workdir), SCOUT_TIMEOUT)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        info = providers.classify(e)
+        if info.kind == "quota":             # like the Conductor: only a used-up quota cools the model down
+            providers.record_failure(model, e)
+        ratelimits.record_error(model, e)
+        await send(websocket, "system", f"Scout failed ({info.summary}); {strong} starts without a brief.")
+        return user_message
+    for usage, ms in result["calls"]:
+        await meter(websocket, session, "scout", model, usage, ms)
+    if not result["brief"]:
+        await send(websocket, "system", f"The scout wrote no brief; {strong} starts without one.")
+        return user_message
+    n = len(result["read"])
+    log = result.get("log") or []
+    await send(websocket, "system", f"Scout brief: {n} file{'s' if n != 1 else ''} read, "
+                                    f"{result['tools']} lookup{'s' if result['tools'] != 1 else ''}.",
+               brief=mask_secrets(result["brief"] + ("\n\nLookups run:\n" + "\n".join(f"- {x}" for x in log)
+                                                     if log else ""))[0])
+    return scout_lib.handoff(user_message, result, model)
 
 
 def task_route(session: dict, role: str, model: str) -> None:
