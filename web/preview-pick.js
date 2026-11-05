@@ -13,6 +13,22 @@
     if (window.parent === window || window.__optimuxPick) return;
     window.__optimuxPick = true;
 
+    // The Studio's scrollbars in the preview too (only inside the Studio's frame). Put first in
+    // <head>, so a page's own scrollbar styles still win; a mid-grey thumb reads on light and dark pages.
+    try {
+        var sb = document.createElement('style');
+        sb.setAttribute('data-optimux', 'scrollbars');
+        sb.textContent =
+            '::-webkit-scrollbar{width:10px;height:10px}' +
+            '::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}' +
+            '::-webkit-scrollbar-thumb{background-color:rgba(100,116,139,.45);border-radius:9999px;border:2px solid transparent;background-clip:content-box;min-height:32px}' +
+            '::-webkit-scrollbar-thumb:hover{background-color:#3b82f6}::-webkit-scrollbar-thumb:active{background-color:#60a5fa}' +
+            '::-webkit-scrollbar-button{display:none;width:0;height:0}' +
+            '@supports not selector(::-webkit-scrollbar){html{scrollbar-width:thin;scrollbar-color:rgba(100,116,139,.55) transparent}}';
+        var head = document.head || document.documentElement;
+        head.insertBefore(sb, head.firstChild);
+    } catch (e) { /* no styles: the browser's scrollbars */ }
+
     var LIMIT_HTML = 4000, LIMIT_TEXT = 1500, LIMIT_AREA_HTML = 8000, MAX_ELEMENTS = 25, MIN_AREA = 8;
     var STYLE_KEYS = ['display', 'position', 'font-family', 'font-size', 'font-weight', 'line-height', 'color',
                       'background-color', 'background-image', 'margin', 'padding', 'border', 'border-radius', 'gap', 'text-align'];

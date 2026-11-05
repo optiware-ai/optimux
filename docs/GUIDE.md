@@ -468,6 +468,8 @@ The preview shows the project's files as they are (static files): a project that
 
 In that sandbox a page's `localStorage`, `sessionStorage` and cookies would fail, and many pages use them first thing (to remember the theme, say); the error stopped the rest of their script, so content that appears on scroll stayed hidden. Optimux gives previewed pages working ones that live in memory: they work while the page is open and start empty on every reload. (*v0.8*)
 
+The preview also gets the Studio's slim scrollbars, unless the page styles its own. Opened in its own tab (**↗**), a page has the browser's scrollbars, as on your site.
+
 #### Send code or a part of the page to the chat
 
 **Chat** in the Studio's top bar opens the chat as a column on the right, so you can work on the files and talk to the models side by side. Right-click to pick what the model should look at; it waits above the prompt box as a chip until you send, and the chat opens by itself with the cursor in the prompt box.
