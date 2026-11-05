@@ -616,7 +616,7 @@ const DeletedTag = {
     props: { at: { type: Number, default: 0 } },
     template: `<span v-if="at" class="ml-1.5 inline-block align-middle text-[10px] font-sans uppercase tracking-wider text-red-300/90 bg-red-950/50 border border-red-900/70 rounded px-1 py-px" :title="'Deleted on ' + new Date(at * 1000).toLocaleDateString() + '. Its folder is gone; its chats, costs and memory were kept.'">deleted</span>`,
 };
-// Getting started (v0.6.1): the checklist, used by the chat card and Dashboard -> Overview.
+// Getting started (v0.6.1): the checklist, used by the chat card and Dashboard -> Getting started (v0.8).
 // Steps tick themselves from the real settings; "Choose your features" has its controls inline.
 const OnboardSteps = {
     // compact (the chat card): only the next step shows its explanation and controls
@@ -1054,8 +1054,19 @@ createApp({
         // Plan mode on the chat page: a chip next to New chat shows it; a click
         // moves to the next mode and saves it (the same setting as Dashboard → Routing).
         const PLAN_MODES = [['off', 'Off'], ['ask', 'Ask first'], ['auto', 'Automatic']];
+        // v0.8: the active project's own plan mode, if it has one (Dashboard -> Project)
+        const activeOwnPlan = ref('');
+        const fetchActiveOwnPlan = async () => {
+            const name = appSettings.value.active_project;
+            if (!name) { activeOwnPlan.value = ''; return; }
+            try {
+                const d = await (await fetch(`/api/projects/${encodeURIComponent(name)}/settings`)).json();
+                activeOwnPlan.value = ((d || {}).overrides || {}).plan_mode || '';
+            } catch (error) { activeOwnPlan.value = ''; }
+        };
+        watch(() => appSettings.value.active_project, fetchActiveOwnPlan);
         const planModeNow = Vue.computed(() => {
-            const id = appSettings.value.plan_mode || 'off';
+            const id = activeOwnPlan.value || appSettings.value.plan_mode || 'off';
             return PLAN_MODES.find((m) => m[0] === id) || PLAN_MODES[0];
         });
         const planModeTitle = Vue.computed(() => {
@@ -1063,11 +1074,24 @@ createApp({
             const what = ({ off: 'never plans (/plan still works)', ask: 'shows a plan for big tasks; nothing runs until you press Run', auto: 'plans big tasks and starts them at once' })[id];
             const next = PLAN_MODES[(PLAN_MODES.findIndex((m) => m[0] === id) + 1) % PLAN_MODES.length][1];
             const idle = selectedModel.value !== 'auto' ? '\nNot used now: a hand-picked model never plans.' : '';
-            return `Plan big tasks: ${label}. Optimux ${what}.${idle}\nClick to switch to ${next}. Also in Dashboard → Routing.`;
+            const where = activeOwnPlan.value ? `${appSettings.value.active_project}'s own setting (Dashboard → Project)` : 'Dashboard → Routing';
+            return `Plan big tasks: ${label}. Optimux ${what}.${idle}\nClick to switch to ${next}. Also in ${where}.`;
         });
-        const cyclePlanMode = () => {
+        // Changes the setting that applies: the project's own one when it has it, else the global one
+        const cyclePlanMode = async () => {
             const i = PLAN_MODES.findIndex((m) => m[0] === planModeNow.value[0]);
-            appSettings.value.plan_mode = PLAN_MODES[(i + 1) % PLAN_MODES.length][0];
+            const next = PLAN_MODES[(i + 1) % PLAN_MODES.length][0];
+            const name = appSettings.value.active_project;
+            if (activeOwnPlan.value && name) {
+                activeOwnPlan.value = next;
+                try {
+                    await fetch(`/api/projects/${encodeURIComponent(name)}/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                                                          body: JSON.stringify({ plan_mode: next }) });
+                } catch (error) { console.error('Failed to save the plan mode', error); }
+                fetchActiveOwnPlan();
+                return;
+            }
+            appSettings.value.plan_mode = next;
             saveSettings();
         };
 
@@ -3045,6 +3069,7 @@ createApp({
             { id: 'budgets', label: 'Budgets', icon: '$', group: 'Activity', hint: 'Monthly spending limits per project.' },
             { id: 'projects', label: 'Projects', icon: '▦', group: 'Activity', hint: 'Cost, budget, chats and memory per project.' },
             { id: 'history', label: 'History', icon: '◷', group: 'Activity', hint: 'Every stored chat; open one to continue it.' },
+            { id: 'project', label: 'Project', icon: '◫', group: 'Configuration', hint: 'Every setting of one project in one place: autonomy, budget, planning, memory, execution and GitHub.' },
             { id: 'routing', label: 'Routing', icon: '⇄', group: 'Configuration', hint: 'Which model handles which tier.' },
             { id: 'models', label: 'Models', icon: '◆', group: 'Configuration', hint: 'Providers, keys, prices and thinking.' },
             { id: 'memory', label: 'Memory', icon: '✎', group: 'Configuration', hint: 'What every model is told about you and your work.' },
@@ -3054,6 +3079,7 @@ createApp({
             { id: 'scope', label: 'Scope', icon: '▣', group: 'Configuration', hint: 'The Workspace folder: the folder that holds your projects.' },
             { id: 'backups', label: 'Backups', icon: '⧉', group: 'Configuration', hint: 'Snapshots of your data and projects, kept on this machine.' },
             { id: 'system', label: 'System', icon: '≡', group: 'Configuration', hint: 'Files, storage, backups, access token and model cooldowns.' },
+            { id: 'start', label: 'Getting started', icon: '✓', group: 'Help', hint: 'The setup steps in order; each one ticks itself when it is done.' },
             { id: 'guide', label: 'Guide', icon: '?', group: 'Help', hint: 'Everything about Optimux: getting started, routing, memory, skills, costs, and how to spend less.' },
         ];
         const dashboardGroups = [...new Set(dashboardSections.map(x => x.group))];
@@ -3141,7 +3167,9 @@ createApp({
             if (id === 'usage') { loadCharts(['cost', 'model', 'role', 'proj', 'tok']); fetchProjectsList(); }
             if (id === 'usage') fetchTaskStats();
             if (id === 'performance') fetchPerf();
-            if (id === 'overview') { fetchRecentChats(); fetchDeleted(); fetchMonthSavings(); fetchOnboarding(); }
+            if (id === 'overview') { fetchRecentChats(); fetchDeleted(); fetchMonthSavings(); }
+            if (id === 'start') fetchOnboarding();
+            if (id === 'project') loadProjectPage();
             if (id === 'projects') fetchProjectsOverview();
             if (id === 'history') fetchHistoryPage();
             if (id === 'memory') { fetchMemory(); fetchCostEstimates(); }
@@ -3571,6 +3599,97 @@ createApp({
             }
         };
         const openBudgets = () => openSettings('budgets');
+
+        // ---- v0.8: the Project page, every setting of one project in one place.
+        // Its own values replace the global ones for this project only ("Follow global" = no own value).
+        const projectPage = Vue.reactive({ name: '', view: null, msg: null, budget: { amount: '', on_limit: 'block', status: null },
+                                           mem: { content: '', saved: '', exists: true, msg: null, busy: false, curate: null } });
+        // From a project card (or the menu): that project, else the active one, else the first
+        const openProjectPage = (name) => {
+            projectPage.name = name || projectPage.name || appSettings.value.active_project || (projectsList.value || [])[0] || '';
+            if (settingsTab.value === 'project' && showSettingsModal.value) loadProjectPage(); else openSettings('project');
+        };
+        const loadProjectPage = async () => {
+            await fetchProjectsList();
+            const names = projectsList.value || [];
+            if (!projectPage.name || !names.includes(projectPage.name)) projectPage.name = appSettings.value.active_project || names[0] || '';
+            const name = projectPage.name;
+            projectPage.msg = null; projectPage.mem.msg = null; projectPage.mem.curate = null;
+            if (!name) { projectPage.view = null; return; }
+            const enc = encodeURIComponent(name);
+            fetchAutonomy(); fetchProjectsOverview(); fetchSkills(); fetchCostEstimates();
+            try {
+                const [view, b, mem] = await Promise.all([
+                    fetch(`/api/projects/${enc}/settings`).then(r => r.json()),
+                    fetch('/api/budgets').then(r => r.json()),
+                    fetch(`/api/memory/project/${enc}`).then(r => r.json()),
+                ]);
+                if (projectPage.name !== name) return;               // another project was picked meanwhile
+                projectPage.view = view;
+                const own = (b || {})[name];
+                projectPage.budget = { amount: own ? String(own.monthly_usd) : '', on_limit: own ? own.on_limit : 'block', status: own || null };
+                projectPage.mem.content = mem.content || ''; projectPage.mem.saved = mem.content || ''; projectPage.mem.exists = !!mem.exists;
+            } catch (error) { projectPage.msg = { ok: false, text: 'Could not load this project: ' + error }; }
+        };
+        watch(() => projectPage.name, (n, old) => { if (old !== undefined && n !== old && settingsTab.value === 'project') loadProjectPage(); });
+        // value '' or null: follow the global setting again
+        const setProjectSetting = async (key, value) => {
+            projectPage.msg = null;
+            try {
+                const res = await fetch(`/api/projects/${encodeURIComponent(projectPage.name)}/settings`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [key]: value === '' || value === undefined ? null : value }) });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { projectPage.msg = { ok: false, text: data.detail || 'Not saved.' }; return; }
+                projectPage.view = data;
+                projectPage.msg = { ok: true, text: 'Saved.' };
+                if (projectPage.name === appSettings.value.active_project) fetchActiveOwnPlan();
+            } catch (error) { projectPage.msg = { ok: false, text: 'Not saved: ' + error }; }
+        };
+        // A choice of the project's own value: '' follows the global one (shown in its label)
+        const ownValue = (key) => { const o = (projectPage.view || {}).overrides || {}; return key in o ? o[key] : ''; };
+        const globalValue = (key) => ((projectPage.view || {}).global || {})[key];
+        const boolOf = (v) => (v === '' ? null : v === 'true');
+        const onOff = (v) => (v ? 'On' : 'Off');
+        const numberOf = (v) => (String(v).trim() === '' ? null : Number(v));
+        const saveProjectBudget = async () => {
+            const b = projectPage.budget;
+            const amount = String(b.amount).trim() === '' ? null : Number(b.amount);
+            if (amount !== null && !(amount > 0)) { projectPage.msg = { ok: false, text: 'The budget must be a positive amount, or empty for none.' }; return; }
+            try {
+                const res = await fetch('/api/budgets', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                           body: JSON.stringify({ project: projectPage.name, monthly_usd: amount, on_limit: b.on_limit }) });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { projectPage.msg = { ok: false, text: data.detail || 'Not saved.' }; return; }
+                b.status = data.budget || null;
+                projectPage.msg = { ok: true, text: amount === null ? 'Budget removed.' : 'Budget saved.' };
+                fetchUsage();
+            } catch (error) { projectPage.msg = { ok: false, text: 'Not saved: ' + error }; }
+        };
+        const saveProjectMemory = async () => {
+            const m = projectPage.mem;
+            if (m.content.length > MEMORY_MAX_CHARS) { m.msg = { ok: false, text: `Too long: at most ${MEMORY_MAX_CHARS.toLocaleString()} characters.` }; return; }
+            try {
+                const res = await fetch(`/api/memory/project/${encodeURIComponent(projectPage.name)}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: m.content }) });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { m.msg = { ok: false, text: data.detail || 'Not saved.' }; return; }
+                m.saved = m.content; m.exists = true; m.msg = { ok: true, text: 'Saved.' };
+            } catch (error) { m.msg = { ok: false, text: 'Not saved: ' + error }; }
+        };
+        const curateProjectNow = async () => {
+            const m = projectPage.mem;
+            m.busy = true; m.curate = null;
+            try {
+                m.curate = await (await fetch(`/api/memory/project/${encodeURIComponent(projectPage.name)}/curate`, { method: 'POST' })).json();
+                const mem = await (await fetch(`/api/memory/project/${encodeURIComponent(projectPage.name)}`)).json();
+                if (m.content === m.saved) { m.content = mem.content || ''; m.saved = m.content; }
+            } catch (error) { m.curate = { changed: false, reason: String(error) }; }
+            m.busy = false;
+        };
+        const projectRow = Vue.computed(() => (projectsOverview.value || []).find(p => p.project === projectPage.name) || null);
+        const projectSkills = Vue.computed(() => projectPage.name && projectPage.name === appSettings.value.active_project
+            ? ((skillsInfo.value || {}).skills || []).filter(x => x.scope === 'project') : null);
 
         // ---- Usage
         const clearCooldown = async (model) => {
@@ -4430,6 +4549,8 @@ createApp({
             planAction, planStepMark, planStuckStep, projectOffer, openOfferedProject, planEdit, stepFolded, stepItems,
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
+            projectPage, openProjectPage, loadProjectPage, setProjectSetting, ownValue, globalValue, boolOf, onOff, numberOf, saveProjectBudget, saveProjectMemory,
+            curateProjectNow, projectRow, projectSkills,
             planModeNow, planModeTitle, cyclePlanMode,
             setThinking, copyThinking, storageInfo, fmtBytes,
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,

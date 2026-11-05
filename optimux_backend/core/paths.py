@@ -1,7 +1,7 @@
 """Where Optimux keeps its files, and the one-time move into that layout.
 
     $OPTIMUX_HOME (default ~/.optimux)
-    ├── config/       settings.json models.json routing.json budgets.json autonomy.json
+    ├── config/       settings.json models.json routing.json budgets.json autonomy.json project_settings.json
     ├── secrets.env   API keys and the access token (mode 0600)
     ├── data/         optimux.db
     ├── backups/      daily database copies
@@ -42,6 +42,7 @@ MODELS_FILE = os.path.join(CONFIG_DIR, "models.json")
 ROUTING_FILE = os.path.join(CONFIG_DIR, "routing.json")
 BUDGETS_FILE = os.path.join(CONFIG_DIR, "budgets.json")
 AUTONOMY_FILE = os.path.join(CONFIG_DIR, "autonomy.json")  # v0.8: autonomy levels per project
+PROJECT_SETTINGS_FILE = os.path.join(CONFIG_DIR, "project_settings.json")  # v0.8: per-project overrides
 LEGACY_USAGE_LOG = os.path.join(HOME, "usage.jsonl")  # imported once by usage.py
 
 def layout() -> dict:

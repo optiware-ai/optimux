@@ -178,8 +178,9 @@ COMMAND_TIMEOUT_RANGE = (10, 1800)
 
 
 def command_timeout_for(settings: dict | None = None) -> int:
-    """Seconds a command may run (Dashboard -> Execution), within the allowed range."""
-    settings = get_settings() if settings is None else settings
+    """Seconds a command may run (Dashboard -> Execution, or the active project's own
+    value), within the allowed range."""
+    settings = effective_settings() if settings is None else settings
     try:
         value = int(settings.get("command_timeout", DEFAULT_COMMAND_TIMEOUT))
     except (TypeError, ValueError):
@@ -188,11 +189,12 @@ def command_timeout_for(settings: dict | None = None) -> int:
 PLAN_MODES = ("off", "ask", "auto")
 
 
-def max_steps_for(tier: str) -> int:
-    """Step limit for a tier ('override' uses the complex limit)."""
+def max_steps_for(tier: str, project: str | None = None) -> int:
+    """Step limit for a tier ('override' uses the complex limit), for the active
+    project (or `project`), its own value first."""
     key = "simple" if tier == "simple" else "complex"
     try:
-        value = int(get_settings().get(f"max_steps_{key}", DEFAULT_MAX_STEPS[key]))
+        value = int(effective_settings(project).get(f"max_steps_{key}", DEFAULT_MAX_STEPS[key]))
     except (TypeError, ValueError):
         value = DEFAULT_MAX_STEPS[key]
     return max(1, min(value, 100))
@@ -218,6 +220,23 @@ def get_settings() -> dict:
     if server:
         data["auto_approve"] = False   # on a server every command needs approval
     return data
+
+def effective_settings(project: str | None = None) -> dict:
+    """The settings as they apply to a project (v0.8): get_settings() with that
+    project's own overrides (project_settings.py) on top. project None means the
+    active project; "" (the Workspace) has no overrides. Read-only: never save it."""
+    return with_project_overrides(get_settings(), project)
+
+
+def with_project_overrides(data: dict, project: str | None = None) -> dict:
+    """data (a get_settings() result) with the project's own overrides on top (a copy)."""
+    data = dict(data)
+    name = data.get("active_project", "") if project is None else project
+    if name:
+        from optimux_backend.core import project_settings
+        data.update(project_settings.overrides(name))
+    return data
+
 
 def save_settings(payload: SettingsPayload):
     for field in ("max_steps_simple", "max_steps_complex"):

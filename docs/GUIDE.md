@@ -124,7 +124,7 @@ The token stays useful for scripts: they can call the API with the header `Autho
 
 ### First-time setup (5 minutes)
 
-A new install shows a **Getting started** card in the chat with these same steps. Each step ticks itself when it's really done, and **Go →** opens the right page; **–** makes the card small, **Don't show again** hides it, and it always stays in **Dashboard → Overview** (with **Show in the chat** to bring it back). An install that already had requests before this card existed doesn't get the pop-up, only the list on Overview. The card never calls a model.
+A new install shows a **Getting started** card in the chat with these same steps. Each step ticks itself when it's really done, and **Go →** opens the right page; **–** makes the card small, **Don't show again** hides it, and it always stays in **Dashboard → Getting started** (under Help, with **Show in the chat** to bring it back). An install that already had requests before this card existed doesn't get the pop-up, only that list. The card never calls a model.
 
 1. **Add your models.** Open **Dashboard → Models**, add a model (for example `gemini/gemini-3.6-flash`) and paste its API key. Click **Test**: a tiny call (a fraction of a cent) checks that the model and key work. See *Models* for details.
 2. **Choose who does what.** In **Dashboard → Routing**, pick the Conductor, the Simple model and the Complex model. A good start: a fast, cheap model for the Conductor and Simple, a strong one for Complex.
@@ -418,7 +418,7 @@ Later changes come over with `git pull` in that folder. To bring a repository **
 
 ### Dashboard → Projects
 
-One card per project with this month's and all-time cost, budget and number of chats, plus **Make active**, **Archive** (refused while a request runs in that project, in any tab; every open page leaves an archived project), and links to its chats, memory and budget. Cards are marked *archived*, *deleted* (folder gone, records kept) or *folder missing* (the folder disappeared outside Optimux; its history is kept). **+ New project** opens the New project form.
+One card per project with this month's and all-time cost, budget and number of chats, plus **Make active**, **Archive** (refused while a request runs in that project, in any tab; every open page leaves an archived project), and links to its chats, memory and budget. Its name, or **Settings**, opens the project's own page (below). Cards are marked *archived*, *deleted* (folder gone, records kept) or *folder missing* (the folder disappeared outside Optimux; its history is kept). **+ New project** opens the New project form.
 
 The page starts with the **Workspace folder**'s full path (with a copy button and a link to Scope); hovering the project menu in the header shows the active project's path too, and System → Files lists it.
 
@@ -433,6 +433,20 @@ The page starts with the **Workspace folder**'s full path (with a copy button an
 A deleted project whose records you kept still appears in **History** and **Recent chats** with a red **deleted** mark. In **Usage** (By project, Memory updates), **Budgets** and **Projects**, deleted projects are gathered in one closed line, *Deleted projects (N)*, carrying their combined numbers so the tables still add up; click it to list them (the choice is remembered in this browser). Its budget is removed, since nothing can spend there any more.
 
 An **archived** project's budget is **paused**: kept, so restoring the project brings it back, but listed apart under *Archived projects (N)* in Budgets and left out of the Overview, since nothing can spend in an archived project. Archived projects appear only in the Archived projects list on the Projects page, not as cards. Creating a new project with the same name makes those records belong to the new project. *Delete them too* removes its chats, usage rows, memory and memory history, and budget, so the Usage totals go down; it's refused while another folder (archived or in the Workspace) has the same name, since they share these records.
+
+### Dashboard → Project
+
+*New in v0.8.* Every setting of one project on one page. Open it from a project card (its name or **Settings**), or from **Project** in the menu, which starts on the active project; the picker at the top switches to another project. It holds:
+
+- **Autonomy**: the project's level (see *Autonomy levels*).
+- **Budget**: the monthly limit, Block or Warn at 100%, and what was spent this month.
+- **Planning**: **Plan big tasks** and **Scout before Complex** for this project.
+- **Memory**: the project memory itself (edit and Save; **History and undo** opens the Memory page on it), whether it is updated automatically and after how many idle minutes, and **Update now from the latest chat**.
+- **Execution**: the steps per turn (Simple and Complex), the command timeout, and the network for commands (with the sandbox on).
+- **Skills**: the project's own skills (shown while it is the active project, since they live in its folder).
+- **GitHub and folder**: Push…, Update…, its chats, and Archive.
+
+A setting left on **Follow global (…)** (or a number left empty, its placeholder showing the global value) uses the value set for all projects in Routing, Memory or Execution; changing that one still changes this project. Pick a value to give the project its own; choose **Follow global** again to drop it. The project's own values apply to everything that works in the project: its chats, plans, the scout, commands and memory updates. The **Plan** chip next to *New chat* shows the active project's plan mode and, when the project has its own, changes that one. The pages in the menu keep the view across all projects. The values are kept in `config/project_settings.json`.
 
 ## How routing works
 
@@ -926,6 +940,7 @@ Every page has **?** marks: hover one for an explanation, click to keep it open.
 | Thinking per model | Models | Default | Reasoning effort: Default, Minimal, Low, Medium, High. |
 | Prices per model | Models | LiteLLM list | USD per million input, output, cached-input tokens. |
 | Autonomy | Execution (default and per project) | Supervised | What runs without asking: Supervised, Checkpointed or Autonomous; the hard limits always ask. |
+| Project settings | Project (per project) | Follow global | A project's own plan mode, scout, memory updates, idle minutes, steps per turn, command timeout and network. |
 | Sandbox | Execution | Off | Run commands in bubblewrap: only the working folder can change. Forced on by `OPTIMUX_REQUIRE_SANDBOX=1`. |
 | Sandbox: network | Execution | On (off on a server) | Allow network access inside the sandbox. |
 | Sandbox: extra read-only folders | Execution | (none) | Folders outside the project that commands may read. |

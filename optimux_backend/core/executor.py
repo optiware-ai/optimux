@@ -8,7 +8,7 @@ import time
 from optimux_backend.core import sandbox
 import resource
 
-from optimux_backend.core.config_manager import command_env, command_timeout_for, get_settings
+from optimux_backend.core.config_manager import command_env, command_timeout_for, get_settings, with_project_overrides
 from optimux_backend.core.security import ScopeError, mask_secrets, resolve_project_dir, resolve_scope_root
 
 
@@ -270,7 +270,7 @@ async def run_shell_command(command: str, timeout: int | None = None, cwd: str |
     except ScopeError as e:
         return {"stdout": "", "stderr": f"Scope error: {e}", "exit_code": 126}
 
-    settings = get_settings()
+    settings = with_project_overrides(get_settings())      # v0.8: the active project's own values first
     # The setting (Dashboard -> Execution) unless a caller sets its own
     named = timeout is None
     timeout = command_timeout_for(settings) if named else timeout

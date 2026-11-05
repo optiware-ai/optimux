@@ -7,7 +7,7 @@ changing memory, plan mode or skills). What the user did with the card itself
 database's meta table, so it follows them to every browser.
 
 An install that already had requests before this feature existed is
-"existing": its card stays on Dashboard -> Overview, folded, and never pops up
+"existing": its list stays on Dashboard -> Getting started and never pops up
 in the chat. No step costs anything: no model is called.
 """
 import json

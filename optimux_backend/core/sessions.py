@@ -101,6 +101,17 @@ def list_sessions(project: str | None = None, archived: bool = False, query: str
     return [dict(r) | {"archived": bool(r["archived"]), "title": mask_secrets(r["title"] or "")[0]} for r in rows]
 
 
+def project_of(sid: str) -> str | None:
+    """The project of a stored chat ("" = the Workspace), or None when there is no such chat.
+    A light read, without the event log (v0.8: per-project memory settings)."""
+    conn = store.connect()
+    try:
+        row = conn.execute("SELECT project FROM sessions WHERE id = ?", (sid,)).fetchone()
+    finally:
+        conn.close()
+    return None if row is None else (row["project"] or "")
+
+
 def get(sid: str) -> dict | None:
     """Session with its model state and event log, or None."""
     conn = store.connect()

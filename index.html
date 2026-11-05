@@ -552,17 +552,6 @@
                             <div class="text-xs text-gray-500 mt-1">{{ k.sub }}</div>
                         </div>
                     </div>
-                    <details v-if="onboard" :open="!onboard.ready && !onboard.existing" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                        <summary class="cursor-pointer flex items-center gap-3">
-                            <h3 class="text-[15px] font-bold text-gray-200">Getting started</h3>
-                            <span :class="['text-[12px] font-mono', onboard.ready ? 'text-green-400' : 'text-gray-400']">{{ onboard.ready ? '✓ all set' : onboard.done + '/' + onboard.total }}</span>
-                            <span class="flex-1"></span>
-                            <button v-if="onboard.dismissed || onboard.existing" @click.prevent="onboardAct('reopen')" class="text-[12px] text-blue-400 hover:text-blue-300" title="Show the checklist on the chat page again">Show in the chat</button>
-                        </summary>
-                        <div class="mt-3 max-w-2xl">
-                            <onboard-steps :data="onboard" :settings="appSettings" @go="onboardGo" @act="onboardAct" @save="onboardSave"></onboard-steps>
-                        </div>
-                    </details>
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                         <div class="flex items-center justify-between gap-3 mb-3">
                             <h3 class="text-[15px] font-bold text-gray-200">Cost per day</h3>
@@ -609,6 +598,147 @@
                     </div>
                 </div>
 
+                <!-- v0.8: the Project page, every setting of one project in one place -->
+                <div v-if="settingsTab === 'project'" class="space-y-4 max-w-3xl">
+                    <div v-if="!projectsList.length" class="text-[15px] text-gray-500 italic">No projects yet: create one in Projects.</div>
+                    <template v-else>
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-wrap items-center gap-3">
+                        <select v-model="projectPage.name" aria-label="Project" class="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 font-bold">
+                            <option v-for="p in projectsList" :key="p" :value="p" class="bg-gray-900">{{ p }}</option>
+                        </select>
+                        <span v-if="projectPage.name === appSettings.active_project" class="text-[11px] uppercase tracking-wider text-blue-300 bg-blue-950/50 border border-blue-900 px-2 py-0.5 rounded">active</span>
+                        <button v-else @click="switchProject(projectPage.name)" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Make active</button>
+                        <span v-if="projectRow" class="text-[13px] font-mono text-gray-500">{{ fmtCost(projectRow.month_cost) }} this month · {{ projectRow.chats }} chat{{ projectRow.chats === 1 ? '' : 's' }}</span>
+                        <span class="flex-1"></span>
+                        <span v-if="projectPage.msg" :class="['text-[13px]', projectPage.msg.ok ? 'text-green-400' : 'text-red-400']" role="status">{{ projectPage.msg.text }}</span>
+                        <help-tip wide><p>Everything here applies to <b>this project only</b>. A setting left on <b>Follow global</b> uses the value set for all projects (Routing, Memory, Execution), so changing that one still changes this project; pick a value to give the project its own.</p><p>The pages in the menu keep the view across all projects.</p></help-tip>
+                    </div>
+                    <template v-if="projectPage.view">
+                    <!-- Autonomy -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                        <h3 class="text-[15px] font-bold text-gray-200 flex items-center">Autonomy</h3>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="text-[14px] text-gray-300 w-44">What runs without asking</span>
+                            <select :value="projectLevel(projectPage.name)" @change="setAutonomy(projectPage.name, $event.target.value || null)" aria-label="Autonomy level" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200">
+                                <option value="" class="bg-gray-900">Follow global ({{ autonomy ? LEVEL_NAMES[autonomy.default] : '…' }})</option>
+                                <option v-for="lv in (autonomy ? autonomy.levels : [])" :key="lv.id" :value="lv.id" :disabled="!!autonomy.blocked && lv.id !== 'supervised'" class="bg-gray-900">{{ LEVEL_NAMES[lv.id] }}</option>
+                            </select>
+                        </div>
+                        <p class="text-[13px] text-gray-500">{{ autonomy ? ((autonomy.levels.find(l => l.id === (projectLevel(projectPage.name) || autonomy.default)) || {}).text || '') : '' }}</p>
+                        <p v-if="autonomy && autonomy.blocked" class="text-[13px] text-amber-300">{{ autonomy.blocked }}</p>
+                    </div>
+                    <!-- Budget -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                        <h3 class="text-[15px] font-bold text-gray-200 flex items-center">Budget</h3>
+                        <form @submit.prevent="saveProjectBudget" class="flex flex-wrap items-center gap-3">
+                            <span class="text-[14px] text-gray-300 w-44">Monthly limit (USD)</span>
+                            <input v-model="projectPage.budget.amount" type="number" min="0" step="0.01" placeholder="none" aria-label="Monthly budget in USD" class="w-28 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200 font-mono">
+                            <select v-model="projectPage.budget.on_limit" aria-label="At 100%" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200">
+                                <option value="block" class="bg-gray-900">Block at 100%</option><option value="warn" class="bg-gray-900">Warn only</option>
+                            </select>
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-[14px] font-bold">Save</button>
+                        </form>
+                        <p v-if="projectPage.budget.status" class="text-[13px] font-mono text-gray-400">{{ fmtCost(projectPage.budget.status.spent) }} of {{ fmtCost(projectPage.budget.status.monthly_usd) }} spent this month</p>
+                        <p v-else class="text-[13px] text-gray-500">No budget: leave the amount empty for none.</p>
+                    </div>
+                    <!-- Planning -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                        <h3 class="text-[15px] font-bold text-gray-200 flex items-center">Planning</h3>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="text-[14px] text-gray-300 w-44">Plan big tasks</span>
+                            <select :value="ownValue('plan_mode')" @change="setProjectSetting('plan_mode', $event.target.value)" aria-label="Plan big tasks" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200">
+                                <option value="" class="bg-gray-900">Follow global ({{ ({ off: 'Off', ask: 'Ask first', auto: 'Automatic' })[globalValue('plan_mode')] }})</option>
+                                <option value="off" class="bg-gray-900">Off</option><option value="ask" class="bg-gray-900">Ask first</option><option value="auto" class="bg-gray-900">Automatic</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="text-[14px] text-gray-300 w-44">Scout before Complex</span>
+                            <select :value="String(ownValue('scout'))" @change="setProjectSetting('scout', boolOf($event.target.value))" aria-label="Scout before Complex" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200">
+                                <option value="" class="bg-gray-900">Follow global ({{ onOff(globalValue('scout')) }})</option>
+                                <option value="true" class="bg-gray-900">On</option><option value="false" class="bg-gray-900">Off</option>
+                            </select>
+                        </div>
+                        <p class="text-[13px] text-gray-500">Models per project come in the next update; until then this project uses the models in Routing.</p>
+                    </div>
+                    <!-- Memory -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between gap-3"><h3 class="text-[15px] font-bold text-gray-200 flex items-center">Memory</h3>
+                            <button @click="memoryTab = 'project'; memoryProject = projectPage.name; openSettings('memory'); fetchMemory()" class="text-[13px] text-blue-400 hover:text-blue-300">History and undo</button></div>
+                        <textarea v-model="projectPage.mem.content" rows="10" aria-label="Project memory" class="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 font-mono text-[13px] text-gray-200 resize-y"></textarea>
+                        <div class="flex flex-wrap items-center gap-3 text-[13px]">
+                            <button @click="saveProjectMemory" :disabled="projectPage.mem.content === projectPage.mem.saved" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg text-[14px] font-bold">Save</button>
+                            <span :class="['font-mono', projectPage.mem.content.length > MEMORY_MAX_CHARS ? 'text-red-400' : 'text-gray-500']">{{ projectPage.mem.content.length.toLocaleString() }} / {{ MEMORY_MAX_CHARS.toLocaleString() }}</span>
+                            <span v-if="!projectPage.mem.exists" class="text-gray-500">not saved yet</span>
+                            <span v-if="projectPage.mem.msg" :class="projectPage.mem.msg.ok ? 'text-green-400' : 'text-red-400'">{{ projectPage.mem.msg.text }}</span>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="text-[14px] text-gray-300 w-44">Update it automatically</span>
+                            <select :value="String(ownValue('memory_curator'))" @change="setProjectSetting('memory_curator', boolOf($event.target.value))" aria-label="Update memory automatically" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200">
+                                <option value="" class="bg-gray-900">Follow global ({{ onOff(globalValue('memory_curator')) }})</option>
+                                <option value="true" class="bg-gray-900">On</option><option value="false" class="bg-gray-900">Off</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="text-[14px] text-gray-300 w-44">After idle minutes</span>
+                            <input type="number" min="1" max="240" :value="ownValue('curator_idle_minutes')" :placeholder="'global ' + globalValue('curator_idle_minutes')" @change="setProjectSetting('curator_idle_minutes', numberOf($event.target.value))" aria-label="Idle minutes before a memory update" class="w-28 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200 font-mono">
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3 text-[13px]">
+                            <button @click="curateProjectNow" :disabled="projectPage.mem.busy" class="px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-40">{{ projectPage.mem.busy ? 'Updating…' : 'Update now from the latest chat' }}</button>
+                            <span v-if="costEstimates.memory_update" class="font-mono text-purple-300">≈ {{ fmtCost(costEstimates.memory_update.avg) }}</span>
+                            <span v-if="projectPage.mem.curate" :class="projectPage.mem.curate.changed ? 'text-green-400' : 'text-gray-400'">{{ projectPage.mem.curate.changed ? 'Updated: ' + (projectPage.mem.curate.summary || 'memory changed') : (projectPage.mem.curate.reason || 'No change') }}</span>
+                        </div>
+                    </div>
+                    <!-- Execution -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                        <h3 class="text-[15px] font-bold text-gray-200 flex items-center">Execution</h3>
+                        <div v-for="f in [['max_steps_simple', 'Steps per turn: Simple', 1, 100], ['max_steps_complex', 'Steps per turn: Complex', 1, 100], ['command_timeout', 'Command timeout (s)', 10, 1800]]" :key="f[0]" class="flex flex-wrap items-center gap-3">
+                            <span class="text-[14px] text-gray-300 w-44">{{ f[1] }}</span>
+                            <input type="number" :min="f[2]" :max="f[3]" :value="ownValue(f[0])" :placeholder="'global ' + globalValue(f[0])" @change="setProjectSetting(f[0], numberOf($event.target.value))" :aria-label="f[1]" class="w-28 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200 font-mono">
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="text-[14px] text-gray-300 w-44">Network for commands</span>
+                            <select :value="String(ownValue('sandbox_network'))" @change="setProjectSetting('sandbox_network', boolOf($event.target.value))" aria-label="Network for commands" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200">
+                                <option value="" class="bg-gray-900">Follow global ({{ onOff(globalValue('sandbox_network')) }})</option>
+                                <option value="true" class="bg-gray-900">On</option><option value="false" class="bg-gray-900">Off</option>
+                            </select>
+                        </div>
+                        <p class="text-[13px] text-gray-500">An empty number follows the global value (its placeholder). The network setting matters only with the sandbox on.</p>
+                    </div>
+                    <!-- Skills -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between gap-3"><h3 class="text-[15px] font-bold text-gray-200 flex items-center">Skills</h3><button @click="openSettings('skills')" class="text-[13px] text-blue-400 hover:text-blue-300">Skills</button></div>
+                        <p v-if="projectSkills === null" class="text-[13px] text-gray-500">Make this project active to see its own skills (they live in its folder).</p>
+                        <p v-else-if="!projectSkills.length" class="text-[13px] text-gray-500">No skills of its own; the global skills apply.</p>
+                        <div v-else class="flex flex-wrap gap-2"><span v-for="k in projectSkills" :key="k.name" class="text-[13px] font-mono px-2 py-0.5 rounded border border-gray-700 text-gray-300" :title="k.description || k.name">/{{ k.name }} <span class="text-gray-500">{{ k.mode }}</span></span></div>
+                    </div>
+                    <!-- GitHub and archive -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                        <h3 class="text-[15px] font-bold text-gray-200 flex items-center">GitHub and folder</h3>
+                        <div class="flex flex-wrap gap-2 text-[13px]">
+                            <button @click="openSync(projectPage.name, 'push')" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600">Push…</button>
+                            <button @click="openSync(projectPage.name, 'update')" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600">Update…</button>
+                            <button @click="historyPage.project = projectPage.name; openSettings('history')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Chats</button>
+                            <button @click="archiveFromDashboard(projectPage.name)" :disabled="projectPage.name === appSettings.active_project && (isGenerating || pendingApproval)" class="px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-yellow-700 hover:text-yellow-300 disabled:opacity-40 ml-auto" title="Move its folder to .archive/ (chats and costs are kept)">Archive</button>
+                        </div>
+                    </div>
+                    </template>
+                    </template>
+                </div>
+
+                <!-- v0.8: Getting started, its own page under Help -->
+                <div v-if="settingsTab === 'start'" class="space-y-4 max-w-2xl">
+                    <div v-if="onboard" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                        <div class="flex items-center gap-3 mb-3">
+                            <h3 class="text-[15px] font-bold text-gray-200">Setup steps</h3>
+                            <span :class="['text-[12px] font-mono', onboard.ready ? 'text-green-400' : 'text-gray-400']">{{ onboard.ready ? '✓ all set' : onboard.done + '/' + onboard.total }}</span>
+                            <span class="flex-1"></span>
+                            <button v-if="onboard.dismissed || onboard.existing" @click="onboardAct('reopen')" class="text-[12px] text-blue-400 hover:text-blue-300" title="Show the checklist on the chat page again">Show in the chat</button>
+                        </div>
+                        <onboard-steps :data="onboard" :settings="appSettings" @go="onboardGo" @act="onboardAct" @save="onboardSave"></onboard-steps>
+                    </div>
+                    <div v-else class="text-[15px] text-gray-500 italic">Loading…</div>
+                </div>
+
                 <!-- Section: Projects -->
                 <div v-if="settingsTab === 'projects'" class="grid md:grid-cols-2 gap-4">
                     <div v-if="workspacePath" class="md:col-span-2 flex flex-wrap items-center gap-x-3 gap-y-1 bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-[13px]">
@@ -628,7 +758,7 @@
                     <div v-if="projectsOverview.length === 0" class="text-[15px] text-gray-500 italic">No projects found. Set the Workspace folder in Scope.</div>
                     <div v-for="p in projectsOverview.filter(x => x.exists || !(x.archived || x.deleted))" :key="p.project" :class="['bg-gray-900 border rounded-xl p-4', p.active ? 'border-blue-700' : 'border-gray-800']">
                         <div class="flex items-center justify-between">
-                            <h3 class="font-bold text-gray-100 truncate">{{ p.project }}</h3>
+                            <h3 class="font-bold text-gray-100 truncate"><button v-if="p.exists" @click="openProjectPage(p.project)" class="hover:text-blue-300 truncate" title="Open its settings">{{ p.project }}</button><template v-else>{{ p.project }}</template></h3>
                             <span v-if="p.active" class="text-[11px] uppercase tracking-wider text-blue-300 bg-blue-950/60 px-2 py-0.5 rounded">active</span>
                             <deleted-tag v-else-if="p.deleted && !p.exists" :at="p.deleted"></deleted-tag>
                             <span v-else-if="!p.exists && p.archived" class="text-[11px] uppercase tracking-wider text-yellow-300/90 bg-yellow-950/40 px-2 py-0.5 rounded" title="In the Workspace's .archive folder; restore or delete it under Archived projects">archived</span>
@@ -646,6 +776,7 @@
                         <div class="text-xs text-gray-500 mt-3">{{ p.last_activity ? 'Last activity ' + fmtAgo(p.last_activity) : 'No activity yet' }}</div>
                         <div class="flex flex-wrap gap-2 mt-3 text-[13px]">
                             <button v-if="!p.active && p.exists" @click="switchProject(p.project)" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Make active</button>
+                            <button v-if="p.exists" @click="openProjectPage(p.project)" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600" title="Every setting of this project in one place">Settings</button>
                             <button @click="historyPage.project = p.project; openSettings('history')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Chats</button>
                             <button @click="memoryTab = 'project'; memoryProject = p.project; openSettings('memory'); fetchMemory()" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Memory</button>
                             <button v-if="!p.deleted || p.exists" @click="openSettings('budgets')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Budget</button>
@@ -2317,14 +2448,14 @@
                 <div v-if="!onboard.ready" class="h-1 mx-4 rounded bg-gray-800 overflow-hidden"><div class="h-full bg-blue-500" :style="{ width: (100 * onboard.done / onboard.total) + '%' }"></div></div>
                 <div v-if="onboard.ready" class="px-4 pb-3 text-[13px] text-gray-300 space-y-2">
                     <p>Everything needed is set. Type a request below; commands and file changes wait for your approval.</p>
-                    <p class="text-gray-400">The list stays in Dashboard → Overview, and Dashboard → Guide explains everything.</p>
+                    <p class="text-gray-400">The list stays in Dashboard → Getting started, and Dashboard → Guide explains everything.</p>
                     <button @click="onboardAct('ready_seen')" class="w-full text-[13px] px-3 py-1.5 rounded-lg border border-blue-600 text-blue-200 hover:bg-blue-900/40">Close</button>
                 </div>
                 <div v-else class="px-3 py-3 max-h-[60vh] overflow-y-auto">
                     <onboard-steps compact :data="onboard" :settings="appSettings" @go="onboardGo" @act="onboardAct" @save="onboardSave"></onboard-steps>
                     <div class="flex items-center justify-between mt-3 px-1 text-[12px]">
                         <button @click="openSettings('guide')" class="text-gray-400 hover:text-gray-200">Open the Guide</button>
-                        <button @click="onboardAct('dismiss')" class="text-gray-500 hover:text-gray-300" title="It stays in Dashboard → Overview">Don't show again</button>
+                        <button @click="onboardAct('dismiss')" class="text-gray-500 hover:text-gray-300" title="It stays in Dashboard → Getting started">Don't show again</button>
                     </div>
                 </div>
             </div>

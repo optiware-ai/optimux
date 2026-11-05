@@ -15,7 +15,7 @@ os.environ.setdefault("OPTIMUX_ALLOWED_HOSTS", "testserver")
 
 import pytest  # noqa: E402
 
-from optimux_backend.core import autonomy, store, usage  # noqa: E402
+from optimux_backend.core import autonomy, project_settings, store, usage  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -24,3 +24,4 @@ def isolated_store(monkeypatch, tmp_path):
     monkeypatch.setattr(store, "BACKUP_DIR", str(tmp_path / "backups"))
     monkeypatch.setattr(usage, "USAGE_FILE", str(tmp_path / "usage.jsonl"))
     monkeypatch.setattr(autonomy, "AUTONOMY_FILE", str(tmp_path / "autonomy.json"))
+    monkeypatch.setattr(project_settings, "PROJECT_SETTINGS_FILE", str(tmp_path / "project_settings.json"))

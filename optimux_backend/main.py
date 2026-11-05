@@ -24,7 +24,7 @@ from optimux_backend.core.config_manager import (
     get_models_config, save_api_key_to_env, ApiKeyPayload,
     save_model, delete_model, ModelPayload,
     delete_api_key_from_env, get_routing_config, save_routing_config, RoutingPayload,
-    get_settings, save_settings, SettingsPayload, model_id_problem, get_all_models,
+    get_settings, effective_settings, save_settings, SettingsPayload, model_id_problem, get_all_models,
     litellm_key_kwargs, max_steps_for, thinking_kwargs, set_thinking, _read_settings, GITHUB_FIELDS,
     set_github_fields, update_settings, PLAN_MODES, command_timeout_for, backups_keep_for, BACKUPS_KEEP_RANGE,
 )
@@ -48,6 +48,7 @@ from optimux_backend.core import plans as plans_lib
 from optimux_backend.core import planner
 from optimux_backend.core import scout as scout_lib
 from optimux_backend.core import autonomy as autonomy_lib
+from optimux_backend.core import project_settings as project_settings_lib
 from optimux_backend.core import auth
 from optimux_backend.core import sessions as chat_store
 from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
@@ -598,6 +599,37 @@ async def sandbox_status(refresh: bool = False):
     """Whether bubblewrap is installed and works, and whether the sandbox is on or forced on."""
     return {**sandbox_lib.status(refresh=refresh), "required": sandbox_lib.required(),
             "enabled": sandbox_lib.enabled(get_settings()), "server_mode": auth.server_mode()}
+
+
+# ---- Project settings (v0.8): a project's own values for some global settings
+
+def project_settings_view(name: str) -> dict:
+    """What the Project page shows: the project's own values, the global ones they
+    replace, and the values that apply."""
+    glob = {**SettingsPayload().model_dump(), **get_settings()}
+    own = project_settings_lib.overrides(name)
+    keys = project_settings_lib.KEYS
+    return {"project": name, "overrides": own, "global": {k: glob.get(k) for k in keys},
+            "effective": {k: own.get(k, glob.get(k)) for k in keys}, "keys": list(keys)}
+
+
+@app.get("/api/projects/{name}/settings")
+async def get_project_settings(name: str):
+    try:
+        project_settings_lib.check_name(name)
+    except project_settings_lib.ProjectSettingsError as e:
+        raise HTTPException(422, str(e))
+    return project_settings_view(name)
+
+
+@app.post("/api/projects/{name}/settings")
+async def set_project_settings(name: str, changes: dict):
+    """{key: value} sets a project's own value; {key: null} follows the global setting again."""
+    try:
+        project_settings_lib.update(name, changes)
+    except project_settings_lib.ProjectSettingsError as e:
+        raise HTTPException(422, str(e))
+    return project_settings_view(name)
 
 
 # ---- Autonomy levels (v0.8): what models may do without asking, per project
@@ -2069,7 +2101,7 @@ def parse_plan_command(text: str) -> tuple[bool | None, str]:
 
 
 def plan_mode() -> str:
-    mode = get_settings().get("plan_mode", "off")
+    mode = effective_settings().get("plan_mode", "off")    # v0.8: the active project's own value first
     return mode if mode in PLAN_MODES else "off"
 
 
@@ -2908,13 +2940,24 @@ async def call_model(websocket: WebSocket, session: dict, role: str, model: str,
 CURATING: set = set()        # session ids being curated right now
 
 
-def curator_enabled() -> bool:
-    return bool(get_settings().get("memory_curator", True))
-
-
-def curator_idle_seconds() -> int:
+def chat_project(sid: str | None) -> str | None:
+    """The project a stored chat belongs to ("" = the Workspace), or None when unknown."""
+    if not sid:
+        return None
     try:
-        return max(1, min(240, int(get_settings().get("curator_idle_minutes", 10)))) * 60
+        return chat_store.project_of(sid)
+    except Exception:
+        return None
+
+
+def curator_enabled(project: str | None = None) -> bool:
+    """Automatic memory updates for a project (v0.8: its own value first; None = active)."""
+    return bool(effective_settings(project).get("memory_curator", True))
+
+
+def curator_idle_seconds(project: str | None = None) -> int:
+    try:
+        return max(1, min(240, int(effective_settings(project).get("curator_idle_minutes", 10)))) * 60
     except (TypeError, ValueError):
         return 600
 
@@ -2925,7 +2968,7 @@ async def curate_session(sid: str | None, websocket: WebSocket | None = None, fo
     force runs even when automatic updates are off; full re-reads the whole chat (both are
     used by Update now in the dashboard, e.g. after an undo). Never raises: a failed curation only means memory isn't
     updated this time. Reasons are shown to the user as they are."""
-    if not sid or (not force and not curator_enabled()):
+    if not sid or (not force and not curator_enabled(chat_project(sid))):
         return {"changed": False, "reason": "Automatic updates are off."}
     if (why := restore_lib.blocked_reason()):
         return {"changed": False, "reason": why}       # the memory would be replaced by the restore
@@ -3004,7 +3047,7 @@ async def notify(websocket: WebSocket | None, kind: str, **extra) -> None:
 
 def schedule_curation(websocket: WebSocket | None, sid: str | None, delay: float = 0) -> asyncio.Task | None:
     """Curate in the background (optionally after a delay); never blocks the chat."""
-    if not sid or not curator_enabled():
+    if not sid or not curator_enabled(chat_project(sid)):
         return None
 
     async def later():
@@ -3904,7 +3947,7 @@ async def scout_first(websocket: WebSocket, session: dict, routing: dict, user_m
     tools and writes a brief, which goes after the request to the Complex model.
     Returns the request to run (with the brief, or unchanged when the scout is off,
     skipped or failed; the chat says which)."""
-    if not get_settings().get("scout", True):
+    if not effective_settings().get("scout", True):        # v0.8: the active project's own value first
         return user_message
     if session.get("tier_before") == "complex" and session["history"]:
         # Its earlier turns in this chat already hold what it read: a new look would be paid twice
@@ -4250,7 +4293,8 @@ async def websocket_endpoint(websocket: WebSocket):
             # Idle timer: curate if nothing else happens in this chat for a while
             if session.get("idle_task") is not None:
                 session["idle_task"].cancel()
-            session["idle_task"] = schedule_curation(websocket, session["chat_id"], curator_idle_seconds())
+            session["idle_task"] = schedule_curation(websocket, session["chat_id"],
+                                                     curator_idle_seconds(chat_project(session["chat_id"])))
         try:
             await send(websocket, "done")
         except Exception:

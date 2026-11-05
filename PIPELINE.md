@@ -94,6 +94,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── store.py             (SQLite store: usage, sessions; backups)
 │       ├── workspace.py         (Project tools: list, create (form), switch, archive; restore and delete from the Dashboard; GitHub token and gh)
 │       ├── project_records.py   (Deleted projects: kept records listed as deleted, or forgotten)
+│       ├── project_settings.py  (A project's own values for some global settings: Dashboard → Project)
+│       ├── project_settings.py_AGENT.md
 │       ├── project_records.py_AGENT.md
 │       ├── workspace.py_AGENT.md
 │       ├── store.py_AGENT.md
