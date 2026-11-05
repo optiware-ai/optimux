@@ -732,11 +732,13 @@ class SessionDelete(BaseModel):
 
 @app.get("/api/sessions")
 async def list_sessions(project: str | None = None, all_projects: bool = False,
-                        archived: bool = False, q: str = ""):
-    """Stored chats, newest first: the active project's by default."""
+                        archived: bool = False, q: str = "", limit: int = 200):
+    """Stored chats, newest first: the active project's by default; project=""
+    is the Workspace (chats with no project). At most `limit` (1 to 5000)."""
     if not all_projects and project is None:
         project = active_project()
-    return chat_store.list_sessions(None if all_projects else project, archived, q)
+    return chat_store.list_sessions(None if all_projects else project, archived, q,
+                                    max(1, min(limit, 5000)))
 
 
 @app.post("/api/sessions/{sid}/rename")

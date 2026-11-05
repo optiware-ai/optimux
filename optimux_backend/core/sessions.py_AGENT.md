@@ -10,7 +10,7 @@
 - **Functions:**
   - `create(project, first_prompt)`: the title is the first prompt, up to 80 characters.
   - `exists`, `append_events`, `save_state`.
-  - `list_sessions(project=None, archived=False, query="")`: newest first, with `cost` and `calls_without_cost` summed from the usage rows whose `session` is the session id.
+  - `list_sessions(project=None, archived=False, query="", limit=200)`: newest first, with `cost` and `calls_without_cost` summed from the usage rows whose `session` is the session id. `project=None` lists every project; `""` the Workspace's own chats (`COALESCE(project, '')`). `GET /api/sessions` passes `limit` (1 to 5000; Dashboard → History asks for 5000 and says so when it hits it).
   - `get(sid)`: summary plus `history`, state and `events`.
   - `latest(project)`: the newest non-archived session.
   - `project_counts()`: non-archived chats and last update per project (Projects section).

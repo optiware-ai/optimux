@@ -84,10 +84,10 @@ _LIST_SQL = """
 
 
 def list_sessions(project: str | None = None, archived: bool = False, query: str = "", limit: int = 200) -> list[dict]:
-    """Newest first. project=None lists all projects."""
+    """Newest first. project=None lists all projects; "" the Workspace's (no project)."""
     where, args = ["s.archived = ?"], [int(archived)]
     if project is not None:
-        where.append("s.project = ?")
+        where.append("COALESCE(s.project, '') = ?")
         args.append(project)
     if query.strip():
         where.append("s.title LIKE ?")

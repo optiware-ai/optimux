@@ -1428,6 +1428,8 @@ createApp({
         // ---- Dashboard data (Overview, Projects, History page, System)
         const recentChats = ref([]);
         const projectsOverview = ref([]);
+        const NO_PROJECT = '(no project)';  // the History filter's "Workspace" (a project name can't be this)
+        const HISTORY_LIMIT = 5000;         // the most chats History loads at once
         const historyPage = ref({ project: '', archived: false, q: '', period: 'all', sort: 'updated', desc: true });
         const historyPageList = ref([]);
         const systemInfo = ref(null);
@@ -1671,12 +1673,21 @@ createApp({
         const fetchHistoryPage = async () => {
             const h = historyPage.value;
             const params = new URLSearchParams();
-            if (h.project) params.set('project', h.project); else params.set('all_projects', 'true');
+            if (h.project) params.set('project', h.project === NO_PROJECT ? '' : h.project); else params.set('all_projects', 'true');
             if (h.archived) params.set('archived', 'true');
             if (h.q.trim()) params.set('q', h.q.trim());
+            params.set('limit', String(HISTORY_LIMIT));
             try { const d = await (await fetch('/api/sessions?' + params.toString())).json(); historyPageList.value = Array.isArray(d) ? d : []; }
             catch (error) { console.error('Failed to load history', error); }
         };
+        // The project filter: the Workspace's own chats, every project, and deleted ones whose chats were kept
+        const historyProjects = Vue.computed(() => {
+            const names = projectsList.value || [];
+            const gone = Object.keys(deletedProjects.value || {}).filter(n => !names.includes(n)).sort();
+            return [{ value: NO_PROJECT, label: 'Workspace (no project)' }, ...names,
+                    ...gone.map(n => ({ value: n, label: n + ' (deleted)' }))];
+        });
+        const setHistoryProject = (v) => { historyPage.value.project = v || ''; fetchHistoryPage(); };
         const sortHistory = (col) => {
             const h = historyPage.value;
             if (h.sort === col) h.desc = !h.desc; else { h.sort = col; h.desc = col !== 'title' && col !== 'project'; }
@@ -1697,7 +1708,8 @@ createApp({
             })();
             const list = historyPageList.value.filter(c => (c.updated || 0) >= since);
             list.sort((a, b) => {
-                const x = a[sort] ?? '', y = b[sort] ?? '';
+                const x = sort === 'project' ? projectLabel(a.project) : (a[sort] ?? '');
+                const y = sort === 'project' ? projectLabel(b.project) : (b[sort] ?? '');
                 const r = typeof x === 'string' ? x.localeCompare(y) : x - y;
                 return desc ? -r : r;
             });
@@ -3337,7 +3349,7 @@ createApp({
             if (id === 'start') fetchOnboarding();
             if (id === 'project') loadProjectPage();
             if (id === 'projects') fetchProjectsOverview();
-            if (id === 'history') fetchHistoryPage();
+            if (id === 'history') { fetchHistoryPage(); fetchProjectsList(); fetchDeleted(); }
             if (id === 'memory') { fetchMemory(); fetchCostEstimates(); }
             if (id === 'system') { fetchSystemInfo(); fetchAuth(); }
             if (id === 'github') { githubMsg.value = null; fetchGithub(true); }
@@ -5619,7 +5631,8 @@ createApp({
             snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             monthSavings, onboard, onboardSmall, onboardAct, onboardGo, onboardSave, rateReply, taskStats, taskDeleteAsk, deleteTasks, pageUpdated, reloadPage, dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
             rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
-            historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
+            historyPage, historySorted, fetchHistoryPage, sortHistory, historyProjects, setHistoryProject,
+            historyPageList, HISTORY_LIMIT, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
             openChatFromDashboard, switchProject, routingRole, fmtAgo, overviewKpis, writeClipboard,

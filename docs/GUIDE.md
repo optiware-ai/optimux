@@ -968,7 +968,7 @@ Most of the cost is **input tokens resent on every step**. The levers below are 
 | **Performance** | Cost, latency, speed, cache use and reliability of every model, per project: **Charts**, or **Details** with the tables. |
 | **Budgets** | Monthly limits per project (Block or Warn) and the cost warnings. |
 | **Projects** | Cost, budget, chats and memory per project; make one active, create, archive; restore or permanently delete archived projects. |
-| **History** | Every stored chat with filters (project, period, active or archived, title search) and sortable columns; open one to continue it. |
+| **History** | Every stored chat with filters (project, period, active or archived, title search) and sortable columns; open one to continue it. The project filter also has **Workspace (no project)** and deleted projects whose chats were kept. It loads the newest 5000 chats; filter to see older ones. |
 | **Routing** | The Conductor, Simple and Complex models. |
 | **Models** | Add models, keys, prices, thinking level, test, cooldowns. |
 | **Memory** | Personal, professional and project memory; automatic updates and their history. |

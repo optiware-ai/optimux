@@ -225,6 +225,20 @@ def test_list_filters(client):
     assert [s["title"] for s in client.get("/api/sessions?all_projects=true&q=docs", headers=H).json()] == ["write docs"]
 
 
+def test_list_the_workspace_chats_and_a_limit(client):
+    """Phase 6: project= (empty) lists the Workspace's own chats; limit caps the list."""
+    sessions.create("alpha", "in alpha")
+    sessions.create("", "in the workspace")
+    conn = store.connect()
+    with conn:
+        conn.execute("INSERT INTO sessions (id, project, title, created, updated) VALUES ('old', NULL, 'older', 1, 1)")
+    conn.close()
+    got = client.get("/api/sessions?project=", headers=H).json()
+    assert [s["title"] for s in got] == ["in the workspace", "older"]
+    assert len(client.get("/api/sessions?all_projects=true&limit=2", headers=H).json()) == 2
+    assert len(client.get("/api/sessions?all_projects=true&limit=0", headers=H).json()) == 1
+
+
 def test_deleted_while_open_starts_fresh_session(mocker, client):
     mocker.patch("litellm.acompletion", side_effect=Recorder(reply("a"), reply("b")))
     chat = Conversation(client)
