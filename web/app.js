@@ -2496,9 +2496,13 @@ createApp({
         const PERF_OTHER = '#6b7280';
         const PERF_TOKENS = ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab'];   // ordinal: cached, fresh input, output, thinking
         const PERF_HEAT = ['#0d366b', '#1c5cab', '#2a78d6', '#5598e7', '#86b6ef', '#cde2fb'];  // sequential, low → high
-        const perfData = ref(null);
+        // v0.8: every Performance chart and table has its own project filter (perfPick); the data of
+        // each chosen project is fetched once per period (perfCache, '' = all projects)
+        const perfCache = Vue.reactive({});
+        const perfData = Vue.computed(() => perfCache[''] || null);
         const perfDays = ref(30);
-        const perfProject = ref('');
+        const PERF_CARDS = ['sv', 'callsCost', 'tokensCost', 'callsTokens', 'wt', 'tl', 'sc', 'work', 'lat', 'mix', 'kpi', 'ins', 'models', 'roles'];
+        const perfPick = Vue.reactive(Object.fromEntries(PERF_CARDS.map(k => [k, ''])));
         const perfMetric = ref('cost');
         const perfSort = ref({ key: 'cost', desc: true });
         const perfTip = ref(null);
@@ -2513,16 +2517,34 @@ createApp({
                 perfObserver.observe(el);
             }
         });
+        const loadPerf = async (project) => {
+            const q = project ? `&project=${encodeURIComponent(project)}` : '';
+            const resp = await fetch(`/api/analytics?days=${perfDays.value}${q}`);
+            return resp.ok ? await resp.json() : null;
+        };
+        // All the projects the cards show, for the current period; the old data stays until the new arrives
         const fetchPerf = async () => {
             perfLoading.value = true;
-            const q = perfProject.value ? `&project=${encodeURIComponent(perfProject.value)}` : '';
+            const days = perfDays.value;
+            const wanted = [...new Set(['', ...Object.values(perfPick)])];
             try {
-                const resp = await fetch(`/api/analytics?days=${perfDays.value}${q}`);
-                if (resp.ok) perfData.value = await resp.json();
+                const got = await Promise.all(wanted.map(p => loadPerf(p).catch(() => null)));
+                if (days !== perfDays.value) return;              // the period changed meanwhile
+                for (const k of Object.keys(perfCache)) if (!wanted.includes(k)) delete perfCache[k];
+                wanted.forEach((p, i) => { if (got[i]) perfCache[p] = got[i]; });
             } catch (error) { console.error('Failed to load model performance', error); }
             finally { perfLoading.value = false; }
         };
         const setPerfDays = (d) => { perfDays.value = d; fetchPerf(); };
+        const setPerfPick = async (key, project) => {
+            perfPick[key] = project || '';
+            if (!(perfPick[key] in perfCache)) {
+                const days = perfDays.value;
+                try { const d = await loadPerf(perfPick[key]); if (d && days === perfDays.value) perfCache[perfPick[key]] = d; }
+                catch (error) { console.error('Failed to load model performance', error); }
+            }
+        };
+        const perfProjects = Vue.computed(() => [...new Set([...(projectsList.value || []), ...((perfCache[''] && perfCache[''].projects) || [])])].sort());
         const fmtUsd = (c) => {
             if (c === null || c === undefined) return '—';
             if (c === 0) return '$0';
@@ -2596,8 +2618,7 @@ createApp({
             return sec % 60 ? `${m} min ${sec % 60} s` : `${m} min`;
         };
 
-        const perf = Vue.computed(() => {
-            const d = perfData.value;
+        const buildPerf = (d) => {
             if (!d) return null;
             const order = d.color_order || [];
             const top = d.top || 8;
@@ -2973,8 +2994,12 @@ createApp({
                 callsTokens: withTokens.map(m => ({ name: m.name, x: m.calls, y: tokensOf(m), lines: [Math.round(tokensOf(m) / m.calls).toLocaleString() + ' tokens per call'] })),
             };
             return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, sv, wt, scatters, empty: !models.length,
-                     maxShare: Math.max(0.0001, ...models.map(m => m.share)) };
-        });
+                     maxShare: Math.max(0.0001, ...models.map(m => m.share)), data: d };
+        };
+        // Every fetched project's view (all of them recompute together: there are only a few)
+        const perfViews = Vue.computed(() => Object.fromEntries(Object.keys(perfCache).map(p => [p, buildPerf(perfCache[p])])));
+        const perf = Vue.computed(() => perfViews.value[''] || null);
+        const perfOf = (key) => perfViews.value[perfPick[key] || ''] || null;
         const PERF_ROLES = { conductor: 'Conductor', scout: 'Scout', simple: 'Simple', complex: 'Complex', override: 'Chosen by you', curator: 'Memory',
                              skill_draft: 'Skill drafts', test: 'Tests', commit_message: 'Commit messages', planner: 'Planner' };
         const perfRole = (r) => PERF_ROLES[r] || r;
@@ -5541,7 +5566,7 @@ createApp({
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
             openChatFromDashboard, switchProject, routingRole, fmtAgo, overviewKpis, writeClipboard,
-            perf, perfData, perfDays, fmtDur, perfProject, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, perfTipEl, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
+            perf, perfData, perfDays, fmtDur, perfPick, perfOf, setPerfPick, perfProjects, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, perfTipEl, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
             historyFiltered, resetHistoryFilters, lastPromptBefore, retryFrom, interruptionLabel, wsState, headerCostTitle,
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,

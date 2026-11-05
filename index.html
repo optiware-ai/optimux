@@ -347,7 +347,6 @@
                             <button v-for="p in [[7, '7 days'], [30, '30 days'], [90, '90 days'], [0, 'All time']]" :key="p[0]" @click="setPerfDays(p[0])"
                                     :class="['text-[13px] px-3 py-1 rounded-md', perfDays === p[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ p[1] }}</button>
                         </div>
-                        <chart-pick :model-value="perfProject" @update:model-value="perfProject = $event; fetchPerf()" :options="[...new Set([...(projectsList || []), ...((perfData && perfData.projects) || [])])].sort()" label="Project"></chart-pick>
                         <span v-if="perfLoading" class="text-xs text-gray-500">Loading…</span>
                         <span class="flex-1"></span>
                         <span class="text-xs text-gray-500 flex items-center">How these are measured<help-tip wide>
@@ -360,11 +359,12 @@
                     </div>
 
                     <div v-if="perf && perf.empty" class="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center text-[15px] text-gray-400">
-                        No model calls in this period{{ perfProject ? ' for ' + perfProject : '' }}. Chat a little, then come back.
+                        No model calls in this period. Chat a little, then come back.
                     </div>
                     <template v-if="perf && !perf.empty">
                         <template v-if="dashView.performance === 'charts'">
                         <!-- 0. Savings (IM-08) -->
+                        <template v-for="P in [perfOf('sv')]" :key="'pf-sv'">
                         <div v-if="perf.sv" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                             <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
                                 <h3 class="text-[15px] font-bold text-gray-200 flex items-center">What routing saved<help-tip wide>
@@ -378,207 +378,271 @@
                                     <span class="flex items-center gap-1.5"><span class="cm-pf-key cm-sv-key-ref"></span>Would have cost</span>
                                     <span class="flex items-center gap-1.5"><span class="cm-pf-key cm-sv-key-spent"></span>Spent</span>
                                 </div>
+                                <chart-pick :model-value="perfPick.sv" @update:model-value="setPerfPick('sv', $event)" :options="perfProjects" label="What routing saved: project"></chart-pick>
                             </div>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.sv) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P && P.sv">
                             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                                 <div>
                                     <div class="text-xs uppercase tracking-wider text-gray-500">Spent</div>
-                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtUsd(perf.sv.v.spent) }}</div>
-                                    <div class="text-xs text-gray-500 mt-1">{{ perf.sv.v.calls.toLocaleString() }} calls</div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtUsd(P.sv.v.spent) }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">{{ P.sv.v.calls.toLocaleString() }} calls</div>
                                 </div>
                                 <div>
                                     <div class="text-xs uppercase tracking-wider text-gray-500">Would have cost</div>
-                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtUsd(perf.sv.v.reference) }}</div>
-                                    <div class="text-xs text-gray-500 mt-1 truncate" :title="perf.sv.refTitle">all on {{ perf.sv.refName }}</div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtUsd(P.sv.v.reference) }}</div>
+                                    <div class="text-xs text-gray-500 mt-1 truncate" :title="P.sv.refTitle">all on {{ P.sv.refName }}</div>
                                 </div>
                                 <div>
                                     <div class="text-xs uppercase tracking-wider text-gray-500">Saved</div>
-                                    <div :class="['text-2xl font-mono mt-1', perf.sv.v.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(perf.sv.v.saved) }}</div>
-                                    <div class="text-xs text-gray-500 mt-1">{{ perf.sv.v.saved_share === null ? '—' : fmtPct(perf.sv.v.saved_share) + (perf.sv.v.saved >= 0 ? ' less' : ' more') }}</div>
+                                    <div :class="['text-2xl font-mono mt-1', P.sv.v.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(P.sv.v.saved) }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">{{ P.sv.v.saved_share === null ? '—' : fmtPct(P.sv.v.saved_share) + (P.sv.v.saved >= 0 ? ' less' : ' more') }}</div>
                                 </div>
                             </div>
-                            <svg :width="perf.sv.W" :height="perf.sv.H" class="cm-pf-svg" role="img" aria-label="Spent against what the same calls would have cost on the reference model" @mouseleave="hideTip">
-                                <g v-for="g in perf.sv.grid" :key="'g' + g.y">
-                                    <line :x1="perf.sv.left" :x2="perf.sv.W" :y1="g.y" :y2="g.y" class="cm-pf-grid"></line>
-                                    <text :x="perf.sv.left" :y="g.y - 5" class="cm-pf-axis">{{ g.text }}</text>
+                            <svg :width="P.sv.W" :height="P.sv.H" class="cm-pf-svg" role="img" aria-label="Spent against what the same calls would have cost on the reference model" @mouseleave="hideTip">
+                                <g v-for="g in P.sv.grid" :key="'g' + g.y">
+                                    <line :x1="P.sv.left" :x2="P.sv.W" :y1="g.y" :y2="g.y" class="cm-pf-grid"></line>
+                                    <text :x="P.sv.left" :y="g.y - 5" class="cm-pf-axis">{{ g.text }}</text>
                                 </g>
-                                <path :d="perf.sv.gapPath" class="cm-sv-gap"></path>
-                                <path :d="perf.sv.refPath" class="cm-sv-line cm-sv-ref"></path>
-                                <path :d="perf.sv.spentPath" class="cm-sv-line cm-sv-spent"></path>
-                                <g v-for="(p, i) in perf.sv.points" :key="'p' + i" @mousemove="showTip($event, p.tip)" class="cm-pf-col cm-sv-pt">
-                                    <rect :x="p.band" :y="perf.sv.topPad" :width="perf.sv.step" :height="perf.sv.plotH" class="cm-pf-band"></rect>
-                                    <line :x1="p.x" :x2="p.x" :y1="perf.sv.topPad" :y2="perf.sv.topPad + perf.sv.plotH" class="cm-sv-cross"></line>
+                                <path :d="P.sv.gapPath" class="cm-sv-gap"></path>
+                                <path :d="P.sv.refPath" class="cm-sv-line cm-sv-ref"></path>
+                                <path :d="P.sv.spentPath" class="cm-sv-line cm-sv-spent"></path>
+                                <g v-for="(p, i) in P.sv.points" :key="'p' + i" @mousemove="showTip($event, p.tip)" class="cm-pf-col cm-sv-pt">
+                                    <rect :x="p.band" :y="P.sv.topPad" :width="P.sv.step" :height="P.sv.plotH" class="cm-pf-band"></rect>
+                                    <line :x1="p.x" :x2="p.x" :y1="P.sv.topPad" :y2="P.sv.topPad + P.sv.plotH" class="cm-sv-cross"></line>
                                     <circle :cx="p.x" :cy="p.yRef" r="4" class="cm-sv-dot cm-sv-dot-ref"></circle>
                                     <circle :cx="p.x" :cy="p.ySpent" r="4" class="cm-sv-dot cm-sv-dot-spent"></circle>
                                 </g>
-                                <text v-for="l in perf.sv.xlabels" :key="'x' + l.x" :x="l.x" :y="perf.sv.H - 6" :text-anchor="l.anchor" class="cm-pf-axis">{{ l.text }}</text>
+                                <text v-for="l in P.sv.xlabels" :key="'x' + l.x" :x="l.x" :y="P.sv.H - 6" :text-anchor="l.anchor" class="cm-pf-axis">{{ l.text }}</text>
                             </svg>
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+                                <div v-for="t in [['By role', P.sv.roles], ['By project', P.sv.projects]]" :key="t[0]" class="overflow-x-auto">
+                                    <table class="w-full text-[13px]">
+                                        <thead><tr class="text-xs text-gray-500 text-left">
+                                            <th class="font-normal py-1 pr-3">{{ t[0] }}</th><th class="font-normal py-1 pr-3 text-right">Calls</th>
+                                            <th class="font-normal py-1 pr-3 text-right">Spent</th><th class="font-normal py-1 pr-3 text-right">Would have cost</th>
+                                            <th class="font-normal py-1 text-right">Saved</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            <tr v-for="r in t[1]" :key="r.key" class="border-t border-gray-800 text-gray-300">
+                                                <td class="py-1 pr-3 truncate max-w-[12rem]" :title="r.key">{{ r.label }}</td>
+                                                <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString() }}</td>
+                                                <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.spent) }}</td>
+                                                <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.reference) }}</td>
+                                                <td :class="['py-1 text-right font-mono', r.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(r.saved) }}<span class="text-gray-500"> · {{ r.saved_share === null ? 'extra' : fmtPct(r.saved_share) }}</span></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                             <p class="text-xs text-gray-500 mt-3">
-                                <span v-if="perf.sv.v.estimated_calls">{{ perf.sv.v.estimated_calls.toLocaleString() }} older calls are estimated with today's prices. </span>
-                                <span v-if="perf.sv.v.not_measured_calls">{{ perf.sv.v.not_measured_calls.toLocaleString() }} calls are not measured (unknown price). </span>
-                                <span v-if="perf.sv.v.escalations">{{ perf.sv.v.escalations.toLocaleString() }} escalations from before task records: the stuck model's work on those is not subtracted.</span>
+                                <span v-if="P.sv.v.estimated_calls">{{ P.sv.v.estimated_calls.toLocaleString() }} older calls are estimated with today's prices. </span>
+                                <span v-if="P.sv.v.not_measured_calls">{{ P.sv.v.not_measured_calls.toLocaleString() }} calls are not measured (unknown price). </span>
+                                <span v-if="P.sv.v.escalations">{{ P.sv.v.escalations.toLocaleString() }} escalations from before task records: the stuck model's work on those is not subtracted.</span>
                             </p>
+                            </template>
                         </div>
+                        </template>
                         <!-- v0.8: does a model's cost and tokens follow its calls? A dot per model; no titles, the axes say what each one is -->
+                        <template v-for="P in [perfOf('callsCost')]" :key="'pf-callsCost'">
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" aria-label="Calls and cost by model">
-                            <scatter-plot label="Calls against cost, one dot per model" x-name="Calls" y-name="Cost" :fmt-x="fmtCount" :fmt-y="fmtUsd" :points="perf.scatters.callsCost"></scatter-plot>
+                            <div class="flex justify-end mb-1"><chart-pick :model-value="perfPick.callsCost" @update:model-value="setPerfPick('callsCost', $event)" :options="perfProjects" label="Calls and cost by model: project"></chart-pick></div>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.callsCost) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P">
+                            <scatter-plot label="Calls against cost, one dot per model" x-name="Calls" y-name="Cost" :fmt-x="fmtCount" :fmt-y="fmtUsd" :points="P.scatters.callsCost"></scatter-plot>
+                            </template>
                         </div>
+                        </template>
+                        <template v-for="P in [perfOf('tokensCost')]" :key="'pf-tokensCost'">
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" aria-label="Tokens and cost by model">
-                            <scatter-plot label="Tokens against cost, one dot per model" x-name="Tokens" y-name="Cost" :fmt-x="fmtCount" :fmt-y="fmtUsd" :points="perf.scatters.tokensCost"></scatter-plot>
+                            <div class="flex justify-end mb-1"><chart-pick :model-value="perfPick.tokensCost" @update:model-value="setPerfPick('tokensCost', $event)" :options="perfProjects" label="Tokens and cost by model: project"></chart-pick></div>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.tokensCost) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P">
+                            <scatter-plot label="Tokens against cost, one dot per model" x-name="Tokens" y-name="Cost" :fmt-x="fmtCount" :fmt-y="fmtUsd" :points="P.scatters.tokensCost"></scatter-plot>
+                            </template>
                         </div>
+                        </template>
+                        <template v-for="P in [perfOf('callsTokens')]" :key="'pf-callsTokens'">
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" aria-label="Calls and tokens by model">
-                            <scatter-plot label="Calls against tokens, one dot per model" x-name="Calls" y-name="Tokens" :fmt-x="fmtCount" :fmt-y="fmtCount" :points="perf.scatters.callsTokens"></scatter-plot>
+                            <div class="flex justify-end mb-1"><chart-pick :model-value="perfPick.callsTokens" @update:model-value="setPerfPick('callsTokens', $event)" :options="perfProjects" label="Calls and tokens by model: project"></chart-pick></div>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.callsTokens) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P">
+                            <scatter-plot label="Calls against tokens, one dot per model" x-name="Calls" y-name="Tokens" :fmt-x="fmtCount" :fmt-y="fmtCount" :points="P.scatters.callsTokens"></scatter-plot>
+                            </template>
                         </div>
+                        </template>
                         <!-- v0.8: working time per request -->
+                        <template v-for="P in [perfOf('wt')]" :key="'pf-wt'">
                         <div v-if="perf.wt" class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" aria-label="Working time">
-                            <h3 class="text-[15px] font-bold text-gray-200 flex items-center mb-3">Working time<help-tip wide>
-                                <p>From your message to the end of the reply, for every request. Each approval counts as {{ Math.round(perf.wt.tm.approval_ms / 1000) }} s, however long the box waited for you, so time you spend deciding is not counted as the models' work; the real waiting is shown apart.</p>
+                            <div class="flex items-start justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200 flex items-center">Working time<help-tip wide>
+                                <p>From your message to the end of the reply, for every request. Each approval counts as {{ Math.round(P.wt.tm.approval_ms / 1000) }} s, however long the box waited for you, so time you spend deciding is not counted as the models' work; the real waiting is shown apart.</p>
                                 <p><b>Models</b> is the time of the request's model calls; <b>Commands and tools</b> is the rest (running commands, reading and writing files, Optimux itself).</p>
-                            </help-tip></h3>
+                            </help-tip></h3><chart-pick :model-value="perfPick.wt" @update:model-value="setPerfPick('wt', $event)" :options="perfProjects" label="Working time: project"></chart-pick></div>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.wt) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P && P.wt">
                             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                                 <div><div class="text-xs uppercase tracking-wider text-gray-500">Working time</div>
-                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtDur(perf.wt.tm.totals.counted_ms) }}</div>
-                                    <div class="text-xs text-gray-500 mt-1">{{ perfProject ? 'on ' + projectLabel(perfProject) : 'all projects' }}</div></div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtDur(P.wt.tm.totals.counted_ms) }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">{{ perfPick.wt ? 'on ' + projectLabel(perfPick.wt) : 'all projects' }}</div></div>
                                 <div><div class="text-xs uppercase tracking-wider text-gray-500">Requests</div>
-                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ perf.wt.tm.totals.requests.toLocaleString() }}</div>
-                                    <div class="text-xs text-gray-500 mt-1">{{ perf.wt.tm.avg_request_ms === null ? '—' : fmtDur(perf.wt.tm.avg_request_ms) + ' each on average' }}</div></div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ P.wt.tm.totals.requests.toLocaleString() }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">{{ P.wt.tm.avg_request_ms === null ? '—' : fmtDur(P.wt.tm.avg_request_ms) + ' each on average' }}</div></div>
                                 <div><div class="text-xs uppercase tracking-wider text-gray-500">Model calls</div>
-                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtDur(perf.wt.tm.model_calls_ms) }}</div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtDur(P.wt.tm.model_calls_ms) }}</div>
                                     <div class="text-xs text-gray-500 mt-1">every call in the period</div></div>
                                 <div><div class="text-xs uppercase tracking-wider text-gray-500">Approvals</div>
-                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ perf.wt.tm.totals.waits.toLocaleString() }}</div>
-                                    <div class="text-xs text-gray-500 mt-1">counted {{ fmtDur(perf.wt.tm.totals.approval_ms) }}; you waited {{ fmtDur(perf.wt.tm.totals.wait_ms) }}</div></div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ P.wt.tm.totals.waits.toLocaleString() }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">counted {{ fmtDur(P.wt.tm.totals.approval_ms) }}; you waited {{ fmtDur(P.wt.tm.totals.wait_ms) }}</div></div>
                             </div>
-                            <day-columns :label="'Working time per ' + perf.wt.per" :buckets="perf.wt.buckets" :per="perf.wt.per" :format="fmtDur" empty="No timed requests in this period yet."></day-columns>
-                            <p class="text-xs text-gray-500 mt-3">{{ perf.wt.tm.recorded_since ? 'Request times are recorded since ' + new Date(perf.wt.tm.recorded_since * 1000).toLocaleDateString() + '; model call time covers older calls too.' : 'Request times are recorded from now on; model call time covers older calls too.' }}</p>
+                            <day-columns :label="'Working time per ' + P.wt.per" :buckets="P.wt.buckets" :per="P.wt.per" :format="fmtDur" empty="No timed requests in this period yet."></day-columns>
+                            <p class="text-xs text-gray-500 mt-3">{{ P.wt.tm.recorded_since ? 'Request times are recorded since ' + new Date(P.wt.tm.recorded_since * 1000).toLocaleDateString() + '; model call time covers older calls too.' : 'Request times are recorded from now on; model call time covers older calls too.' }}</p>
+                            </template>
                         </div>
-                        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-                            <div v-for="k in perf.kpis" :key="k.label" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                                <div class="text-xs uppercase tracking-wider text-gray-500">{{ k.label }}</div>
-                                <div class="text-2xl font-mono text-gray-100 mt-1 flex items-center gap-2">
-                                    <span v-if="k.status" :class="['cm-pf-status', 'cm-pf-' + k.status]" :aria-label="k.status">{{ k.status === 'good' ? '✓' : k.status === 'warning' ? '!' : '✕' }}</span>{{ k.value }}
-                                </div>
-                                <div class="text-xs text-gray-500 mt-1">{{ k.sub }}</div>
-                            </div>
-                        </div>
+                        </template>
 
 
                         <!-- 1. Over time -->
+                        <template v-for="P in [perfOf('tl')]" :key="'pf-tl'">
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                             <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-                                <h3 class="text-[15px] font-bold text-gray-200">{{ perfMetric === 'cost' ? 'Spending' : 'Calls' }} per {{ perfData.weekly ? 'week' : 'day' }}, by model</h3>
-                                <div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="group" aria-label="Measure">
+                                <h3 class="text-[15px] font-bold text-gray-200">{{ perfMetric === 'cost' ? 'Spending' : 'Calls' }} per {{ P.data.weekly ? 'week' : 'day' }}, by model</h3>
+                                <div class="flex items-center gap-3"><div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="group" aria-label="Measure">
                                     <button v-for="m in [['cost', 'Cost'], ['calls', 'Calls']]" :key="m[0]" @click="perfMetric = m[0]"
                                             :class="['text-xs px-2.5 py-0.5 rounded-md', perfMetric === m[0] ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200']">{{ m[1] }}</button>
-                                </div>
+                                </div><chart-pick :model-value="perfPick.tl" @update:model-value="setPerfPick('tl', $event)" :options="perfProjects" label="Spending per day: project"></chart-pick></div>
                             </div>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.tl) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P">
                             <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mb-2">
-                                <span v-for="s in perf.series" :key="s.id" class="flex items-center gap-1.5" :title="s.title"><span class="cm-pf-key" :style="{ background: s.color }"></span>{{ s.name }}</span>
+                                <span v-for="s in P.series" :key="s.id" class="flex items-center gap-1.5" :title="s.title"><span class="cm-pf-key" :style="{ background: s.color }"></span>{{ s.name }}</span>
                             </div>
-                            <svg :width="perf.tl.W" :height="perf.tl.H" class="cm-pf-svg" role="img" :aria-label="(perfMetric === 'cost' ? 'Spending' : 'Calls') + ' over time by model'" @mouseleave="hideTip">
-                                <g v-for="g in perf.tl.grid" :key="'g' + g.y">
-                                    <line :x1="perf.tl.left" :x2="perf.tl.W" :y1="g.y" :y2="g.y" class="cm-pf-grid"></line>
-                                    <text :x="perf.tl.left - 8" :y="g.y + 4" text-anchor="end" class="cm-pf-axis">{{ g.text }}</text>
+                            <svg :width="P.tl.W" :height="P.tl.H" class="cm-pf-svg" role="img" :aria-label="(perfMetric === 'cost' ? 'Spending' : 'Calls') + ' over time by model'" @mouseleave="hideTip">
+                                <g v-for="g in P.tl.grid" :key="'g' + g.y">
+                                    <line :x1="P.tl.left" :x2="P.tl.W" :y1="g.y" :y2="g.y" class="cm-pf-grid"></line>
+                                    <text :x="P.tl.left - 8" :y="g.y + 4" text-anchor="end" class="cm-pf-axis">{{ g.text }}</text>
                                 </g>
-                                <g v-for="(c, i) in perf.tl.cols" :key="'c' + i" @mousemove="showTip($event, c.tip)" class="cm-pf-col">
-                                    <rect :x="c.band" :y="perf.tl.topPad" :width="perf.tl.step" :height="perf.tl.plotH" class="cm-pf-band"></rect>
+                                <g v-for="(c, i) in P.tl.cols" :key="'c' + i" @mousemove="showTip($event, c.tip)" class="cm-pf-col">
+                                    <rect :x="c.band" :y="P.tl.topPad" :width="P.tl.step" :height="P.tl.plotH" class="cm-pf-band"></rect>
                                     <path v-for="(s, j) in c.segs" :key="j" :d="s.d" :fill="s.color"></path>
                                 </g>
-                                <text v-for="l in perf.tl.xlabels" :key="'x' + l.x" :x="l.x" :y="perf.tl.H - 6" text-anchor="middle" class="cm-pf-axis">{{ l.text }}</text>
-                                <text v-if="perf.tl.empty" :x="perf.tl.W / 2" :y="perf.tl.H / 2" text-anchor="middle" class="cm-pf-note">Nothing in this period</text>
+                                <text v-for="l in P.tl.xlabels" :key="'x' + l.x" :x="l.x" :y="P.tl.H - 6" text-anchor="middle" class="cm-pf-axis">{{ l.text }}</text>
+                                <text v-if="P.tl.empty" :x="P.tl.W / 2" :y="P.tl.H / 2" text-anchor="middle" class="cm-pf-note">Nothing in this period</text>
                             </svg>
+                            </template>
                         </div>
+                        </template>
 
                         <div :class="['grid gap-6', perf.wide ? 'grid-cols-2' : 'grid-cols-1']">
                             <!-- 2. Cost vs latency -->
+                        <template v-for="P in [perfOf('sc')]" :key="'pf-sc'">
                             <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                                <h3 class="text-[15px] font-bold text-gray-200">Price and speed</h3>
+                                <div class="flex items-start justify-between gap-3"><h3 class="text-[15px] font-bold text-gray-200">Price and speed</h3><chart-pick :model-value="perfPick.sc" @update:model-value="setPerfPick('sc', $event)" :options="perfProjects" label="Price and speed: project"></chart-pick></div>
                                 <p class="text-xs text-gray-500 mt-0.5 mb-3">Each dot is a model: cost per call against its median latency. Bigger dot, more calls. Lower left is cheap and fast.</p>
-                                <svg v-if="!perf.sc.empty" :width="perf.sc.W" :height="perf.sc.H" class="cm-pf-svg" role="img" aria-label="Cost per call against median latency" @mouseleave="hideTip">
-                                    <g v-for="g in perf.sc.ygrid" :key="'y' + g.y">
-                                        <line :x1="perf.sc.left" :x2="perf.sc.left + perf.sc.plotW" :y1="g.y" :y2="g.y" class="cm-pf-grid"></line>
-                                        <text :x="perf.sc.left - 8" :y="g.y + 4" text-anchor="end" class="cm-pf-axis">{{ g.text }}</text>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.sc) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P">
+                                <svg v-if="!P.sc.empty" :width="P.sc.W" :height="P.sc.H" class="cm-pf-svg" role="img" aria-label="Cost per call against median latency" @mouseleave="hideTip">
+                                    <g v-for="g in P.sc.ygrid" :key="'y' + g.y">
+                                        <line :x1="P.sc.left" :x2="P.sc.left + P.sc.plotW" :y1="g.y" :y2="g.y" class="cm-pf-grid"></line>
+                                        <text :x="P.sc.left - 8" :y="g.y + 4" text-anchor="end" class="cm-pf-axis">{{ g.text }}</text>
                                     </g>
-                                    <g v-for="g in perf.sc.xgrid" :key="'x' + g.x">
-                                        <line :x1="g.x" :x2="g.x" :y1="perf.sc.topPad" :y2="perf.sc.topPad + perf.sc.plotH" class="cm-pf-grid"></line>
-                                        <text :x="g.x" :y="perf.sc.topPad + perf.sc.plotH + 16" text-anchor="middle" class="cm-pf-axis">{{ g.text }}</text>
+                                    <g v-for="g in P.sc.xgrid" :key="'x' + g.x">
+                                        <line :x1="g.x" :x2="g.x" :y1="P.sc.topPad" :y2="P.sc.topPad + P.sc.plotH" class="cm-pf-grid"></line>
+                                        <text :x="g.x" :y="P.sc.topPad + P.sc.plotH + 16" text-anchor="middle" class="cm-pf-axis">{{ g.text }}</text>
                                     </g>
-                                    <text :x="perf.sc.left + perf.sc.plotW" :y="perf.sc.H - 4" text-anchor="end" class="cm-pf-axis">cost per call → (log scale)</text>
-                                    <text :x="4" :y="perf.sc.topPad - 2" class="cm-pf-axis">↑ median latency</text>
-                                    <g v-for="p in perf.sc.dots" :key="p.m.model" @mousemove="showTip($event, p.tip)" class="cm-pf-col">
+                                    <text :x="P.sc.left + P.sc.plotW" :y="P.sc.H - 4" text-anchor="end" class="cm-pf-axis">cost per call → (log scale)</text>
+                                    <text :x="4" :y="P.sc.topPad - 2" class="cm-pf-axis">↑ median latency</text>
+                                    <g v-for="p in P.sc.dots" :key="p.m.model" @mousemove="showTip($event, p.tip)" class="cm-pf-col">
                                         <circle :cx="p.cx" :cy="p.cy" :r="Math.max(p.r, 12)" fill="transparent"></circle>
                                         <circle :cx="p.cx" :cy="p.cy" :r="p.r" :fill="p.color" fill-opacity="0.85" class="cm-pf-ring"></circle>
                                     </g>
-                                    <text v-for="p in perf.sc.dots.filter(x => x.label)" :key="'l' + p.m.model" :x="p.label.x" :y="p.label.y" :text-anchor="p.label.anchor" class="cm-pf-label"><title>{{ p.m.title }}</title>{{ p.label.text }}</text>
+                                    <text v-for="p in P.sc.dots.filter(x => x.label)" :key="'l' + p.m.model" :x="p.label.x" :y="p.label.y" :text-anchor="p.label.anchor" class="cm-pf-label"><title>{{ p.m.title }}</title>{{ p.label.text }}</text>
                                 </svg>
                                 <div v-else class="text-[13px] text-gray-500 italic py-6 text-center">Needs calls with a known price and a measured time.</div>
-                                <div v-if="perf.sc.missing" class="text-xs text-gray-500 mt-2">{{ perf.sc.missing }} model{{ perf.sc.missing === 1 ? ' is' : 's are' }} not shown: no known price or no timing.</div>
+                                <div v-if="P.sc.missing" class="text-xs text-gray-500 mt-2">{{ P.sc.missing }} model{{ P.sc.missing === 1 ? ' is' : 's are' }} not shown: no known price or no timing.</div>
+                            </template>
                             </div>
+                        </template>
 
                             <!-- 6. Who does the work -->
+                        <template v-for="P in [perfOf('work')]" :key="'pf-work'">
                             <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                                <h3 class="text-[15px] font-bold text-gray-200">Who does the work</h3>
+                                <div class="flex items-start justify-between gap-3"><h3 class="text-[15px] font-bold text-gray-200">Who does the work</h3><chart-pick :model-value="perfPick.work" @update:model-value="setPerfPick('work', $event)" :options="perfProjects" label="Who does the work: project"></chart-pick></div>
                                 <p class="text-xs text-gray-500 mt-0.5 mb-2">Each role's share of the calls against its share of the spending. Routing pays off when the cheap roles carry most of the calls for a small part of the money.</p>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.work) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P">
                                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mb-2">
                                     <span class="flex items-center gap-1.5"><span class="cm-pf-key cm-pf-k-calls"></span>Share of calls</span>
                                     <span class="flex items-center gap-1.5"><span class="cm-pf-key cm-pf-k-cost"></span>Share of spending</span>
                                 </div>
-                                <svg :width="perf.work.W" :height="perf.work.H" class="cm-pf-svg" role="img" aria-label="Share of calls and spending per role" @mouseleave="hideTip">
-                                    <g v-for="g in perf.work.grid" :key="'g' + g.x">
-                                        <line :x1="g.x" :x2="g.x" :y1="0" :y2="perf.work.H - perf.work.bottom" class="cm-pf-grid"></line>
-                                        <text :x="g.x" :y="perf.work.H - 8" text-anchor="middle" class="cm-pf-axis">{{ g.text }}</text>
+                                <svg :width="P.work.W" :height="P.work.H" class="cm-pf-svg" role="img" aria-label="Share of calls and spending per role" @mouseleave="hideTip">
+                                    <g v-for="g in P.work.grid" :key="'g' + g.x">
+                                        <line :x1="g.x" :x2="g.x" :y1="0" :y2="P.work.H - P.work.bottom" class="cm-pf-grid"></line>
+                                        <text :x="g.x" :y="P.work.H - 8" text-anchor="middle" class="cm-pf-axis">{{ g.text }}</text>
                                     </g>
-                                    <g v-for="r in perf.work.rows" :key="r.role" @mousemove="showTip($event, r.tip)" class="cm-pf-col">
-                                        <rect x="0" :y="r.y" :width="perf.work.W" :height="perf.work.rowH" class="cm-pf-band"></rect>
-                                        <text :x="perf.work.nameW - 10" :y="r.y + perf.work.rowH / 2 + 4" text-anchor="end" class="cm-pf-label">{{ r.label }}</text>
-                                        <path v-if="r.callsW" :d="'M' + perf.work.nameW + ',' + (r.y + 6) + 'h' + Math.max(r.callsW - 4, 0) + 'q4,0 4,4v' + (perf.work.barH - 8) + 'q0,4 -4,4h-' + Math.max(r.callsW - 4, 0) + 'z'" class="cm-pf-calls"></path>
-                                        <path v-if="r.costW" :d="'M' + perf.work.nameW + ',' + (r.y + 8 + perf.work.barH) + 'h' + Math.max(r.costW - 4, 0) + 'q4,0 4,4v' + (perf.work.barH - 8) + 'q0,4 -4,4h-' + Math.max(r.costW - 4, 0) + 'z'" class="cm-pf-cost"></path>
-                                        <text :x="perf.work.nameW + r.callsW + 6" :y="r.y + 6 + perf.work.barH - 2" class="cm-pf-value">{{ r.callsText }}</text>
-                                        <text :x="perf.work.nameW + r.costW + 6" :y="r.y + 8 + 2 * perf.work.barH - 2" class="cm-pf-value">{{ r.costText }}</text>
+                                    <g v-for="r in P.work.rows" :key="r.role" @mousemove="showTip($event, r.tip)" class="cm-pf-col">
+                                        <rect x="0" :y="r.y" :width="P.work.W" :height="P.work.rowH" class="cm-pf-band"></rect>
+                                        <text :x="P.work.nameW - 10" :y="r.y + P.work.rowH / 2 + 4" text-anchor="end" class="cm-pf-label">{{ r.label }}</text>
+                                        <path v-if="r.callsW" :d="'M' + P.work.nameW + ',' + (r.y + 6) + 'h' + Math.max(r.callsW - 4, 0) + 'q4,0 4,4v' + (P.work.barH - 8) + 'q0,4 -4,4h-' + Math.max(r.callsW - 4, 0) + 'z'" class="cm-pf-calls"></path>
+                                        <path v-if="r.costW" :d="'M' + P.work.nameW + ',' + (r.y + 8 + P.work.barH) + 'h' + Math.max(r.costW - 4, 0) + 'q4,0 4,4v' + (P.work.barH - 8) + 'q0,4 -4,4h-' + Math.max(r.costW - 4, 0) + 'z'" class="cm-pf-cost"></path>
+                                        <text :x="P.work.nameW + r.callsW + 6" :y="r.y + 6 + P.work.barH - 2" class="cm-pf-value">{{ r.callsText }}</text>
+                                        <text :x="P.work.nameW + r.costW + 6" :y="r.y + 8 + 2 * P.work.barH - 2" class="cm-pf-value">{{ r.costText }}</text>
                                     </g>
                                 </svg>
+                            </template>
                             </div>
+                        </template>
                         </div>
 
                         <!-- 3. Latency spread -->
+                        <template v-for="P in [perfOf('lat')]" :key="'pf-lat'">
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <h3 class="text-[15px] font-bold text-gray-200">How long a call takes</h3>
+                            <div class="flex items-start justify-between gap-3"><h3 class="text-[15px] font-bold text-gray-200">How long a call takes</h3><chart-pick :model-value="perfPick.lat" @update:model-value="setPerfPick('lat', $event)" :options="perfProjects" label="How long a call takes: project"></chart-pick></div>
                             <p class="text-xs text-gray-500 mt-0.5 mb-3">The line runs from fast calls (p10) to slow ones (p90); the dot is the median. A long line means an unpredictable model.</p>
-                            <svg :width="perf.lat.W" :height="perf.lat.H" class="cm-pf-svg" role="img" aria-label="Latency range per model" @mouseleave="hideTip">
-                                <g v-for="g in perf.lat.grid" :key="'g' + g.x">
-                                    <line :x1="g.x" :x2="g.x" :y1="perf.lat.topPad" :y2="perf.lat.H - perf.lat.bottom" class="cm-pf-grid"></line>
-                                    <text :x="g.x" :y="perf.lat.H - 8" text-anchor="middle" class="cm-pf-axis">{{ g.text }}</text>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.lat) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P">
+                            <svg :width="P.lat.W" :height="P.lat.H" class="cm-pf-svg" role="img" aria-label="Latency range per model" @mouseleave="hideTip">
+                                <g v-for="g in P.lat.grid" :key="'g' + g.x">
+                                    <line :x1="g.x" :x2="g.x" :y1="P.lat.topPad" :y2="P.lat.H - P.lat.bottom" class="cm-pf-grid"></line>
+                                    <text :x="g.x" :y="P.lat.H - 8" text-anchor="middle" class="cm-pf-axis">{{ g.text }}</text>
                                 </g>
-                                <text :x="perf.lat.W - 2" :y="perf.lat.H - 8" text-anchor="end" class="cm-pf-axis">speed</text>
-                                <g v-for="r in perf.lat.rows" :key="r.m.model" @mousemove="showTip($event, r.tip)" class="cm-pf-col">
-                                    <rect x="0" :y="r.y - perf.lat.rowH / 2" :width="perf.lat.W" :height="perf.lat.rowH" class="cm-pf-band"></rect>
-                                    <text :x="perf.lat.nameW - 10" :y="r.y + 4" text-anchor="end" class="cm-pf-label"><title>{{ r.title }}</title>{{ r.name }}</text>
+                                <text :x="P.lat.W - 2" :y="P.lat.H - 8" text-anchor="end" class="cm-pf-axis">speed</text>
+                                <g v-for="r in P.lat.rows" :key="r.m.model" @mousemove="showTip($event, r.tip)" class="cm-pf-col">
+                                    <rect x="0" :y="r.y - P.lat.rowH / 2" :width="P.lat.W" :height="P.lat.rowH" class="cm-pf-band"></rect>
+                                    <text :x="P.lat.nameW - 10" :y="r.y + 4" text-anchor="end" class="cm-pf-label"><title>{{ r.title }}</title>{{ r.name }}</text>
                                     <line :x1="r.x10" :x2="r.x90" :y1="r.y" :y2="r.y" :stroke="r.color" stroke-width="2" stroke-linecap="round"></line>
                                     <line :x1="r.x10" :x2="r.x10" :y1="r.y - 4" :y2="r.y + 4" :stroke="r.color" stroke-width="2"></line>
                                     <line :x1="r.x90" :x2="r.x90" :y1="r.y - 4" :y2="r.y + 4" :stroke="r.color" stroke-width="2"></line>
                                     <circle :cx="r.x50" :cy="r.y" r="5" :fill="r.color" class="cm-pf-ring"></circle>
-                                    <text :x="perf.lat.W - 2" :y="r.y + 4" text-anchor="end" class="cm-pf-value">{{ r.speed }}</text>
+                                    <text :x="P.lat.W - 2" :y="r.y + 4" text-anchor="end" class="cm-pf-value">{{ r.speed }}</text>
                                 </g>
                             </svg>
+                            </template>
                         </div>
+                        </template>
 
                         <!-- 4. Token mix -->
+                        <template v-for="P in [perfOf('mix')]" :key="'pf-mix'">
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <h3 class="text-[15px] font-bold text-gray-200">What the tokens are</h3>
+                            <div class="flex items-start justify-between gap-3"><h3 class="text-[15px] font-bold text-gray-200">What the tokens are</h3><chart-pick :model-value="perfPick.mix" @update:model-value="setPerfPick('mix', $event)" :options="perfProjects" label="What the tokens are: project"></chart-pick></div>
                             <p class="text-xs text-gray-500 mt-0.5 mb-2">Cached input is the cheapest; output and thinking cost the most per token.</p>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.mix) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P">
                             <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mb-2">
-                                <span v-for="k in perf.mix.kinds" :key="k[0]" class="flex items-center gap-1.5"><span class="cm-pf-key" :style="{ background: k[1] }"></span>{{ k[0] }}</span>
+                                <span v-for="k in P.mix.kinds" :key="k[0]" class="flex items-center gap-1.5"><span class="cm-pf-key" :style="{ background: k[1] }"></span>{{ k[0] }}</span>
                             </div>
-                            <svg :width="perf.mix.W" :height="perf.mix.H" class="cm-pf-svg" role="img" aria-label="Token mix per model" @mouseleave="hideTip">
-                                <g v-for="r in perf.mix.rows" :key="r.m.model">
-                                    <text :x="perf.mix.nameW - 10" :y="r.y + perf.mix.rowH / 2 + 4" text-anchor="end" class="cm-pf-label"><title>{{ r.title }}</title>{{ r.name }}</text>
+                            <svg :width="P.mix.W" :height="P.mix.H" class="cm-pf-svg" role="img" aria-label="Token mix per model" @mouseleave="hideTip">
+                                <g v-for="r in P.mix.rows" :key="r.m.model">
+                                    <text :x="P.mix.nameW - 10" :y="r.y + P.mix.rowH / 2 + 4" text-anchor="end" class="cm-pf-label"><title>{{ r.title }}</title>{{ r.name }}</text>
                                     <g v-for="(s, j) in r.segs" :key="j" class="cm-pf-col" @mousemove="showTip($event, s.tip)">
-                                        <rect :x="s.x" :y="r.y + 4" :width="s.w" :height="perf.mix.rowH - 8" :fill="s.color" rx="2"></rect>
-                                        <text v-if="s.text" :x="s.x + s.w / 2" :y="r.y + perf.mix.rowH / 2 + 4" text-anchor="middle" class="cm-pf-cell" :fill="s.ink">{{ s.text }}</text>
+                                        <rect :x="s.x" :y="r.y + 4" :width="s.w" :height="P.mix.rowH - 8" :fill="s.color" rx="2"></rect>
+                                        <text v-if="s.text" :x="s.x + s.w / 2" :y="r.y + P.mix.rowH / 2 + 4" text-anchor="middle" class="cm-pf-cell" :fill="s.ink">{{ s.text }}</text>
                                     </g>
-                                    <text :x="perf.mix.W - 2" :y="r.y + perf.mix.rowH / 2 + 4" text-anchor="end" class="cm-pf-value">{{ r.total }}</text>
+                                    <text :x="P.mix.W - 2" :y="r.y + P.mix.rowH / 2 + 4" text-anchor="end" class="cm-pf-value">{{ r.total }}</text>
                                 </g>
                             </svg>
+                            </template>
                         </div>
+                        </template>
 
                         <!-- 5. Where the money goes -->
                         <div v-if="perf.heat" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
@@ -612,38 +676,36 @@
 
                         </template>
                         <template v-if="dashView.performance === 'details'">
-                        <div v-if="perf.insights.length" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <h3 class="text-[15px] font-bold text-gray-200 mb-2">What stands out</h3>
-                            <ul class="space-y-1.5 text-[14px] text-gray-300">
-                                <li v-for="(s, i) in perf.insights" :key="i" class="flex gap-2"><span class="text-blue-400">›</span><span>{{ s }}</span></li>
-                            </ul>
-                            <div v-if="perf.sinceEvents" class="text-xs text-gray-500 mt-3">Failures and escalations are counted since {{ perf.sinceEvents }}, when Optimux started recording them.</div>
-                        </div>
-                        <!-- What routing saved: the same numbers per role and per project -->
-                        <div v-if="perf.sv" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <h3 class="text-[15px] font-bold text-gray-200 mb-3">What routing saved</h3>
-                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                <div v-for="t in [['By role', perf.sv.roles], ['By project', perf.sv.projects]]" :key="t[0]" class="overflow-x-auto">
-                                    <table class="w-full text-[13px]">
-                                        <thead><tr class="text-xs text-gray-500 text-left">
-                                            <th class="font-normal py-1 pr-3">{{ t[0] }}</th><th class="font-normal py-1 pr-3 text-right">Calls</th>
-                                            <th class="font-normal py-1 pr-3 text-right">Spent</th><th class="font-normal py-1 pr-3 text-right">Would have cost</th>
-                                            <th class="font-normal py-1 text-right">Saved</th>
-                                        </tr></thead>
-                                        <tbody>
-                                            <tr v-for="r in t[1]" :key="r.key" class="border-t border-gray-800 text-gray-300">
-                                                <td class="py-1 pr-3 truncate max-w-[12rem]" :title="r.key">{{ r.label }}</td>
-                                                <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString() }}</td>
-                                                <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.spent) }}</td>
-                                                <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.reference) }}</td>
-                                                <td :class="['py-1 text-right font-mono', r.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(r.saved) }}<span class="text-gray-500"> · {{ r.saved_share === null ? 'extra' : fmtPct(r.saved_share) }}</span></td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                        <template v-for="P in [perfOf('kpi')]" :key="'pf-kpi'">
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between gap-3"><h3 class="text-[15px] font-bold text-gray-200">Totals</h3><chart-pick :model-value="perfPick.kpi" @update:model-value="setPerfPick('kpi', $event)" :options="perfProjects" label="Totals: project"></chart-pick></div>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.kpi) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P">
+                        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+                            <div v-for="k in P.kpis" :key="k.label" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                                <div class="text-xs uppercase tracking-wider text-gray-500">{{ k.label }}</div>
+                                <div class="text-2xl font-mono text-gray-100 mt-1 flex items-center gap-2">
+                                    <span v-if="k.status" :class="['cm-pf-status', 'cm-pf-' + k.status]" :aria-label="k.status">{{ k.status === 'good' ? '✓' : k.status === 'warning' ? '!' : '✕' }}</span>{{ k.value }}
                                 </div>
+                                <div class="text-xs text-gray-500 mt-1">{{ k.sub }}</div>
                             </div>
                         </div>
-                        <div v-if="perf.wt && !perfProject && perf.wt.tm.projects.length" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            </template>
+                        </div>
+                        </template>
+                        <template v-for="P in [perfOf('ins')]" :key="'pf-ins'">
+                        <div v-if="perf.insights.length" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <div class="flex items-start justify-between gap-3 mb-2"><h3 class="text-[15px] font-bold text-gray-200">What stands out</h3><chart-pick :model-value="perfPick.ins" @update:model-value="setPerfPick('ins', $event)" :options="perfProjects" label="What stands out: project"></chart-pick></div>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.ins) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P">
+                            <ul class="space-y-1.5 text-[14px] text-gray-300">
+                                <li v-for="(s, i) in P.insights" :key="i" class="flex gap-2"><span class="text-blue-400">›</span><span>{{ s }}</span></li>
+                            </ul>
+                            <div v-if="P.sinceEvents" class="text-xs text-gray-500 mt-3">Failures and escalations are counted since {{ P.sinceEvents }}, when Optimux started recording them.</div>
+                            </template>
+                        </div>
+                        </template>
+                        <div v-if="perf.wt && perf.wt.tm.projects.length" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                             <h3 class="text-[15px] font-bold text-gray-200 mb-3">Working time per project</h3>
                             <div class="overflow-x-auto"><table class="w-full text-[13px]">
                                 <thead><tr class="text-xs text-gray-500 text-left">
@@ -664,8 +726,11 @@
                             </table></div>
                         </div>
                         <!-- The same numbers as a table -->
+                        <template v-for="P in [perfOf('models')]" :key="'pf-models'">
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <h3 class="text-[15px] font-bold text-gray-200 mb-3">By Models</h3>
+                            <div class="flex items-start justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">By Models</h3><chart-pick :model-value="perfPick.models" @update:model-value="setPerfPick('models', $event)" :options="perfProjects" label="By Models: project"></chart-pick></div>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.models) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P">
                             <div class="overflow-x-auto">
                                 <table class="w-full text-[13px] cm-pf-table whitespace-nowrap">
                                     <thead>
@@ -676,7 +741,7 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="m in perf.table" :key="m.model" class="border-b border-gray-800/60 hover:bg-gray-800/40">
+                                        <tr v-for="m in P.table" :key="m.model" class="border-b border-gray-800/60 hover:bg-gray-800/40">
                                             <td class="py-2 px-2">
                                                 <div class="flex items-center gap-2 text-gray-200"><span class="cm-pf-key" :style="{ background: m.color }"></span><span class="truncate" :title="m.title">{{ m.name }}</span></div>
                                                 <div class="text-xs text-gray-500 pl-5">{{ Object.entries(m.roles).sort((a, b) => b[1] - a[1]).map(r => perfRole(r[0]) + ' ' + r[1]).join(' · ') }}</div>
@@ -684,7 +749,7 @@
                                             <td class="py-2 px-2 text-right font-mono text-gray-300">{{ m.calls.toLocaleString() }}</td>
                                             <td class="py-2 px-2 text-right font-mono text-gray-100">{{ fmtUsd(m.cost) }}{{ m.calls_without_cost ? '+' : '' }}</td>
                                             <td class="py-2 px-2 text-right">
-                                                <div class="flex items-center justify-end gap-2"><span class="cm-pf-bar"><span :style="{ width: (100 * m.share / perf.maxShare) + '%', background: m.color }"></span></span><span class="font-mono text-gray-300 w-10">{{ fmtPct(m.share) }}</span></div>
+                                                <div class="flex items-center justify-end gap-2"><span class="cm-pf-bar"><span :style="{ width: (100 * m.share / P.maxShare) + '%', background: m.color }"></span></span><span class="font-mono text-gray-300 w-10">{{ fmtPct(m.share) }}</span></div>
                                             </td>
                                             <td class="py-2 px-2 text-right font-mono text-gray-300">{{ fmtUsd(m.cost_per_call) }}</td>
                                             <td class="py-2 px-2 text-right font-mono text-gray-300">{{ fmtUsd(m.cost_per_1k_out) }}</td>
@@ -700,23 +765,30 @@
                                     </tbody>
                                 </table>
                             </div>
+                            </template>
                         </div>
+                        </template>
                         <!-- v0.8: calls and cost per role -->
+                        <template v-for="P in [perfOf('roles')]" :key="'pf-roles'">
                         <div v-if="perfData.roles && perfData.roles.length" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <h3 class="text-[15px] font-bold text-gray-200 mb-3">By Role</h3>
+                            <div class="flex items-start justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">By Role</h3><chart-pick :model-value="perfPick.roles" @update:model-value="setPerfPick('roles', $event)" :options="perfProjects" label="By Role: project"></chart-pick></div>
+                            <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.roles) + " in this period." : "Loading…" }}</p>
+                            <template v-else-if="P && P.data.roles && P.data.roles.length">
                             <div class="overflow-x-auto"><table class="w-full text-[13px] whitespace-nowrap">
                                 <thead><tr class="text-xs text-gray-500 text-left">
                                     <th class="font-normal py-1 pr-3">Role</th><th class="font-normal py-1 pr-3 text-right">Calls</th>
                                     <th class="font-normal py-1 pr-3 text-right">Cost</th><th class="font-normal py-1">Models</th>
                                 </tr></thead>
-                                <tbody><tr v-for="r in perfData.roles" :key="r.role" class="border-t border-gray-800 text-gray-300">
+                                <tbody><tr v-for="r in P.data.roles" :key="r.role" class="border-t border-gray-800 text-gray-300">
                                     <td class="py-1 pr-3" :title="ROLE_HELP[r.role] ? perfRole(r.role) + ': ' + ROLE_HELP[r.role] : r.role"><span :class="ROLE_HELP[r.role] ? 'cursor-help underline decoration-dotted decoration-gray-600 underline-offset-4' : ''">{{ perfRole(r.role) }}</span></td>
                                     <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString() }}</td>
                                     <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.cost) }}{{ r.calls_without_cost ? '+' : '' }}</td>
                                     <td class="py-1 text-xs text-gray-400 whitespace-normal">{{ Object.entries(r.models).sort((a, b) => b[1] - a[1]).map(([m, n]) => modelName(m) + ' ' + n).join(' · ') }}</td>
                                 </tr></tbody>
                             </table></div>
+                            </template>
                         </div>
+                        </template>
                         </template>
                     </template>
                     <div v-if="perfTip" ref="perfTipEl" class="cm-pf-tip" :style="{ left: perfTip.x + 'px', top: perfTip.y + 'px' }" role="tooltip">
@@ -1234,8 +1306,9 @@
                         </div>
                     </div>
                     <!-- v0.8: projects with their own models -->
-                    <div v-if="Object.keys(routingProjects).length" class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6 text-[14px]">
+                    <div class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6 text-[14px]">
                         <h3 class="font-bold text-gray-200 mb-2 flex items-center">Projects with their own models<help-tip text="These projects use their own Conductor, Simple or Complex model instead of the ones above. Change them on each project's page."></help-tip></h3>
+                        <p v-if="!Object.keys(routingProjects).length" class="text-gray-500">No project has its own models: all use the ones above. Choose a project's own models on its page (Dashboard → Project → Models).</p>
                         <div v-for="(own, name) in routingProjects" :key="name" class="flex flex-wrap items-center gap-x-3 gap-y-1 py-1 border-t border-gray-700/60 first:border-0">
                             <button @click="openProjectPage(name)" class="font-mono text-blue-300 hover:text-blue-200" :title="'Open the page of ' + name">{{ name }}</button>
                             <span v-for="k in ['conductor_model', 'simple_model', 'complex_model']" :key="k" v-show="own[k]" class="text-gray-400">{{ ({ conductor_model: 'Conductor', simple_model: 'Simple', complex_model: 'Complex' })[k] }}: <span class="text-gray-200">{{ own[k] === 'off' ? 'Off' : modelName(own[k]) }}</span></span>
