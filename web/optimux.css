@@ -120,6 +120,49 @@
 .cm-sv-dot-ref { fill: #86b6ef; }
 .cm-sv-dot-spent { fill: #2a78d6; }
 .cm-sv-pt:hover .cm-sv-cross, .cm-sv-pt:hover .cm-sv-dot { opacity: 1; }
-.cm-wt-col { fill: #2a78d6; }
-.cm-pf-col:focus { outline: none; }
-.cm-pf-col:focus .cm-pf-band { fill: rgba(148, 163, 184, .08); }
+
+/* v0.8 Dashboard charts (ported from OmniLatch p143-p151). One series, one colour, no legend;
+   text kept to the peak value and the first and last dates; the whole column (or tile, or a
+   wide band around a dot) is the hover and focus target; details in a tooltip. */
+.cm-cols-wrap { min-width: 0; }
+.cm-cols { position: relative; height: 150px; padding-top: 18px; border-bottom: 1px solid #374151; }
+.cm-cols-peak { position: absolute; top: 0; left: 0; font: 11px ui-monospace, monospace; color: #6b7280; }
+.cm-cols::before { content: ""; position: absolute; left: 0; right: 0; top: 18px; border-top: 1px dashed #1f2937; }
+.cm-cols-plot { position: relative; height: 100%; display: flex; align-items: stretch; gap: 2px; }
+.cm-col { flex: 1 1 0; min-width: 0; display: flex; align-items: flex-end; cursor: default; outline: none; border-radius: 4px 4px 0 0; }
+.cm-col i { display: block; width: 100%; background: #3b82f6; border-radius: 4px 4px 0 0; }
+.cm-col.on { background: rgba(59, 130, 246, .08); }
+.cm-col.on i, .cm-col:focus-visible i { background: #60a5fa; }
+.cm-col:focus-visible { box-shadow: 0 0 0 2px #60a5fa inset; }
+.cm-cols-axis { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: #6b7280; }
+.cm-col-tip { position: absolute; z-index: 5; top: calc(var(--y, 0) * 100%); left: calc(var(--at) * 100%); transform: translateX(8px);
+  min-width: 160px; max-width: 280px; padding: 8px 10px; background: #0b1220; border: 1px solid #374151; border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45); font-size: 12px; color: #d1d5db; pointer-events: none; display: flex; flex-direction: column; gap: 2px; }
+.cm-col-tip.left { transform: translateX(calc(-100% - 8px)); }
+.cm-col-tip b { font-weight: 600; color: #e5e7eb; }
+.cm-col-tip strong { font: 600 15px ui-monospace, monospace; color: #f3f4f6; margin-bottom: 2px; }
+.cm-col-tip span { display: flex; justify-content: space-between; gap: 12px; font-family: ui-monospace, monospace; }
+.cm-col-tip em { font-style: normal; font-family: ui-sans-serif, system-ui, sans-serif; color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-col-tip small { color: #6b7280; }
+.cm-chart-box { position: relative; }
+.cm-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.cm-hit { fill: transparent; outline: none; cursor: default; }
+.cm-hit:focus-visible { stroke: #60a5fa; stroke-width: 2; }
+.cm-hover-line { stroke: #4b5563; }
+.cm-ring { stroke: #111827; stroke-width: 2; }
+.cm-grid { stroke: #243041; stroke-width: 1; }
+.cm-axis { stroke: #374151; }
+.cm-chart-label { fill: #6b7280; font-size: 11px; }
+.cm-tile-label { fill: #0b1220; font: 600 12px ui-sans-serif, system-ui, sans-serif; pointer-events: none; }
+.cm-tile-value { fill: #0b1220; font: 12px ui-monospace, monospace; pointer-events: none; }
+/* A chart's own picker: quiet blue text with a ▾ of the same colour, no box */
+.cm-chart-pick { appearance: none; -webkit-appearance: none; border: 0; background: none; padding: 0 14px 0 0; color: #60a5fa; font-size: 13px; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right 5px top 55%, right 1px top 55%; background-size: 4px 4px; background-repeat: no-repeat; max-width: 14rem; text-overflow: ellipsis; }
+.cm-chart-pick:hover { color: #93c5fd; }
+.cm-chart-pick:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; border-radius: 3px; }
+.cm-chart-pick option { background: #111827; color: #e5e7eb; }
+/* Model status: the roles a model plays, as small badges that open Routing */
+.cm-role-badge { display: inline-flex; align-items: center; font: 600 10px/1.6 ui-sans-serif, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .04em;
+  padding: 0 6px; border-radius: 4px; border: 1px solid rgba(59, 130, 246, .3); background: rgba(59, 130, 246, .12); color: #bfdbfe; cursor: pointer; white-space: nowrap; }
+.cm-role-badge:hover { border-color: rgba(147, 197, 253, .7); }

@@ -221,7 +221,7 @@
                             <svg :width="perf.sv.W" :height="perf.sv.H" class="cm-pf-svg" role="img" aria-label="Spent against what the same calls would have cost on the reference model" @mouseleave="hideTip">
                                 <g v-for="g in perf.sv.grid" :key="'g' + g.y">
                                     <line :x1="perf.sv.left" :x2="perf.sv.W" :y1="g.y" :y2="g.y" class="cm-pf-grid"></line>
-                                    <text :x="perf.sv.left - 8" :y="g.y + 4" text-anchor="end" class="cm-pf-axis">{{ g.text }}</text>
+                                    <text :x="perf.sv.left" :y="g.y - 5" class="cm-pf-axis">{{ g.text }}</text>
                                 </g>
                                 <path :d="perf.sv.gapPath" class="cm-sv-gap"></path>
                                 <path :d="perf.sv.refPath" class="cm-sv-line cm-sv-ref"></path>
@@ -232,7 +232,7 @@
                                     <circle :cx="p.x" :cy="p.yRef" r="4" class="cm-sv-dot cm-sv-dot-ref"></circle>
                                     <circle :cx="p.x" :cy="p.ySpent" r="4" class="cm-sv-dot cm-sv-dot-spent"></circle>
                                 </g>
-                                <text v-for="l in perf.sv.xlabels" :key="'x' + l.x" :x="l.x" :y="perf.sv.H - 6" text-anchor="middle" class="cm-pf-axis">{{ l.text }}</text>
+                                <text v-for="l in perf.sv.xlabels" :key="'x' + l.x" :x="l.x" :y="perf.sv.H - 6" :text-anchor="l.anchor" class="cm-pf-axis">{{ l.text }}</text>
                             </svg>
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
                                 <div v-for="t in [['By role', perf.sv.roles], ['By project', perf.sv.projects]]" :key="t[0]" class="overflow-x-auto">
@@ -260,6 +260,16 @@
                                 <span v-if="perf.sv.v.escalations">{{ perf.sv.v.escalations.toLocaleString() }} escalations from before task records: the stuck model's work on those is not subtracted.</span>
                             </p>
                         </div>
+                        <!-- v0.8: does a model's cost and tokens follow its calls? A dot per model; no titles, the axes say what each one is -->
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" aria-label="Calls and cost by model">
+                            <scatter-plot label="Calls against cost, one dot per model" x-name="Calls" y-name="Cost" :fmt-x="fmtCount" :fmt-y="fmtUsd" :points="perf.scatters.callsCost"></scatter-plot>
+                        </div>
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" aria-label="Tokens and cost by model">
+                            <scatter-plot label="Tokens against cost, one dot per model" x-name="Tokens" y-name="Cost" :fmt-x="fmtCount" :fmt-y="fmtUsd" :points="perf.scatters.tokensCost"></scatter-plot>
+                        </div>
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" aria-label="Calls and tokens by model">
+                            <scatter-plot label="Calls against tokens, one dot per model" x-name="Calls" y-name="Tokens" :fmt-x="fmtCount" :fmt-y="fmtCount" :points="perf.scatters.callsTokens"></scatter-plot>
+                        </div>
                         <!-- v0.8: working time per request -->
                         <div v-if="perf.wt" class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" aria-label="Working time">
                             <h3 class="text-[15px] font-bold text-gray-200 flex items-center mb-3">Working time<help-tip wide>
@@ -280,17 +290,7 @@
                                     <div class="text-2xl font-mono text-gray-100 mt-1">{{ perf.wt.tm.totals.waits.toLocaleString() }}</div>
                                     <div class="text-xs text-gray-500 mt-1">counted {{ fmtDur(perf.wt.tm.totals.approval_ms) }}; you waited {{ fmtDur(perf.wt.tm.totals.wait_ms) }}</div></div>
                             </div>
-                            <svg v-if="perf.wt.cols" :width="perf.wt.width" :height="perf.wt.H" class="cm-pf-svg" role="img" :aria-label="'Working time per ' + perf.wt.per" @mouseleave="hideTip">
-                                <line x1="0" :x2="perf.wt.width" :y1="perf.wt.peakY" :y2="perf.wt.peakY" class="cm-pf-grid"></line>
-                                <text x="0" :y="perf.wt.peakY - 5" class="cm-pf-axis">{{ perf.wt.peakText }}</text>
-                                <g v-for="(c, i) in perf.wt.cols" :key="i" class="cm-pf-col" tabindex="0" @mousemove="showTip($event, c.tip)" @focus="showTipFor($event.target, c.tip)" @blur="hideTip">
-                                    <rect :x="c.x" :y="perf.wt.topPad" :width="c.w" :height="perf.wt.plotH" class="cm-pf-band"></rect>
-                                    <rect v-if="c.h" :x="c.x" :y="c.y" :width="c.w" :height="c.h" rx="2" class="cm-wt-col"></rect>
-                                </g>
-                                <text x="0" :y="perf.wt.H - 6" class="cm-pf-axis">{{ perf.wt.firstText }}</text>
-                                <text v-if="perf.wt.lastText" :x="perf.wt.width" :y="perf.wt.H - 6" text-anchor="end" class="cm-pf-axis">{{ perf.wt.lastText }}</text>
-                            </svg>
-                            <p v-else class="text-sm text-gray-500">No timed requests in this period yet.</p>
+                            <day-columns :label="'Working time per ' + perf.wt.per" :buckets="perf.wt.buckets" :per="perf.wt.per" :format="fmtDur" empty="No timed requests in this period yet."></day-columns>
                             <details v-if="!perfProject && perf.wt.tm.projects.length" class="mt-4">
                                 <summary class="cursor-pointer text-xs text-gray-400 hover:text-gray-200">Per project</summary>
                                 <div class="overflow-x-auto mt-2"><table class="w-full text-[13px]">
@@ -481,7 +481,7 @@
 
                         <!-- The same numbers as a table -->
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <h3 class="text-[15px] font-bold text-gray-200 mb-3">Every model</h3>
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-3">By Models</h3>
                             <div class="overflow-x-auto">
                                 <table class="w-full text-[13px] cm-pf-table whitespace-nowrap">
                                     <thead>
@@ -517,6 +517,22 @@
                                 </table>
                             </div>
                         </div>
+                        <!-- v0.8: calls and cost per role -->
+                        <div v-if="perfData.roles && perfData.roles.length" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-3">By Role</h3>
+                            <div class="overflow-x-auto"><table class="w-full text-[13px] whitespace-nowrap">
+                                <thead><tr class="text-xs text-gray-500 text-left">
+                                    <th class="font-normal py-1 pr-3">Role</th><th class="font-normal py-1 pr-3 text-right">Calls</th>
+                                    <th class="font-normal py-1 pr-3 text-right">Cost</th><th class="font-normal py-1">Models</th>
+                                </tr></thead>
+                                <tbody><tr v-for="r in perfData.roles" :key="r.role" class="border-t border-gray-800 text-gray-300">
+                                    <td class="py-1 pr-3" :title="ROLE_HELP[r.role] ? r.role + ': ' + ROLE_HELP[r.role] : r.role">{{ perfRole(r.role) }}</td>
+                                    <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString() }}</td>
+                                    <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.cost) }}{{ r.calls_without_cost ? '+' : '' }}</td>
+                                    <td class="py-1 text-xs text-gray-400 whitespace-normal">{{ Object.entries(r.models).sort((a, b) => b[1] - a[1]).map(([m, n]) => modelName(m) + ' ' + n).join(' · ') }}</td>
+                                </tr></tbody>
+                            </table></div>
+                        </div>
                     </template>
                     <div v-if="perfTip" ref="perfTipEl" class="cm-pf-tip" :style="{ left: perfTip.x + 'px', top: perfTip.y + 'px' }" role="tooltip">
                         <div class="cm-pf-tip-title">{{ perfTip.title }}<span v-if="perfTip.total" class="cm-pf-tip-total">{{ perfTip.total }}</span></div>
@@ -548,13 +564,11 @@
                         </div>
                     </details>
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-[15px] font-bold text-gray-200">Cost per day · last 30 days</h3>
-                            <div class="flex flex-wrap gap-3 text-xs text-gray-400">
-                                <span v-for="m in costChart.models" :key="m.id" class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm" :style="{ background: m.color }"></span>{{ modelName(m.id) }}</span>
-                            </div>
+                        <div class="flex items-center justify-between gap-3 mb-3">
+                            <h3 class="text-[15px] font-bold text-gray-200">Cost per day</h3>
+                            <chart-pick v-model="charts.ov.project" :options="projectsList" label="Cost per day: project"></chart-pick>
                         </div>
-                        <div v-html="costChart.svg"></div>
+                        <day-columns v-if="charts.ov.daily" label="Cost per day, last 30 days" :buckets="chartData.overview" :format="fmtUsd" empty="No usage in the last 30 days"></day-columns>
                     </div>
                     <div class="grid lg:grid-cols-2 gap-4">
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
@@ -566,25 +580,32 @@
                             </div>
                         </div>
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <div class="flex items-center justify-between mb-3"><h3 class="text-[15px] font-bold text-gray-200">Models</h3><button @click="openSettings('models')" class="text-[13px] text-blue-400 hover:text-blue-300">Manage</button></div>
-                            <div v-for="m in [...availableModels, ...setupModels]" :key="m.id" class="flex items-center justify-between py-1.5 text-[15px] border-b border-gray-800/60 last:border-0">
-                                <span class="text-gray-300 truncate">{{ m.name }} <span class="text-xs font-mono text-gray-600">{{ routingRole(m.id) }}</span></span>
-                                <span class="text-xs font-mono">
-                                    <span v-if="cooldowns[m.id]" class="text-yellow-400" :title="cooldowns[m.id].reason">cooldown</span>
-                                    <span v-else-if="setupModels.some(x => x.id === m.id)" class="text-gray-500">needs key</span>
-                                    <span v-else-if="modelNotices[m.id] && !modelNotices[m.id].ok" class="text-red-400">test failed</span>
-                                    <span v-else class="text-green-400">ready</span>
-                                </span>
-                            </div>
+                            <div class="flex items-center justify-between mb-3"><h3 class="text-[15px] font-bold text-gray-200">Recent chats</h3><button @click="openSettings('history')" class="text-[13px] text-blue-400 hover:text-blue-300">All chats</button></div>
+                            <div v-if="recentChats.length === 0" class="text-[15px] text-gray-500 italic">No chats yet.</div>
+                            <button v-for="c in recentChats" :key="c.id" @click="openChatFromDashboard(c.id)" class="w-full flex items-center justify-between py-2 text-[15px] border-b border-gray-800/60 last:border-0 hover:bg-gray-800/40 px-2 rounded">
+                                <span class="truncate text-gray-200 text-left">{{ c.title || 'Untitled chat' }} <span class="text-xs font-mono text-gray-500">· {{ projectLabel(c.project) }}</span><deleted-tag :at="deletedProjects[c.project] || 0"></deleted-tag></span>
+                                <span class="text-xs font-mono text-gray-500 flex-shrink-0 ml-3">{{ fmtAgo(c.updated) }} · {{ fmtCost(c.cost) }}</span>
+                            </button>
                         </div>
                     </div>
-                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                        <div class="flex items-center justify-between mb-3"><h3 class="text-[15px] font-bold text-gray-200">Recent chats</h3><button @click="openSettings('history')" class="text-[13px] text-blue-400 hover:text-blue-300">All chats</button></div>
-                        <div v-if="recentChats.length === 0" class="text-[15px] text-gray-500 italic">No chats yet.</div>
-                        <button v-for="c in recentChats" :key="c.id" @click="openChatFromDashboard(c.id)" class="w-full flex items-center justify-between py-2 text-[15px] border-b border-gray-800/60 last:border-0 hover:bg-gray-800/40 px-2 rounded">
-                            <span class="truncate text-gray-200 text-left">{{ c.title || 'Untitled chat' }} <span class="text-xs font-mono text-gray-500">· {{ projectLabel(c.project) }}</span><deleted-tag :at="deletedProjects[c.project] || 0"></deleted-tag></span>
-                            <span class="text-xs font-mono text-gray-500 flex-shrink-0 ml-3">{{ fmtAgo(c.updated) }} · {{ fmtCost(c.cost) }}</span>
-                        </button>
+                    <!-- v0.8: Model status on its own row, each model with the roles it plays -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" aria-label="Model status">
+                        <div class="flex items-center justify-between mb-3"><h3 class="text-[15px] font-bold text-gray-200">Model status</h3><button @click="openSettings('models')" class="text-[13px] text-blue-400 hover:text-blue-300">Models</button></div>
+                        <div v-if="![...availableModels, ...setupModels].length" class="text-[15px] text-gray-500 italic">No models configured.</div>
+                        <div v-for="m in [...availableModels, ...setupModels]" :key="m.id" class="flex items-center gap-3 py-2 border-b border-gray-800/60 last:border-0">
+                            <span :class="['w-2 h-2 rounded-full flex-shrink-0', cooldowns[m.id] || setupModels.some(x => x.id === m.id) ? 'bg-yellow-400' : (modelNotices[m.id] && !modelNotices[m.id].ok ? 'bg-red-400' : 'bg-green-400')]"></span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-[15px] text-gray-200 truncate">{{ m.name }}</span>
+                                <span class="block text-xs font-mono text-gray-500 truncate">{{ m.id }}</span>
+                                <span v-if="roleBadges(m.id).length" class="flex flex-wrap gap-1.5 mt-1"><button v-for="r in roleBadges(m.id)" :key="r" type="button" class="cm-role-badge" title="Opens Routing" @click="openSettings('routing')">{{ r }}</button></span>
+                            </span>
+                            <span class="text-xs font-mono flex-shrink-0">
+                                <span v-if="cooldowns[m.id]" class="text-yellow-400" :title="cooldowns[m.id].reason">cooldown</span>
+                                <span v-else-if="setupModels.some(x => x.id === m.id)" class="text-yellow-400">needs key</span>
+                                <span v-else-if="modelNotices[m.id] && !modelNotices[m.id].ok" class="text-red-400">test failed</span>
+                                <span v-else class="text-green-400">ready</span>
+                            </span>
+                        </div>
                     </div>
                 </div>
 
@@ -1945,17 +1966,42 @@
 
                 <!-- Tab Content: Usage -->
                 <div v-if="['usage', 'budgets', 'system'].includes(settingsTab)" class="overflow-y-auto flex-1 pr-2">
-                    <div v-if="settingsTab === 'usage'" class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-[15px] font-bold text-gray-200">Cost per day · last 30 days</h3>
-                            <select v-model="chartProject" @change="fetchDaily" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[13px] text-gray-200">
-                                <option value="" class="bg-gray-900">All projects</option>
-                                <option v-for="p in projectsList" :key="p" :value="p" class="bg-gray-900">{{ p }}</option>
-                            </select>
+                    <!-- v0.8: the Usage charts, last 30 days, each with its own project filter -->
+                    <div v-if="settingsTab === 'usage'" class="space-y-6 mb-6">
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+                                <h3 class="text-[15px] font-bold text-gray-200">{{ charts.cost.metric === 'cost' ? 'Cost' : 'Calls' }} per {{ chartData.per }}</h3>
+                                <div class="flex flex-col items-end gap-1.5">
+                                    <div class="inline-flex rounded-lg overflow-hidden border border-gray-700 text-[13px]" role="radiogroup" aria-label="Chart shows">
+                                        <button v-for="o in [['cost', 'Cost'], ['calls', 'Calls']]" :key="o[0]" type="button" role="radio" :aria-checked="charts.cost.metric === o[0]" @click="charts.cost.metric = o[0]" :class="['px-3 py-1', charts.cost.metric === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                                    </div>
+                                    <chart-pick v-model="charts.cost.project" :options="projectsList" label="Cost per day: project"></chart-pick>
+                                </div>
+                            </div>
+                            <day-columns v-if="charts.cost.perf" :label="(charts.cost.metric === 'cost' ? 'Cost' : 'Calls') + ' per ' + chartData.per" :buckets="chartData.timeline" :per="chartData.per"
+                                         :format="charts.cost.metric === 'cost' ? fmtUsd : fmtCalls" empty="No usage in the last 30 days"></day-columns>
                         </div>
-                        <div v-html="costChart.svg"></div>
-                        <div class="flex flex-wrap gap-3 text-xs text-gray-400 mt-2">
-                            <span v-for="m in costChart.models" :key="m.id" class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm" :style="{ background: m.color }"></span>{{ modelName(m.id) }}</span>
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <div class="flex items-center justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">Cost by model</h3>
+                                <chart-pick v-model="charts.model.project" :options="projectsList" label="Cost by model: project"></chart-pick></div>
+                            <tree-map v-if="chartData.byModel" label="Cost by model, as areas" :items="chartData.byModel" :format="fmtUsd"></tree-map>
+                        </div>
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <div class="flex items-center justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">Cost by role</h3>
+                                <chart-pick v-model="charts.role.project" :options="projectsList" label="Cost by role: project"></chart-pick></div>
+                            <tree-map v-if="chartData.byRole" label="Cost by role, as areas" :items="chartData.byRole" :format="fmtUsd"></tree-map>
+                        </div>
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-3">Cost by project</h3>
+                            <tree-map v-if="chartData.byProject" label="Cost by project, as areas" :items="chartData.byProject" :format="fmtUsd"></tree-map>
+                        </div>
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <div class="flex items-center justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">Tokens per day</h3>
+                                <chart-pick v-if="chartData.tokModels.length" :model-value="chartData.tokModel" @update:model-value="charts.tok.model = $event" :options="chartData.tokModels" all="" label="Tokens of model"></chart-pick></div>
+                            <template v-if="charts.tok.daily">
+                                <connected-dots v-if="chartData.tokModel" :label="'Tokens per day of ' + modelName(chartData.tokModel)" :points="chartData.tokPoints" :format="fmtTok"></connected-dots>
+                                <div v-else class="text-[15px] text-gray-500 italic">No tokens in the last 30 days</div>
+                            </template>
                         </div>
                     </div>
                     <div v-if="settingsTab === 'usage'" class="flex items-center justify-between mb-4">

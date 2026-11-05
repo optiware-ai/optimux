@@ -804,8 +804,14 @@ The price per token comes from your model settings or LiteLLM's price list. When
 
 - **Live**, under a running reply (**So far:**), and on the usage line of every reply.
 - **In the header**: the active project's month (and budget).
-- **Dashboard → Overview**: today, this month, the cache-hit rate, output and thinking, cost per day for the last 30 days, budgets, model status and recent chats.
-- **Dashboard → Usage**: totals for today, 7 days, this month or all time, broken down **by project, role, model, skill**, plus **skill drafting** and **memory updates**, with calls, input, cached, output, thinking, cost and average time. *Roles* are who made the call: `conductor`, `simple`, `complex`, `override` (a model you picked), `curator` (memory updates), `skill_draft`, `test`.
+- **Dashboard → Overview**: today, this month, the cache-hit rate, output and thinking, **Cost per day** for the last 30 days (with its own project filter), budgets, recent chats and **Model status**: every model with its status (ready, needs key, cooldown, test failed) and the roles it plays as small badges (CONDUCTOR, SIMPLE, COMPLEX); a badge opens Routing.
+- **How the charts read** (*v0.8*): one colour, no legend, and as little text as possible: the peak value on its line and the first and last dates. A chart starts on the first day with data and runs to today; a day without calls is an empty column. Hover a column, tile or dot (or move to it with **Tab**) for its details, the models first. A chart's own filter is the quiet blue *All projects ▾* at its top right.
+- **Dashboard → Usage**, charts for the last 30 days, each with its own project filter:
+  - **Cost per day** (or **Calls** per day, with the switch above the filter): one column per day, the models in the tooltip.
+  - **Cost by model** and **Cost by role**: treemaps, each tile sized by its cost, its name and cost inside when there is room; hover for the calls and its share.
+  - **Cost by project**: a treemap across all projects (no filter).
+  - **Tokens per day**: one model at a time (pick it at the top right), a dot per day, input, output and cached tokens in the tooltip.
+- **Dashboard → Usage**, tables: totals for today, 7 days, this month or all time, broken down **by project, role, model, skill**, plus **skill drafting** and **memory updates**, with calls, input, cached, output, thinking, cost and average time. *Roles* are who made the call: `conductor`, `simple`, `complex`, `override` (a model you picked), `curator` (memory updates), `skill_draft`, `test`, and since v0.8 `scout`.
 - **Task records** (bottom of Dashboard → Usage): one row per request you send (a message, **Escalate**, or a plan's Run): the tier and model, what the Conductor decided, whether it escalated and why, how it ended (`ok`, `step_limit`, `stuck`, `stopped`, `error`, `provider_error`, `budget_paused`, or `plan_<status>`), steps, calls, cost, time (and, since v0.8, how long it waited for your answers and how often: `wait_ms`, `waits`), files and lines changed, commands approved and rejected, the skill and the plan. **No message text**: the chat keeps it, and the `session` column links them. **Download CSV** exports them all; **Delete all…** removes them (chats and usage stay). They are kept on this machine for routing that learns from outcomes later; nothing is sent anywhere.
 - **👍 / 👎** under each finished reply: one click rates it, a second click clears it. The rating goes into that request's record and comes back when you reopen the chat.
 - **Dashboard → Performance**: cost, speed and reliability of every model, per project (see below).
@@ -815,7 +821,7 @@ The price per token comes from your model settings or LiteLLM's price list. When
 
 **Dashboard → Performance** answers one question: *which model gives you the most for your money?* Pick a period (7, 30 or 90 days, or all time) and a project, or all projects. Hover any bar, dot or cell for its numbers.
 
-- **What routing saved** (top card): what you **spent**, what the same calls **would have cost** if every one had gone to the Complex model, and the difference, **saved**, in dollars and percent. The chart shows both per day (per week for long periods); the shaded gap between the two lines is the saving. Two tables split it by role and by project. Read it like this:
+- **What routing saved** (top card): what you **spent**, what the same calls **would have cost** if every one had gone to the Complex model, and the difference, **saved**, in dollars and percent. The chart shows both per day (per week for long periods), from the first day with calls, with only the peak value and the first and last dates; the shaded gap between the two lines is the saving. Two tables split it by role and by project. Read it like this:
   - The reference is the Complex model **at the time of each call**, so changing models later doesn't rewrite the past.
   - The **Conductor** counts as pure extra cost (without routing it wouldn't run), so its row shows a negative saving.
   - It assumes the Complex model would have used the same tokens, and it compares prices only, not quality or speed.
@@ -831,7 +837,9 @@ The price per token comes from your model settings or LiteLLM's price list. When
 - **How long a call takes:** the line runs from fast calls (p10: 10% were faster) to slow ones (p90: 90% were faster), with the median as a dot. A long line means an unpredictable model. On the right, the output speed in tokens per second (the median over answers of 20 tokens or more).
 - **What the tokens are:** for each model, how much was cached input (cheapest), new input, output and thinking (dearest). A low cached share on a model you use a lot is worth a look.
 - **Where the money goes** (all projects): every project is a row and every model a column, with the spending in each cell (lighter means more), each project's total on the right and each model's total at the bottom. Hover a cell for its share of the project and of the model.
-- **Every model:** the same numbers as a table; click a column to sort. **$ / 1K out** is what a model cost for every 1,000 tokens it wrote, its input included: the price of its work. **Reliable** counts every failed attempt (retried ones too). **Stuck** counts escalations: the model hit the step limit or repeated itself, and the Complex model took over.
+- **Three scatterplots** (*v0.8*), a dot per model: calls against cost, tokens against cost, and calls against tokens. Each axis says what it is and its largest value; hover a dot for the model and its cost per call (or per 1,000 tokens, or tokens per call). A model far above the others costs more for the same work.
+- **By Models:** the same numbers as a table; click a column to sort. **$ / 1K out** is what a model cost for every 1,000 tokens it wrote, its input included: the price of its work. **Reliable** counts every failed attempt (retried ones too). **Stuck** counts escalations: the model hit the step limit or repeated itself, and the Complex model took over.
+- **By Role:** calls and cost per role, with the models that played it (hover a role for what it is).
 
 How it's measured: latency is the time from the request to the last token, thinking and tool calls included. Failures and escalations are recorded from v0.5 on, so older periods show them as 0. A model keeps its colour when you change the filters (colours follow all-time spending; after the 8th model, the rest are grey "Other" in the charts but listed in the table). Models are named without their provider (`claude-sonnet-5`, not `anthropic/claude-sonnet-5`); hover a name to see the provider, the server for a model with its own Base URL, and the full model id. When two models would read the same (the same model from two providers), the provider is added to the name. Everything is computed from this machine's own records.
 
@@ -889,8 +897,8 @@ Most of the cost is **input tokens resent on every step**. The levers below are 
 
 | Section | What you find there |
 |---|---|
-| **Overview** | Today and this month, cache-hit rate, output and thinking, cost per day (30 days), budgets, model status, recent chats. |
-| **Usage** | Tokens, cost and time per project, role (hover a role for what it is), model and skill, plus skill drafting and memory updates, for today, 7 days, this month or all time. |
+| **Overview** | Today and this month, cache-hit rate, output and thinking, cost per day (30 days), budgets, recent chats, model status with roles. |
+| **Usage** | Charts for 30 days (cost or calls per day, cost by model, role and project, tokens per day), then tokens, cost and time per project, role (hover a role for what it is), model and skill, plus skill drafting and memory updates, for today, 7 days, this month or all time. |
 | **Performance** | Cost, latency, speed, cache use and reliability of every model, per project, with charts and a sortable table. |
 | **Budgets** | Monthly limits per project (Block or Warn) and the cost warnings. |
 | **Projects** | Cost, budget, chats and memory per project; make one active, create, archive; restore or permanently delete archived projects. |

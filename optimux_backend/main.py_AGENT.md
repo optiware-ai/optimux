@@ -16,7 +16,7 @@
   - **Deleted while open:** if the open session is deleted from History, the next prompt starts a new one.
   - **REST:** `GET /api/sessions` (`project`, `all_projects`, `archived`, `q`), `POST /api/sessions/{id}/rename` `{title}`, `POST /api/sessions/{id}/archive` `{archived}`, and `POST /api/sessions/{id}/delete` `{confirm}`. Delete requires the session's title (or its id when untitled) and keeps the usage rows.
 - **Dashboard endpoints:**
-  - `GET /api/usage/daily?days=30&project=`: per day and model.
+  - `GET /api/usage/daily?days=30&project=&by=model|project`: per day and model, or per day and project (v0.8; other `by` values are 422).
   - `GET`/`POST /api/memory/project/{name}`: project memory; the name is validated like any project name, so `..` and hidden names are rejected.
   - `GET /api/projects/overview`: folders under the projects root plus any project with usage or chats, each with this month's and all-time cost, calls, chats, last activity, budget, and whether its folder still exists.
   - `GET /api/system`: `git describe` version, LiteLLM and Python versions, storage, the file layout (`paths`) and the latest file moves (`migrations`).

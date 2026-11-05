@@ -35,11 +35,24 @@ def test_daily_series_groups_by_local_day_and_model():
     assert {r["model"] for r in usage.daily(30, project="beta")} == {"c"}
 
 
+def test_daily_series_by_project():
+    """v0.8: Usage's Cost by project treemap groups per day and project."""
+    today = datetime.now().replace(hour=12)
+    usage.insert({"ts": today.timestamp(), "model": "g", "project": "alpha", "cost": 0.1})
+    usage.insert({"ts": today.timestamp(), "model": "c", "project": "alpha", "cost": 0.2})
+    usage.insert({"ts": today.timestamp(), "model": "g", "project": "beta", "cost": 0.5})
+    rows = usage.daily(30, by="project")
+    assert {r["project"]: (r["calls"], round(r["cost"], 2)) for r in rows} == {"alpha": (2, 0.3), "beta": (1, 0.5)}
+    assert all("model" not in r for r in rows)
+
+
 def test_daily_endpoint(client):
     usage.insert({"model": "g", "cost": 0.5})
     r = client.get("/api/usage/daily?days=7", headers=H)
     assert r.status_code == 200 and r.json()[0]["cost"] == 0.5
     assert client.get("/api/usage/daily").status_code == 401
+    assert "project" in client.get("/api/usage/daily?days=7&by=project", headers=H).json()[0]
+    assert client.get("/api/usage/daily?by=x", headers=H).status_code == 422
 
 
 def test_project_memory_round_trip_and_validation(mocker, client, tmp_path):

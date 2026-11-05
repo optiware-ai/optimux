@@ -264,12 +264,14 @@ def read_entries(project: str | None = None, since: float = 0) -> list[dict]:
     return out
 
 
-def daily(days: int = 30, project: str | None = None, now: float | None = None) -> list[dict]:
-    """Per local day and model for the last `days` days (today included):
-    calls, tokens and cost. Days without usage are omitted."""
+def daily(days: int = 30, project: str | None = None, now: float | None = None, by: str = "model") -> list[dict]:
+    """Per local day and model (or project, with by="project", v0.8) for the last
+    `days` days (today included): calls, tokens and cost. Days without usage are omitted."""
+    group = "COALESCE(project, '(unknown)')" if by == "project" else "model"
+    key = "project" if by == "project" else "model"
     now = now or time.time()
     start = datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days - 1)
-    sql = ("SELECT date(ts, 'unixepoch', 'localtime') AS day, model, COUNT(*) AS calls, "
+    sql = (f"SELECT date(ts, 'unixepoch', 'localtime') AS day, {group} AS {key}, COUNT(*) AS calls, "
            "SUM(prompt_tokens) AS prompt_tokens, SUM(completion_tokens) AS completion_tokens, "
            "SUM(cached_tokens) AS cached_tokens, COALESCE(SUM(cost), 0) AS cost, "
            "SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END) AS calls_without_cost "
@@ -280,7 +282,7 @@ def daily(days: int = 30, project: str | None = None, now: float | None = None) 
         args.append(project)
     conn = _connect()
     try:
-        rows = conn.execute(sql + " GROUP BY day, model ORDER BY day, model", args).fetchall()
+        rows = conn.execute(sql + f" GROUP BY day, {group} ORDER BY day, {group}", args).fetchall()
     finally:
         conn.close()
     return [dict(r) for r in rows]

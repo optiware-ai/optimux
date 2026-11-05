@@ -484,9 +484,11 @@ async def delete_session(sid: str, payload: SessionDelete):
 
 
 @app.get("/api/usage/daily")
-async def get_usage_daily(days: int = 30, project: str | None = None):
-    """Cost and tokens per day and model for charts."""
-    return usage_meter.daily(max(1, min(days, 366)), project)
+async def get_usage_daily(days: int = 30, project: str | None = None, by: str = "model"):
+    """Cost and tokens per day and model (or per day and project, by=project) for charts."""
+    if by not in ("model", "project"):
+        raise HTTPException(422, "by must be model or project.")
+    return usage_meter.daily(max(1, min(days, 366)), project, by=by)
 
 
 @app.get("/api/savings")

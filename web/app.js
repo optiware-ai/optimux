@@ -400,6 +400,217 @@ const ProjectForm = {
   </div>
 </form>`,
 };
+// ---- v0.8 Dashboard charts (ported from OmniLatch p143-p151) ----
+// Rules: one series and one colour, no legend; text kept to the peak value and the first
+// and last dates; the whole column (tile, or a band around a dot) is the hover and focus
+// target; the details are in a tooltip. Days from the first one with data to today, with
+// the empty ones shown as zeros.
+const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const shortDay = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+// buckets: [{bucket: 'YYYY-MM-DD', total, parts: [[name, value]], note?}] -> from the first with data to `end`, gaps empty
+function fillDays(buckets, step = 1, end = isoDay(new Date())) {
+    const got = new Map(buckets.map(b => [b.bucket, b]));
+    const first = (buckets.find(b => b.total > 0) || {}).bucket;
+    if (!first) return [];
+    const out = [];
+    const d = new Date(`${first}T12:00:00`);
+    for (let i = 0; i < 400 && isoDay(d) <= end; i++, d.setDate(d.getDate() + step)) {
+        out.push(got.get(isoDay(d)) || { bucket: isoDay(d), total: 0, parts: [] });
+    }
+    for (const b of buckets) if (b.bucket > end) out.push(b);       // a week bucket that ends after today
+    return out;
+}
+// The box's real width, so an SVG draws at 1:1 and its 11 px text stays 11 px
+const boxWidth = {
+    data: () => ({ boxW: 760, hover: null }),
+    mounted() {
+        if (typeof ResizeObserver === 'undefined') return;
+        this._ro = new ResizeObserver(([e]) => { const n = Math.round(e.contentRect.width); if (n > 0) this.boxW = n; });
+        if (this.$refs.box) this._ro.observe(this.$refs.box);
+    },
+    beforeUnmount() { if (this._ro) this._ro.disconnect(); },
+};
+const TIP_PARTS = 5;
+const DayColumns = {
+    props: { label: String, buckets: { type: Array, default: () => [] }, format: { type: Function, required: true },
+             per: { type: String, default: 'day' }, empty: { type: String, default: 'Nothing in this period' } },
+    data: () => ({ hover: null }),
+    computed: {
+        max() { return Math.max(0, ...this.buckets.map(b => b.total)); },
+        shown() { return this.hover == null ? null : this.buckets[this.hover]; },
+    },
+    methods: {
+        when(b) { return (this.per === 'week' ? 'Week of ' : '') + shortDay(b.bucket); },
+        tip(b) {
+            const parts = (b.parts || []).filter(p => p[1] > 0).sort((x, y) => y[1] - x[1]);
+            return { parts: parts.slice(0, TIP_PARTS), more: parts.length - TIP_PARTS };
+        },
+        aria(b) { return `${this.when(b)}: ${this.format(b.total)}` + this.tip(b).parts.map(([n, v]) => `; ${n} ${this.format(v)}`).join('') + (b.note || ''); },
+        height(b) { return `max(2px, ${100 * b.total / this.max}%)`; },
+    },
+    // Few days: columns no wider than 56 px, and the chart (with its dates) as wide as they are
+    template: `<div v-if="!buckets.length" class="text-[15px] text-gray-500 italic">{{ empty }}</div>
+    <div v-else class="cm-cols-wrap" :style="{ maxWidth: 'max(140px, ' + (buckets.length * 58) + 'px)' }">
+        <div class="cm-cols" role="img" :aria-label="label">
+            <span v-if="max > 0" class="cm-cols-peak">{{ format(max) }}</span>
+            <div class="cm-cols-plot">
+                <div v-for="(b, i) in buckets" :key="b.bucket" :class="['cm-col', hover === i ? 'on' : '']" tabindex="0" :aria-label="aria(b)" :data-day="b.bucket"
+                     @mouseenter="hover = i" @mouseleave="hover = null" @focus="hover = i" @blur="hover = null"><i v-if="b.total > 0" :style="{ height: height(b) }"></i></div>
+            </div>
+            <div v-if="shown" :class="['cm-col-tip', hover > buckets.length / 2 ? 'left' : '']" :style="{ '--at': (hover + 0.5) / buckets.length }" role="tooltip">
+                <b>{{ when(shown) }}</b><strong>{{ format(shown.total) }}</strong>
+                <span v-for="p in tip(shown).parts" :key="p[0]"><em>{{ p[0] }}</em>{{ format(p[1]) }}</span>
+                <small v-if="tip(shown).more > 0">and {{ tip(shown).more }} more</small>
+                <small v-if="shown.note">{{ shown.note.replace(/^ /, '') }}</small>
+            </div>
+        </div>
+        <div class="cm-cols-axis"><span>{{ shortDay(buckets[0].bucket) }}</span><span v-if="buckets.length > 1">{{ shortDay(buckets[buckets.length - 1].bucket) }}</span></div>
+    </div>`,
+    setup: () => ({ shortDay }),
+};
+// Squarified treemap (Bruls, Huizing, van Wijk): rows of tiles kept as close to square as it can
+function squarify(items, x, y, w, h) {
+    const total = items.reduce((n, i) => n + i.value, 0);
+    if (!items.length || total <= 0) return [];
+    const area = items.map(i => (i.value / total) * w * h);
+    const out = [];
+    let rx = x, ry = y, rw = w, rh = h, start = 0;
+    const worst = (row, side) => {
+        const s = row.reduce((a, b) => a + b, 0), mx = Math.max(...row), mn = Math.min(...row);
+        return Math.max((side * side * mx) / (s * s), (s * s) / (side * side * mn));
+    };
+    while (start < items.length) {
+        const side = Math.min(rw, rh);
+        let end = start + 1;
+        while (end < items.length && worst(area.slice(start, end + 1), side) <= worst(area.slice(start, end), side)) end++;
+        const row = area.slice(start, end), s = row.reduce((a, b) => a + b, 0);
+        if (rw >= rh) {                                   // a column on the left
+            const cw = s / rh; let cy = ry;
+            row.forEach((a, k) => { const th = a / cw; out.push({ item: items[start + k], x: rx, y: cy, w: cw, h: th }); cy += th; });
+            rx += cw; rw -= cw;
+        } else {                                          // a row on top
+            const ch = s / rw; let cx = rx;
+            row.forEach((a, k) => { const tw = a / ch; out.push({ item: items[start + k], x: cx, y: ry, w: tw, h: ch }); cx += tw; });
+            ry += ch; rh -= ch;
+        }
+        start = end;
+    }
+    return out;
+}
+const CHART_BLUE = '#3b82f6', CHART_BLUE_ON = '#93c5fd';
+// items: [{name, value, lines?}]; a name and value inside a tile only when it has room
+const Treemap = {
+    mixins: [boxWidth],
+    props: { label: String, items: { type: Array, default: () => [] }, format: { type: Function, required: true } },
+    computed: {
+        H: () => 260,
+        tiles() { return squarify(this.items.filter(i => i.value > 0).sort((a, b) => b.value - a.value), 0, 0, this.boxW, 260); },
+        shown() { return this.hover == null ? null : this.tiles[this.hover]; },
+    },
+    methods: {
+        fit(s, w) { const n = Math.floor((w - 14) / 7); return s.length <= n ? s : n > 3 ? s.slice(0, n - 1) + '…' : ''; },
+        fill(i) { return this.hover === i ? CHART_BLUE_ON : CHART_BLUE; },
+    },
+    template: `<div ref="box" class="cm-chart-box" @mouseleave="hover = null">
+        <div v-if="!tiles.length" class="text-[15px] text-gray-500 italic">Nothing in this period</div>
+        <svg v-else :viewBox="'0 0 ' + boxW + ' ' + H" role="img" :aria-label="label" class="cm-svg">
+            <g v-for="(t, i) in tiles" :key="t.item.name">
+                <rect :x="t.x + 1" :y="t.y + 1" :width="Math.max(0, t.w - 2)" :height="Math.max(0, t.h - 2)" rx="4" :fill="fill(i)" :fill-opacity="hover === i ? 1 : Math.max(0.45, 1 - i * 0.07)"></rect>
+                <text v-if="t.w > 70 && t.h > 40" class="cm-tile-label" :x="t.x + 8" :y="t.y + 18">{{ fit(t.item.name, t.w) }}</text>
+                <text v-if="t.w > 70 && t.h > 40" class="cm-tile-value" :x="t.x + 8" :y="t.y + 34">{{ format(t.item.value) }}</text>
+                <rect class="cm-hit" :x="t.x" :y="t.y" :width="t.w" :height="t.h" tabindex="0" :data-name="t.item.name" :aria-label="t.item.name + ': ' + format(t.item.value)"
+                      @mouseenter="hover = i" @focus="hover = i" @blur="hover = null"></rect>
+            </g>
+        </svg>
+        <div v-if="shown" :class="['cm-col-tip', shown.x + shown.w / 2 > boxW / 2 ? 'left' : '']" role="tooltip"
+             :style="{ '--at': (shown.x + shown.w / 2) / boxW, '--y': (shown.y + shown.h / 2) / H }">
+            <b>{{ shown.item.name }}</b><strong>{{ format(shown.item.value) }}</strong>
+            <small v-for="l in (shown.item.lines || [])" :key="l">{{ l }}</small>
+        </div>
+    </div>`,
+};
+// A dot per day joined in order (days with nothing are zeros); points: [{day, value, lines?}]
+const ConnectedScatter = {
+    mixins: [boxWidth],
+    props: { label: String, points: { type: Array, default: () => [] }, format: { type: Function, required: true } },
+    computed: {
+        g() {
+            const W = this.boxW, H = 200, top = 18, bottom = 22, pad = 8, plotH = H - top - bottom, plotW = W - 2 * pad, n = this.points.length;
+            const max = Math.max(1, ...this.points.map(p => p.value));
+            const x = (i) => pad + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+            const y = (v) => top + plotH - (v / max) * plotH;
+            const band = n === 1 ? plotW : plotW / (n - 1);
+            return { W, H, top, plotH, max, band, x, y,
+                     path: this.points.map((p, i) => `${i ? 'L' : 'M'}${x(i)},${y(p.value)}`).join('') };
+        },
+        shown() { return this.hover == null ? null : this.points[this.hover]; },
+    },
+    template: `<div ref="box" class="cm-chart-box" @mouseleave="hover = null">
+        <div v-if="!points.length" class="text-[15px] text-gray-500 italic">No calls in this period</div>
+        <svg v-else :viewBox="'0 0 ' + g.W + ' ' + g.H" role="img" :aria-label="label" class="cm-svg">
+            <line class="cm-grid" x1="0" :x2="g.W" :y1="g.top" :y2="g.top"></line>
+            <text class="cm-chart-label" x="0" :y="g.top - 5">{{ format(g.max) }}</text>
+            <line class="cm-axis" x1="0" :x2="g.W" :y1="g.top + g.plotH" :y2="g.top + g.plotH"></line>
+            <path :d="g.path" fill="none" stroke="${CHART_BLUE}" stroke-width="2"></path>
+            <g v-for="(p, i) in points" :key="p.day">
+                <line v-if="hover === i" class="cm-hover-line" :x1="g.x(i)" :x2="g.x(i)" :y1="g.top" :y2="g.top + g.plotH"></line>
+                <circle :cx="g.x(i)" :cy="g.y(p.value)" :r="hover === i ? 6 : 4" :fill="hover === i ? '${CHART_BLUE_ON}' : '${CHART_BLUE}'" class="cm-ring"></circle>
+                <rect class="cm-hit" :x="Math.max(0, g.x(i) - g.band / 2)" :y="g.top" :height="g.plotH" :width="g.band" tabindex="0" :data-day="p.day"
+                      :aria-label="shortDay(p.day) + ': ' + format(p.value)" @mouseenter="hover = i" @focus="hover = i" @blur="hover = null"></rect>
+            </g>
+            <text class="cm-chart-label" x="0" :y="g.H - 6">{{ shortDay(points[0].day) }}</text>
+            <text v-if="points.length > 1" class="cm-chart-label" :x="g.W" :y="g.H - 6" text-anchor="end">{{ shortDay(points[points.length - 1].day) }}</text>
+        </svg>
+        <div v-if="shown" :class="['cm-col-tip', g.x(hover) > g.W / 2 ? 'left' : '']" :style="{ '--at': g.x(hover) / g.W }" role="tooltip">
+            <b>{{ shortDay(shown.day) }}</b><strong>{{ format(shown.value) }}</strong>
+            <small v-for="l in (shown.lines || [])" :key="l">{{ l }}</small>
+        </div>
+    </div>`,
+    setup: () => ({ shortDay }),
+};
+// A dot per model; the axes say only what they are and their largest value. points: [{name, x, y, lines?}]
+const ScatterPlot = {
+    mixins: [boxWidth],
+    props: { label: String, points: { type: Array, default: () => [] }, xName: String, yName: String,
+             fmtX: { type: Function, required: true }, fmtY: { type: Function, required: true } },
+    computed: {
+        g() {
+            const W = this.boxW, H = 240, top = 22, bottom = 24, left = 8, right = 16, plotH = H - top - bottom, plotW = W - left - right;
+            const mx = Math.max(...this.points.map(p => p.x), 0) * 1.05 || 1, my = Math.max(...this.points.map(p => p.y), 0) * 1.05 || 1;
+            return { W, H, top, left, right, plotH, mx, my, x: (v) => left + (v / mx) * plotW, y: (v) => top + plotH - (v / my) * plotH };
+        },
+        shown() { return this.hover == null ? null : this.points[this.hover]; },
+    },
+    template: `<div ref="box" class="cm-chart-box" @mouseleave="hover = null">
+        <div v-if="!points.length" class="text-[15px] text-gray-500 italic">Nothing in this period</div>
+        <svg v-else :viewBox="'0 0 ' + g.W + ' ' + g.H" role="img" :aria-label="label" class="cm-svg">
+            <line class="cm-axis" :x1="g.left" :x2="g.left" :y1="g.top" :y2="g.top + g.plotH"></line>
+            <line class="cm-axis" :x1="g.left" :x2="g.W - g.right" :y1="g.top + g.plotH" :y2="g.top + g.plotH"></line>
+            <text class="cm-chart-label" :x="g.left" :y="g.top - 8">{{ yName }} · {{ fmtY(g.my) }}</text>
+            <text class="cm-chart-label" :x="g.W - g.right" :y="g.H - 6" text-anchor="end">{{ xName }} · {{ fmtX(g.mx) }}</text>
+            <g v-for="(p, i) in points" :key="p.name">
+                <circle :cx="g.x(p.x)" :cy="g.y(p.y)" :r="hover === i ? 8 : 6" :fill="hover === i ? '${CHART_BLUE_ON}' : '${CHART_BLUE}'" fill-opacity="0.85" class="cm-ring"></circle>
+                <circle class="cm-hit" :cx="g.x(p.x)" :cy="g.y(p.y)" r="16" tabindex="0" :data-name="p.name" :aria-label="p.name + ': ' + fmtX(p.x) + ', ' + fmtY(p.y)"
+                        @mouseenter="hover = i" @focus="hover = i" @blur="hover = null"></circle>
+            </g>
+        </svg>
+        <div v-if="shown" :class="['cm-col-tip', g.x(shown.x) > g.W / 2 ? 'left' : '']" :style="{ '--at': g.x(shown.x) / g.W, '--y': g.y(shown.y) / g.H }" role="tooltip">
+            <b>{{ shown.name }}</b>
+            <span><em>{{ xName }}</em>{{ fmtX(shown.x) }}</span>
+            <span><em>{{ yName }}</em>{{ fmtY(shown.y) }}</span>
+            <small v-for="l in (shown.lines || [])" :key="l">{{ l }}</small>
+        </div>
+    </div>`,
+};
+// A chart's own project filter: quiet blue text with its ▾, no box (the page-level pickers keep the boxed select)
+const ChartPick = {
+    props: { modelValue: String, options: { type: Array, default: () => [] }, label: String, all: { type: String, default: 'All projects' } },
+    emits: ['update:modelValue'],
+    template: `<select class="cm-chart-pick" :aria-label="label" :value="modelValue" @change="$emit('update:modelValue', $event.target.value)">
+        <option v-if="all" value="">{{ all }}</option>
+        <option v-for="o in options" :key="o.value === undefined ? o : o.value" :value="o.value === undefined ? o : o.value">{{ o.label === undefined ? o : o.label }}</option>
+    </select>`,
+};
 // fix25a: marks a deleted project whose chats, costs and memory were kept
 const DeletedTag = {
     props: { at: { type: Number, default: 0 } },
@@ -1066,21 +1277,35 @@ createApp({
         };
 
         // ---- Dashboard data (Overview, Projects, History page, System)
-        const dailyUsage = ref([]);
-        const chartProject = ref('');
         const recentChats = ref([]);
         const projectsOverview = ref([]);
         const historyPage = ref({ project: '', archived: false, q: '', period: 'all', sort: 'updated', desc: true });
         const historyPageList = ref([]);
         const systemInfo = ref(null);
         const newToken = ref('');
-        const CHART_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];  // validated for colour-blind readers on #111827
-
-        const fetchDaily = async () => {
-            const q = chartProject.value ? `&project=${encodeURIComponent(chartProject.value)}` : '';
-            try { const d = await (await fetch(`/api/usage/daily?days=30${q}`)).json(); dailyUsage.value = Array.isArray(d) ? d : []; }
-            catch (error) { console.error('Failed to load daily usage', error); }
+        // v0.8 Dashboard charts: each chart keeps its own project filter and data (last 30 days)
+        const charts = Vue.reactive({
+            ov: { project: '', daily: null },                  // Overview: Cost per day
+            cost: { project: '', metric: 'cost', perf: null }, // Usage: Cost (or Calls) per day
+            model: { project: '', daily: null },               // Usage: Cost by model
+            role: { project: '', perf: null },                 // Usage: Cost by role
+            proj: { daily: null },                             // Usage: Cost by project (across projects)
+            tok: { model: '', daily: null },                   // Usage: Tokens per day
+        });
+        const projQ = (p) => (p ? `&project=${encodeURIComponent(p)}` : '');
+        const loadChart = async (key) => {
+            const c = charts[key];
+            const url = { ov: `/api/usage/daily?days=30${projQ(c.project)}`, cost: `/api/analytics?days=30${projQ(c.project)}`,
+                          model: `/api/usage/daily?days=30${projQ(c.project)}`, role: `/api/analytics?days=30${projQ(c.project)}`,
+                          proj: '/api/usage/daily?days=30&by=project', tok: '/api/usage/daily?days=30' }[key];
+            const field = 'perf' in c ? 'perf' : 'daily';
+            try {
+                const res = await fetch(url);
+                if (res.ok) c[field] = await res.json();
+            } catch (error) { console.error('Failed to load a chart', key, error); }
         };
+        const loadCharts = (keys) => keys.forEach(loadChart);
+        ['ov', 'cost', 'model', 'role'].forEach(k => watch(() => charts[k].project, () => loadChart(k)));
         const fetchRecentChats = async () => {
             try { const d = await (await fetch('/api/sessions?all_projects=true')).json(); recentChats.value = Array.isArray(d) ? d.slice(0, 5) : []; }
             catch (error) { console.error('Failed to load recent chats', error); }
@@ -2002,47 +2227,67 @@ createApp({
             return new Date(ts * 1000).toLocaleDateString();
         };
 
-        // 30-day stacked bar chart (one bar per day, one colour per model), drawn as SVG
-        const costChart = Vue.computed(() => {
-            const days = [];
-            const today = new Date(); today.setHours(0, 0, 0, 0);
-            for (let i = 29; i >= 0; i--) {
-                const d = new Date(today); d.setDate(d.getDate() - i);
-                days.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-            }
-            const modelIds = [...new Set(dailyUsage.value.map(r => r.model))];
-            const models = modelIds.map((id, i) => ({ id, color: CHART_COLORS[i % CHART_COLORS.length] }));
-            const byDay = {};
-            dailyUsage.value.forEach(r => { (byDay[r.day] = byDay[r.day] || {})[r.model] = r.cost || 0; });
-            const totals = days.map(d => Object.values(byDay[d] || {}).reduce((a, b) => a + b, 0));
-            const max = Math.max(...totals, 0);
-            const W = 900, H = 180, left = 44, bottom = 22, top = 8;
-            const plotH = H - bottom - top, step = (W - left) / days.length, barW = Math.max(2, step * 0.7);
-            const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-            let svg = `<svg viewBox="0 0 ${W} ${H}" class="w-full h-44" preserveAspectRatio="none" role="img" aria-label="Cost per day">`;
-            [0, 0.5, 1].forEach(f => {
-                const y = top + plotH * (1 - f);
-                svg += `<line x1="${left}" x2="${W}" y1="${y}" y2="${y}" stroke="#1f2937" stroke-width="1"/>`;
-                svg += `<text x="${left - 6}" y="${y + 3}" text-anchor="end" font-size="10" fill="#6b7280" font-family="monospace">${esc(fmtCost(max * f))}</text>`;
-            });
-            days.forEach((d, i) => {
-                let y = top + plotH;
-                const x = left + i * step + (step - barW) / 2;
-                const parts = models.map(m => ({ m, v: (byDay[d] || {})[m.id] || 0 })).filter(p => p.v > 0);
-                const tip = `${d}: ${fmtCost(totals[i])}` + parts.map(p => `\n${modelName(p.m.id)}: ${fmtCost(p.v)}`).join('');
-                parts.forEach(p => {
-                    const h = max ? (p.v / max) * plotH : 0;
-                    y -= h;
-                    svg += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(h, 0.5)}" fill="${p.m.color}" rx="1"><title>${esc(tip)}</title></rect>`;
+        // v0.8: the data each Dashboard chart draws (see `charts`)
+        const callsLine = (n) => `${n} call${n === 1 ? '' : 's'}`;
+        const shareLine = (v, total) => (total ? `${Math.round(100 * v / total)}% of the cost` : '');
+        const sumBy = (rows, key) => {
+            const m = new Map();
+            (rows || []).forEach(r => { const x = m.get(r[key]) || { cost: 0, calls: 0 }; x.cost += r.cost || 0; x.calls += r.calls || 0; m.set(r[key], x); });
+            return m;
+        };
+        const chartData = Vue.computed(() => {
+            // Cost per day (Overview): one column per day, the models in the tooltip
+            const perDay = (rows) => {
+                const by = new Map();
+                (rows || []).forEach(r => {
+                    const b = by.get(r.day) || { bucket: r.day, total: 0, parts: [] };
+                    b.total += r.cost || 0;
+                    b.parts.push([modelName(r.model), r.cost || 0]);
+                    by.set(r.day, b);
                 });
-                if (i % 5 === 4 || i === days.length - 1) {
-                    svg += `<text x="${x + barW / 2}" y="${H - 6}" text-anchor="middle" font-size="10" fill="#6b7280" font-family="monospace">${d.slice(5)}</text>`;
-                }
-            });
-            if (!max) svg += `<text x="${(W + left) / 2}" y="${H / 2}" text-anchor="middle" font-size="12" fill="#6b7280">No usage in the last 30 days</text>`;
-            svg += '</svg>';
-            return { svg: optimuxSafeHtml(svg), models, max };
+                return fillDays([...by.values()].sort((x, y) => x.bucket.localeCompare(y.bucket)), 1);
+            };
+            // Cost or Calls per day (Usage), from the analytics timeline
+            const perf = charts.cost.perf;
+            const metric = charts.cost.metric;
+            const timeline = perf ? fillDays((perf.timeline || []).map(b => {
+                const parts = Object.entries(b.models).map(([m, x]) => [modelName(m), metric === 'cost' ? x.cost || 0 : x.calls || 0]);
+                return { bucket: b.bucket, parts, total: parts.reduce((n, p) => n + p[1], 0) };
+            }), perf.weekly ? 7 : 1) : [];
+            const treemap = (m, label) => {
+                const total = [...m.values()].reduce((n, x) => n + x.cost, 0);
+                return [...m].map(([name, x]) => ({ name: label(name), value: x.cost, lines: [callsLine(x.calls), shareLine(x.cost, total)].filter(Boolean) }));
+            };
+            const roles = (charts.role.perf && charts.role.perf.roles) || [];
+            const roleTotal = roles.reduce((n, r) => n + (r.cost || 0), 0);
+            // Tokens per day of one model (the model with most tokens first)
+            const tokRows = charts.tok.daily || [];
+            const tokTotals = new Map();
+            tokRows.forEach(r => tokTotals.set(r.model, (tokTotals.get(r.model) || 0) + (r.prompt_tokens || 0) + (r.completion_tokens || 0)));
+            const tokModels = [...tokTotals].filter(([, t]) => t > 0).sort((a, b) => b[1] - a[1]).map(([n]) => n);
+            const tokModel = tokModels.includes(charts.tok.model) ? charts.tok.model : (tokModels[0] || '');
+            const tokDays = fillDays(tokRows.filter(r => r.model === tokModel).map(r => ({ bucket: r.day, total: (r.prompt_tokens || 0) + (r.completion_tokens || 0),
+                parts: [['Input', r.prompt_tokens || 0], ['Output', r.completion_tokens || 0], ['Cached', r.cached_tokens || 0]] }))
+                .sort((a, b) => a.bucket.localeCompare(b.bucket)), 1);
+            return {
+                overview: perDay(charts.ov.daily),
+                timeline, per: perf && perf.weekly ? 'week' : 'day',
+                byModel: charts.model.daily ? treemap(sumBy(charts.model.daily, 'model'), modelName) : null,
+                byRole: charts.role.perf ? roles.map(r => ({ name: r.role, value: r.cost || 0,
+                    lines: [callsLine(r.calls), shareLine(r.cost || 0, roleTotal), ...(ROLE_HELP[r.role] ? [ROLE_HELP[r.role]] : [])].filter(Boolean) })) : null,
+                byProject: charts.proj.daily ? treemap(sumBy(charts.proj.daily, 'project'), projectLabel) : null,
+                tokModels: tokModels.map(m => ({ value: m, label: modelName(m) })), tokModel,
+                tokPoints: tokDays.map(b => ({ day: b.bucket, value: b.total, lines: b.parts.map(([n, v]) => `${n} ${v.toLocaleString()}`) })),
+            };
         });
+        const fmtCalls = (v) => `${v} call${v === 1 ? '' : 's'}`;
+        const fmtTok = (v) => `${Math.round(v).toLocaleString()} tokens`;
+        const fmtCount = (v) => Math.round(v).toLocaleString();
+        // Model status (Overview): the roles each model plays, as badges that open Routing
+        const roleBadges = (id) => {
+            const r = routingConfig.value || {};
+            return [['conductor_model', 'Conductor'], ['simple_model', 'Simple'], ['complex_model', 'Complex']].filter(([k]) => r[k] === id).map(([, n]) => n);
+        };
 
         const overviewKpis = Vue.computed(() => {
             const u = usageData.value;
@@ -2193,11 +2438,6 @@ createApp({
             });
         };
         const hideTip = () => { perfTip.value = null; };
-        // Keyboard focus on a chart column shows the same tooltip as the mouse (v0.8)
-        const showTipFor = (el, tip) => {
-            const r = el.getBoundingClientRect();
-            showTip({ clientX: r.left + r.width / 2, clientY: r.top + 8 }, tip);
-        };
         // 45 s, 3 min 10 s, 2 h 5 min (working time, v0.8)
         const fmtDur = (ms) => {
             const sec = Math.round((ms || 0) / 1000);
@@ -2516,29 +2756,32 @@ createApp({
             const sv = (() => {
                 const v = d.savings;
                 if (!v || !v.calls) return null;
-                const buckets = d.timeline.map(b => b.bucket);
+                const allKeys = d.timeline.map(b => b.bucket);
                 const keyOf = (day) => {
                     if (!d.weekly) return day;
                     const dt = new Date(day + 'T00:00:00');
                     dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
                     return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
                 };
-                const per = Object.fromEntries(buckets.map(k => [k, { spent: 0, reference: 0 }]));
+                const per = Object.fromEntries(allKeys.map(k => [k, { spent: 0, reference: 0 }]));
                 Object.entries(v.by_day).forEach(([day, x]) => {
                     const k = keyOf(day);
                     if (per[k]) { per[k].spent += x.spent; per[k].reference += x.reference; }
                 });
-                const H = 200, left = 56, right = 12, topPad = 10, bottom = 26;
+                // v0.8 chart rules: from the first day with calls to today (days without calls are zeros);
+                // only the peak value on its gridline and the first and last dates as text
+                const firstIdx = allKeys.findIndex(k => per[k].spent > 0 || per[k].reference > 0);
+                const buckets = firstIdx < 0 ? allKeys : allKeys.slice(firstIdx);
+                const H = 200, left = 8, right = 12, topPad = 18, bottom = 26;
                 const plotW = Math.max(100, W - left - right), plotH = H - topPad - bottom;
                 const max = Math.max(0, ...buckets.map(k => Math.max(per[k].spent, per[k].reference)));
-                const ticks = niceTicks(max || 0.01, 4), ymax = ticks[ticks.length - 1];
+                const ymax = max || 0.01;
                 const step = plotW / Math.max(1, buckets.length - 1);
                 const X = (i) => left + (buckets.length === 1 ? plotW / 2 : i * step);
                 const Y = (val) => topPad + plotH * (1 - val / ymax);
                 const line = (key) => buckets.map((k, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(per[k][key]).toFixed(1)}`).join('');
                 const gap = buckets.map((k, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(per[k].reference).toFixed(1)}`).join('')
                     + [...buckets].reverse().map((k, j) => `L${X(buckets.length - 1 - j).toFixed(1)},${Y(per[k].spent).toFixed(1)}`).join('') + 'Z';
-                const every = Math.max(1, Math.ceil(64 / Math.max(step, 1)));
                 const points = buckets.map((k, i) => ({
                     x: X(i), ySpent: Y(per[k].spent), yRef: Y(per[k].reference), band: X(i) - step / 2,
                     tip: { title: d.weekly ? 'Week of ' + k : new Date(k + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
@@ -2550,9 +2793,9 @@ createApp({
                 const refs = Object.keys(v.reference_models || {});
                 return {
                     W, H, left, topPad, plotH, step: Math.max(step, 8), points, spentPath: line('spent'), refPath: line('reference'), gapPath: gap,
-                    grid: ticks.map(t => ({ y: Y(t), text: fmtUsd(t) })),
-                    xlabels: buckets.map((k, i) => ({ k, i })).filter(({ i }) => (buckets.length - 1 - i) % every === 0)
-                        .map(({ k, i }) => ({ x: X(i), text: new Date(k + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })),
+                    grid: [{ y: Y(ymax), text: fmtUsd(max) }],
+                    xlabels: [...new Set([0, buckets.length - 1])].map(i => ({ x: X(i), anchor: buckets.length === 1 ? 'middle' : (i === 0 ? 'start' : 'end'),
+                        text: new Date(buckets[i] + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })),
                     v, maxRef, roles: rowsOf(v.by_role, perfRole), projects: rowsOf(v.by_project, (k) => k),
                     refName: refs.length === 1 ? (byId[refs[0]] || {}).name || base(refs[0]) : (refs.length ? refs.length + ' reference models' : base(v.today_reference || '')),
                     refTitle: refs.map(r => `${r}: ${v.reference_models[r]} calls`).join('\n'),
@@ -2562,34 +2805,25 @@ createApp({
             // One series of columns, from the first day with a request to today; the parts are in the tooltip.
             const wt = (() => {
                 const tm = d.time;
-                if (!tm || !tm.totals.requests) return tm ? { tm, cols: null } : null;
-                const all = tm.timeline;
-                const first = all.findIndex(b => b.requests > 0);
-                const days = first < 0 ? [] : all.slice(first);
-                const H = 150, topPad = 18, bottom = 22, plotH = H - topPad - bottom, gap = 2;
-                const colW = Math.min(56, Math.max(4, Math.floor(W / Math.max(1, days.length))));
-                const width = Math.min(W, colW * days.length);
-                const max = Math.max(1, ...days.map(b => b.counted_ms));
-                const peak = days.reduce((a, b, i) => b.counted_ms > days[a].counted_ms ? i : a, 0);
+                if (!tm) return null;
                 const secs = Math.round(tm.approval_ms / 1000);
-                const label = (k) => d.weekly ? 'Week of ' + new Date(k + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-                    : new Date(k + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-                const cols = days.map((b, i) => {
-                    const h = b.counted_ms ? Math.max(2, Math.round(plotH * b.counted_ms / max)) : 0;
-                    return { x: i * colW, w: Math.max(1, colW - gap), h, y: topPad + plotH - h,
-                             tip: { title: label(b.bucket), total: b.requests ? fmtDur(b.counted_ms) : '',
-                                    rows: b.requests ? [{ label: 'Models', value: fmtDur(b.model_ms) },
-                                                        { label: 'Commands and tools', value: fmtDur(b.other_ms) },
-                                                        { label: `Approvals (${secs} s each)`, value: fmtDur(b.approval_ms) },
-                                                        { label: `${b.requests} request${b.requests === 1 ? '' : 's'}` + (b.waits ? `, you waited ${fmtDur(b.wait_ms)}` : ''), value: '' }]
-                                                     : [{ label: 'No requests', value: '' }] } };
-                });
-                const short = (k) => new Date(k + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-                return { tm, H, topPad, plotH, width, cols, peakY: topPad + plotH - Math.round(plotH * days[peak].counted_ms / max),
-                         peakText: fmtDur(days[peak].counted_ms), firstText: short(days[0].bucket),
-                         lastText: days.length > 1 ? short(days[days.length - 1].bucket) : '', per: d.weekly ? 'week' : 'day' };
+                const buckets = fillDays(tm.timeline.map(b => ({
+                    bucket: b.bucket, total: b.counted_ms,
+                    parts: [['Models', b.model_ms], ['Commands and tools', b.other_ms], [`Approvals (${secs} s each)`, b.approval_ms]],
+                    note: b.requests ? ` in ${b.requests} request${b.requests === 1 ? '' : 's'}` + (b.waits ? `, you waited ${fmtDur(b.wait_ms)}` : '') : '',
+                })), d.weekly ? 7 : 1);
+                return { tm, buckets, per: d.weekly ? 'week' : 'day' };
             })();
-            return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, sv, wt, empty: !models.length,
+            // v0.8: three scatterplots, a dot per model (the model's name first in the tooltip)
+            const used = models.filter(m => m.calls > 0);
+            const tokensOf = (m) => (m.prompt_tokens || 0) + (m.completion_tokens || 0);
+            const withTokens = used.filter(m => tokensOf(m) > 0);
+            const scatters = {
+                callsCost: used.map(m => ({ name: m.name, x: m.calls, y: m.cost || 0, lines: [m.cost_per_call !== null ? fmtUsd(m.cost_per_call) + ' per call' : 'no known price'] })),
+                tokensCost: withTokens.map(m => ({ name: m.name, x: tokensOf(m), y: m.cost || 0, lines: [m.cost ? fmtUsd(m.cost / tokensOf(m) * 1000) + ' per 1K tokens' : 'no known price'] })),
+                callsTokens: withTokens.map(m => ({ name: m.name, x: m.calls, y: tokensOf(m), lines: [Math.round(tokensOf(m) / m.calls).toLocaleString() + ' tokens per call'] })),
+            };
+            return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, sv, wt, scatters, empty: !models.length,
                      maxShare: Math.max(0.0001, ...models.map(m => m.share)) };
         });
         const PERF_ROLES = { conductor: 'Conductor', scout: 'Scout', simple: 'Simple', complex: 'Complex', override: 'chosen by you', curator: 'memory',
@@ -2903,7 +3137,8 @@ createApp({
         };
         const enterSection = (id) => {
             if (['overview', 'usage', 'budgets', 'system'].includes(id)) fetchUsage();
-            if (['overview', 'usage'].includes(id)) fetchDaily();
+            if (id === 'overview') { loadCharts(['ov']); fetchProjectsList(); }
+            if (id === 'usage') { loadCharts(['cost', 'model', 'role', 'proj', 'tok']); fetchProjectsList(); }
             if (id === 'usage') fetchTaskStats();
             if (id === 'performance') fetchPerf();
             if (id === 'overview') { fetchRecentChats(); fetchDeleted(); fetchMonthSavings(); fetchOnboarding(); }
@@ -4199,15 +4434,15 @@ createApp({
             setThinking, copyThinking, storageInfo, fmtBytes,
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
-            memoryProject, memoryProjectExists, dailyUsage, chartProject, fetchDaily, recentChats, projectsOverview,
+            memoryProject, memoryProjectExists, charts, chartData, fmtCalls, fmtTok, fmtCount, roleBadges, recentChats, projectsOverview,
             snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             monthSavings, onboard, onboardSmall, onboardAct, onboardGo, onboardSave, rateReply, taskStats, taskDeleteAsk, deleteTasks, pageUpdated, reloadPage, dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
             rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
             historyPage, historySorted, fetchHistoryPage, sortHistory, systemInfo, newToken, rotateToken,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
-            openChatFromDashboard, switchProject, routingRole, fmtAgo, costChart, overviewKpis, writeClipboard,
-            perf, perfData, perfDays, showTipFor, fmtDur, perfProject, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, perfTipEl, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
+            openChatFromDashboard, switchProject, routingRole, fmtAgo, overviewKpis, writeClipboard,
+            perf, perfData, perfDays, fmtDur, perfProject, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, perfTipEl, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
             historyFiltered, resetHistoryFilters, lastPromptBefore, retryFrom, interruptionLabel, wsState, headerCostTitle,
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
@@ -4226,4 +4461,6 @@ createApp({
             projectLabel, viewer, viewerLanguages, openCmdViewer, onChatClick, closeViewer, rehighlightViewer, copyViewerSection
         };
     }
-}).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).component('onboard-steps', OnboardSteps).mount('#app');
+}).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).component('onboard-steps', OnboardSteps)
+  .component('day-columns', DayColumns).component('tree-map', Treemap).component('connected-dots', ConnectedScatter)
+  .component('scatter-plot', ScatterPlot).component('chart-pick', ChartPick).mount('#app');
