@@ -508,7 +508,7 @@
                                 <h3 class="text-[15px] font-bold text-gray-200">{{ perfMetric === 'cost' ? 'Spending' : 'Calls' }} per {{ P.data.weekly ? 'week' : 'day' }}, by model</h3>
                                 <div class="flex items-center gap-3"><div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="group" aria-label="Measure">
                                     <button v-for="m in [['cost', 'Cost'], ['calls', 'Calls']]" :key="m[0]" @click="perfMetric = m[0]"
-                                            :class="['text-xs px-2.5 py-0.5 rounded-md', perfMetric === m[0] ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200']">{{ m[1] }}</button>
+                                            :class="['text-xs px-2.5 py-0.5 rounded-md', perfMetric === m[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ m[1] }}</button>
                                 </div><chart-pick :model-value="perfPick.tl" @update:model-value="setPerfPick('tl', $event)" :options="perfProjects" label="Spending per day: project"></chart-pick></div>
                             </div>
                             <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? "No model calls in " + projectLabel(perfPick.tl) + " in this period." : "Loading…" }}</p>
@@ -2420,8 +2420,8 @@
                             <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
                                 <h3 class="text-[15px] font-bold text-gray-200">{{ charts.cost.metric === 'cost' ? 'Cost' : 'Calls' }} per {{ chartData.per }}</h3>
                                 <div class="flex flex-col items-end gap-1.5">
-                                    <div class="inline-flex rounded-lg overflow-hidden border border-gray-700 text-[13px]" role="radiogroup" aria-label="Chart shows">
-                                        <button v-for="o in [['cost', 'Cost'], ['calls', 'Calls']]" :key="o[0]" type="button" role="radio" :aria-checked="charts.cost.metric === o[0]" @click="charts.cost.metric = o[0]" :class="['px-3 py-1', charts.cost.metric === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                                    <div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="radiogroup" aria-label="Chart shows">
+                                        <button v-for="o in [['cost', 'Cost'], ['calls', 'Calls']]" :key="o[0]" type="button" role="radio" :aria-checked="charts.cost.metric === o[0]" @click="charts.cost.metric = o[0]" :class="['text-xs px-2.5 py-0.5 rounded-md', charts.cost.metric === o[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
                                     </div>
                                     <chart-pick v-model="charts.cost.project" :options="projectsList" label="Cost per day: project"></chart-pick>
                                 </div>
