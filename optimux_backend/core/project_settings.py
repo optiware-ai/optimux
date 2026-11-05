@@ -135,6 +135,26 @@ def projects_with_models() -> dict:
     return out
 
 
+def rename_model(old: str, new: str) -> list[str]:
+    """A model's ID changed (Models → Edit): the projects that chose it follow (v0.8).
+    Returns those projects' names."""
+    data = _read()
+    projects = data.get("projects") or {}
+    moved = []
+    for name, own in projects.items():
+        hit = False
+        for k in ROUTING_KEYS:
+            if isinstance(own, dict) and own.get(k) == old:
+                own[k] = new
+                hit = True
+        if hit:
+            moved.append(name)
+    if moved:
+        data["projects"] = projects
+        _write(data)
+    return sorted(moved)
+
+
 def check_name(project: str) -> str:
     if not isinstance(project, str) or not NAME_RE.match(project) or project in (".", ".."):
         raise ProjectSettingsError("Invalid project name.")

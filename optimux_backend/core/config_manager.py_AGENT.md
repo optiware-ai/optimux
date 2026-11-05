@@ -55,3 +55,6 @@
 
 ## effective_routing (v0.8)
 - `effective_routing(project=None)`: `get_routing_config()` with the project's own models (`project_settings.routing_overrides`; None = the active project, "" = none). `with_project_overrides` (settings) skips the routing keys. `usage.reference_model(project)` uses it, so a project's savings are compared with its own Complex model.
+
+## update_model (v0.8, OmniLatch p134)
+- `update_model(old_id, payload)`: every field of a configured model, its ID too. A new ID can't be another model's. The old entry is removed, `save_model` checks and saves the new one (thinking and instructions kept unless given; an emptied price removed); a renamed model keeps its place in models.json. Anything refused restores models.json as it was. A new ID moves Routing's roles and the projects' own models (`project_settings.rename_model`). Returns `{renamed, roles, projects}`.

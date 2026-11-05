@@ -142,3 +142,22 @@ def test_key_suggestion_endpoint(client):
     assert r == {"env_key": "APMIX_API_KEY"}
     r = client.get("/api/models/key-suggestion", params={"id": "openai/x", "base": "not a url"}, headers=H).json()
     assert r == {"env_key": "OPENAI_API_KEY"}
+
+
+def test_edit_and_duplicate_through_the_api(mocker, client, tmp_path):
+    import json
+    from optimux_backend.core import config_manager
+    f = tmp_path / "models.json"
+    f.write_text(json.dumps({"openai/gpt-5-mini": {"name": "Mini", "env_key": "OPENAI_API_KEY", "thinking": "high"}}))
+    mocker.patch.object(config_manager, "MODELS_FILE", str(f))
+    mocker.patch.object(config_manager, "ROUTING_FILE", str(tmp_path / "routing.json"))
+    r = client.post("/api/models/update", headers=H, json={"old_id": "openai/gpt-5-mini",
+                                                           "model": {"id": "openai/gpt-5-nano", "name": "Nano", "env_key": "OPENAI_API_KEY"}})
+    assert r.status_code == 200 and r.json()["renamed"] is True
+    assert json.loads(f.read_text())["openai/gpt-5-nano"]["thinking"] == "high"
+    # Duplicate = a new model with the same settings
+    r = client.post("/api/models", headers=H, json={"id": "openai/gpt-5-mini", "name": "Mini", "env_key": "OPENAI_API_KEY", "thinking": "high"})
+    assert r.status_code == 200 and set(json.loads(f.read_text())) == {"openai/gpt-5-nano", "openai/gpt-5-mini"}
+    bad = client.post("/api/models/update", headers=H, json={"old_id": "openai/gpt-5-nano", "model": {"id": "openai/gpt-5-mini", "name": "X"}})
+    assert bad.status_code == 400 and "already configured" in bad.json()["detail"]
+    assert client.post("/api/models/update", json={"old_id": "a", "model": {"id": "b", "name": "c"}}).status_code == 401

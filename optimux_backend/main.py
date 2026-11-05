@@ -579,6 +579,19 @@ async def create_model(payload: ModelPayload):
     return {"status": "success"}
 
 
+class ModelUpdatePayload(BaseModel):
+    old_id: str
+    model: ModelPayload
+
+
+@app.post("/api/models/update")
+async def update_model_api(payload: ModelUpdatePayload):
+    """v0.8: Models → Edit: every field of a configured model, its ID too (Routing's
+    roles and the projects' own models follow a new ID)."""
+    from optimux_backend.core.config_manager import update_model
+    return {"status": "success", **update_model(payload.old_id, payload.model)}
+
+
 @app.get("/api/models/key-suggestion")
 async def key_suggestion(id: str = "", base: str = ""):
     """For the "Other" model form (v0.4-5o): the key variable to propose for this

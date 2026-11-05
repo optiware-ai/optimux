@@ -677,6 +677,62 @@ def save_model(payload: ModelPayload):
     with open(MODELS_FILE, "w") as f:
         json.dump(models, f, indent=4)
 
+def update_model(old_id: str, payload: ModelPayload) -> dict:
+    """v0.8 (OmniLatch p134): change a configured model in place (Models → Edit): every
+    field of the form, its ID too. A new ID must not be another model's; Routing's roles
+    and the projects' own models that used the old ID follow it. Its thinking level and
+    instructions stay unless given; an emptied price is removed. Nothing changes when the
+    new values are refused. Returns {"renamed", "roles": [...], "projects": [...]}."""
+    models = get_all_models()
+    if old_id not in models:
+        raise ValidationError(f"Unknown model: {old_id}")
+    payload.id = (payload.id or "").strip()
+    renamed = payload.id != old_id
+    if renamed and payload.id in models:
+        raise ValidationError(f"{payload.id} is already configured: choose another Model ID, or edit that one.")
+    old = models[old_id]
+    if payload.thinking is None:
+        payload.thinking = old.get("thinking", "default")
+    if not payload.instructions:
+        payload.instructions = old.get("instructions", "")
+    with open(MODELS_FILE) as f:
+        saved = f.read()
+    # Saved without the old entry, so its own key and server never count as a conflict
+    del models[old_id]
+    with open(MODELS_FILE, "w") as f:
+        json.dump(models, f, indent=4)
+    try:
+        save_model(payload)
+        models = get_all_models()
+        for field in PRICE_FIELDS:                     # save_model only sets the prices it's given
+            if getattr(payload, field) is None:
+                models[payload.id].pop(field, None)
+        if renamed:                                    # keep the old place in the list
+            order = [payload.id if k == old_id else k for k in json.loads(saved)]
+            models = {**{k: models[k] for k in order if k in models},
+                      **{k: v for k, v in models.items() if k not in order}}
+        with open(MODELS_FILE, "w") as f:
+            json.dump(models, f, indent=4)
+    except Exception:
+        with open(MODELS_FILE, "w") as f:              # nothing changes when the new values are refused
+            f.write(saved)
+        raise
+    roles, projects = [], []
+    if renamed:
+        routing = get_routing_config()
+        for field in ("conductor_model", "simple_model", "complex_model"):
+            if routing.get(field) == old_id:
+                routing[field] = payload.id
+                roles.append(field.removesuffix("_model"))
+        if roles:
+            os.makedirs(os.path.dirname(ROUTING_FILE), exist_ok=True)
+            with open(ROUTING_FILE, "w") as f:
+                json.dump(routing, f, indent=4)
+        from optimux_backend.core import project_settings
+        projects = project_settings.rename_model(old_id, payload.id)
+    return {"renamed": renamed, "roles": roles, "projects": projects}
+
+
 def delete_model(model_id: str):
     models = get_all_models()
     if model_id in models:

@@ -3672,6 +3672,53 @@ createApp({
         };
 
         // ---- Models: prices, test
+        // v0.8: Edit or Duplicate a configured model in its own card (OmniLatch p134)
+        const modelEdit = Vue.reactive({ id: null, mode: 'edit', form: null, busy: false, error: '' });
+        const startModelEdit = (model, mode = 'edit') => {
+            const v = (k) => (model[k] === null || model[k] === undefined ? '' : String(model[k]));
+            modelEdit.id = model.id;
+            modelEdit.mode = mode;
+            modelEdit.error = '';
+            modelEdit.form = { id: model.id, name: mode === 'duplicate' ? `${model.name} (copy)` : model.name,
+                               env_key: model.env_key || '', api_key: '', api_base: model.api_base || '',
+                               input_cost_per_mtok: v('input_cost_per_mtok'), output_cost_per_mtok: v('output_cost_per_mtok'),
+                               cached_input_cost_per_mtok: v('cached_input_cost_per_mtok'), thinking: model.thinking || 'default' };
+            if (editingPrices.value[model.id]) delete editingPrices.value[model.id];
+            nextTick(() => { const el = document.querySelector(`[data-model-edit="${CSS.escape(model.id)}"] input`); if (el) el.focus(); });
+        };
+        const cancelModelEdit = () => { modelEdit.id = null; modelEdit.form = null; modelEdit.error = ''; };
+        const saveModelEdit = async () => {
+            const f = modelEdit.form, oldId = modelEdit.id;
+            if (!f || modelEdit.busy) return;
+            const id = f.id.trim(), name = f.name.trim(), envKey = f.env_key.trim().toUpperCase();
+            if (!id || !name) { modelEdit.error = 'The model ID and the name are needed.'; return; }
+            const all = [...availableModels.value, ...setupModels.value];
+            if (modelEdit.mode === 'duplicate' && all.some(m => m.id === id)) {
+                modelEdit.error = `${id} is already configured: give the copy another model ID (for example another model of the same provider).`;
+                return;
+            }
+            const model = { id, name, env_key: envKey, api_base: f.api_base.trim(), ...pricePayload(f),
+                            ...(modelEdit.mode === 'duplicate' ? { thinking: f.thinking } : {}) };
+            modelEdit.busy = true; modelEdit.error = '';
+            try {
+                const r = modelEdit.mode === 'edit'
+                    ? await fetch('/api/models/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ old_id: oldId, model }) })
+                    : await fetch('/api/models', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(model) });
+                const d = await readJson(r);
+                if (!r.ok) { modelEdit.error = detailText(d.detail, 'Not saved.'); return; }
+                if (envKey && f.api_key.trim()) {
+                    await fetch('/api/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                               body: JSON.stringify({ env_key: envKey, api_key: f.api_key.trim() }) });
+                }
+                const moved = [...(d.roles || []).map(x => x[0].toUpperCase() + x.slice(1)), ...(d.projects || []).map(x => `project ${x}`)];
+                cancelModelEdit();
+                await fetchConfig();
+                modelNotices.value[id] = { ok: true, text: modelEdit.mode === 'duplicate' || !oldId ? 'Saved.'
+                    : (d.renamed ? `Saved as ${id}.` + (moved.length ? ` ${moved.join(', ')} use${moved.length === 1 ? 's' : ''} it now.` : '') : 'Saved.') + ' Use Test to check it.' };
+                if (oldId !== id && modelEdit.mode === 'edit') delete modelNotices.value[oldId];
+            } catch (e) { modelEdit.error = 'Not saved: ' + e; }
+            finally { modelEdit.busy = false; }
+        };
         const pricePayload = (p) => {
             const out = {};
             for (const k of ['input_cost_per_mtok', 'output_cost_per_mtok', 'cached_input_cost_per_mtok']) {
@@ -5561,6 +5608,7 @@ createApp({
             devSrc, devHelp, setPreviewDev, saveDev, openFound, findKey,
             chatContext, removeChatContext, ctxMenu, ctxMenuEl, closeCtxMenu, runCtxItem, ctxMenuKey, onEditorMenu, previewFrame, pickCmd, onPreviewLoad, toggleStudioChat,
             routingProjects, fetchRoutingProjects,
+            modelEdit, startModelEdit, cancelModelEdit, saveModelEdit,
             projectPage, openProjectPage, loadProjectPage, setProjectSetting, ownValue, globalValue, boolOf, onOff, numberOf, saveProjectBudget, saveProjectMemory,
             curateProjectNow, projectRow, projectSkills,
             planModeNow, planModeTitle, cyclePlanMode,

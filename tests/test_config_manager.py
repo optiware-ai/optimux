@@ -227,3 +227,45 @@ def test_cards_show_litellms_prices_as_numbers(mocker, tmp_path):
     cards = {m["id"]: m for m in get_models_config()["available"]}
     assert cards["gpt-5-nano"]["list_prices"] == {"input": 0.05, "output": 0.4, "cached": 0.005}
     assert cards["openai/x"]["list_prices"] is None            # own prices: shown from the model's fields
+
+
+# ---------- Models → Edit (v0.8, OmniLatch p134)
+
+def test_edit_changes_every_field_in_place(models_file):
+    from optimux_backend.core.config_manager import update_model
+    models_file.write_text(json.dumps({
+        "openai/gpt-5-mini": {"name": "Mini", "env_key": "OPENAI_API_KEY", "thinking": "low", "instructions": "get a key",
+                              "input_cost_per_mtok": 0.25, "output_cost_per_mtok": 2},
+        "anthropic/claude-sonnet-5": {"name": "Sonnet", "env_key": "ANTHROPIC_API_KEY"}}))
+    r = update_model("openai/gpt-5-mini", ModelPayload(id="openai/gpt-5-mini", name="Mini 2", env_key="OPENAI_API_KEY",
+                                                         input_cost_per_mtok=0.3))
+    m = json.loads(models_file.read_text())["openai/gpt-5-mini"]
+    assert r == {"renamed": False, "roles": [], "projects": []}
+    assert m["name"] == "Mini 2" and m["input_cost_per_mtok"] == 0.3 and "output_cost_per_mtok" not in m   # emptied price removed
+    assert m["thinking"] == "low" and m["instructions"] == "get a key"                                      # kept
+
+
+def test_edit_can_rename_and_routing_and_projects_follow(models_file, mocker, tmp_path):
+    from optimux_backend.core import project_settings
+    from optimux_backend.core.config_manager import update_model
+    models_file.write_text(json.dumps({"openai/gpt-5-mini": {"name": "Mini", "env_key": "OPENAI_API_KEY"},
+                                       "anthropic/claude-sonnet-5": {"name": "Sonnet", "env_key": "ANTHROPIC_API_KEY"},
+                                       "gemini/flash": {"name": "Flash", "env_key": "GEMINI_API_KEY"}}))
+    routing = tmp_path / "routing.json"
+    routing.write_text(json.dumps({"conductor_model": "openai/gpt-5-mini", "simple_model": "openai/gpt-5-mini",
+                                   "complex_model": "anthropic/claude-sonnet-5"}))
+    mocker.patch.object(config_manager, "ROUTING_FILE", str(routing))
+    project_settings.update("site", {"complex_model": "openai/gpt-5-mini"})
+    r = update_model("openai/gpt-5-mini", ModelPayload(id="openai/gpt-5-nano", name="Nano", env_key="OPENAI_API_KEY"))
+    assert r == {"renamed": True, "roles": ["conductor", "simple"], "projects": ["site"]}
+    assert list(json.loads(models_file.read_text())) == ["openai/gpt-5-nano", "anthropic/claude-sonnet-5", "gemini/flash"]  # same place
+    assert json.loads(routing.read_text())["simple_model"] == "openai/gpt-5-nano"
+    assert project_settings.overrides("site") == {"complex_model": "openai/gpt-5-nano"}
+    before = models_file.read_text()
+    with pytest.raises(ValidationError, match="already configured"):
+        update_model("openai/gpt-5-nano", ModelPayload(id="gemini/flash", name="X"))
+    with pytest.raises(ValidationError):
+        update_model("openai/gpt-5-nano", ModelPayload(id="no-provider-id", name="X"))     # refused: nothing changes
+    with pytest.raises(ValidationError, match="Unknown model"):
+        update_model("nope", ModelPayload(id="openai/x", name="X"))
+    assert models_file.read_text() == before
