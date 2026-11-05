@@ -276,3 +276,5 @@ body.cm-resizing iframe { pointer-events: none; }
 .cm-dev-url:focus-within { border-color: #3b82f6; }
 .cm-dev-url input { width: 8rem; min-width: 3rem; background: transparent; border: 0; outline: none; color: #e5e7eb; font: inherit; }
 .cm-dev-bad { border-color: #b91c1c; }
+/* v0.8: a Performance card loading another project keeps its old view, dimmed */
+.cm-pf-loading { opacity: .55; transition: opacity .15s ease; }

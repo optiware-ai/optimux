@@ -2539,9 +2539,11 @@ createApp({
         const setPerfPick = async (key, project) => {
             perfPick[key] = project || '';
             if (!(perfPick[key] in perfCache)) {
-                const days = perfDays.value;
-                try { const d = await loadPerf(perfPick[key]); if (d && days === perfDays.value) perfCache[perfPick[key]] = d; }
+                const days = perfDays.value, want = perfPick[key];
+                perfBusy[key] = true;
+                try { const d = await loadPerf(want); if (d && days === perfDays.value) perfCache[want] = d; }
                 catch (error) { console.error('Failed to load model performance', error); }
+                finally { if (perfPick[key] === want) perfBusy[key] = false; }
             }
         };
         const perfProjects = Vue.computed(() => [...new Set([...(projectsList.value || []), ...((perfCache[''] && perfCache[''].projects) || [])])].sort());
@@ -2730,7 +2732,7 @@ createApp({
 
             // 2. Cost per call vs. typical latency (both log scales), bubble area = calls
             const sc = (() => {
-                const H = 300, left = 56, right = 16, topPad = 14, bottom = 40;
+                const H = 340, left = 56, right = 16, topPad = 20, bottom = 40;
                 const pts = models.filter(m => m.cost_per_call > 0 && m.p50_ms > 0);
                 const missing = models.length - pts.length;
                 if (!pts.length) return { W: half, H, pts: [], missing, empty: true };
@@ -2893,7 +2895,7 @@ createApp({
                 });
                 const calls = list.reduce((a, r) => a + r.calls, 0), cost = list.reduce((a, r) => a + r.cost, 0);
                 const labels = list.map(r => perfRole(r.role));
-                const nameW = fitW(labels, 90, 170), right = 52, rowH = 40, topPad = 6, bottom = 24, barH = 12;
+                const nameW = fitW(labels, 90, 170), right = 52, rowH = 44, topPad = 12, bottom = 24, barH = 12;
                 const plotW = Math.max(80, half - nameW - right);
                 const rows = list.map((r, i) => {
                     const cs = calls ? r.calls / calls : 0, ms = cost ? r.cost / cost : 0;
@@ -2999,7 +3001,14 @@ createApp({
         // Every fetched project's view (all of them recompute together: there are only a few)
         const perfViews = Vue.computed(() => Object.fromEntries(Object.keys(perfCache).map(p => [p, buildPerf(perfCache[p])])));
         const perf = Vue.computed(() => perfViews.value[''] || null);
-        const perfOf = (key) => perfViews.value[perfPick[key] || ''] || null;
+        // While a card's new project loads, it keeps showing the old one (dimmed), so nothing jumps
+        const perfShown = {};
+        const perfBusy = Vue.reactive({});
+        const perfOf = (key) => {
+            const v = perfViews.value[perfPick[key] || ''];
+            if (v) { perfShown[key] = v; return v; }
+            return perfShown[key] || null;
+        };
         const PERF_ROLES = { conductor: 'Conductor', scout: 'Scout', simple: 'Simple', complex: 'Complex', override: 'Chosen by you', curator: 'Memory',
                              skill_draft: 'Skill drafts', test: 'Tests', commit_message: 'Commit messages', planner: 'Planner' };
         const perfRole = (r) => PERF_ROLES[r] || r;
@@ -5566,7 +5575,7 @@ createApp({
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
             openChatFromDashboard, switchProject, routingRole, fmtAgo, overviewKpis, writeClipboard,
-            perf, perfData, perfDays, fmtDur, perfPick, perfOf, setPerfPick, perfProjects, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, perfTipEl, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
+            perf, perfData, perfDays, fmtDur, perfPick, perfOf, perfBusy, setPerfPick, perfProjects, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, perfTipEl, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
             historyFiltered, resetHistoryFilters, lastPromptBefore, retryFrom, interruptionLabel, wsState, headerCostTitle,
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
