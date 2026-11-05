@@ -448,6 +448,19 @@ An **archived** project's budget is **paused**: kept, so restoring the project b
 
 A setting left on **Follow global (…)** (or a number left empty, its placeholder showing the global value) uses the value set for all projects in Routing, Memory or Execution; changing that one still changes this project. Pick a value to give the project its own; choose **Follow global** again to drop it. The project's own values apply to everything that works in the project: its chats, plans, the scout, commands and memory updates. The **Plan** chip next to *New chat* shows the active project's plan mode and, when the project has its own, changes that one. The pages in the menu keep the view across all projects. The values are kept in `config/project_settings.json`.
 
+### The Studio
+
+*New in v0.8.* **Studio**, next to Dashboard in the top bar, opens the active project's files on a page of their own (the address ends in `#/studio`; **← Back to chat** or the logo closes it):
+
+- **The file tree** on the left: folders first, then files. Click a folder to open it. A letter shows what git sees: **M** changed, **U** new (not added to git), **A** added, **D** deleted, **C** a conflict; a **•** on a folder means something inside it changed. Files git ignores are grey. `.git` is never listed, and a link that leads out of the project can't be opened.
+- **The editor** in the middle: highlighting for HTML, CSS, JavaScript and TypeScript (JSX too), JSON, Markdown, Python, YAML, XML/SVG, SQL, shell, TOML, Go, Rust, INI and Dockerfiles; line numbers, folding, search (**Ctrl+F**), undo. **Save** (or **Ctrl+S**, **⌘S** on a Mac) writes the file in one step. A dot shows unsaved changes. If the file changed on disk since you opened it (a model edited it, for example), nothing is written: **Reload from disk** opens the new version (your changes are dropped, so copy them first if you need them). Text files up to 1 MB open; binary files don't. Saved keys show as `••••(NAME)` (🔒 *key hidden*): keep the mark and the key is written back when you save; you can't add a key here.
+- **The preview** on the right shows the result: the project's `index.html` (or the one in `dist/`, `build/`, `public/`, `out/`, `site/` or `docs/`), then each page, Markdown file or image you open while **Follow** is ticked. **⌂** goes back to the first page, **↻** reloads, **↗** opens it in a new tab. Saving reloads it. Markdown shows what you type, before you save.
+- **Editor** and **Preview** at the top hide one of the two; **↻ Refresh** reads the files again (after a model changed them).
+
+The preview shows the project's files as they are (static files): a project that needs a build shows its built output folder, if it has one. Pages that load files with absolute paths (`/assets/app.js`) don't find them; relative paths (`assets/app.js`) work.
+
+**How the preview is kept apart.** It runs in a sandbox with its own, empty origin: its scripts can run, but they can't read the Optimux page, your sign-in cookie or anything Optimux keeps, and their requests to Optimux carry no sign-in. It is served at a private address that only a signed-in page gets (it changes when Optimux restarts). It never serves `.git`, Optimux's own data, links out of the project, or files that hold secrets (`.env`, `*.pem`, `*.key`, SSH keys), and saved keys in the files it serves are hidden. It may load fonts, styles and scripts from the web, as pages often do.
+
 ## How routing works
 
 ### The two tiers

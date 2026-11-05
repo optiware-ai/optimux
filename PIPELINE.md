@@ -27,6 +27,7 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 ├── install.sh_AGENT.md
 ├── scripts/optimux              (the optimux command: start/stop/status/update/uninstall…)
 ├── scripts/build-css.sh         (rebuilds web/app.css with Tailwind)
+├── scripts/build-editor.sh      (rebuilds the Studio's editor, web/vendor/codemirror-*.min.js, from scripts/editor/entry.js)
 ├── scripts/smoke-test.py        (end-to-end check of an install with a fake model; CI "install" job)
 ├── docs/
 │   └── GUIDE.md                 (User guide, shown in Dashboard → Guide)
@@ -94,6 +95,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── store.py             (SQLite store: usage, sessions; backups)
 │       ├── workspace.py         (Project tools: list, create (form), switch, archive; restore and delete from the Dashboard; GitHub token and gh)
 │       ├── project_records.py   (Deleted projects: kept records listed as deleted, or forgotten)
+│       ├── project_files.py     (The Studio: the project's files, the editor's reads and saves, the preview)
+│       ├── project_files.py_AGENT.md
 │       ├── project_settings.py  (A project's own values for some global settings: Dashboard → Project)
 │       ├── project_settings.py_AGENT.md
 │       ├── project_records.py_AGENT.md
@@ -132,7 +135,7 @@ If you create a new module, you must scaffold its `_AGENT.md` file alongside it 
 
 ## 4. Optimux Style Guide
 - **Backend:** Python 3.10+ using `FastAPI`. All shell executions must go through `executor.py` asynchronously. State must never be saved to the active Git directory: every file Optimux keeps lives under `~/.optimux` (`OPTIMUX_HOME`), with its location taken from `paths.py`. Secrets go only in `~/.optimux/secrets.env`.
-- **Frontend:** Vue 3 (pinned copy in `web/vendor/`), styled with TailwindCSS compiled to `web/app.css` by `scripts/build-css.sh`. No bundler (Vite/Webpack). Templates live in `index.html`, logic in `web/app.js`. No inline scripts or styles and no CDNs: the Content Security Policy forbids them.
+- **Frontend:** Vue 3 (pinned copy in `web/vendor/`), styled with TailwindCSS compiled to `web/app.css` by `scripts/build-css.sh`. No bundler (Vite/Webpack). Templates live in `index.html`, logic in `web/app.js`. No inline scripts or styles and no CDNs: the Content Security Policy forbids them. The one exception (v0.8): the Studio's code editor adds `<style>` elements carrying the page's per-load style nonce.
 
 ## 5. Feature Documentation (TODOs)
 For every major feature implementation, the process is documented in a local `todos/` directory (git-ignored: it is the maintainer's working notes and isn't published) using three sequential files:

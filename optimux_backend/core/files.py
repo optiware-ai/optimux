@@ -200,6 +200,50 @@ def prepare_edit(project: str, path: str, old_text, new_text) -> dict:
     return _change(real, rel, "edit", before, before.replace(old_text, new_text, 1))
 
 
+class SaveConflict(FileToolError):
+    """The file on disk isn't the version the editor opened (or it appeared or vanished)."""
+
+
+def prepare_user_save(project: str, path: str, text, digest: str | None) -> dict | None:
+    """The change for a save from the Studio (v0.8, the user's own edit: no approval).
+
+    `digest` is the version the editor opened (project_files.read_file), or None
+    for a new file. Same scope as the models' tools (inside the project, never
+    .git or Optimux's data folder), text only, up to MAX_BYTES; but no checks
+    meant for model mistakes: the user may shrink a file or type any character.
+    Saved keys were shown as ••••(NAME): a mark where the file has the key is
+    written back as the key (_keep_keys), so a key never reaches the page.
+    Returns None when the text is already what the file holds."""
+    if not isinstance(text, str):
+        raise FileToolError("text must be a string.")
+    if "\0" in text:
+        raise FileToolError("the text contains a NUL character; only text files can be saved.")
+    if len(text.encode("utf-8", errors="surrogatepass")) > MAX_BYTES:
+        raise FileToolError(f"the text is over {MAX_BYTES} bytes.")
+    real, rel = resolve_target(project, path)
+    exists = os.path.lexists(real)
+    if digest is None and exists:
+        raise SaveConflict(f"{rel} already exists.")
+    if digest is not None and not exists:
+        raise SaveConflict(f"{rel} was deleted since you opened it.")
+    before = _read_text(real, rel) if exists else None
+    if digest is not None and _digest(before) != digest:
+        raise SaveConflict(f"{rel} changed on disk since you opened it.")
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        raise FileToolError("the text has a character that can't be saved as UTF-8.")
+    text = _keep_keys(rel, before, text)
+    if before == text:
+        return None
+    diff = list(difflib.unified_diff((before or "").splitlines(), text.splitlines(), lineterm="", n=0))
+    return {"abs": real, "path": rel, "op": "create" if before is None else "replace", "new_text": text,
+            "before_digest": _digest(before), "lines_before": 0 if before is None else _lines(before),
+            "lines_after": _lines(text),
+            "added": sum(1 for l in diff if l.startswith("+") and not l.startswith("+++")),
+            "removed": sum(1 for l in diff if l.startswith("-") and not l.startswith("---"))}
+
+
 def apply(change: dict) -> dict:
     """Write an approved change atomically. Refuses if the file changed (or
     appeared) since prepare, so an approval never overwrites newer work."""

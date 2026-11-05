@@ -3195,6 +3195,8 @@ createApp({
         };
         // Back/forward buttons and typed addresses
         const applyHash = () => {
+            if (location.hash.startsWith('#/studio')) { if (!studio.open) openStudio(); return; }
+            if (studio.open) closeStudio(true);
             const m = location.hash.match(/^#\/dashboard(?:\/([\w-]+))?/);
             if (m) {
                 const id = m[1] && dashboardSections.some(x => x.id === m[1]) ? m[1] : settingsTab.value;
@@ -3599,6 +3601,176 @@ createApp({
             }
         };
         const openBudgets = () => openSettings('budgets');
+
+        // ---- v0.8: the Studio. The active project's files (tree), a code editor and a sandboxed preview.
+        const EDITOR_SCRIPT = '/static/vendor/codemirror-6.43.15.min.js';   // built by scripts/build-editor.sh
+        const studio = Vue.reactive({
+            open: false, project: '', dirs: {}, opened: { '': true }, status: {}, branch: '', msg: null,
+            file: null,        // {path, text (as opened), digest, hidden, binary, too_large, size, lang}
+            dirty: false, saving: false, conflict: false, live: '',   // live: the editor's text (for the Markdown preview)
+            showEditor: true, showPreview: true, follow: true,
+            preview: { base: '', index: null, path: '', stamp: 0 },
+            editorError: '',
+        });
+        let editor = null;           // the CodeMirror handle (window.OptimuxEditor.create)
+        let editorLoading = null;
+        const editorHost = ref(null);
+        const loadEditor = () => {
+            if (window.OptimuxEditor) return Promise.resolve();
+            if (!editorLoading) editorLoading = new Promise((resolve, reject) => {
+                const el = document.createElement('script');
+                el.src = EDITOR_SCRIPT; el.onload = resolve; el.onerror = () => reject(new Error('The code editor could not be loaded.'));
+                document.head.appendChild(el);
+            });
+            return editorLoading;
+        };
+        const ensureEditor = async () => {
+            if (editor) return true;
+            try { await loadEditor(); } catch (e) { studio.editorError = String(e.message || e); return false; }
+            await nextTick();
+            if (!editorHost.value) return false;
+            const meta = document.querySelector('meta[name="optimux-style-nonce"]');
+            editor = window.OptimuxEditor.create(editorHost.value, {
+                label: 'Code editor', nonce: meta ? meta.content : '',
+                onChange: (text) => { studio.live = text; studio.dirty = !!studio.file && text !== studio.file.text; },
+                onSave: () => saveStudioFile(),
+            });
+            return true;
+        };
+        const studioFetch = async (url, opts) => {
+            const res = await fetch(url, opts);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw Object.assign(new Error(data.detail || `Request failed (${res.status})`), { status: res.status });
+            return data;
+        };
+        const loadStudioDir = async (path) => {
+            const d = await studioFetch(`/api/files/tree?path=${encodeURIComponent(path)}`);
+            studio.dirs[path] = d;
+            studio.project = d.project;
+        };
+        const loadStudioStatus = async () => {
+            try { const d = await studioFetch('/api/files/status'); studio.status = d.files || {}; studio.branch = d.branch || ''; }
+            catch (e) { studio.status = {}; studio.branch = ''; }
+        };
+        // Every folder that is open, again (after a save, a model's changes or Refresh)
+        const refreshStudio = async () => {
+            studio.msg = null;
+            try {
+                const keep = Object.keys(studio.opened).filter(p => studio.opened[p]);
+                studio.dirs = {};
+                for (const p of keep.sort((a, b) => a.length - b.length)) {
+                    try { await loadStudioDir(p); } catch (e) { if (p === '') throw e; delete studio.opened[p]; }
+                }
+                const pv = await studioFetch('/api/files/preview');
+                studio.preview.base = pv.base; studio.preview.index = pv.index;
+                if (!studio.preview.path || !studio.follow) studio.preview.path = studio.preview.path || pv.index || '';
+                studio.preview.stamp++;
+                loadStudioStatus();
+            } catch (e) { studio.msg = { ok: false, text: e.message }; }
+        };
+        const openStudio = async () => {
+            studio.open = true;
+            if (location.hash !== '#/studio') location.hash = '#/studio';
+            if (studio.project !== appSettings.value.active_project) resetStudio();
+            await refreshStudio();
+            ensureEditor();
+        };
+        const resetStudio = () => {
+            studio.dirs = {}; studio.opened = { '': true }; studio.file = null; studio.dirty = false; studio.conflict = false;
+            studio.live = ''; studio.preview = { base: '', index: null, path: '', stamp: 0 }; studio.status = {};
+            if (editor) { editor.show('(none)', '', ''); editor.forget([]); }
+        };
+        const closeStudio = (fromHash = false) => {
+            if (studio.dirty && !confirm(`${studio.file.path} has unsaved changes. Close the Studio anyway? (They stay in the editor until you open another file.)`)) {
+                if (fromHash) location.hash = '#/studio';
+                return;
+            }
+            studio.open = false;
+            if (!fromHash && location.hash.startsWith('#/studio')) location.hash = '#/';
+        };
+        const toggleStudioDir = async (path) => {
+            if (studio.opened[path]) { studio.opened[path] = false; return; }
+            studio.opened[path] = true;
+            if (!studio.dirs[path]) {
+                try { await loadStudioDir(path); } catch (e) { studio.opened[path] = false; studio.msg = { ok: false, text: e.message }; }
+            }
+        };
+        // The open folders as one flat list of rows: {entry, depth}
+        const studioRows = Vue.computed(() => {
+            const rows = [];
+            const walk = (path, depth) => {
+                const d = studio.dirs[path];
+                if (!d) return;
+                for (const e of d.entries) {
+                    rows.push({ e, depth });
+                    if (e.type === 'dir' && studio.opened[e.path]) walk(e.path, depth + 1);
+                }
+                if (d.truncated) rows.push({ e: { name: `… ${d.total - d.entries.length} more`, path: path + '/…more', type: 'more' }, depth });
+            };
+            walk('', 0);
+            return rows;
+        });
+        // A folder is marked when something inside it changed
+        const studioMark = (e) => {
+            const st = studio.status || {};
+            if (e.type === 'file') return st[e.path] || '';
+            const prefix = e.path + '/';
+            return Object.keys(st).some(k => k.startsWith(prefix)) ? '•' : '';
+        };
+        const PREVIEW_PAGE = /\.(html?|svg|png|jpe?g|gif|webp|avif|ico|pdf|txt)$/i;
+        const previewKind = (path) => (/\.(md|markdown)$/i.test(path || '') ? 'markdown' : (PREVIEW_PAGE.test(path || '') ? 'page' : ''));
+        const openStudioFile = async (path) => {
+            if (studio.dirty && studio.file && studio.file.path !== path
+                && !confirm(`${studio.file.path} has unsaved changes. Open ${path} and drop them?`)) return;
+            studio.msg = null; studio.conflict = false;
+            try {
+                const f = await studioFetch(`/api/files/read?path=${encodeURIComponent(path)}`);
+                const ok = await ensureEditor();
+                if (studio.file && editor && studio.file.path !== path && studio.dirty) editor.drop(studio.file.path);
+                studio.file = { ...f, lang: window.OptimuxEditor ? window.OptimuxEditor.languageName(path) : '' };
+                studio.dirty = false;
+                if (ok && f.text !== undefined) {
+                    editor.drop(path);                 // always the version on disk
+                    editor.show(path, f.text, path);
+                    studio.live = f.text;
+                }
+                if (studio.follow && previewKind(path)) { studio.preview.path = path; studio.preview.stamp++; }
+            } catch (e) { studio.msg = { ok: false, text: e.message }; }
+        };
+        const saveStudioFile = async () => {
+            const f = studio.file;
+            if (!f || !editor || f.text === undefined || studio.saving) return;
+            const text = editor.text();
+            studio.saving = true; studio.msg = null;
+            try {
+                const r = await studioFetch('/api/files/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: f.path, text, digest: f.digest, project: studio.project }) });
+                f.digest = r.digest; f.text = text; studio.dirty = false; studio.conflict = false;
+                studio.msg = { ok: true, text: r.changed ? `Saved ${r.path} (+${r.added} −${r.removed})` : 'No changes to save.' };
+                studio.preview.stamp++;                // the preview shows the new version
+                loadStudioStatus();
+            } catch (e) {
+                studio.conflict = e.status === 409;
+                studio.msg = { ok: false, text: e.message };
+            }
+            studio.saving = false;
+        };
+        const reloadStudioFile = () => { if (studio.file) { studio.dirty = false; openStudioFile(studio.file.path); } };
+        const previewSrc = Vue.computed(() => {
+            const p = studio.preview;
+            if (!p.base || !p.path || previewKind(p.path) !== 'page') return '';
+            return p.base + p.path.split('/').map(encodeURIComponent).join('/') + `?v=${p.stamp}`;
+        });
+        const previewMarkdown = Vue.computed(() => {
+            const p = studio.preview.path;
+            if (previewKind(p) !== 'markdown') return '';
+            const text = studio.file && studio.file.path === p ? studio.live : '';
+            return renderMarkdown(text || '');
+        });
+        const studioOpenInTab = () => { if (previewSrc.value) window.open(previewSrc.value, '_blank', 'noopener'); };
+        watch(() => appSettings.value.active_project, (n, old) => {
+            if (studio.open && n !== old && studio.project && n !== studio.project) { resetStudio(); refreshStudio(); }
+        });
 
         // ---- v0.8: the Project page, every setting of one project in one place.
         // Its own values replace the global ones for this project only ("Follow global" = no own value).
@@ -4549,6 +4721,8 @@ createApp({
             planAction, planStepMark, planStuckStep, projectOffer, openOfferedProject, planEdit, stepFolded, stepItems,
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
+            studio, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
+            saveStudioFile, reloadStudioFile, previewSrc, previewMarkdown, previewKind, studioOpenInTab,
             projectPage, openProjectPage, loadProjectPage, setProjectSetting, ownValue, globalValue, boolOf, onOff, numberOf, saveProjectBudget, saveProjectMemory,
             curateProjectNow, projectRow, projectSkills,
             planModeNow, planModeTitle, cyclePlanMode,

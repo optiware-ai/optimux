@@ -98,6 +98,7 @@ Optimux runs on your own machine, works on your own repositories, and treats **c
 - Per-model **thinking level** (Minimal to High).
 
 **Working on code**
+- **Studio**: the project's files in a tree, a code editor with highlighting (CodeMirror) and a live preview of the pages, in a sandbox that can't reach Optimux or your keys.
 - A terminal tool with **per-command approval**, exit codes and a syntax-highlighted output viewer; **autonomy levels** per project (Supervised, Checkpointed, Autonomous) for work that may run without asking.
 - **Projects** inside a **Workspace** folder: create one with a form (name, starter files, git, a private or public **GitHub** repository, description), from the **+** button for free or by asking the model, which fills the form in for you.
 - **GitHub set up from the web interface** (or the installer): a token checked with GitHub before it's saved, used only to create or clone repositories, never visible to model-run commands.
@@ -335,7 +336,7 @@ optimux/
 ├── web/                     app.js, the sign-in page, styles, pinned libraries (vendor/)
 ├── deploy/                  running on a server: systemd unit, Caddyfile, AppArmor profile
 ├── install.sh               the one-line installer (local or server) and the optimux command's logic
-├── scripts/optimux          the optimux command; scripts/build-css.sh rebuilds web/app.css
+├── scripts/optimux          the optimux command; scripts/build-css.sh rebuilds web/app.css; scripts/build-editor.sh the Studio's editor
 ├── docs/
 │   ├── GUIDE.md             the user guide (also shown in the app)
 │   └── images/              screenshots and diagrams

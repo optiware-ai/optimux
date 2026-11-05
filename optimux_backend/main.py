@@ -2,11 +2,12 @@ import asyncio
 import hashlib
 import os
 import json
+import secrets
 import time
 import traceback
 import uuid
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 # Import from the modular core
@@ -49,6 +50,7 @@ from optimux_backend.core import planner
 from optimux_backend.core import scout as scout_lib
 from optimux_backend.core import autonomy as autonomy_lib
 from optimux_backend.core import project_settings as project_settings_lib
+from optimux_backend.core import project_files as files_studio
 from optimux_backend.core import auth
 from optimux_backend.core import sessions as chat_store
 from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
@@ -183,15 +185,21 @@ def same_origin(request: Request) -> bool:
     return bool(origin) and origin != "null" and origin_allowed(origin, request.headers.get("host"))
 
 
-def security_headers(request, response) -> None:
+def page_csp(request, style_nonce: str = "") -> str:
+    """The Content-Security-Policy of Optimux's own pages. 'unsafe-eval' is needed by
+    Vue's in-page template compiler; no inline or remote scripts are allowed, so injected
+    HTML can't run code. style_nonce (v0.8, the main page only): the Studio's code editor
+    adds its styles as <style> elements carrying this nonce; no other inline style runs."""
     host = request.headers.get("host", "")
     ws = f" ws://{host} wss://{host}" if host else ""
-    # 'unsafe-eval' is needed by Vue's in-page template compiler; no inline or
-    # remote scripts are allowed, so injected HTML can't run code.
-    response.headers.setdefault("Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' data:; "
-        f"font-src 'self'; connect-src 'self'{ws}; object-src 'none'; base-uri 'none'; "
-        "form-action 'self'; frame-ancestors 'none'")
+    nonce = f" 'nonce-{style_nonce}'" if style_nonce else ""
+    return ("default-src 'self'; script-src 'self' 'unsafe-eval'; " f"style-src 'self'{nonce}; img-src 'self' data:; "
+            f"font-src 'self'; connect-src 'self'{ws}; object-src 'none'; base-uri 'none'; "
+            "form-action 'self'; frame-src 'self'; frame-ancestors 'none'")
+
+
+def security_headers(request, response) -> None:
+    response.headers.setdefault("Content-Security-Policy", page_csp(request))
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
@@ -224,7 +232,8 @@ async def guard(request: Request, call_next):
     browser (session cookie) or the access token (Bearer header, for scripts)."""
     path = request.url.path
     request.state.login_id = None
-    if not (path.startswith("/static/") or path in PUBLIC_PATHS):
+    # /preview/ checks its own token (v0.8, the Studio): a sandboxed preview sends no sign-in
+    if not (path.startswith("/static/") or path in PUBLIC_PATHS or path.startswith("/preview/")):
         bearer = bearer_from_header(request.headers.get("authorization"))
         ip = client_ip(request)
         if bearer:
@@ -267,6 +276,110 @@ async def guard(request: Request, call_next):
 
 
 RESTORE_ALLOWED = ("/api/restore/", "/api/snapshots")
+
+
+# ---- The Studio (v0.8): the active project's files, an editor and a preview
+
+from pydantic import BaseModel  # noqa: E402  (also imported further down, with the other payloads)
+
+def _files_error(e: "files_studio.FilesError"):
+    raise HTTPException(e.status, str(e))
+
+
+def _studio_root() -> tuple[str, str]:
+    try:
+        return files_studio.active_project()
+    except files_studio.FilesError as e:
+        _files_error(e)
+
+
+@app.get("/api/files/tree")
+async def files_tree(path: str = ""):
+    """One folder of the active project (lazy: the page asks for a folder when it opens)."""
+    name, root = _studio_root()
+    try:
+        return {"project": name, **await asyncio.to_thread(files_studio.list_dir, root, path)}
+    except files_studio.FilesError as e:
+        _files_error(e)
+
+
+@app.get("/api/files/status")
+async def files_status():
+    """Git markers for the whole active project (changed, new, deleted files)."""
+    name, root = _studio_root()
+    return {"project": name, **await asyncio.to_thread(files_studio.git_status, root)}
+
+
+@app.get("/api/files/read")
+async def files_read(path: str):
+    name, root = _studio_root()
+    try:
+        return {"project": name, **await asyncio.to_thread(files_studio.read_file, root, path)}
+    except files_studio.FilesError as e:
+        _files_error(e)
+
+
+class FileSavePayload(BaseModel):
+    path: str
+    text: str
+    digest: str | None = None        # the version the editor opened; None creates a new file
+    project: str = ""                # the project the editor opened it in (a switch meanwhile is refused)
+
+
+@app.post("/api/files/save")
+async def files_save(payload: FileSavePayload):
+    name, root = _studio_root()
+    if payload.project and payload.project != name:
+        raise HTTPException(409, f"The active project is now {name or 'none'}; this file is from {payload.project}. "
+                                 "Copy your text, then reopen the file.")
+    try:
+        result = await asyncio.to_thread(files_studio.save_file, root, payload.path, payload.text, payload.digest)
+    except files_studio.FilesError as e:
+        _files_error(e)
+    if result.get("changed"):
+        await _broadcast({"type": "file_saved", "project": name, "path": result["path"]})
+    return {"project": name, **result}
+
+
+@app.get("/api/files/preview")
+async def files_preview():
+    """Where the active project's preview is served, and the page it opens first."""
+    name, root = _studio_root()
+    return {"project": name, "base": files_studio.preview_base(name),
+            "index": await asyncio.to_thread(files_studio.find_index, root)}
+
+
+# The preview runs with an opaque origin (CSP sandbox without allow-same-origin): its
+# scripts can't reach Optimux's pages, cookies or storage. It may load what a page
+# usually needs from the web (fonts, CDNs); it may not frame Optimux or be framed by others.
+PREVIEW_CSP = ("sandbox allow-scripts allow-forms allow-popups allow-modals; "
+               "default-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https:; "
+               "style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; "
+               "media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; "
+               "base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
+
+
+@app.get("/preview/{project}/{token}/{path:path}")
+async def preview_file(request: Request, project: str, token: str, path: str = ""):
+    if not files_studio.preview_ok(project, token):
+        raise HTTPException(404, "Not found.")
+    try:
+        root = files_studio.project_dir(project)
+        # A folder without its slash: redirect, so the page's relative links resolve inside it
+        if path and not path.endswith("/") and os.path.isdir(os.path.join(root, path)):
+            return RedirectResponse(request.url.path + "/", status_code=307,
+                                    headers={"Content-Security-Policy": PREVIEW_CSP})
+        real, ctype = await asyncio.to_thread(files_studio.preview_target, root, path)
+        text = await asyncio.to_thread(files_studio.preview_text, real, ctype)
+    except files_studio.FilesError as e:
+        return PlainTextResponse(str(e), status_code=e.status,
+                                 headers={"Content-Security-Policy": PREVIEW_CSP, "X-Frame-Options": "SAMEORIGIN"})
+    headers = {"Content-Security-Policy": PREVIEW_CSP, "X-Frame-Options": "SAMEORIGIN",
+               "Cross-Origin-Resource-Policy": "cross-origin", "Cache-Control": "no-store"}
+    if text is not None:
+        media = ctype + ("; charset=utf-8" if ctype.startswith("text/") else "")
+        return Response(text, media_type=media, headers=headers)
+    return FileResponse(real, media_type=ctype, headers=headers)
 
 
 @app.exception_handler(ScopeError)
@@ -4361,6 +4474,10 @@ async def get_guide():
 
 
 @app.get("/")
-async def get():
+async def get(request: Request):
     with open(os.path.join(REPO_DIR, "index.html"), "r") as f:
-        return HTMLResponse(f.read())
+        html = f.read()
+    # v0.8: a fresh style nonce for the Studio's code editor, in the CSP and in a <meta> the page reads
+    nonce = secrets.token_urlsafe(16)
+    html = html.replace("<head>", f'<head>\n    <meta name="optimux-style-nonce" content="{nonce}">', 1)
+    return HTMLResponse(html, headers={"Content-Security-Policy": page_csp(request, nonce)})

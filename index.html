@@ -89,12 +89,89 @@
                 <button @click="openSettings('guide')" class="text-sm w-8 h-8 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition flex items-center justify-center" title="Guide: how Optimux works, costs, and how to spend less">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </button>
+                <button @click="openStudio" :disabled="!appSettings.active_project" class="text-sm px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 disabled:opacity-40 disabled:hover:bg-transparent transition flex items-center gap-1.5" :title="appSettings.active_project ? 'Studio: browse and edit ' + appSettings.active_project + '\'s files, and see the result' : 'Studio: open a project first'">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                    Studio
+                </button>
                 <button @click="openSettings()" class="text-sm px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition flex items-center gap-1.5" title="Dashboard: usage, budgets, models and settings">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-3a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z"></path></svg>
                     Dashboard
                 </button>
             </div>
         </header>
+
+        <!-- v0.8: the Studio, full page over the chat: the project's files, a code editor and a preview -->
+        <div v-show="studio.open" class="fixed inset-0 z-40 bg-gray-950 flex flex-col text-gray-200" role="region" aria-label="Studio">
+            <div class="flex items-center gap-3 px-4 py-2 border-b border-gray-800 flex-shrink-0">
+                <a href="#/" @click.prevent="closeStudio()" title="Close the Studio and go back to the chat" class="text-lg font-bold tracking-wide flex items-center gap-2 rounded hover:opacity-80"><img src="/static/logo.svg" alt="" class="w-6 h-6"><span><span class="text-gray-100">Opti</span><span class="text-blue-400">mux</span></span></a>
+                <span class="text-xs text-gray-500 font-mono">Studio</span>
+                <span class="text-[15px] font-bold text-gray-100 truncate">{{ studio.project || appSettings.active_project }}</span>
+                <span v-if="studio.branch" class="text-xs font-mono text-gray-500" title="The git branch">⑂ {{ studio.branch }}</span>
+                <span v-if="studio.msg" :class="['text-[13px] truncate min-w-0', studio.msg.ok ? 'text-green-400' : 'text-red-400']" role="status">{{ studio.msg.text }}</span>
+                <span class="flex-1"></span>
+                <div class="inline-flex rounded-lg overflow-hidden border border-gray-700 text-[13px]" role="group" aria-label="Panes">
+                    <button @click="studio.showEditor = !studio.showEditor || !studio.showPreview" :aria-pressed="studio.showEditor" :class="['px-3 py-1', studio.showEditor ? 'bg-gray-800 text-gray-100' : 'bg-gray-950 text-gray-500 hover:text-gray-300']">Editor</button>
+                    <button @click="studio.showPreview = !studio.showPreview || !studio.showEditor" :aria-pressed="studio.showPreview" :class="['px-3 py-1', studio.showPreview ? 'bg-gray-800 text-gray-100' : 'bg-gray-950 text-gray-500 hover:text-gray-300']">Preview</button>
+                </div>
+                <button @click="refreshStudio" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500" title="Read the files again (after a model changed them)">↻ Refresh</button>
+                <button @click="closeStudio()" class="text-[13px] px-3 py-1 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500">← Back to chat</button>
+            </div>
+            <div class="flex-1 flex min-h-0">
+                <!-- The file tree -->
+                <nav class="w-64 flex-shrink-0 border-r border-gray-800 overflow-auto py-2 text-[13px]" aria-label="Project files">
+                    <div v-if="!studioRows.length" class="px-3 text-gray-500 italic">{{ studio.dirs[''] ? 'No files yet.' : 'Loading…' }}</div>
+                    <template v-for="r in studioRows" :key="r.e.path">
+                        <div v-if="r.e.type === 'more'" class="px-3 py-0.5 text-gray-600 italic" :style="{ paddingLeft: (12 + r.depth * 14) + 'px' }">{{ r.e.name }}</div>
+                        <button v-else type="button" @click="r.e.type === 'dir' ? toggleStudioDir(r.e.path) : (r.e.type === 'file' ? openStudioFile(r.e.path) : null)" :disabled="r.e.type === 'outside'"
+                                :class="['w-full text-left flex items-center gap-1.5 py-0.5 pr-2 hover:bg-gray-800/60 disabled:opacity-40', studio.file && studio.file.path === r.e.path ? 'bg-blue-950/60 text-blue-100' : (r.e.ignored ? 'text-gray-500' : 'text-gray-300')]"
+                                :style="{ paddingLeft: (10 + r.depth * 14) + 'px' }" :title="r.e.type === 'outside' ? r.e.path + ': a link that leads outside the project' : r.e.path + (r.e.ignored ? ' (ignored by git)' : '')">
+                            <span class="w-3 text-gray-500 flex-shrink-0 text-[11px]">{{ r.e.type === 'dir' ? (studio.opened[r.e.path] ? '▾' : '▸') : '' }}</span>
+                            <span class="truncate">{{ r.e.name }}{{ r.e.type === 'dir' ? '/' : '' }}</span>
+                            <span v-if="studioMark(r.e)" :class="['ml-auto text-[11px] font-mono flex-shrink-0', studioMark(r.e) === 'U' || studioMark(r.e) === 'A' ? 'text-green-400' : (studioMark(r.e) === 'D' || studioMark(r.e) === 'C' ? 'text-red-400' : 'text-amber-300')]" :title="({ M: 'changed', U: 'new, not added to git', A: 'added', D: 'deleted', R: 'renamed', C: 'conflict', '•': 'something inside changed' })[studioMark(r.e)]">{{ studioMark(r.e) }}</span>
+                        </button>
+                    </template>
+                </nav>
+                <!-- The editor -->
+                <section v-show="studio.showEditor" class="flex-1 min-w-0 flex flex-col" aria-label="Editor">
+                    <div class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-[13px] flex-shrink-0 min-h-[38px]">
+                        <template v-if="studio.file">
+                            <span class="font-mono text-gray-200 truncate" :title="studio.file.path">{{ studio.file.path }}</span>
+                            <button @click="writeClipboard(studio.file.path)" class="text-gray-500 hover:text-gray-200 flex-shrink-0" title="Copy the path">⧉</button>
+                            <span v-if="studio.dirty" class="text-amber-300 flex-shrink-0" title="Unsaved changes">●</span>
+                            <span v-if="studio.file.hidden" class="text-[11px] rounded px-1.5 border text-green-300 border-green-800 bg-green-950/40 flex-shrink-0" title="Saved keys are shown as ••••(NAME); they are written back as the key when you save. You can't add one here.">🔒 {{ studio.file.hidden === 1 ? 'key' : studio.file.hidden + ' keys' }} hidden</span>
+                            <span class="flex-1"></span>
+                            <span class="text-gray-500 flex-shrink-0">{{ studio.file.lang }}</span>
+                            <button v-if="studio.conflict" @click="reloadStudioFile" class="px-2 py-0.5 rounded border border-amber-700 text-amber-300 hover:border-amber-500 flex-shrink-0" title="Drop your changes and open the version on disk">Reload from disk</button>
+                            <button v-if="studio.file.text !== undefined" @click="saveStudioFile" :disabled="!studio.dirty || studio.saving" class="px-3 py-0.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold flex-shrink-0" title="Save (Ctrl+S)">{{ studio.saving ? 'Saving…' : 'Save' }}</button>
+                        </template>
+                        <span v-else class="text-gray-500">Open a file from the list.</span>
+                    </div>
+                    <div class="flex-1 min-h-0 relative">
+                        <div ref="editorHost" v-show="studio.file && studio.file.text !== undefined" class="absolute inset-0"></div>
+                        <div v-if="studio.editorError" class="p-4 text-red-400 text-[13px]">{{ studio.editorError }}</div>
+                        <div v-else-if="studio.file && studio.file.binary" class="p-4 text-gray-500 text-[13px]">A binary file ({{ studio.file.size.toLocaleString() }} bytes): nothing to edit here. Images show in the preview.</div>
+                        <div v-else-if="studio.file && studio.file.too_large" class="p-4 text-gray-500 text-[13px]">Too large to open here ({{ studio.file.size.toLocaleString() }} bytes; up to 1 MB).</div>
+                    </div>
+                </section>
+                <!-- The preview -->
+                <section v-show="studio.showPreview" :class="['flex-1 min-w-0 flex flex-col', studio.showEditor ? 'border-l border-gray-800' : '']" aria-label="Preview">
+                    <div class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-[13px] flex-shrink-0 min-h-[38px]">
+                        <span class="text-gray-500 flex-shrink-0">Preview</span>
+                        <span class="font-mono text-gray-300 truncate" :title="studio.preview.path">{{ studio.preview.path || '—' }}</span>
+                        <span class="flex-1"></span>
+                        <label class="flex items-center gap-1.5 text-gray-400 flex-shrink-0 cursor-pointer" title="Show each page, Markdown file or image you open"><input type="checkbox" v-model="studio.follow" class="accent-blue-600"> Follow</label>
+                        <button v-if="studio.preview.index && studio.preview.path !== studio.preview.index" @click="studio.preview.path = studio.preview.index; studio.preview.stamp++" class="text-gray-400 hover:text-gray-200 flex-shrink-0" :title="'Back to ' + studio.preview.index">⌂</button>
+                        <button @click="studio.preview.stamp++" class="text-gray-400 hover:text-gray-200 flex-shrink-0" title="Reload the preview">↻</button>
+                        <button @click="studioOpenInTab" :disabled="!previewSrc" class="text-gray-400 hover:text-gray-200 disabled:opacity-30 flex-shrink-0" title="Open the preview in a new tab">↗</button>
+                    </div>
+                    <div class="flex-1 min-h-0 relative">
+                        <iframe v-if="previewSrc" :key="previewSrc" :src="previewSrc" sandbox="allow-scripts allow-forms allow-popups allow-modals" referrerpolicy="no-referrer" title="Preview" class="absolute inset-0 w-full h-full bg-white border-0"></iframe>
+                        <div v-else-if="previewKind(studio.preview.path) === 'markdown'" class="absolute inset-0 overflow-auto p-6 prose prose-invert prose-blue max-w-none" v-html="previewMarkdown"></div>
+                        <div v-else class="p-4 text-gray-500 text-[13px]">Nothing to preview yet: open an HTML page, a Markdown file or an image. The project has no <span class="font-mono">index.html</span> at its top (or in dist/, build/ or public/).</div>
+                    </div>
+                </section>
+            </div>
+        </div>
 
         <!-- Dashboard: full page over the chat (the chat stays mounted underneath) -->
         <div v-if="showSettingsModal" class="fixed inset-0 z-50 bg-gray-950 flex text-gray-200">
