@@ -463,6 +463,8 @@ The preview shows the project's files as they are (static files): a project that
 
 **How the preview is kept apart.** It runs in a sandbox with its own, empty origin: its scripts can run, but they can't read the Optimux page, your sign-in cookie or anything Optimux keeps, and their requests to Optimux carry no sign-in. It is served at a private address that only a signed-in page gets (it changes when Optimux restarts). It never serves `.git`, Optimux's own data, links out of the project, or files that hold secrets (`.env`, `*.pem`, `*.key`, SSH keys), and saved keys in the files it serves are hidden. It may load fonts, styles and scripts from the web, as pages often do.
 
+In that sandbox a page's `localStorage`, `sessionStorage` and cookies would fail, and many pages use them first thing (to remember the theme, say); the error stopped the rest of their script, so content that appears on scroll stayed hidden. Optimux gives previewed pages working ones that live in memory: they work while the page is open and start empty on every reload. (*v0.8*)
+
 ## How routing works
 
 ### The two tiers

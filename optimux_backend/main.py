@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import re
 import os
 import json
 import secrets
@@ -359,6 +360,42 @@ PREVIEW_CSP = ("sandbox allow-scripts allow-forms allow-popups allow-modals; "
                "base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
 
 
+# The preview runs with an opaque origin (no allow-same-origin), where touching
+# localStorage, sessionStorage or document.cookie throws a SecurityError. Many
+# pages do that first thing (a saved theme), and the error stops the rest of
+# their script, e.g. the code that reveals content on scroll, so the page looks
+# empty. This shim, put first in every previewed HTML page, gives them in-memory
+# versions instead: they work while the page is open and are lost on reload.
+PREVIEW_SHIM = (
+    "<script>/* Optimux preview: in-memory storage and cookies (sandboxed page) */(function(){"
+    "function mem(){var d=Object.create(null);return{get length(){return Object.keys(d).length},"
+    "key:function(i){var k=Object.keys(d);return i<k.length?k[i]:null},"
+    "getItem:function(k){k=String(k);return k in d?d[k]:null},setItem:function(k,v){d[String(k)]=String(v)},"
+    "removeItem:function(k){delete d[String(k)]},clear:function(){d=Object.create(null)}}}"
+    "['localStorage','sessionStorage'].forEach(function(n){try{window[n].length}catch(e){"
+    "try{Object.defineProperty(window,n,{value:mem(),configurable:true})}catch(_){}}});"
+    "try{document.cookie}catch(e){var c=Object.create(null);try{Object.defineProperty(document,'cookie',{"
+    "configurable:true,get:function(){return Object.keys(c).map(function(k){return k+'='+c[k]}).join('; ')},"
+    "set:function(v){var p=String(v).split(';'),kv=p[0],i=kv.indexOf('='),k=(i<0?'':kv.slice(0,i)).trim(),"
+    "val=i<0?kv.trim():kv.slice(i+1).trim(),gone=p.slice(1).some(function(a){a=a.trim().toLowerCase();"
+    "return/^max-age=\\s*(-|0+$)/.test(a)||(a.indexOf('expires=')===0&&Date.parse(a.slice(8))<Date.now())});"
+    "if(gone)delete c[k];else c[k]=val}})}catch(_){}}})();</script>"
+)
+_HEAD_TAG = re.compile(r"<head(?:\s[^>]*)?>", re.I)
+_HTML_TAG = re.compile(r"<html(?:\s[^>]*)?>", re.I)
+_DOCTYPE = re.compile(r"^\ufeff?\s*<!doctype[^>]*>", re.I)
+
+
+def with_preview_shim(html: str) -> str:
+    """The page with PREVIEW_SHIM before its own scripts, never before <!doctype>
+    (that would switch the page to quirks mode)."""
+    for tag in (_HEAD_TAG, _HTML_TAG, _DOCTYPE):
+        m = tag.search(html) if tag is not _DOCTYPE else tag.match(html)
+        if m:
+            return html[:m.end()] + PREVIEW_SHIM + html[m.end():]
+    return PREVIEW_SHIM + html
+
+
 @app.get("/preview/{project}/{token}/{path:path}")
 async def preview_file(request: Request, project: str, token: str, path: str = ""):
     if not files_studio.preview_ok(project, token):
@@ -377,6 +414,8 @@ async def preview_file(request: Request, project: str, token: str, path: str = "
     headers = {"Content-Security-Policy": PREVIEW_CSP, "X-Frame-Options": "SAMEORIGIN",
                "Cross-Origin-Resource-Policy": "cross-origin", "Cache-Control": "no-store"}
     if text is not None:
+        if ctype == "text/html":
+            text = with_preview_shim(text)
         media = ctype + ("; charset=utf-8" if ctype.startswith("text/") else "")
         return Response(text, media_type=media, headers=headers)
     return FileResponse(real, media_type=ctype, headers=headers)

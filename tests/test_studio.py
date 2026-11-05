@@ -128,6 +128,29 @@ def test_preview_is_sandboxed_and_needs_its_token(mocker, tmp_path, ws):
     assert redirect.status_code == 307 and redirect.headers["location"].endswith("/css/")
 
 
+@pytest.mark.parametrize("page, starts", [
+    ('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8"><script>localStorage.x</script>',
+     '<!DOCTYPE html>\n<html lang="en"><head><script>/* Optimux preview'),
+    ("<!doctype html><HTML><body>x", "<!doctype html><HTML><script>/* Optimux preview"),
+    ("<!doctype html><p>x", "<!doctype html><script>/* Optimux preview"),     # never before the doctype
+    ("<header>not a head</header>", "<script>/* Optimux preview"),
+])
+def test_previewed_pages_get_storage_that_works_in_the_sandbox(page, starts):
+    import optimux_backend.main as main
+    out = main.with_preview_shim(page)
+    assert out.startswith(starts) and out.count("Optimux preview") == 1
+    assert out.replace(main.PREVIEW_SHIM, "") == page
+
+
+def test_only_html_gets_the_storage_shim(mocker, tmp_path, ws):
+    client = make_client(mocker, tmp_path)
+    base = pf.preview_base("site")
+    page = client.get(base).text
+    assert "Optimux preview: in-memory storage" in page and page.index("Optimux preview") < page.index("<h1>Hi</h1>")
+    assert "Optimux preview" not in client.get(base + "css/a.css").text
+    assert "Optimux preview" not in client.get(base + "config.js").text
+
+
 def test_the_page_carries_a_fresh_style_nonce(mocker, tmp_path):
     client = make_client(mocker, tmp_path)
     mocker.patch("optimux_backend.core.auth.check_session", return_value="login-1")
