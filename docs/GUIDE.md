@@ -440,6 +440,7 @@ An **archived** project's budget is **paused**: kept, so restoring the project b
 
 - **Autonomy**: the project's level (see *Autonomy levels*).
 - **Budget**: the monthly limit, Block or Warn at 100%, and what was spent this month.
+- **Models** (*v0.8*): the project's own **Conductor** (or Off), **Simple** and **Complex** models, instead of the ones in **Routing**: a cheaper Simple model for a small site, a stronger Complex model for a hard codebase. Everything in the project follows them: chat requests, escalations, fallbacks when a model fails, plans and their steps, the scout, memory updates and commit messages. A model removed from **Models** later is ignored (Routing's applies) and the page says so. **Dashboard → Routing** lists the projects with their own models.
 - **Planning**: **Plan big tasks** and **Scout before Complex** for this project.
 - **Memory**: the project memory itself (edit and Save; **History and undo** opens the Memory page on it), whether it is updated automatically and after how many idle minutes, and **Update now from the latest chat**.
 - **Execution**: the steps per turn (Simple and Complex), the command timeout, and the network for commands (with the sandbox on).
@@ -885,7 +886,7 @@ The price per token comes from your model settings or LiteLLM's price list. When
 **Dashboard → Performance** answers one question: *which model gives you the most for your money?* Pick a period (7, 30 or 90 days, or all time) and a project, or all projects; the choice applies to both views. **Charts** has the tiles and every chart; **Details** has *What stands out*, the savings per role and per project, working time per project, **By Models** and **By Role**. Hover any bar, dot or cell for its numbers.
 
 - **What routing saved** (top card): what you **spent**, what the same calls **would have cost** if every one had gone to the Complex model, and the difference, **saved**, in dollars and percent. The chart shows both per day (per week for long periods), from the first day with calls, with only the peak value and the first and last dates; the shaded gap between the two lines is the saving. Under **Details**, two tables split it by role and by project. Read it like this:
-  - The reference is the Complex model **at the time of each call**, so changing models later doesn't rewrite the past.
+  - The reference is the Complex model **at the time of each call**, so changing models later doesn't rewrite the past. A project with its own Complex model (*v0.8*) is compared with that one.
   - The **Conductor** counts as pure extra cost (without routing it wouldn't run), so its row shows a negative saving.
   - It assumes the Complex model would have used the same tokens, and it compares prices only, not quality or speed.
   - When a model gets stuck and hands over to Complex (or you press **Escalate**), its calls in that request count as pure extra cost: with everything on Complex they wouldn't have happened. Escalations from before v0.6 can't be linked to their calls, so they are only counted in the note.

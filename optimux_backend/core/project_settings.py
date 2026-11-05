@@ -45,6 +45,18 @@ def _plan(v):
     return v
 
 
+def _model(field: str):
+    """A configured model (v0.8, routing per project); the Conductor may also be "off"."""
+    def check(v):
+        from optimux_backend.core.config_manager import get_all_models
+        if field == "conductor_model" and v == "off":
+            return v
+        if not isinstance(v, str) or v not in get_all_models():
+            raise ProjectSettingsError("must be a model configured in Dashboard → Models")
+        return v
+    return check
+
+
 def _checks() -> dict:
     from optimux_backend.core.config_manager import COMMAND_TIMEOUT_RANGE
     return {
@@ -56,11 +68,14 @@ def _checks() -> dict:
         "max_steps_complex": _int(1, 100),
         "command_timeout": _int(*COMMAND_TIMEOUT_RANGE),
         "sandbox_network": _bool,
+        **{k: _model(k) for k in ROUTING_KEYS},
     }
 
 
+# v0.8: the project's own models; they replace the global Routing for this project
+ROUTING_KEYS = ("conductor_model", "simple_model", "complex_model")
 KEYS = ("plan_mode", "scout", "memory_curator", "curator_idle_minutes", "max_steps_simple", "max_steps_complex",
-        "command_timeout", "sandbox_network")
+        "command_timeout", "sandbox_network") + ROUTING_KEYS
 
 
 def _read() -> dict:
@@ -92,6 +107,31 @@ def overrides(project: str) -> dict:
                 out[k] = checks[k](v)
             except ProjectSettingsError:
                 pass
+    return out
+
+
+def routing_overrides(project: str) -> dict:
+    """The project's own models (only models that still exist)."""
+    return {k: v for k, v in overrides(project).items() if k in ROUTING_KEYS}
+
+
+def stale(project: str) -> dict:
+    """Models the project chose that aren't configured any more: {key: model}. Such a
+    choice is ignored (the global model applies) until it is changed or the model is back."""
+    if not project:
+        return {}
+    own = ((_read().get("projects") or {}).get(project) or {})
+    valid = overrides(project)
+    return {k: v for k, v in own.items() if k in ROUTING_KEYS and k not in valid}
+
+
+def projects_with_models() -> dict:
+    """{project: {key: model}} for every project with models of its own (the Routing page lists them)."""
+    out = {}
+    for name in sorted((_read().get("projects") or {})):
+        own = routing_overrides(name)
+        if own:
+            out[name] = own
     return out
 
 

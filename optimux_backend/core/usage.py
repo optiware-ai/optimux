@@ -116,11 +116,12 @@ REF_ZERO_ROLES = ("conductor",)
 REF_SKIP_ROLES = ("test",)
 
 
-def reference_model() -> str:
-    """The model calls are compared with: the Complex model of the routing."""
+def reference_model(project: str | None = "") -> str:
+    """The model calls are compared with: the Complex model of the routing that applies
+    to the call's project (v0.8: a project can have its own; "" is the global one)."""
     try:
-        from optimux_backend.core.config_manager import get_routing_config
-        return (get_routing_config() or {}).get("complex_model", "") or ""
+        from optimux_backend.core.config_manager import effective_routing
+        return (effective_routing(project) or {}).get("complex_model", "") or ""
     except Exception:
         return ""
 
@@ -153,7 +154,7 @@ def record(session_id: str, role: str, model: str, usage, duration_ms: int | Non
         "cost": cost_for(model, tokens),
         "duration_ms": duration_ms,
     }
-    ref = reference_model()
+    ref = reference_model(project or "")
     if role not in REF_SKIP_ROLES and ref:
         entry["ref_model"] = ref
         entry["ref_cost"] = reference_cost(role, tokens, ref)

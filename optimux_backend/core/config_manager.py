@@ -234,8 +234,20 @@ def with_project_overrides(data: dict, project: str | None = None) -> dict:
     name = data.get("active_project", "") if project is None else project
     if name:
         from optimux_backend.core import project_settings
-        data.update(project_settings.overrides(name))
+        data.update({k: v for k, v in project_settings.overrides(name).items() if k not in project_settings.ROUTING_KEYS})
     return data
+
+
+def effective_routing(project: str | None = None) -> dict:
+    """The routing as it applies to a project (v0.8): get_routing_config() with that
+    project's own models on top. project None means the active project; "" (the
+    Workspace) has none. A model the project chose that was removed since is ignored."""
+    routing = dict(get_routing_config() or {})
+    name = get_settings().get("active_project", "") if project is None else project
+    if name:
+        from optimux_backend.core import project_settings
+        routing.update(project_settings.routing_overrides(name))
+    return routing
 
 
 def save_settings(payload: SettingsPayload):

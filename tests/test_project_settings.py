@@ -98,3 +98,70 @@ def test_api(mocker, tmp_path):
     assert client.get("/api/projects/.hidden/settings", headers=H).status_code == 422
     r = client.post("/api/projects/demo/settings", headers=H, json={"plan_mode": None}).json()
     assert r["overrides"] == {"scout": False}
+
+
+# ---- v0.8: a project's own models (routing per project)
+
+MODELS = {m: {} for m in ("conductor-model", "simple-model", "complex-model", "cheap-model", "big-model")}
+
+
+@pytest.fixture
+def models(mocker):
+    known = dict(MODELS)
+    mocker.patch.object(config_manager, "get_all_models", return_value=dict(known))
+    mocker.patch.object(config_manager, "get_routing_config", return_value={
+        "conductor_model": "conductor-model", "simple_model": "simple-model", "complex_model": "complex-model"})
+    return known
+
+
+def test_project_models_are_checked_and_apply_only_to_their_project(settings, models):
+    assert ps.update("demo", {"simple_model": "cheap-model", "conductor_model": "off"}) == \
+        {"simple_model": "cheap-model", "conductor_model": "off"}
+    for bad in ({"simple_model": "nope"}, {"complex_model": "off"}, {"complex_model": 3}):
+        with pytest.raises(ps.ProjectSettingsError):
+            ps.update("demo", bad)
+    assert config_manager.effective_routing() == {"conductor_model": "off", "simple_model": "cheap-model", "complex_model": "complex-model"}
+    assert config_manager.effective_routing("other")["simple_model"] == "simple-model"
+    assert config_manager.effective_routing("")["conductor_model"] == "conductor-model"          # the Workspace
+    assert "simple_model" not in config_manager.effective_settings()                           # models aren't settings
+    assert ps.projects_with_models() == {"demo": {"simple_model": "cheap-model", "conductor_model": "off"}}
+    # A model removed from Models: the choice is ignored (global applies) and reported
+    del models["cheap-model"]
+    config_manager.get_all_models.return_value = dict(models)
+    assert ps.routing_overrides("demo") == {"conductor_model": "off"} and ps.stale("demo") == {"simple_model": "cheap-model"}
+    assert config_manager.effective_routing()["simple_model"] == "simple-model"
+
+
+def test_a_projects_own_models_route_its_requests_and_its_savings(mocker, tmp_path, settings, models):
+    from tests.ws_helpers import chunk, fake_stream, run_prompt
+    import optimux_backend.core.usage as usage
+    client = make_client(mocker, tmp_path)
+    mocker.patch.object(main, "get_settings", config_manager.get_settings)      # the fixture's: active project demo
+    ps.update("demo", {"simple_model": "cheap-model", "complex_model": "big-model", "conductor_model": "off"})
+    used = []
+    final = chunk(empty=True, usage_obj={"prompt_tokens": 100, "completion_tokens": 10})
+
+    def fake(**kw):
+        used.append(kw["model"])
+        return fake_stream([chunk("ok"), final])
+    mocker.patch("litellm.acompletion", side_effect=fake)
+    run_prompt(client, "hello")
+    assert used == ["cheap-model"]
+    assert main._test_conductor.call_args.kwargs["conductor"] == "off"                       # the project's Conductor
+    rows = [r for r in usage.read_entries() if r["role"] == "simple"]
+    assert rows[-1]["model"] == "cheap-model" and rows[-1]["ref_model"] == "big-model"      # compared with its own Complex
+    assert main.routing_for("other")["simple_model"] == "simple-model"
+    ps.update("demo", {"simple_model": None})
+    used.clear()
+    run_prompt(client, "again")
+    assert used == ["simple-model"]                                                           # follows Routing again
+
+
+def test_routing_api_and_project_page_view(mocker, tmp_path, settings, models):
+    client = make_client(mocker, tmp_path)
+    r = client.post("/api/projects/demo/settings", headers=H, json={"complex_model": "big-model"}).json()
+    assert r["overrides"]["complex_model"] == "big-model" and r["global"]["complex_model"] == "complex-model"
+    assert r["effective"]["complex_model"] == "big-model" and r["stale"] == {}
+    bad = client.post("/api/projects/demo/settings", headers=H, json={"simple_model": "nope"})
+    assert bad.status_code == 422 and "simple_model" in bad.json()["detail"]
+    assert client.get("/api/routing/projects", headers=H).json() == {"projects": {"demo": {"complex_model": "big-model"}}}

@@ -3286,12 +3286,19 @@ createApp({
             }
             guideActive.value = active;
         };
+        // v0.8: projects with their own models (listed on the Routing page)
+        const routingProjects = ref({});
+        const fetchRoutingProjects = async () => {
+            try { const r = await fetch('/api/routing/projects'); if (r.ok) routingProjects.value = (await r.json()).projects || {}; }
+            catch (_) { /* the list just stays as it was */ }
+        };
         const enterSection = (id) => {
             if (['overview', 'usage', 'budgets', 'system'].includes(id)) fetchUsage();
             if (id === 'overview') { loadCharts(['ov']); fetchProjectsList(); }
             if (id === 'usage') { loadCharts(['cost', 'model', 'role', 'proj', 'tok']); fetchProjectsList(); }
             if (id === 'usage') fetchTaskStats();
             if (id === 'performance') fetchPerf();
+            if (id === 'routing') fetchRoutingProjects();
             if (id === 'overview') { fetchRecentChats(); fetchDeleted(); fetchMonthSavings(); }
             if (id === 'start') fetchOnboarding();
             if (id === 'project') loadProjectPage();
@@ -5519,6 +5526,7 @@ createApp({
             studioNameBox, startStudioEdit, cancelStudioEdit, commitStudioEdit, studioNameKey, onTreeMenu, treeKey,
             devSrc, devHelp, setPreviewDev, saveDev, openFound, findKey,
             chatContext, removeChatContext, ctxMenu, ctxMenuEl, closeCtxMenu, runCtxItem, ctxMenuKey, onEditorMenu, previewFrame, pickCmd, onPreviewLoad, toggleStudioChat,
+            routingProjects, fetchRoutingProjects,
             projectPage, openProjectPage, loadProjectPage, setProjectSetting, ownValue, globalValue, boolOf, onOff, numberOf, saveProjectBudget, saveProjectMemory,
             curateProjectNow, projectRow, projectSkills,
             planModeNow, planModeTitle, cyclePlanMode,

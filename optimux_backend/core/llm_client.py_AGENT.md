@@ -29,3 +29,6 @@
 
 - **`FINISH_STEP_TOOL` (v0.4):** `finish_step(status: done|blocked, result, details?)`, offered only inside a plan step (`main.run_plan_step`), never in a normal chat.
 - **`FINISH_CHECK_TOOL` (v0.4-5a):** `finish_check(verdict: passed|failed|not_verified, reason)`, given only to a plan's final check (main.py `run_final_check`).
+
+## Conductor per project (v0.8)
+- `route_model_with_usage(..., conductor=None)`: main passes the project's own Conductor (a model or `off`) when it has one; otherwise the global Routing's is read as before.

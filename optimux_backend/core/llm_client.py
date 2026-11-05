@@ -164,7 +164,8 @@ async def route_model(prompt: str) -> str:
     return complexity
 
 
-async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_mode: bool = False) -> tuple:
+async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_mode: bool = False,
+                                 conductor: str | None = None) -> tuple:
     """Ask the Conductor for a tier.
 
     Returns (tier, conductor_model, usage, duration_ms, skill, plan, note). skill is the name
@@ -177,7 +178,8 @@ async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_m
     A request the provider refuses (400) is tried once more without the extras
     (thinking level, JSON mode), which not every model accepts.
     """
-    conductor_model = get_routing_config().get("conductor_model", "")
+    # v0.8: the caller passes the project's Conductor (its own, or the global one)
+    conductor_model = conductor if conductor is not None else get_routing_config().get("conductor_model", "")
     if not conductor_model:
         raise Exception("Routing not configured. Please assign a Conductor Model (or set it to Off) in Settings.")
     if conductor_model == CONDUCTOR_OFF:

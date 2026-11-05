@@ -549,6 +549,12 @@ async def get_config():
 async def get_routing():
     return get_routing_config()
 
+@app.get("/api/routing/projects")
+async def routing_projects():
+    """v0.8: the projects with models of their own ({project: {key: model}}), for the Routing page."""
+    return {"projects": project_settings_lib.projects_with_models()}
+
+
 @app.post("/api/routing")
 async def save_routing(payload: RoutingPayload):
     save_routing_config(payload)
@@ -872,11 +878,12 @@ async def sandbox_status(refresh: bool = False):
 def project_settings_view(name: str) -> dict:
     """What the Project page shows: the project's own values, the global ones they
     replace, and the values that apply."""
-    glob = {**SettingsPayload().model_dump(), **get_settings()}
+    glob = {**SettingsPayload().model_dump(), **get_settings(), **(get_routing_config() or {})}
     own = project_settings_lib.overrides(name)
     keys = project_settings_lib.KEYS
     return {"project": name, "overrides": own, "global": {k: glob.get(k) for k in keys},
-            "effective": {k: own.get(k, glob.get(k)) for k in keys}, "keys": list(keys)}
+            "effective": {k: own.get(k, glob.get(k)) for k in keys}, "keys": list(keys),
+            "stale": project_settings_lib.stale(name)}
 
 
 @app.get("/api/projects/{name}/settings")
@@ -1085,7 +1092,7 @@ async def project_update(name: str, payload: UpdatePayload):
 async def project_commit_message(name: str):
     """The Simple model writes the commit message for what Push would commit,
     following the project's commit template if it has one. One paid call."""
-    model = get_routing_config().get("simple_model", "")
+    model = routing_for(name).get("simple_model", "")
     if not model:
         return JSONResponse({"detail": "No Simple model is configured (Dashboard → Routing)."}, status_code=422)
     if (b := budgets.blocks(name)):
@@ -1981,7 +1988,7 @@ async def draft_skill(payload: SkillDraftPayload):
     data = chat_store.get(payload.session_id)
     if data is None:
         raise HTTPException(404, "No such session.")
-    model = get_routing_config().get("simple_model", "")
+    model = routing_for(chat_project(payload.session_id) or "").get("simple_model", "")
     if not model:
         raise HTTPException(400, "No Simple model configured.")
     transcript = []
@@ -2380,6 +2387,16 @@ def parse_plan_command(text: str) -> tuple[bool | None, str]:
     return None, text
 
 
+def routing_for(project: str | None = None) -> dict:
+    """The routing a project's requests use (v0.8): the global Routing with the project's
+    own models on top (Project page). None means the active project; "" the Workspace."""
+    routing = dict(get_routing_config() or {})
+    name = active_project() if project is None else project
+    if name:
+        routing.update(project_settings_lib.routing_overrides(name))
+    return routing
+
+
 def plan_mode() -> str:
     mode = effective_settings().get("plan_mode", "off")    # v0.8: the active project's own value first
     return mode if mode in PLAN_MODES else "off"
@@ -2649,7 +2666,7 @@ async def run_plan(websocket: WebSocket, session: dict, pid: str) -> None:
     """Run a plan's remaining steps one after another, then the final check.
     The plan is saved after every change, so a stop, a budget pause, an error or
     a restart leaves it paused at a known step, ready to resume."""
-    routing = get_routing_config()
+    routing = routing_for()
     plan = plans_lib.set_status(pid, "running", note="")
     await send(websocket, "plan", plan=public_plan(plan))
     current = None
@@ -3270,7 +3287,7 @@ async def curate_session(sid: str | None, websocket: WebSocket | None = None, fo
             return {"changed": False, "reason": "The chat is too short to learn from."}
         if budgets.blocks(project):
             return {"changed": False, "reason": "The project's budget is reached."}
-        model = get_routing_config().get("simple_model", "")
+        model = routing_for(project).get("simple_model", "")
         if not model or providers.cooldown(model):
             return {"changed": False, "reason": "The Simple model isn't available right now."}
         current = curator.read_memory(project)
@@ -4100,8 +4117,10 @@ async def resolve_tier(websocket: WebSocket, session: dict, user_message: str) -
     if session["tier_pinned"]:
         return session["tier"]
     ask_plan = plan_mode() != "off" and session.get("plan_cmd") is not False
+    own = project_settings_lib.routing_overrides(active_project()).get("conductor_model")
     result = await route_model_with_usage(user_message, session.get("skills") or None,
-                                          **({"plan_mode": True} if ask_plan else {}))
+                                          **({"plan_mode": True} if ask_plan else {}),
+                                          **({"conductor": own} if own else {}))      # v0.8: the project's own Conductor
     tier, conductor_model, conductor_usage, duration = result[:4]
     # v0.8: what the Conductor itself decided (None when it is off or failed): only its "complex" is scouted
     session["conductor_tier"] = tier if conductor_model != "off" and not (len(result) > 6 and result[6]) else None
@@ -4174,7 +4193,7 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
             return
         user_message = rest or f"Run the {asked_skill} skill."
 
-    routing = get_routing_config()
+    routing = routing_for()
     if model_override and model_override != "auto":
         model, role = model_override, "override"
     else:
@@ -4403,7 +4422,7 @@ async def handle_escalate(websocket: WebSocket, session: dict) -> None:
     session["skills"] = listed_skills()  # keep session["skill"]: escalating continues the same task
     history = session["history"]
     last_user = max((i for i, m in enumerate(history) if m.get("role") == "user"), default=None)
-    routing = get_routing_config()
+    routing = routing_for()
     model = routing.get("complex_model", "")
     if last_user is None or not model:
         await send(websocket, "system", "Nothing to escalate." if last_user is None else "No Complex Executor is configured.")

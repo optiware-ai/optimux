@@ -827,6 +827,23 @@
                         <p v-else class="text-[13px] text-gray-500">No budget: leave the amount empty for none.</p>
                     </div>
                     <!-- Planning -->
+                    <!-- v0.8: the project's own models -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                        <h3 class="text-[15px] font-bold text-gray-200 flex items-center">Models<help-tip wide>
+                            <p>The models this project's requests use, instead of the ones in <b>Routing</b>: for example a cheaper Simple model for a small site, or a stronger Complex model for a hard codebase. <b>Follow global</b> uses Routing's choice, so changing Routing changes this project too.</p>
+                            <p>Everything that runs in the project follows them: chat requests, escalations, plans and their steps, the scout, memory updates and commit messages. The <b>savings</b> of this project are compared with its own Complex model.</p>
+                        </help-tip></h3>
+                        <div v-for="r in [['conductor_model', 'Conductor'], ['simple_model', 'Simple'], ['complex_model', 'Complex']]" :key="r[0]" class="flex flex-wrap items-center gap-3">
+                            <span class="text-[14px] text-gray-300 w-44">{{ r[1] }}</span>
+                            <select :value="ownValue(r[0])" @change="setProjectSetting(r[0], $event.target.value || null)" :aria-label="r[1] + ' model'" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200 max-w-full">
+                                <option value="" class="bg-gray-900">Follow global ({{ globalValue(r[0]) === 'off' ? 'Off' : (globalValue(r[0]) ? modelName(globalValue(r[0])) : 'none') }})</option>
+                                <option v-if="r[0] === 'conductor_model'" value="off" class="bg-gray-900">Off (every message starts on Simple)</option>
+                                <option v-for="m in availableModels" :key="m.id" :value="m.id" class="bg-gray-900">{{ m.name }}</option>
+                                <option v-for="m in setupModels" :key="m.id" :value="m.id" class="bg-gray-900">🔒 {{ m.name }} (needs a key)</option>
+                            </select>
+                            <span v-if="projectPage.view && projectPage.view.stale && projectPage.view.stale[r[0]]" class="text-[13px] text-amber-300">{{ modelName(projectPage.view.stale[r[0]]) }} was removed from Models: Routing's applies</span>
+                        </div>
+                    </div>
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
                         <h3 class="text-[15px] font-bold text-gray-200 flex items-center">Planning</h3>
                         <div class="flex flex-wrap items-center gap-3">
@@ -843,7 +860,6 @@
                                 <option value="true" class="bg-gray-900">On</option><option value="false" class="bg-gray-900">Off</option>
                             </select>
                         </div>
-                        <p class="text-[13px] text-gray-500">Models per project come in the next update; until then this project uses the models in Routing.</p>
                     </div>
                     <!-- Memory -->
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
@@ -1215,6 +1231,14 @@
                             <button @click="saveRouting" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold transition flex items-center gap-2">
                                 Save Routing
                             </button>
+                        </div>
+                    </div>
+                    <!-- v0.8: projects with their own models -->
+                    <div v-if="Object.keys(routingProjects).length" class="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-6 text-[14px]">
+                        <h3 class="font-bold text-gray-200 mb-2 flex items-center">Projects with their own models<help-tip text="These projects use their own Conductor, Simple or Complex model instead of the ones above. Change them on each project's page."></help-tip></h3>
+                        <div v-for="(own, name) in routingProjects" :key="name" class="flex flex-wrap items-center gap-x-3 gap-y-1 py-1 border-t border-gray-700/60 first:border-0">
+                            <button @click="openProjectPage(name)" class="font-mono text-blue-300 hover:text-blue-200" :title="'Open the page of ' + name">{{ name }}</button>
+                            <span v-for="k in ['conductor_model', 'simple_model', 'complex_model']" :key="k" v-show="own[k]" class="text-gray-400">{{ ({ conductor_model: 'Conductor', simple_model: 'Simple', complex_model: 'Complex' })[k] }}: <span class="text-gray-200">{{ own[k] === 'off' ? 'Off' : modelName(own[k]) }}</span></span>
                         </div>
                     </div>
                     <!-- v0.4: plan mode (task manager) -->

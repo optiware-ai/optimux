@@ -52,3 +52,6 @@
 - **List prices on cards (5p):** `list_prices(model_id)` returns LiteLLM's input, output and cached input prices per million tokens; `get_models_config` adds them as `list_prices` when `price_source` is `litellm` (else None).
 - **Command timeout (v0.5.1, IM-03):** `command_timeout` (default `DEFAULT_COMMAND_TIMEOUT` = 120 s) must be within `COMMAND_TIMEOUT_RANGE` (10–1800) to save; `command_timeout_for(settings)` reads it, clamped, for `executor.run_shell_command`.
 - **Per-project values (v0.8):** `effective_settings(project=None)` is `with_project_overrides(get_settings(), project)`: the settings with a project's own values (project_settings.py) on top; `project` None means the active project, `""` (the Workspace) has none. Read-only. `max_steps_for(tier, project=None)` and `command_timeout_for()` (with no settings passed) use it.
+
+## effective_routing (v0.8)
+- `effective_routing(project=None)`: `get_routing_config()` with the project's own models (`project_settings.routing_overrides`; None = the active project, "" = none). `with_project_overrides` (settings) skips the routing keys. `usage.reference_model(project)` uses it, so a project's savings are compared with its own Complex model.

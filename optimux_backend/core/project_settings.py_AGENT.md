@@ -18,3 +18,7 @@ Per-project settings (v0.8): a project's own values for some global settings, se
 ## Links
 - `main.py`: `GET` / `POST /api/projects/{name}/settings` (`project_settings_view`: `overrides`, `global`, `effective`, `keys`; errors are 422).
 - Tests: `tests/test_project_settings.py`.
+
+## Models per project (v0.8)
+- `ROUTING_KEYS` (`conductor_model`, `simple_model`, `complex_model`) are in `KEYS`; `_model(field)` accepts a model in `config_manager.get_all_models()` (the Conductor also `off`). A chosen model removed from Models later fails the check on reading, so it's ignored (the global one applies): `stale(project)` reports such choices.
+- `routing_overrides(project)`: only the routing keys; `config_manager.with_project_overrides` leaves them out of the settings, `config_manager.effective_routing(project)` and `main.routing_for` put them over the global Routing. `projects_with_models()`: `{project: {key: model}}` for the Routing page.
