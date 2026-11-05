@@ -804,22 +804,23 @@
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
                         <h3 class="text-[15px] font-bold text-gray-200 flex items-center">GitHub and folder</h3>
                         <div class="flex flex-wrap gap-2 text-[13px]">
-                            <button @click="openGitTerm(projectPage.name)" :disabled="gitTerm.loading" :class="['px-2 py-1 rounded border hover:border-gray-500 disabled:opacity-60', gitTerm.project === projectPage.name ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-300']" title="Show git status, the last commits and how far it is from GitHub. It fetches from GitHub first; your files don't change">Status</button>
+                            <button @click="openGitTerm(projectPage.name)" :disabled="gitTerm.loading" :class="['px-2 py-1 rounded border hover:border-gray-500 disabled:opacity-60', gitTerm.project === projectPage.name && gitTerm.kind === 'status' ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-300']" title="Show git status, the last commits and how far it is from GitHub. It fetches from GitHub first; your files don't change">Status</button>
+                            <button @click="openGitTerm(projectPage.name, 'identity')" :disabled="gitTerm.loading" :class="['px-2 py-1 rounded border hover:border-gray-500 disabled:opacity-60', gitTerm.project === projectPage.name && gitTerm.kind === 'identity' ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-300']" title="Who talks to the remote: the commit name and email, and the account GitHub sees (ssh -T, or the saved token's account for HTTPS)">Identity</button>
                             <button @click="openSync(projectPage.name, 'push')" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600" title="Commit every change and push it to GitHub. You see the files and the message first">Push…</button>
                             <button @click="openSync(projectPage.name, 'update')" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600" title="Bring in the new commits from GitHub (fast-forward only). You see them first">Update…</button>
                             <button @click="historyPage.project = projectPage.name; openSettings('history')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500" title="Open the chat history of this project">Chats</button>
                             <button @click="archiveFromDashboard(projectPage.name)" :disabled="projectPage.name === appSettings.active_project && (isGenerating || pendingApproval)" class="px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-yellow-700 hover:text-yellow-300 disabled:opacity-40 ml-auto" :title="projectPage.name === appSettings.active_project && (isGenerating || pendingApproval) ? 'A request is running in this project: wait for it to finish' : 'Move its folder to .archive/ (chats and costs are kept)'">Archive</button>
                         </div>
                         <!-- v0.8: Status, shown like a terminal -->
-                        <div v-if="gitTerm.project === projectPage.name" class="cm-term" role="region" aria-label="Git status">
+                        <div v-if="gitTerm.project === projectPage.name" class="cm-term" role="region" :aria-label="gitTerm.kind === 'identity' ? 'Git identity' : 'Git status'">
                             <div class="cm-term-bar">
                                 <span class="cm-term-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                                <span class="cm-term-title">{{ projectPage.name }}{{ gitTerm.data && gitTerm.data.branch ? ' · ' + gitTerm.data.branch : '' }}{{ gitTerm.at && !gitTerm.loading ? ' · ' + gitTerm.at : '' }}</span>
-                                <button @click="openGitTerm(projectPage.name)" :disabled="gitTerm.loading" class="cm-term-btn" title="Run it again">{{ gitTerm.loading ? 'Running…' : 'Refresh' }}</button>
+                                <span class="cm-term-title">{{ projectPage.name }}{{ gitTerm.kind === 'identity' ? ' · identity' : gitTerm.data && gitTerm.data.branch ? ' · ' + gitTerm.data.branch : '' }}{{ gitTerm.at && !gitTerm.loading ? ' · ' + gitTerm.at : '' }}</span>
+                                <button @click="openGitTerm(projectPage.name, gitTerm.kind)" :disabled="gitTerm.loading" class="cm-term-btn" title="Run it again">{{ gitTerm.loading ? 'Running…' : 'Refresh' }}</button>
                                 <button @click="copyGitTerm" :disabled="gitTerm.loading || !gitTermLines.length" class="cm-term-btn" title="Copy the text">{{ gitTerm.copied ? 'Copied' : 'Copy' }}</button>
                                 <button @click="closeGitTerm" class="cm-term-btn" title="Close" aria-label="Close">✕</button>
                             </div>
-                            <pre class="cm-term-body" aria-live="polite"><template v-if="gitTerm.loading && !gitTerm.data"><span class="cm-term-cmd">$ git fetch origin</span>
+                            <pre class="cm-term-body" aria-live="polite"><template v-if="gitTerm.loading && !gitTerm.data"><span class="cm-term-cmd">$ {{ gitTerm.kind === 'identity' ? 'git var GIT_AUTHOR_IDENT' : 'git fetch origin' }}</span>
 <span class="cm-term-note">running…</span></template><template v-else><span v-for="(l, i) in gitTermLines" :key="i" :class="l.cls">{{ l.text }}
 </span></template></pre>
                         </div>

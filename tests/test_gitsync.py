@@ -288,3 +288,87 @@ def test_the_status_api(ws, mocker, tmp_path):
     r = client.get("/api/projects/plain/status", headers=H)
     assert r.status_code == 422 and "isn't a git repository" in r.json()["detail"]
     assert client.get("/api/projects/..%2Fx/status", headers=H).status_code in (404, 422)
+
+
+# ---- Identity (v0.8): who talks to the remote
+
+def _no_rewrites(monkeypatch):
+    """No url.insteadOf from the machine running the tests (it would turn ssh remotes into HTTPS)."""
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+
+
+def _fake(tmp_path, monkeypatch, name, script):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    f = bin_dir / name
+    f.write_text("#!/bin/sh\n" + script)
+    f.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    _no_rewrites(monkeypatch)
+    return bin_dir
+
+
+@pytest.mark.parametrize("remote, dest, port", [
+    ("git@github.com:o/site.git", "git@github.com", None),
+    ("ssh://git@git.example.org:2222/o/site.git", "git@git.example.org", "2222"),
+    ("gh-work:o/site.git", "gh-work", None),          # an alias from ~/.ssh/config
+    ("https://github.com/o/site.git", None, None),
+    ("/srv/git/site.git", None, None),
+    ("-oProxyCommand=touch /tmp/x:o/site", None, None),   # never an ssh option
+    ("git@-oProxyCommand=x:o/site", None, None),
+])
+def test_ssh_targets(remote, dest, port):
+    assert gitsync.ssh_target(remote) == ((dest, port) if dest else None)
+
+
+def test_identity_runs_ssh_t_without_prompts(ws, tmp_path, monkeypatch):
+    bin_dir = _fake(tmp_path, monkeypatch, "ssh",
+                    'echo "$@" > "$(dirname "$0")/args"\n'
+                    'echo "Hi octo! You\'ve successfully authenticated, but GitHub does not provide shell access." >&2\n'
+                    "exit 1\n")
+    git("remote", "set-url", "origin", "git@github.com:o/site.git", cwd=ws["proj"])
+    r = gitsync.identity_report("site")
+    cmds = {s["command"]: s for s in r["steps"]}
+    assert r["kind"] == "ssh" and cmds["git var GIT_AUTHOR_IDENT"]["output"] == "T <t@x>"
+    assert cmds["git remote get-url origin"]["output"] == "git@github.com:o/site.git"
+    ssh = cmds["ssh -T git@github.com"]
+    assert ssh["ok"] and "Hi octo!" in ssh["output"]
+    assert (bin_dir / "args").read_text().split() == ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                                                      "--", "git@github.com"]
+
+
+def test_identity_shows_a_refused_key_and_an_unknown_host(ws, tmp_path, monkeypatch):
+    _fake(tmp_path, monkeypatch, "ssh", 'echo "git@github.com: Permission denied (publickey)." >&2\nexit 255\n')
+    git("remote", "set-url", "origin", "ssh://git@github.com/o/site.git", cwd=ws["proj"])
+    git("config", "core.sshCommand", "ssh -i ~/.ssh/work", cwd=ws["proj"])
+    r = gitsync.identity_report("site")
+    assert r["steps"][-1]["ok"] is False and "Permission denied" in r["steps"][-1]["output"]
+    assert "core.sshCommand" in r["notes"][0]
+    _fake(tmp_path, monkeypatch, "ssh", 'echo "Host key verification failed." >&2\nexit 255\n')
+    r = gitsync.identity_report("site")
+    assert r["steps"][-1]["ok"] is False and any("Unknown host key" in n for n in r["notes"])
+
+
+def test_identity_over_https_names_the_saved_token_account(ws, tmp_path, monkeypatch):
+    _fake(tmp_path, monkeypatch, "gh", 'echo "github.com"\necho "  ✓ Logged in to github.com account octo (GH_TOKEN) $GH_TOKEN"\n')
+    git("remote", "set-url", "origin", "https://user:tok123@github.com/o/site.git", cwd=ws["proj"])
+    monkeypatch.setenv(gitsync.GITHUB_TOKEN_ENV, "ghp_saved-token-value-1")
+    (tmp_path / "secrets.env").write_text(f"{gitsync.GITHUB_TOKEN_ENV}=ghp_saved-token-value-1\n")
+    r = gitsync.identity_report("site")
+    gh = r["steps"][-1]
+    assert r["kind"] == "https" and gh["command"] == "gh auth status --hostname github.com"
+    assert "account octo" in gh["output"] and "ghp_saved" not in str(r) and "tok123" not in str(r)
+    monkeypatch.delenv(gitsync.GITHUB_TOKEN_ENV)
+    r = gitsync.identity_report("site")
+    assert len(r["steps"]) == 2 and "No GitHub token" in r["notes"][0]
+
+
+def test_identity_of_a_local_remote_and_the_api(ws, mocker, tmp_path, monkeypatch):
+    _no_rewrites(monkeypatch)
+    r = gitsync.identity_report("site")
+    assert r["kind"] == "local" and "no account" in r["notes"][0]
+    from tests.ws_helpers import make_client
+    client = make_client(mocker, tmp_path)
+    r = client.get("/api/projects/site/identity", headers={"Authorization": "Bearer test-token"}).json()
+    assert r["steps"][0]["command"] == "git var GIT_AUTHOR_IDENT"

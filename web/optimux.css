@@ -181,3 +181,12 @@
 .cm-term-good { color: #4ade80; }
 .cm-term-bad { color: #f87171; }
 .cm-term-note { color: #6b7280; }
+/* The app's own tooltips (v0.8), for every title attribute */
+.cm-tip { position: fixed; z-index: 100; max-width: min(320px, calc(100vw - 16px)); pointer-events: none; background: #111827; border: 1px solid #374151;
+  border-radius: 8px; padding: 6px 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, .5); color: #e5e7eb; font: 400 12.5px/1.45 ui-sans-serif, system-ui, sans-serif;
+  white-space: pre-line; overflow-wrap: anywhere; text-align: left; opacity: 0; transform: translateY(-3px); transition: opacity .12s ease, transform .12s ease; }
+.cm-tip.cm-tip-up { transform: translateY(3px); }
+.cm-tip.cm-tip-on { opacity: 1; transform: none; }
+.cm-tip-arrow { position: absolute; top: -5px; width: 8px; height: 8px; margin-left: -4px; background: #111827; border-left: 1px solid #374151; border-top: 1px solid #374151; transform: rotate(45deg); }
+.cm-tip-up .cm-tip-arrow { top: auto; bottom: -5px; transform: rotate(225deg); }
+@media (prefers-reduced-motion: reduce) { .cm-tip { transition: none; transform: none; } }

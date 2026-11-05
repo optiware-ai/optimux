@@ -193,15 +193,95 @@ def status_report(name: str) -> dict:
         ahead, behind = _counts(path, out["upstream"]) if out["upstream"] else (None, None)
     finally:
         lock.release()
-    shown = []
+    shown = _shown(steps)
+    return {"project": name, "remote": security.mask_secrets(out["remote"] or "")[0] or None,
+            "branch": out["branch"], "target": out["target"], "copy_of": out["copy_of"],
+            "upstream": out["upstream"], "ahead": ahead, "behind": behind, "steps": shown}
+
+
+# ssh remotes: scp-like [user@]host:path, or ssh://[user@]host[:port]/path. The
+# user and host can't start with "-" (a remote set by a model-run command must
+# never become an ssh option).
+_SSH_SCP = re.compile(r"^(?:((?!-)[A-Za-z0-9._-]+)@)?((?!-)[A-Za-z0-9._-]+):(?!//)\S+$")
+_SSH_URL = re.compile(r"^ssh://(?:((?!-)[A-Za-z0-9._-]+)@)?((?!-)[A-Za-z0-9._-]+)(?::(\d{1,5}))?/\S*$")
+SSH_TIMEOUT = 15
+
+
+def ssh_target(remote: str) -> tuple[str, str | None] | None:
+    """(destination, port) for an ssh remote, else None."""
+    m = _SSH_URL.match(remote or "") or _SSH_SCP.match(remote or "")
+    if not m:
+        return None
+    user, host = m.group(1), m.group(2)
+    port = m.group(3) if m.re is _SSH_URL else None
+    return (f"{user}@{host}" if user else host), port
+
+
+def _authenticated(text: str) -> bool:
+    low = text.lower()
+    if "denied" in low or "not authenticated" in low or "verification failed" in low:
+        return False
+    return "successfully authenticated" in low or "welcome to" in low or "authenticated via" in low
+
+
+def identity_report(name: str) -> dict:
+    """Who talks to the remote: the commit identity, then for an ssh remote
+    `ssh -T` (as git would connect, never asking anything: an unknown host key
+    fails instead of being added), for an HTTPS GitHub remote the account of
+    Optimux's saved token (`gh auth status`). Nothing in the project changes;
+    URL credentials and saved keys are removed from the output."""
+    path = _project(name)
+    remote = _clean_remote(_git_remote(path) or "")
+    steps, notes = [], []
+    r = _git(path, "var", "GIT_AUTHOR_IDENT", timeout=10)
+    steps.append(("git var GIT_AUTHOR_IDENT", r["ok"],
+                  re.sub(r"\s+\d+ [+-]\d{4}$", "", r["output"]) if r["ok"] else r["output"]))
+    r = _git(path, "remote", "get-url", "origin", timeout=5)
+    steps.append(("git remote get-url origin", r["ok"], remote if r["ok"] else r["output"]))
+    kind = "none"
+    if remote and (target := ssh_target(remote)):
+        kind = "ssh"
+        dest, port = target
+        shown = ["ssh", "-T", *(["-p", port] if port else []), dest]
+        r = _run(["ssh", "-T", "-o", "BatchMode=yes", "-o", f"ConnectTimeout={SSH_TIMEOUT - 5}",
+                  *(["-p", port] if port else []), "--", dest], path, timeout=SSH_TIMEOUT, keep=None)
+        steps.append((" ".join(shown), r["ok"] or _authenticated(r["output"]), r["output"]))
+        own = _ok(_git(path, "config", "--get", "core.sshCommand", timeout=5))
+        if own:
+            notes.append(f"This repository sets core.sshCommand ({own}); git uses it, this check used plain ssh.")
+        if "verification failed" in r["output"].lower():
+            notes.append(f"Unknown host key: run ssh -T {dest} once as the user Optimux runs as, and check the key.")
+    elif remote.startswith("https://") and _GITHUB_REMOTE.match(remote):
+        kind = "https"
+        if os.environ.get(GITHUB_TOKEN_ENV):
+            r = _run(["gh", "auth", "status", "--hostname", "github.com"], path, timeout=SSH_TIMEOUT, github=True,
+                     keep=None)
+            steps.append(("gh auth status --hostname github.com", r["ok"], r["output"]))
+            notes.append("Push and Update use this account (the GitHub token saved in Optimux).")
+        else:
+            notes.append("No GitHub token is saved in Optimux (Dashboard → GitHub): git uses this machine's "
+                         "own credential helper for HTTPS.")
+    elif remote.startswith(("https://", "http://")):
+        kind = "https"
+        notes.append("An HTTPS remote outside GitHub: the account is whatever this machine's credential helper "
+                     "holds; Optimux can't ask it without a password prompt.")
+    elif remote:
+        kind = "local"
+        notes.append("origin is a folder on this machine: no account is involved.")
+    else:
+        notes.append("No origin: this project isn't connected to a remote repository.")
+    return {"project": name, "remote": remote or None, "kind": kind, "steps": _shown(steps), "notes": notes}
+
+
+def _shown(steps: list[tuple[str, bool, str]]) -> list[dict]:
+    """Steps for a terminal window: cut, without URL credentials or saved keys."""
+    out = []
     for command, ok, text in steps:
         if len(text) > STATUS_CHARS:
             text = text[:STATUS_CHARS] + "\n… (cut)"
         text = re.sub(r"(https?://)[^@/\s]+@", r"\1", text)     # no user or token from a URL
-        shown.append({"command": command, "ok": ok, "output": security.mask_secrets(text, edges=True)[0]})
-    return {"project": name, "remote": security.mask_secrets(out["remote"] or "")[0] or None,
-            "branch": out["branch"], "target": out["target"], "copy_of": out["copy_of"],
-            "upstream": out["upstream"], "ahead": ahead, "behind": behind, "steps": shown}
+        out.append({"command": command, "ok": ok, "output": security.mask_secrets(text, edges=True)[0]})
+    return out
 
 
 def push_prepare(name: str) -> dict:

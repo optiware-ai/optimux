@@ -3819,18 +3819,19 @@ createApp({
         };
         watch(() => projectPage.name, (n, old) => { if (old !== undefined && n !== old && settingsTab.value === 'project') loadProjectPage(); });
         // v0.8: Status, a terminal-like window with git fetch, git status and the last commits
-        const gitTerm = Vue.reactive({ project: '', loading: false, data: null, error: '', at: '', copied: false });
-        const openGitTerm = async (project) => {
-            Object.assign(gitTerm, { project, loading: true, error: '', copied: false });
-            if (gitTerm.data && gitTerm.data.project !== project) gitTerm.data = null;
+        const gitTerm = Vue.reactive({ project: '', kind: 'status', loading: false, data: null, error: '', at: '', copied: false });
+        // kind: 'status' (git fetch, status, log) or 'identity' (who talks to the remote)
+        const openGitTerm = async (project, kind = 'status') => {
+            if (gitTerm.kind !== kind || (gitTerm.data && gitTerm.data.project !== project)) gitTerm.data = null;
+            Object.assign(gitTerm, { project, kind, loading: true, error: '', copied: false });
             try {
-                const r = await fetch(`/api/projects/${encodeURIComponent(project)}/status`);
+                const r = await fetch(`/api/projects/${encodeURIComponent(project)}/${kind}`);
                 const d = await readJson(r);
-                if (gitTerm.project !== project) return;             // closed or another project meanwhile
+                if (gitTerm.project !== project || gitTerm.kind !== kind) return;   // closed or changed meanwhile
                 if (r.ok) { gitTerm.data = d; gitTerm.at = new Date().toLocaleTimeString(); }
                 else { gitTerm.data = null; gitTerm.error = (d && d.detail) || ('Status failed (' + r.status + ')'); }
             } catch (error) { gitTerm.error = 'Status failed: ' + error; }
-            finally { if (gitTerm.project === project) gitTerm.loading = false; }
+            finally { if (gitTerm.project === project && gitTerm.kind === kind) gitTerm.loading = false; }
         };
         const closeGitTerm = () => Object.assign(gitTerm, { project: '', loading: false, data: null, error: '' });
         watch(() => projectPage.name, closeGitTerm);
@@ -3853,6 +3854,8 @@ createApp({
                     } else out.push({ text: line, cls: '' });
                 }
             }
+            for (const n of d.notes || []) out.push({ text: '# ' + n, cls: 'cm-term-note' });
+            if (gitTerm.kind !== 'status') return out;
             if (d.ahead !== null && d.ahead !== undefined)
                 out.push({ text: `# GitHub (origin/${d.target}): ${d.ahead} commit${d.ahead === 1 ? '' : 's'} to push, ${d.behind} to pull`, cls: 'cm-term-note' });
             else if (!d.remote) out.push({ text: '# No GitHub remote (origin): nothing to compare with.', cls: 'cm-term-note' });
@@ -4819,3 +4822,85 @@ createApp({
 }).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).component('onboard-steps', OnboardSteps)
   .component('day-columns', DayColumns).component('tree-map', Treemap).component('connected-dots', ConnectedScatter)
   .component('scatter-plot', ScatterPlot).component('chart-pick', ChartPick).mount('#app');
+
+// v0.8: the app's own tooltips instead of the browser's. Any element with a
+// title shows it in a themed box after a short hover, or at once when reached
+// with the keyboard. The title moves to data-cm-title while the box is open
+// (so the browser doesn't show its own too) and comes back when it closes;
+// if Vue set a new title meanwhile, that one is kept.
+(function cmTooltips() {
+    const DELAY = 350, GAP = 8, EDGE = 8;
+    const box = document.createElement('div');
+    box.className = 'cm-tip';
+    box.id = 'cm-tip';
+    box.setAttribute('role', 'tooltip');
+    box.hidden = true;
+    const text = document.createElement('div');
+    const arrow = document.createElement('span');
+    arrow.className = 'cm-tip-arrow';
+    box.append(text, arrow);
+    document.body.appendChild(box);
+    let el = null, timer = null;
+
+    const release = () => {
+        if (!el) return;
+        const saved = el.getAttribute('data-cm-title');
+        if (saved !== null && !el.hasAttribute('title')) el.setAttribute('title', saved);
+        el.removeAttribute('data-cm-title');
+        if (el.getAttribute('aria-describedby') === 'cm-tip') el.removeAttribute('aria-describedby');
+        el = null;
+    };
+    const hide = () => {
+        clearTimeout(timer);
+        box.hidden = true;
+        box.classList.remove('cm-tip-on');
+        release();
+    };
+    const place = () => {
+        if (!el || !el.isConnected) { hide(); return; }
+        const r = el.getBoundingClientRect();
+        const w = box.offsetWidth, h = box.offsetHeight;
+        const below = r.bottom + GAP + h <= window.innerHeight - EDGE || r.top - GAP - h < EDGE;
+        const top = below ? r.bottom + GAP : r.top - GAP - h;
+        const center = r.left + r.width / 2;
+        const left = Math.max(EDGE, Math.min(center - w / 2, window.innerWidth - w - EDGE));
+        box.style.top = Math.round(top) + 'px';
+        box.style.left = Math.round(left) + 'px';
+        box.classList.toggle('cm-tip-up', !below);
+        arrow.style.left = Math.round(Math.max(10, Math.min(center - left, w - 10))) + 'px';
+    };
+    const show = () => {
+        if (!el || !el.isConnected) { hide(); return; }
+        text.textContent = el.getAttribute('data-cm-title') || '';
+        if (!text.textContent.trim()) { hide(); return; }
+        box.hidden = false;
+        el.setAttribute('aria-describedby', 'cm-tip');
+        place();
+        requestAnimationFrame(() => box.classList.add('cm-tip-on'));
+    };
+    const take = (target, wait) => {
+        const t = target && target.closest ? target.closest('[title], [data-cm-title]') : null;
+        if (t === el) return;
+        hide();
+        if (!t || t.closest('.cm-tip')) return;
+        const title = t.getAttribute('title');
+        if (!title || !title.trim()) return;
+        el = t;
+        el.setAttribute('data-cm-title', title);
+        el.removeAttribute('title');
+        timer = setTimeout(show, wait);
+    };
+    document.addEventListener('mouseover', (e) => take(e.target, DELAY));
+    document.addEventListener('mouseout', (e) => {
+        if (el && !(e.relatedTarget && el.contains(e.relatedTarget))) hide();
+    });
+    document.addEventListener('focusin', (e) => {
+        if (e.target.matches && e.target.matches(':focus-visible')) take(e.target, 0);
+    });
+    document.addEventListener('focusout', () => hide());
+    document.addEventListener('mousedown', () => hide(), true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && el) hide(); }, true);
+    window.addEventListener('scroll', () => { if (el) hide(); }, true);
+    window.addEventListener('resize', () => { if (el) hide(); });
+    window.addEventListener('blur', () => hide());
+})();

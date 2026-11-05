@@ -907,6 +907,13 @@ async def project_status(name: str):
     return await _gitsync(gitsync.status_report, name)
 
 
+@app.get("/api/projects/{name}/identity")
+async def project_identity(name: str):
+    """Who talks to the project's remote: the commit identity and ssh -T (or
+    the saved GitHub token's account). Nothing in the project changes."""
+    return await _gitsync(gitsync.identity_report, name)
+
+
 @app.get("/api/projects/{name}/update")
 async def project_update_prepare(name: str):
     """What Update would bring in from GitHub. Nothing changes."""
