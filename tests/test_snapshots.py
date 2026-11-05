@@ -406,7 +406,7 @@ def test_api_takes_everything(client):
         if s["status"] != "running":
             break
         time.sleep(0.05)
-    assert s["status"] == "ready" and s["kind"] == "full"
+    assert s["status"] == "ready" and s["kind"] == "full", s.get("error")
 
 
 def test_the_list_says_what_is_inside_without_opening_the_archive(home):
@@ -582,3 +582,19 @@ def test_version_without_git_is_unknown(tmp_path, monkeypatch):
     monkeypatch.setattr(snapshots, "APP_DIR", str(tmp_path))
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
     assert snapshots.optimux_version() == "unknown"
+
+
+def test_a_snapshot_that_just_finished_is_not_listed_as_failed(home, monkeypatch):
+    """The listing read "running", then the thread wrote "ready" and left _running before the
+    listing checked _running: it was shown (and the API test saw it) as failed."""
+    sid = snapshots.create("data")["id"]
+    real_load = json.load
+    calls = {"n": 0}
+
+    def stale_first(f):                                  # the first read is from just before it finished
+        meta = real_load(f)
+        calls["n"] += 1
+        return {**meta, "status": "running"} if calls["n"] == 1 else meta
+    monkeypatch.setattr(snapshots.json, "load", stale_first)
+    listed = [x for x in snapshots.list_snapshots() if x["id"] == sid][0]
+    assert listed["status"] == "ready"

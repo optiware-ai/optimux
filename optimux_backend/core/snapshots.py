@@ -796,6 +796,15 @@ def list_snapshots() -> list[dict]:
             continue
         meta["id"] = sid
         if meta.get("status") == "running" and sid not in _running:
+            # It may have just finished: the thread writes "ready" and only then leaves
+            # _running, so read it again before calling it interrupted (it showed "failed"
+            # for a moment when the listing fell between the two)
+            try:
+                with open(_meta_path(sid)) as f:
+                    meta = {**json.load(f), "id": sid}
+            except (OSError, ValueError):
+                pass
+        if meta.get("status") == "running" and sid not in _running:
             meta["status"] = "failed"
             meta.setdefault("error", "Interrupted (Optimux stopped while it was being taken).")
         arc = archive_path(sid)
