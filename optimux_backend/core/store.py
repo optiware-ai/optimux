@@ -181,6 +181,12 @@ MIGRATIONS = [
     ALTER TABLE usage ADD COLUMN task_id TEXT;
     CREATE INDEX idx_usage_task ON usage(task_id);
     """,
+    # 12 (v0.8): working time. How long each request waited for the user's answers, and how
+    # many times it asked; NULL for requests from before (they are left out of working time)
+    """
+    ALTER TABLE tasks ADD COLUMN wait_ms INTEGER;
+    ALTER TABLE tasks ADD COLUMN waits INTEGER;
+    """,
 ]
 
 _ready_for: str | None = None

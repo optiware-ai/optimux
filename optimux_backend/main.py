@@ -3036,10 +3036,13 @@ async def wait_for_answer(websocket: WebSocket, session: dict, tc_id: str, comma
     session["approval"] = approval
     await send(websocket, "approval_request", command=command, tool_call_id=tc_id,
                sandboxed=sandbox_lib.enabled(get_settings()), sandbox_problem=sandbox_problem(), **extra)
+    asked_at = time.monotonic()
     try:
         answer = await approval
     finally:
         session["approval"] = None
+        # v0.8 working time: the user's time to answer isn't the request's work (tasks.APPROVAL_MS each)
+        tasks_lib.add_wait(session.get("task"), int((time.monotonic() - asked_at) * 1000))
     task = session.get("task")
     if task is not None:
         task["approved" if answer.get("type") == "approval_response" and answer.get("approved") is True

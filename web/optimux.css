@@ -120,3 +120,6 @@
 .cm-sv-dot-ref { fill: #86b6ef; }
 .cm-sv-dot-spent { fill: #2a78d6; }
 .cm-sv-pt:hover .cm-sv-cross, .cm-sv-pt:hover .cm-sv-dot { opacity: 1; }
+.cm-wt-col { fill: #2a78d6; }
+.cm-pf-col:focus { outline: none; }
+.cm-pf-col:focus .cm-pf-band { fill: rgba(148, 163, 184, .08); }

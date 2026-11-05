@@ -100,7 +100,7 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── security.py_AGENT.md
 │       ├── onboarding.py        (Getting started: the first-run checklist)
 │       ├── onboarding.py_AGENT.md
-│       ├── tasks.py             (Task records: one row per request, 👍 / 👎, CSV export)
+│       ├── tasks.py             (Task records: one row per request, 👍 / 👎, CSV export, working time)
 │       ├── tasks.py_AGENT.md
 │       ├── usage.py             (Token & cost metering per LLM call)
 │       └── usage.py_AGENT.md

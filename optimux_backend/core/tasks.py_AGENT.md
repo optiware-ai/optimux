@@ -14,6 +14,7 @@
 - Writes from the chat never raise (a statistics row must not break a chat).
 
 ## Links & Dependencies
+- **Working time (v0.8, ported from OmniLatch p94):** `new` starts `wait_ms` and `waits` at 0; `add_wait(task, ms)` (called by `main.wait_for_answer` after every approval box or form, also when it ends in a Stop) adds the real wait and counts one; `finish` caps `wait_ms` at `duration_ms`. `APPROVAL_MS` (2000): what one wait counts for. `counted(duration, wait, waits)` = duration − real waits + 2 s × waits. `parts(row)` splits it into `model_ms` (capped), `approval_ms` and `other_ms` (commands, tools, Optimux), with `counted_ms`. `timed(project, since)` reads the records that have working time (`wait_ms IS NOT NULL`; older ones are left out) with `model_ms` = the sum of their usage rows' `duration_ms` (by `task_id`); the Workspace is `(no project)`, as in usage. `first_timed_ts()`. Used by `analytics.time_of`. Delete all removes it with the records. Tests: `tests/test_work_time.py`.
 - Uses `store.py`. Used by `main.py` (hooks above; `GET /api/tasks`, `GET /api/tasks.csv`, `DELETE /api/tasks`, `POST /api/tasks/{id}/rating`; `session_loaded` carries `ratings`; the `task_done` event gives the page the id for 👍 / 👎) and by `analytics.unlinked_escalations`.
 - Escalations also zero the stuck model's reference cost: `usage.zero_reference(task_id, role, step)`.
 - Tests: `tests/test_tasks.py`.

@@ -260,6 +260,59 @@
                                 <span v-if="perf.sv.v.escalations">{{ perf.sv.v.escalations.toLocaleString() }} escalations from before task records: the stuck model's work on those is not subtracted.</span>
                             </p>
                         </div>
+                        <!-- v0.8: working time per request -->
+                        <div v-if="perf.wt" class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" aria-label="Working time">
+                            <h3 class="text-[15px] font-bold text-gray-200 flex items-center mb-3">Working time<help-tip wide>
+                                <p>From your message to the end of the reply, for every request. Each approval counts as {{ Math.round(perf.wt.tm.approval_ms / 1000) }} s, however long the box waited for you, so time you spend deciding is not counted as the models' work; the real waiting is shown apart.</p>
+                                <p><b>Models</b> is the time of the request's model calls; <b>Commands and tools</b> is the rest (running commands, reading and writing files, Optimux itself).</p>
+                            </help-tip></h3>
+                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                                <div><div class="text-xs uppercase tracking-wider text-gray-500">Working time</div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtDur(perf.wt.tm.totals.counted_ms) }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">{{ perfProject ? 'on ' + projectLabel(perfProject) : 'all projects' }}</div></div>
+                                <div><div class="text-xs uppercase tracking-wider text-gray-500">Requests</div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ perf.wt.tm.totals.requests.toLocaleString() }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">{{ perf.wt.tm.avg_request_ms === null ? '—' : fmtDur(perf.wt.tm.avg_request_ms) + ' each on average' }}</div></div>
+                                <div><div class="text-xs uppercase tracking-wider text-gray-500">Model calls</div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtDur(perf.wt.tm.model_calls_ms) }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">every call in the period</div></div>
+                                <div><div class="text-xs uppercase tracking-wider text-gray-500">Approvals</div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ perf.wt.tm.totals.waits.toLocaleString() }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">counted {{ fmtDur(perf.wt.tm.totals.approval_ms) }}; you waited {{ fmtDur(perf.wt.tm.totals.wait_ms) }}</div></div>
+                            </div>
+                            <svg v-if="perf.wt.cols" :width="perf.wt.width" :height="perf.wt.H" class="cm-pf-svg" role="img" :aria-label="'Working time per ' + perf.wt.per" @mouseleave="hideTip">
+                                <line x1="0" :x2="perf.wt.width" :y1="perf.wt.peakY" :y2="perf.wt.peakY" class="cm-pf-grid"></line>
+                                <text x="0" :y="perf.wt.peakY - 5" class="cm-pf-axis">{{ perf.wt.peakText }}</text>
+                                <g v-for="(c, i) in perf.wt.cols" :key="i" class="cm-pf-col" tabindex="0" @mousemove="showTip($event, c.tip)" @focus="showTipFor($event.target, c.tip)" @blur="hideTip">
+                                    <rect :x="c.x" :y="perf.wt.topPad" :width="c.w" :height="perf.wt.plotH" class="cm-pf-band"></rect>
+                                    <rect v-if="c.h" :x="c.x" :y="c.y" :width="c.w" :height="c.h" rx="2" class="cm-wt-col"></rect>
+                                </g>
+                                <text x="0" :y="perf.wt.H - 6" class="cm-pf-axis">{{ perf.wt.firstText }}</text>
+                                <text v-if="perf.wt.lastText" :x="perf.wt.width" :y="perf.wt.H - 6" text-anchor="end" class="cm-pf-axis">{{ perf.wt.lastText }}</text>
+                            </svg>
+                            <p v-else class="text-sm text-gray-500">No timed requests in this period yet.</p>
+                            <details v-if="!perfProject && perf.wt.tm.projects.length" class="mt-4">
+                                <summary class="cursor-pointer text-xs text-gray-400 hover:text-gray-200">Per project</summary>
+                                <div class="overflow-x-auto mt-2"><table class="w-full text-[13px]">
+                                    <thead><tr class="text-xs text-gray-500 text-left">
+                                        <th class="font-normal py-1 pr-3">Project</th><th class="font-normal py-1 pr-3 text-right">Requests</th>
+                                        <th class="font-normal py-1 pr-3 text-right">Working time</th><th class="font-normal py-1 pr-3 text-right">Models</th>
+                                        <th class="font-normal py-1 pr-3 text-right">Commands and tools</th><th class="font-normal py-1 pr-3 text-right">Approvals</th>
+                                        <th class="font-normal py-1 text-right">First request</th>
+                                    </tr></thead>
+                                    <tbody><tr v-for="p in perf.wt.tm.projects" :key="p.project" class="border-t border-gray-800 text-gray-300">
+                                        <td class="py-1 pr-3 truncate max-w-[12rem]" :title="p.project">{{ projectLabel(p.project) }}</td>
+                                        <td class="py-1 pr-3 text-right font-mono">{{ p.requests.toLocaleString() }}</td>
+                                        <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.counted_ms) }}</td>
+                                        <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.model_ms) }}</td>
+                                        <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.other_ms) }}</td>
+                                        <td class="py-1 pr-3 text-right font-mono">{{ p.waits.toLocaleString() }}</td>
+                                        <td class="py-1 text-right font-mono">{{ new Date(p.first * 1000).toLocaleDateString() }}</td>
+                                    </tr></tbody>
+                                </table></div>
+                            </details>
+                            <p class="text-xs text-gray-500 mt-3">{{ perf.wt.tm.recorded_since ? 'Request times are recorded since ' + new Date(perf.wt.tm.recorded_since * 1000).toLocaleDateString() + '; model call time covers older calls too.' : 'Request times are recorded from now on; model call time covers older calls too.' }}</p>
+                        </div>
                         <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
                             <div v-for="k in perf.kpis" :key="k.label" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                                 <div class="text-xs uppercase tracking-wider text-gray-500">{{ k.label }}</div>

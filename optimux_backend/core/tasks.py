@@ -20,7 +20,7 @@ from optimux_backend.core import store
 COLUMNS = ("id", "ts", "session", "project", "kind", "tier", "model", "conductor_model", "conductor_tier",
            "conductor_plan", "conductor_error", "escalated", "escalation_reason", "outcome", "steps", "calls",
            "cost", "calls_without_cost", "duration_ms", "files_changed", "lines_added", "lines_removed",
-           "approved", "rejected", "skill", "plan_id", "rating", "rated_ts")
+           "approved", "rejected", "skill", "plan_id", "rating", "rated_ts", "wait_ms", "waits")
 KINDS = ("prompt", "escalate", "plan_action")
 RATINGS = (-1, 0, 1)               # 👎, cleared, 👍
 REASON_CHARS = 200
@@ -34,7 +34,7 @@ def new(kind: str, project: str = "") -> dict:
     """A request starts: an empty record held in memory until `finish`."""
     return {"id": uuid.uuid4().hex[:16], "ts": time.time(), "_t0": time.monotonic(), "kind": kind,
             "project": project or None, "escalated": 0, "steps": 0, "calls": 0, "cost": 0.0,
-            "calls_without_cost": 0, "approved": 0, "rejected": 0}
+            "calls_without_cost": 0, "approved": 0, "rejected": 0, "wait_ms": 0, "waits": 0}
 
 
 def add_call(task: dict | None, entry: dict) -> None:
@@ -65,6 +65,14 @@ def set_changes(task: dict | None, result: dict) -> None:
     task["lines_removed"] = sum(f.get("removed") or 0 for f in files)
 
 
+def add_wait(task: dict | None, ms: int) -> None:
+    """The request waited ms for the user to answer (an approval box or a form), v0.8."""
+    if task is None:
+        return
+    task["wait_ms"] += max(0, int(ms))
+    task["waits"] += 1
+
+
 def worth_keeping(task: dict) -> bool:
     """A request that called no model and has no outcome (a /simple command
     alone, a refused budget, "Nothing to escalate") is not a task."""
@@ -78,6 +86,7 @@ def finish(task: dict | None, session_id: str | None) -> bool:
     row = {k: task.get(k) for k in COLUMNS}
     row["session"] = session_id or None
     row["duration_ms"] = int((time.monotonic() - task["_t0"]) * 1000)
+    row["wait_ms"] = min(row["duration_ms"], int(task.get("wait_ms") or 0))
     if row["calls"] and row["calls_without_cost"] == row["calls"]:
         row["cost"] = None                     # no call had a known price: unknown, not free
     if row["conductor_plan"] is not None:
@@ -191,3 +200,56 @@ def delete_all() -> int:
     finally:
         conn.close()
     return n
+
+
+# ---- Working time (v0.8, ported from OmniLatch p94)
+# How long Optimux worked on each request: from the message (or Escalate, or a plan
+# action) to the end of the reply. Time spent waiting for the user to answer an
+# approval or a form isn't the models' or Optimux's work: a request left waiting for
+# 15 minutes would look 15 minutes slower. So each wait counts as a fixed APPROVAL_MS
+# (a quick click) and the real wait is kept apart (shown, never counted).
+#     counted = duration - real waits + APPROVAL_MS x waits
+# Its parts: model calls (the request's usage rows, by task_id), approvals (the fixed
+# 2 s each) and the rest (commands, tools, file work, Optimux itself). Records from
+# before v0.8 have no wait time and are left out.
+
+APPROVAL_MS = 2000
+TIME_PARTS = ("model_ms", "approval_ms", "other_ms")
+
+
+def counted(duration_ms: int, wait_ms: int, waits: int) -> int:
+    return max(0, int(duration_ms or 0) - int(wait_ms or 0)) + APPROVAL_MS * max(0, int(waits or 0))
+
+
+def parts(r: dict) -> dict:
+    """A request's counted time split into model calls, approvals and the rest."""
+    total = counted(r.get("duration_ms"), r.get("wait_ms"), r.get("waits"))
+    approvals = min(total, APPROVAL_MS * int(r.get("waits") or 0))
+    left = total - approvals
+    model = min(left, int(r.get("model_ms") or 0))
+    return {"counted_ms": total, "model_ms": model, "approval_ms": approvals, "other_ms": left - model}
+
+
+def timed(project: str | None = None, since: float = 0) -> list[dict]:
+    """Records with working time, oldest first, each with model_ms (its calls' time)."""
+    conn = store.connect()
+    try:
+        sql = ("SELECT t.id, t.ts, t.project, t.kind, t.duration_ms, t.wait_ms, t.waits, "
+               "(SELECT COALESCE(SUM(u.duration_ms), 0) FROM usage u WHERE u.task_id = t.id) AS model_ms "
+               "FROM tasks t WHERE t.wait_ms IS NOT NULL AND t.ts >= ?")
+        args: list = [since]
+        if project is not None:
+            sql += " AND COALESCE(t.project, '(no project)') = ?"
+            args.append(project)
+        return [dict(r) for r in conn.execute(sql + " ORDER BY t.ts", args).fetchall()]
+    finally:
+        conn.close()
+
+
+def first_timed_ts() -> float | None:
+    conn = store.connect()
+    try:
+        row = conn.execute("SELECT MIN(ts) AS t FROM tasks WHERE wait_ms IS NOT NULL").fetchone()
+    finally:
+        conn.close()
+    return row["t"] if row and row["t"] is not None else None

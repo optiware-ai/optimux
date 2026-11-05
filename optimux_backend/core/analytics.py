@@ -16,6 +16,8 @@ Definitions (shown in the Guide):
 - reliability: calls / (calls + failed calls), counted since events were first
   recorded (older calls have no failure records).
 - escalation rate: escalations away from the model / its calls.
+- working time (v0.8, tasks.py): per request, from the message to the end of the
+  reply, each approval counted as tasks.APPROVAL_MS whatever the real wait.
 """
 import contextlib
 import io
@@ -23,7 +25,7 @@ import time
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
-from optimux_backend.core import store, usage
+from optimux_backend.core import store, tasks, usage
 
 MIN_SPEED_TOKENS = 20        # shorter outputs say more about latency than about speed
 MIN_SPEED_MS = 200
@@ -227,6 +229,37 @@ def unlinked_escalations(events: list[dict]) -> int:
     return sum(1 for ev in events if ev["kind"] == "escalation" and (start is None or ev["ts"] < start))
 
 
+def _time_bucket() -> dict:
+    return {"requests": 0, "counted_ms": 0, "wait_ms": 0, "waits": 0, **{k: 0 for k in tasks.TIME_PARTS}}
+
+
+def time_of(entries: list[dict], project: str | None, since: float, keys: list[str], weekly: bool) -> dict:
+    """Working time in the period (see tasks.py): totals, per day or week (the same
+    buckets as the timeline), per project (across projects) and the time of every
+    model call in the period (usage rows, older calls included)."""
+    totals = _time_bucket()
+    per = {k: _time_bucket() for k in keys}
+    projects: dict[str, dict] = {}
+    for r in tasks.timed(project, since):
+        p = tasks.parts(r)
+        targets = [totals, per.setdefault(_bucket(r["ts"], weekly), _time_bucket())]
+        if project is None:
+            pb = projects.setdefault(r.get("project") or usage.NO_PROJECT, {**_time_bucket(), "first": r["ts"]})
+            targets.append(pb)
+        for t in targets:
+            t["requests"] += 1
+            t["counted_ms"] += p["counted_ms"]
+            t["wait_ms"] += int(r.get("wait_ms") or 0)
+            t["waits"] += int(r.get("waits") or 0)
+            for k in tasks.TIME_PARTS:
+                t[k] += p[k]
+    return {"approval_ms": tasks.APPROVAL_MS, "recorded_since": tasks.first_timed_ts(), "totals": totals,
+            "avg_request_ms": round(totals["counted_ms"] / totals["requests"]) if totals["requests"] else None,
+            "timeline": [{"bucket": k, **per[k]} for k in sorted(per)],
+            "projects": sorted(({"project": k, **v} for k, v in projects.items()), key=lambda x: -x["counted_ms"]),
+            "model_calls_ms": sum(int(e.get("duration_ms") or 0) for e in entries)}
+
+
 def analytics(days: int = 30, project: str | None = None, now: float | None = None) -> dict:
     """Per-model cost and performance for the last `days` days (0 = all time),
     optionally for one project."""
@@ -346,4 +379,5 @@ def analytics(days: int = 30, project: str | None = None, now: float | None = No
             "events_since": events_since, "totals": totals, "models": rows, "timeline": timeline,
             "matrix": matrix, "roles": role_rows, "top": TOP_MODELS,
             "savings": savings_of(entries, unlinked_escalations(events)), "color_order": color_order(),
+            "time": time_of(entries, project, since, keys, weekly),
             "projects": known_projects()}

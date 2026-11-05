@@ -2193,6 +2193,19 @@ createApp({
             });
         };
         const hideTip = () => { perfTip.value = null; };
+        // Keyboard focus on a chart column shows the same tooltip as the mouse (v0.8)
+        const showTipFor = (el, tip) => {
+            const r = el.getBoundingClientRect();
+            showTip({ clientX: r.left + r.width / 2, clientY: r.top + 8 }, tip);
+        };
+        // 45 s, 3 min 10 s, 2 h 5 min (working time, v0.8)
+        const fmtDur = (ms) => {
+            const sec = Math.round((ms || 0) / 1000);
+            if (sec < 60) return `${sec} s`;
+            const m = Math.floor(sec / 60), h = Math.floor(m / 60);
+            if (h) return `${h} h ${m % 60} min`;
+            return sec % 60 ? `${m} min ${sec % 60} s` : `${m} min`;
+        };
 
         const perf = Vue.computed(() => {
             const d = perfData.value;
@@ -2545,7 +2558,38 @@ createApp({
                     refTitle: refs.map(r => `${r}: ${v.reference_models[r]} calls`).join('\n'),
                 };
             })();
-            return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, sv, empty: !models.length,
+            // v0.8: working time per request (approvals count 2 s each; the real wait is shown apart).
+            // One series of columns, from the first day with a request to today; the parts are in the tooltip.
+            const wt = (() => {
+                const tm = d.time;
+                if (!tm || !tm.totals.requests) return tm ? { tm, cols: null } : null;
+                const all = tm.timeline;
+                const first = all.findIndex(b => b.requests > 0);
+                const days = first < 0 ? [] : all.slice(first);
+                const H = 150, topPad = 18, bottom = 22, plotH = H - topPad - bottom, gap = 2;
+                const colW = Math.min(56, Math.max(4, Math.floor(W / Math.max(1, days.length))));
+                const width = Math.min(W, colW * days.length);
+                const max = Math.max(1, ...days.map(b => b.counted_ms));
+                const peak = days.reduce((a, b, i) => b.counted_ms > days[a].counted_ms ? i : a, 0);
+                const secs = Math.round(tm.approval_ms / 1000);
+                const label = (k) => d.weekly ? 'Week of ' + new Date(k + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                    : new Date(k + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                const cols = days.map((b, i) => {
+                    const h = b.counted_ms ? Math.max(2, Math.round(plotH * b.counted_ms / max)) : 0;
+                    return { x: i * colW, w: Math.max(1, colW - gap), h, y: topPad + plotH - h,
+                             tip: { title: label(b.bucket), total: b.requests ? fmtDur(b.counted_ms) : '',
+                                    rows: b.requests ? [{ label: 'Models', value: fmtDur(b.model_ms) },
+                                                        { label: 'Commands and tools', value: fmtDur(b.other_ms) },
+                                                        { label: `Approvals (${secs} s each)`, value: fmtDur(b.approval_ms) },
+                                                        { label: `${b.requests} request${b.requests === 1 ? '' : 's'}` + (b.waits ? `, you waited ${fmtDur(b.wait_ms)}` : ''), value: '' }]
+                                                     : [{ label: 'No requests', value: '' }] } };
+                });
+                const short = (k) => new Date(k + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                return { tm, H, topPad, plotH, width, cols, peakY: topPad + plotH - Math.round(plotH * days[peak].counted_ms / max),
+                         peakText: fmtDur(days[peak].counted_ms), firstText: short(days[0].bucket),
+                         lastText: days.length > 1 ? short(days[days.length - 1].bucket) : '', per: d.weekly ? 'week' : 'day' };
+            })();
+            return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, sv, wt, empty: !models.length,
                      maxShare: Math.max(0.0001, ...models.map(m => m.share)) };
         });
         const PERF_ROLES = { conductor: 'Conductor', scout: 'Scout', simple: 'Simple', complex: 'Complex', override: 'chosen by you', curator: 'memory',
@@ -4163,7 +4207,7 @@ createApp({
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
             openChatFromDashboard, switchProject, routingRole, fmtAgo, costChart, overviewKpis, writeClipboard,
-            perf, perfData, perfDays, perfProject, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, perfTipEl, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
+            perf, perfData, perfDays, showTipFor, fmtDur, perfProject, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, perfTipEl, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
             historyFiltered, resetHistoryFilters, lastPromptBefore, retryFrom, interruptionLabel, wsState, headerCostTitle,
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
