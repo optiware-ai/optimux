@@ -225,3 +225,66 @@ def test_an_identity_git_cannot_commit_with_is_a_problem(ws, monkeypatch, config
     monkeypatch.setattr("optimux_backend.core.workspace.get_settings",
                         lambda: {"git_name": "Masoud", "git_email": "m@example.com"})
     assert gitsync.push_prepare("site")["identity"] is True
+
+
+# ---- Status (v0.8): the Project page's terminal window
+
+def test_status_fetches_and_shows_git_status_and_the_last_commits(ws):
+    git("commit", "-q", "--allow-empty", "-m", "on github", cwd=ws["seed"])
+    git("push", "-q", "origin", "main", cwd=ws["seed"])
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    (ws["proj"] / "new.txt").write_text("new\n")
+    before = git("rev-parse", "HEAD", cwd=ws["proj"])
+    r = gitsync.status_report("site")
+    assert [s["command"] for s in r["steps"]] == ["git fetch origin", "git status", "git log --oneline -n 5"]
+    assert all(s["ok"] for s in r["steps"])
+    status = r["steps"][1]["output"]
+    assert "On branch main" in status and "behind 'origin/main' by 1 commit" in status
+    assert "modified:   index.html" in status and "new.txt" in status
+    assert "start" in r["steps"][2]["output"]
+    assert (r["ahead"], r["behind"], r["target"]) == (0, 1, "main")
+    # nothing in the project changed: same commit, same files, nothing staged
+    assert git("rev-parse", "HEAD", cwd=ws["proj"]) == before
+    assert (ws["proj"] / "index.html").read_text() == "<p>2026</p>\n"
+    assert git("diff", "--cached", "--name-only", cwd=ws["proj"]) == ""
+
+
+def test_status_masks_saved_keys_and_tokens_in_urls(ws):
+    git("commit", "-q", "--allow-empty", "-m", "uses sk-ant-very-secret-123", cwd=ws["proj"])
+    git("remote", "set-url", "origin", "https://user:tok123@127.0.0.1:9/none.git", cwd=ws["proj"])
+    r = gitsync.status_report("site")
+    text = str(r)
+    assert "sk-ant-very-secret-123" not in text and "••••(ANTHROPIC_API_KEY)" in r["steps"][2]["output"]
+    assert "tok123" not in text and r["steps"][0]["ok"] is False
+
+
+def test_status_without_github_and_outside_git(ws, tmp_path):
+    git("remote", "remove", "origin", cwd=ws["proj"])
+    r = gitsync.status_report("site")
+    assert [s["command"] for s in r["steps"]] == ["git status", "git log --oneline -n 5"]
+    assert r["ahead"] is None and r["remote"] is None
+    (ws["root"] / "plain").mkdir()
+    with pytest.raises(gitsync.GitSyncError, match="isn't a git repository"):
+        gitsync.status_report("plain")
+
+
+def test_status_waits_for_a_running_push(ws):
+    lock = gitsync._lock("site")
+    lock.acquire()
+    try:
+        with pytest.raises(gitsync.GitSyncError, match="push or update"):
+            gitsync.status_report("site")
+    finally:
+        lock.release()
+
+
+def test_the_status_api(ws, mocker, tmp_path):
+    from tests.ws_helpers import make_client
+    client = make_client(mocker, tmp_path)
+    H = {"Authorization": "Bearer test-token"}
+    r = client.get("/api/projects/site/status", headers=H).json()
+    assert r["steps"][1]["command"] == "git status" and "On branch main" in r["steps"][1]["output"]
+    (ws["root"] / "plain").mkdir()
+    r = client.get("/api/projects/plain/status", headers=H)
+    assert r.status_code == 422 and "isn't a git repository" in r.json()["detail"]
+    assert client.get("/api/projects/..%2Fx/status", headers=H).status_code in (404, 422)

@@ -3818,6 +3818,51 @@ createApp({
             } catch (error) { projectPage.msg = { ok: false, text: 'Could not load this project: ' + error }; }
         };
         watch(() => projectPage.name, (n, old) => { if (old !== undefined && n !== old && settingsTab.value === 'project') loadProjectPage(); });
+        // v0.8: Status, a terminal-like window with git fetch, git status and the last commits
+        const gitTerm = Vue.reactive({ project: '', loading: false, data: null, error: '', at: '', copied: false });
+        const openGitTerm = async (project) => {
+            Object.assign(gitTerm, { project, loading: true, error: '', copied: false });
+            if (gitTerm.data && gitTerm.data.project !== project) gitTerm.data = null;
+            try {
+                const r = await fetch(`/api/projects/${encodeURIComponent(project)}/status`);
+                const d = await readJson(r);
+                if (gitTerm.project !== project) return;             // closed or another project meanwhile
+                if (r.ok) { gitTerm.data = d; gitTerm.at = new Date().toLocaleTimeString(); }
+                else { gitTerm.data = null; gitTerm.error = (d && d.detail) || ('Status failed (' + r.status + ')'); }
+            } catch (error) { gitTerm.error = 'Status failed: ' + error; }
+            finally { if (gitTerm.project === project) gitTerm.loading = false; }
+        };
+        const closeGitTerm = () => Object.assign(gitTerm, { project: '', loading: false, data: null, error: '' });
+        watch(() => projectPage.name, closeGitTerm);
+        // Lines with a colour, like git in a terminal: staged green, unstaged and untracked red
+        const gitTermLines = Vue.computed(() => {
+            const d = gitTerm.data;
+            if (!d) return gitTerm.error ? [{ text: gitTerm.error, cls: 'cm-term-bad' }] : [];
+            const out = [];
+            for (const st of d.steps) {
+                out.push({ text: '$ ' + st.command, cls: 'cm-term-cmd' });
+                let mode = '';
+                const text = st.output || (st.ok ? '' : 'failed');
+                for (const line of (text ? text.split('\n') : [])) {
+                    if (!st.ok) { out.push({ text: line, cls: 'cm-term-bad' }); continue; }
+                    if (st.command === 'git status') {
+                        if (/^Changes to be committed/.test(line)) mode = 'cm-term-good';
+                        else if (/^(Changes not staged|Untracked files|Unmerged paths)/.test(line)) mode = 'cm-term-bad';
+                        else if (line.trim() && !/^\s/.test(line)) mode = '';
+                        out.push({ text: line, cls: /^\t/.test(line) ? mode : '' });
+                    } else out.push({ text: line, cls: '' });
+                }
+            }
+            if (d.ahead !== null && d.ahead !== undefined)
+                out.push({ text: `# GitHub (origin/${d.target}): ${d.ahead} commit${d.ahead === 1 ? '' : 's'} to push, ${d.behind} to pull`, cls: 'cm-term-note' });
+            else if (!d.remote) out.push({ text: '# No GitHub remote (origin): nothing to compare with.', cls: 'cm-term-note' });
+            return out;
+        });
+        const copyGitTerm = async () => {
+            if (await writeClipboard(gitTermLines.value.map(l => l.text).join('\n'))) {
+                gitTerm.copied = true; setTimeout(() => { gitTerm.copied = false; }, 1500);
+            }
+        };
         // value '' or null: follow the global setting again
         const setProjectSetting = async (key, value) => {
             projectPage.msg = null;
@@ -4737,6 +4782,7 @@ createApp({
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
             studio, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
             saveStudioFile, reloadStudioFile, previewSrc, previewMarkdown, previewKind, studioOpenInTab,
+            gitTerm, openGitTerm, closeGitTerm, gitTermLines, copyGitTerm,
             projectPage, openProjectPage, loadProjectPage, setProjectSetting, ownValue, globalValue, boolOf, onOff, numberOf, saveProjectBudget, saveProjectMemory,
             curateProjectNow, projectRow, projectSkills,
             planModeNow, planModeTitle, cyclePlanMode,

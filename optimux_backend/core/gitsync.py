@@ -34,6 +34,8 @@ EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 BIG_FILE = 50 * 1024 * 1024          # GitHub refuses files over 100 MB; warn at 50
 SCAN_MAX = 5 * 1024 * 1024            # files larger than this aren't scanned for keys
 MAX_COMMITS = 30                      # incoming commits listed by Update
+STATUS_CHARS = 20_000                 # output of one command shown by Status
+STATUS_LOG = 5                        # recent commits shown by Status
 DIFF_CHARS = 15_000                   # diff sent to the model that writes the message
 TEMPLATE_CHARS = 4_000
 SECRET_NAME = changes_lib.SECRET_NAME
@@ -168,6 +170,38 @@ def _template(path: str) -> str:
         except OSError:
             continue
     return ""
+
+
+def status_report(name: str) -> dict:
+    """What Status shows in its terminal window: git fetch (only the remote
+    branches move, never the files), git status and the last commits, plus
+    how far the branch is from the one it pushes to on GitHub. Nothing in
+    the project changes; saved keys in the output are masked."""
+    path = _project(name)
+    lock = _lock(name)
+    if not lock.acquire(blocking=False):
+        raise GitSyncError("A push or update of this project is running. Try Status again when it's done.")
+    try:
+        out = _basics(name, path, fetch=True)
+        steps = []
+        if out["remote"]:
+            steps.append(("git fetch origin", not out["fetch_error"], out["fetch_error"] or ""))
+        r = _git(path, "--no-optional-locks", "status", "--branch", timeout=20)
+        steps.append(("git status", r["ok"], r["output"]))
+        r = _git(path, "log", "--oneline", "--decorate", "-n", str(STATUS_LOG), timeout=10)
+        steps.append((f"git log --oneline -n {STATUS_LOG}", r["ok"], r["output"]))
+        ahead, behind = _counts(path, out["upstream"]) if out["upstream"] else (None, None)
+    finally:
+        lock.release()
+    shown = []
+    for command, ok, text in steps:
+        if len(text) > STATUS_CHARS:
+            text = text[:STATUS_CHARS] + "\n… (cut)"
+        text = re.sub(r"(https?://)[^@/\s]+@", r"\1", text)     # no user or token from a URL
+        shown.append({"command": command, "ok": ok, "output": security.mask_secrets(text, edges=True)[0]})
+    return {"project": name, "remote": security.mask_secrets(out["remote"] or "")[0] or None,
+            "branch": out["branch"], "target": out["target"], "copy_of": out["copy_of"],
+            "upstream": out["upstream"], "ahead": ahead, "behind": behind, "steps": shown}
 
 
 def push_prepare(name: str) -> dict:

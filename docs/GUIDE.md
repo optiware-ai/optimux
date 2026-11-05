@@ -444,7 +444,8 @@ An **archived** project's budget is **paused**: kept, so restoring the project b
 - **Memory**: the project memory itself (edit and Save; **History and undo** opens the Memory page on it), whether it is updated automatically and after how many idle minutes, and **Update now from the latest chat**.
 - **Execution**: the steps per turn (Simple and Complex), the command timeout, and the network for commands (with the sandbox on).
 - **Skills**: the project's own skills (shown while it is the active project, since they live in its folder).
-- **GitHub and folder**: Push…, Update…, its chats, and Archive.
+- **GitHub and folder**: **Status**, Push…, Update…, its chats, and Archive. Hover a button to see what it does.
+  - **Status** (*v0.8*) opens a terminal-like window with `git fetch`, `git status` and the last 5 commits, coloured like git (green: ready to commit; red: changed or new, not added yet), and a last line with how many commits there are to push and to pull. The fetch only updates what Optimux knows about GitHub; your files and commits don't change. **Refresh** runs it again, **Copy** copies the text. Saved keys in the output are hidden.
 
 A setting left on **Follow global (…)** (or a number left empty, its placeholder showing the global value) uses the value set for all projects in Routing, Memory or Execution; changing that one still changes this project. Pick a value to give the project its own; choose **Follow global** again to drop it. The project's own values apply to everything that works in the project: its chats, plans, the scout, commands and memory updates. The **Plan** chip next to *New chat* shows the active project's plan mode and, when the project has its own, changes that one. The pages in the menu keep the view across all projects. The values are kept in `config/project_settings.json`.
 

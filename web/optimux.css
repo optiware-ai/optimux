@@ -166,3 +166,18 @@
 .cm-role-badge { display: inline-flex; align-items: center; font: 600 10px/1.6 ui-sans-serif, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .04em;
   padding: 0 6px; border-radius: 4px; border: 1px solid rgba(59, 130, 246, .3); background: rgba(59, 130, 246, .12); color: #bfdbfe; cursor: pointer; white-space: nowrap; }
 .cm-role-badge:hover { border-color: rgba(147, 197, 253, .7); }
+/* Project page: Status, a terminal-like window (v0.8) */
+.cm-term { border: 1px solid #1f2937; border-radius: 10px; overflow: hidden; background: #05070c; }
+.cm-term-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #111827; border-bottom: 1px solid #1f2937; font-size: 12px; }
+.cm-term-dots { display: inline-flex; gap: 5px; }
+.cm-term-dots i { width: 9px; height: 9px; border-radius: 50%; background: #374151; }
+.cm-term-title { flex: 1; min-width: 0; color: #9ca3af; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-term-btn { color: #9ca3af; padding: 1px 6px; border-radius: 4px; }
+.cm-term-btn:hover:not(:disabled) { color: #f3f4f6; background: #1f2937; }
+.cm-term-btn:disabled { opacity: .5; }
+.cm-term-body { margin: 0; padding: 10px 12px; max-height: 420px; overflow: auto; color: #d1d5db; tab-size: 4;
+  font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+.cm-term-cmd { color: #93c5fd; font-weight: 600; }
+.cm-term-good { color: #4ade80; }
+.cm-term-bad { color: #f87171; }
+.cm-term-note { color: #6b7280; }

@@ -900,6 +900,13 @@ async def project_push(name: str, payload: PushPayload):
     return _git_busy(name) or await _gitsync(gitsync.push_run, name, payload.message, payload.tree, payload.confirmed)
 
 
+@app.get("/api/projects/{name}/status")
+async def project_status(name: str):
+    """git fetch, git status and the last commits, as text for the Project
+    page's terminal window. Only the remote branches move; no files change."""
+    return await _gitsync(gitsync.status_report, name)
+
+
 @app.get("/api/projects/{name}/update")
 async def project_update_prepare(name: str):
     """What Update would bring in from GitHub. Nothing changes."""
