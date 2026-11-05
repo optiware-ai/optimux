@@ -33,6 +33,9 @@ def test_guide_defaults_match_code():
     d = SettingsPayload()
     assert f"| Steps per turn: Simple | Execution | {d.max_steps_simple} |" in text
     assert d.scout is True and "| Scout before Complex | Routing | On |" in text
+    from optimux_backend.core import autonomy
+    assert d.auto_approve is False and "| Autonomy | Execution (default and per project) | Supervised |" in text
+    assert autonomy.LEVELS == ("supervised", "checkpointed", "autonomous")
     from optimux_backend.core import scout
     assert scout.MAX_TOOL_CALLS == 8 and "at most 8 lookups" in text
     assert main.SCOUT_TIMEOUT == 150 and "longer than 150 seconds" in text

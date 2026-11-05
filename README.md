@@ -98,7 +98,7 @@ Optimux runs on your own machine, works on your own repositories, and treats **c
 - Per-model **thinking level** (Minimal to High).
 
 **Working on code**
-- A terminal tool with **per-command approval**, exit codes and a syntax-highlighted output viewer.
+- A terminal tool with **per-command approval**, exit codes and a syntax-highlighted output viewer; **autonomy levels** per project (Supervised, Checkpointed, Autonomous) for work that may run without asking.
 - **Projects** inside a **Workspace** folder: create one with a form (name, starter files, git, a private or public **GitHub** repository, description), from the **+** button for free or by asking the model, which fills the form in for you.
 - **GitHub set up from the web interface** (or the installer): a token checked with GitHub before it's saved, used only to create or clone repositories, never visible to model-run commands.
 - **Push and Update from GitHub** with one click: every file shown first, saved keys refused, an optional commit message written by the cheap model from your commit template; Update is fast-forward only.
@@ -117,7 +117,7 @@ Optimux runs on your own machine, works on your own repositories, and treats **c
 - Model replies are sanitized and the page runs only Optimux's own scripts, all served locally at pinned versions.
 
 **Installing and running**
-- **One-line installer** for your computer or a VPS, with an interactive terminal interface; every question can be skipped and changed later in the web interface. On a VPS it also sets up HTTPS, a dedicated user, the firewall and **server mode**: the sandbox is required, every command needs approval, and commands have no network by default.
+- **One-line installer** for your computer or a VPS, with an interactive terminal interface; every question can be skipped and changed later in the web interface. On a VPS it also sets up HTTPS, a dedicated user, the firewall and **server mode**: the sandbox is required, every command needs approval unless you choose an autonomy level, and commands have no network by default.
 - An **`optimux` command**: start, stop, status, logs, open (the SSH tunnel command, with your ports), port, update, password and uninstall.
 
 | | On your computer | On a server (VPS) |
@@ -126,7 +126,7 @@ Optimux runs on your own machine, works on your own repositories, and treats **c
 | Who can reach it | only you, at `http://127.0.0.1` | you, from anywhere: HTTPS on your domain (Caddy), or an SSH tunnel |
 | Server mode (`OPTIMUX_SERVER=1`) | off | on |
 | Sandbox | recommended (the installer offers it) | required |
-| Command approval | every command, by default; auto-approve can be turned on | every command, always |
+| Command approval | every command, by default; autonomy levels per project | every command by default; autonomy levels only with a working sandbox |
 | Network for commands | on by default | off by default |
 | Runs as | your user | a dedicated `optimux` user, as a hardened systemd service |
 | Program and data | `~/.local/share/optimux`, `~/.optimux` | `/opt/optimux`, `/var/lib/optimux` |
@@ -260,7 +260,7 @@ Almost everything is configured in the Dashboard and stored under `~/.optimux`. 
 |---|---|---|
 | `OPTIMUX_HOME` | `~/.optimux` | Where Optimux keeps settings, keys, chats, usage and memory. |
 | `OPTIMUX_TOKEN` | generated | The access token. Normally read from `secrets.env`; set it to choose your own. |
-| `OPTIMUX_SERVER` | unset | `1` for a server others can reach: sandbox required, auto-approve off, commands without network by default, HTTPS-only cookies. See [Running on a server](docs/GUIDE.md#running-on-a-server). |
+| `OPTIMUX_SERVER` | unset | `1` for a server others can reach: sandbox required, autonomy levels only with a working sandbox, commands without network by default, HTTPS-only cookies. See [Running on a server](docs/GUIDE.md#running-on-a-server). |
 | `OPTIMUX_REQUIRE_SANDBOX` | unset | `1` forces the sandbox on; it can't be turned off from the Dashboard. |
 | `OPTIMUX_ALLOWED_ORIGINS` | unset | Comma-separated extra web origins allowed to use Optimux from a browser. |
 | `OPTIMUX_ALLOWED_HOSTS` | unset | Comma-separated host names Optimux answers for over TCP, besides `localhost` and IP addresses (`*` turns the check off). Not needed behind Caddy on the Unix socket. |
@@ -297,7 +297,7 @@ The [How to spend less](docs/GUIDE.md#how-to-spend-less) chapter covers every le
 
 - **Sign-in** with a password (scrypt) and optional two-step codes (TOTP); sessions in an HttpOnly, SameSite=Strict cookie; failed attempts limited per address. Scripts can use the access token instead.
 - **Browser hardening**: model output is sanitized before display; a strict Content Security Policy allows only Optimux's own scripts, all served locally at pinned versions (no CDN); no framing; cross-site changes are refused.
-- **Approval** for every command; commands touching paths outside the project are flagged and never auto-approved.
+- **Approval** for every command by default; per-project **autonomy levels** (Supervised, Checkpointed, Autonomous) let ordinary work run without asking, while pushes, deletions, installs, network use and paths outside the project always ask.
 - **Sandbox** (bubblewrap): the system is read-only, only the working folder is writable, home folders and Optimux's keys are hidden, `/tmp` is private, the network can be cut. It fails closed: if bubblewrap is unavailable, commands are refused.
 - **Secrets** live in `~/.optimux/secrets.env` (mode 600); commands get an allow-list of environment variables, never keys, plus per-command resource limits.
 - **Server mode** (`OPTIMUX_SERVER=1`) and a [deployment kit](deploy/) for running on a VPS behind HTTPS.
@@ -309,7 +309,7 @@ Limits and recommendations are in the [Guide](docs/GUIDE.md#security). Please re
 
 ```
 ~/.optimux/
-├── config/       settings, models, routing, budgets
+├── config/       settings, models, routing, budgets, autonomy levels
 ├── secrets.env   API keys and the access token (mode 600)
 ├── auth.json     password hash and two-step secret (mode 600)
 ├── data/         optimux.db: chats, every model call, memory history

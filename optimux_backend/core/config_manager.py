@@ -116,6 +116,8 @@ class RoutingPayload(BaseModel):
 class SettingsPayload(BaseModel):
     projects_root: str = ""
     active_project: str = ""
+    # Before v0.8: run commands without asking. Now only read as the default autonomy level
+    # until one is chosen (autonomy.py: on = checkpointed, off = supervised)
     auto_approve: bool = False
     # Model calls allowed per turn before Optimux stops and asks to continue
     max_steps_simple: int = 8

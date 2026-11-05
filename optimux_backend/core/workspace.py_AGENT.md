@@ -28,7 +28,7 @@
   - `connect_github(token)`: checks, works out the settings changes (when `git_can_commit()` is false, i.e. neither the settings nor git's config give an identity git can commit with: the account's name, or its login if git can't use the name, and its `id+login@users.noreply.github.com` address), then saves the token through `save_api_key_to_env` and the fields through `config_manager.set_github_fields` (which validates only those fields). `disconnect_github()` removes the token (gh's own sign-in is untouched).
 
 ## Links & Dependencies
-- Called by `main.py` (`run_workspace_tool`, `ask_create_form`, `POST /api/projects`, `/api/github`) and `admin.py` (`set-github`, `github-status`, `remove-github`). Create and archive always wait for the user (`always_ask`), so auto-approve doesn't apply.
+- Called by `main.py` (`run_workspace_tool`, `ask_create_form`, `POST /api/projects`, `/api/github`) and `admin.py` (`set-github`, `github-status`, `remove-github`). Create and archive always wait for the user (`always_ask`), at every autonomy level.
 - Uses `config_manager.get_settings`, `security.resolve_scope_root` and `scrubbed_env`.
 
 ## fix24b

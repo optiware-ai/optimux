@@ -12,7 +12,7 @@
 - **Sessions:** `create_session(ip, agent)` returns the cookie value; `check_session(token)` returns the session id or None, ending sessions idle for 14 days (`IDLE_SECONDS`) or older than 30 (`MAX_AGE_SECONDS`), and refreshes `last_seen` at most once a minute; `end_session`, `end_all_sessions(keep_id)`, `list_sessions(current_id)`.
 - **TOTP (RFC 6238, SHA-1, 6 digits, 30 s):** `start_totp` (pending secret + `otpauth://` URI), `confirm_totp(code)`, `check_totp(code)` (accepts the current step ±1, each step only once via `last_step`), `disable_totp`.
 - **`RateLimiter` / `limiter`:** 5 failures per address in 15 minutes lock that address until the oldest failure is 15 minutes old. In memory (a restart clears it).
-- **`server_mode()`:** `OPTIMUX_SERVER=1`. Used by `sandbox.required()`, `config_manager.get_settings/save_settings` (auto-approve off, network off by default) and `main.py` (Secure cookies, checklist).
+- **`server_mode()`:** `OPTIMUX_SERVER=1`. Used by `sandbox.required()`, `config_manager.get_settings/save_settings` (auto-approve off, network off by default), `autonomy.server_block` (levels only with a working sandbox) and `main.py` (Secure cookies, checklist).
 
 ## How main.py uses it
 - `guard` middleware: everything except `/login`, `/auth/*` and `/static/*` needs the cookie (`optimux_session`, HttpOnly, SameSite=Strict, Secure on HTTPS or in server mode) or the access token as a Bearer header. Cookie-authenticated POST/DELETE must come from the same origin (Origin, else Referer). Bearer failures count toward the limit.

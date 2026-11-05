@@ -5,7 +5,7 @@
 
 ## Layout
 `$OPTIMUX_HOME` (default `~/.optimux`):
-- `config/`: `settings.json`, `models.json`, `routing.json`, `budgets.json` (human-readable JSON)
+- `config/`: `settings.json`, `models.json`, `routing.json`, `budgets.json`, `autonomy.json` (v0.8, `AUTONOMY_FILE`, mode 600) (human-readable JSON)
 - `secrets.env`: API keys and `OPTIMUX_TOKEN`, mode 0600, outside the repo
 - `data/optimux.db`: usage and sessions (SQLite)
 - `backups/`

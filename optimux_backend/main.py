@@ -47,6 +47,7 @@ from optimux_backend.core import catalog, exports, snapshots
 from optimux_backend.core import plans as plans_lib
 from optimux_backend.core import planner
 from optimux_backend.core import scout as scout_lib
+from optimux_backend.core import autonomy as autonomy_lib
 from optimux_backend.core import auth
 from optimux_backend.core import sessions as chat_store
 from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
@@ -595,6 +596,34 @@ async def sandbox_status(refresh: bool = False):
     """Whether bubblewrap is installed and works, and whether the sandbox is on or forced on."""
     return {**sandbox_lib.status(refresh=refresh), "required": sandbox_lib.required(),
             "enabled": sandbox_lib.enabled(get_settings()), "server_mode": auth.server_mode()}
+
+
+# ---- Autonomy levels (v0.8): what models may do without asking, per project
+
+class AutonomyPayload(BaseModel):
+    project: str | None = None     # None: the default level
+    level: str | None = None       # None: the project follows the default again
+
+
+@app.get("/api/autonomy")
+async def autonomy_overview():
+    return autonomy_lib.overview()
+
+
+@app.post("/api/autonomy")
+async def autonomy_set(payload: AutonomyPayload):
+    try:
+        return autonomy_lib.set_level(payload.project, payload.level)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@app.get("/api/autonomy/check")
+async def autonomy_check(command: str, project: str = ""):
+    """What a command would do at a project's level (no command runs)."""
+    level = autonomy_lib.project_level(project)
+    ask, why = autonomy_lib.decide(level, "command", command)
+    return {"level": level, "ask": ask, "why": why, "kinds": sorted(autonomy_lib.classify(command))}
 
 
 @app.get("/api/costs/estimates")
@@ -1490,6 +1519,25 @@ def _loopback(host: str) -> bool:
     return host in ("127.0.0.1", "::1", "localhost") or host.startswith("127.")
 
 
+def approval_check() -> dict:
+    """The security checklist's line about approvals (autonomy levels, v0.8)."""
+    a = autonomy_lib.overview()
+    if a["blocked"]:
+        return {"id": "approve", "label": "Command approval", "ok": True, "important": True,
+                "detail": "Every command and file change waits for your approval (Supervised). " + a["blocked"]}
+    freer = sorted(p for p, lv in a["projects"].items() if lv != "supervised")
+    ok = a["default"] == "supervised" and not freer
+    if ok:
+        detail = "Every command and file change waits for your approval (Supervised)."
+    else:
+        parts = [] if a["default"] == "supervised" else [f"projects without their own level are {a['default'].capitalize()}"]
+        if freer:
+            parts.append("own levels: " + ", ".join(f"{p} ({a['projects'][p].capitalize()})" for p in freer))
+        detail = ("Some work runs without asking: " + "; ".join(parts) + ". Pushes, deletions, installs, network use "
+                  "and paths outside the project always ask. Change it in Execution.")
+    return {"id": "approve", "label": "Command approval", "ok": ok, "important": True, "detail": detail}
+
+
 @app.get("/api/security")
 async def security_checklist(request: Request):
     """What protects this install right now (Dashboard > System)."""
@@ -1516,11 +1564,9 @@ async def security_checklist(request: Request):
          "detail": ("Commands have no network." if sandbox_on and not network else
                     ("Commands can reach the internet (needed for pip, npm, git over HTTPS)." if sandbox_on else
                      "Without the sandbox, commands always have the network."))},
-        {"id": "approve", "label": "Command approval", "ok": not settings.get("auto_approve"), "important": True,
-         "detail": "Every command waits for your approval." if not settings.get("auto_approve") else
-                   "Auto-approve is on: commands run without asking."},
+        approval_check(),
         {"id": "server", "label": "Server mode", "ok": server, "important": not local,
-         "detail": "OPTIMUX_SERVER=1: sandbox required, auto-approve off, secure cookies." if server else
+         "detail": "OPTIMUX_SERVER=1: sandbox required, secure cookies." if server else
                    "Off (fine on your own computer). On a VPS, start with OPTIMUX_SERVER=1."},
         {"id": "sessions", "label": "Other signed-in browsers", "ok": True, "important": False,
          "detail": f"{others} other browser{'s' if others != 1 else ''} signed in." if others else "Only this browser."},
@@ -3026,6 +3072,33 @@ async def ask_approval(websocket: WebSocket, session: dict, tc_id: str, command:
     return (await wait_for_answer(websocket, session, tc_id, command, **extra))["approved"] is True
 
 
+def count_auto_approval(session: dict) -> None:
+    """A change or command that ran without asking (its level, or "Approve all edits")
+    counts as approved in the request's task record (IM-09)."""
+    if session.get("task") is not None:
+        session["task"]["approved"] += 1
+
+
+def raise_level_for(project: str, level: str, why: str) -> str:
+    """v0.8: the level the approval box may offer ("Approve and stop asking in <project>"),
+    or "". Only for a Supervised project asking because it is Supervised (a hard limit
+    would ask at every level anyway), and only where the levels can apply."""
+    if not project or level != "supervised" or not why.startswith("Supervised") or autonomy_lib.server_block():
+        return ""
+    return "checkpointed"
+
+
+async def raise_project_level(websocket: WebSocket, project: str, level: str) -> None:
+    try:
+        autonomy_lib.set_level(project, level)
+    except ValueError as e:
+        await send(websocket, "system", f"The level of {project} stays Supervised: {e}")
+        return
+    await send(websocket, "system", f"{project} is now {level.capitalize()}: file changes and ordinary commands "
+                                    "run without asking. Pushes, deletions, installs, network use and paths outside "
+                                    "the project still ask (Dashboard → Execution).")
+
+
 TIME_LIMIT_CHOICES = (0, 600, 1800)       # the approval box: no limit, 10 min, 30 min (or the setting)
 
 
@@ -3115,17 +3188,24 @@ async def run_file_tool(websocket: WebSocket, session: dict, name: str, args_str
     label = files_lib.describe(change)
     info = files_lib.public(change)
     overwrite = info.get("op") not in ("create", "edit")   # write_file over an existing file
-    if session.get("approve_edits") and not overwrite:
+    level = autonomy_lib.project_level(project)            # v0.8: autonomy levels
+    ask, why = autonomy_lib.decide(level, "rewrite" if overwrite else "file")
+    if not ask:
+        answer = {"approved": True}        # the project's autonomy level lets it run; the diff is still shown
+        info = {**info, "auto": level}
+        count_auto_approval(session)
+    elif session.get("approve_edits") and not overwrite:
         # IM-12: the user approved this and the next file edits of this reply; the diff is still shown
         answer = {"approved": True}
         info = {**info, "auto": True}
-        if session.get("task") is not None:
-            session["task"]["approved"] += 1
+        count_auto_approval(session)
     else:
-        # An overwrite of an existing file always asks, even after "Approve all edits": a model that
-        # rewrites a file from scratch can drop what mattered (a .gitignore losing .env)
+        # An overwrite of an existing file always asks, even after "Approve all edits" (and at
+        # Checkpointed): a model that rewrites a file from scratch can drop what mattered (a
+        # .gitignore losing .env)
         answer = await wait_for_answer(websocket, session, tc_id, label, file_change={**info, "diff": change["diff"]},
-                                       workdir=workdir, still_asking=bool(session.get("approve_edits")))
+                                       workdir=workdir, still_asking=bool(session.get("approve_edits")) and overwrite,
+                                       ask_reason=why, level=level)
         if answer["approved"] and answer.get("all_edits") is True:
             session["approve_edits"] = True
             await send(websocket, "system", "Approved: this and the next file edits of this reply. "
@@ -3214,9 +3294,9 @@ async def set_active_project(websocket: WebSocket, name: str) -> None:
 
 async def run_workspace_tool(websocket: WebSocket, session: dict, name: str, args_str: str, tc_id: str) -> dict:
     """list_projects / create_project / switch_project / archive_project.
-    Anything with side effects outside settings needs approval, even with
-    auto-approve on (always_ask), because it creates or moves folders and may
-    create a GitHub repository."""
+    Anything with side effects outside settings needs approval at every autonomy
+    level (always_ask), because it creates or moves folders and may create a
+    GitHub repository."""
     try:
         args = json.loads(args_str or "{}") or {}
     except Exception:
@@ -3456,13 +3536,24 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                 workdir = current_workdir()
                 outside = [p for p in (paths_outside_scope(cmd, workdir) if workdir else [])
                            if not in_skill_folder(p)]
-                answer = await wait_for_answer(websocket, session, tc_id, cmd, outside_paths=outside, workdir=workdir,
-                                               time_limit=command_timeout_for())
+                project = active_project()
+                level = autonomy_lib.project_level(project)       # v0.8: autonomy levels
+                ask, why = autonomy_lib.decide(level, "command", cmd, outside)
+                if ask:
+                    raise_to = raise_level_for(project, level, why)
+                    answer = await wait_for_answer(websocket, session, tc_id, cmd, outside_paths=outside, workdir=workdir,
+                                                   time_limit=command_timeout_for(), ask_reason=why, level=level,
+                                                   **({"raise_to": raise_to} if raise_to else {}))
+                    if answer["approved"] and answer.get("raise_level") is True and raise_to:
+                        await raise_project_level(websocket, project, raise_to)
+                else:
+                    answer = {"approved": True}    # the project's autonomy level lets it run
+                    count_auto_approval(session)
                 if answer["approved"]:
                     await mark_changes_start(session)
                     chosen = chosen_time_limit(answer)
                     limit = command_timeout_for() if chosen is None else chosen
-                    await send(websocket, "command_start", command=cmd, time_limit=limit)
+                    await send(websocket, "command_start", command=cmd, time_limit=limit, **({} if ask else {"auto": level}))
 
                     async def keep_waiting(seconds: float, cmd=cmd, limit=limit) -> str:
                         return await ask_keep_waiting(websocket, session, cmd, seconds, limit)

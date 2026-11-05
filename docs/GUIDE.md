@@ -197,14 +197,15 @@ A reply can contain, from top to bottom:
 
 ### Approving commands
 
-Before a command runs you see **Approval Required** with the full command:
+Before a command runs you see **Approval Required** with the full command (unless the project's **autonomy level** lets it run; see *Autonomy levels*):
 
 - **Approve** runs it once. **Reject** refuses it; the model is told and continues without it. It won't try the same thing again unless you ask it to later in the chat.
 - **⏱ Time limit** (commands only): how long this command may run before Optimux asks whether to keep waiting. It starts at your setting (**Dashboard → Execution → Timeout**, 2 minutes by default); pick **10 min**, **30 min** or **No limit** for this one command, for example before you leave a long install running. While it runs, the command shows its running time and limit, like `⏱ 0:45 / 2:00`.
 - **Why reject?** (optional): type a few words next to Reject, such as *no pipes* or *use pytest instead*, and press **Enter** or **Reject with reason**. The reason goes to the model together with the refusal, in the same step, so it can try again the way you want without waiting for its reply first. It works the same for file changes and for archiving a project. Leave it empty for a plain Reject.
-- **Always Approve** runs it and turns on auto-approve for all future commands (you can turn it off in **Dashboard → Execution**).
-- A red **Outside the project** box appears when the command touches paths outside the active project. These are never auto-approved, and *Always Approve* is hidden.
-- Creating a project shows a **form** instead (see *Creating a project*); creating and archiving always wait for you, even with auto-approve on.
+- **Approve and stop asking in <project>** (commands in a Supervised project) runs it and sets the project to **Checkpointed**: from then on its file changes and ordinary commands run without asking, while pushes, deletions, installs, network use and paths outside the project still ask. Change it back in **Dashboard → Execution**. It isn't offered for a command that would ask at every level.
+- When a command or change asks for a reason other than Supervised, the box says why in yellow, for example *Always asked: it publishes (git push, GitHub)*.
+- A red **Outside the project** box appears when the command touches paths outside the active project. These always ask, at every level.
+- Creating a project shows a **form** instead (see *Creating a project*); creating and archiving always wait for you, at every level.
 - A **file change** (marked **✎ project file**) shows the file and its diff: removed lines in red, added lines in green. Nothing is written before you press **Approve**. See *Writing files*.
 - **Approve all edits in this reply** (file changes only) approves this change and the next file changes of the same reply, so a reply that edits five files asks once. Their diffs are still shown in the chat. Commands still ask one by one, and the next reply asks again. File changes can never reach outside the project, so this never covers anything else. A **rewrite of a file that already exists** (the whole file written again) still asks, with a yellow note: a model that rewrites a file from scratch can drop what mattered, such as `.env` from a `.gitignore`.
 
@@ -290,7 +291,7 @@ The form has:
 | **Description** | Optional (up to 350 characters): goes in the README and on GitHub. Leave it empty for now if you like. |
 | **Open it when it's ready** | From the **+** dialog: switches to the new project. In the chat (*Offer to open it when it's ready*): you stay where you are and can finish reading the reply; a small **Open <name>** button appears above the chat box, and the chat moves to the new project only when you click it (× dismisses it). The conversation you were in stays in History under its own project. |
 
-Nothing is created until you press **Create project**, and the server checks every value again. A notification slides in when the project is ready (with a link to the GitHub repository); if a step failed (for example the push), the folder is kept and the notification says so. Creating a project always waits for you, even with auto-approve on.
+Nothing is created until you press **Create project**, and the server checks every value again. A notification slides in when the project is ready (with a link to the GitHub repository); if a step failed (for example the push), the folder is kept and the notification says so. Creating a project always waits for you, at every autonomy level.
 
 ### Cloning a project from GitHub
 
@@ -611,12 +612,12 @@ Two more checks catch a model that garbles a file before you are even asked:
 - **write_file can't cut a long file in half.** Replacing a file of 20 lines or more with half its lines or fewer is refused; the model is told to use edit_file. A small model once rewrote a 783-line stylesheet from memory and kept 296 lines.
 - **Mangled characters are refused.** New text with control characters or emoji escape codes (like `\ud83d`) that the file didn't have is refused. Small models sometimes escape special characters (—, ©, emoji) wrongly, and the file would get garbage.
 
-You approve each change with its diff, like a command (auto-approve applies the same way). Optimux writes the file itself: only inside the active project (never in `.git`, never through a link that leads outside), only UTF-8 text up to 1 MB, and in one step (a temporary file renamed over the old one). A file keeps its permissions. If the file changed after you were asked, nothing is written and the model is told to read it again. In the chat a change shows as one line, like `✎ edit site/index.html (+1 −1)`, with its diff below. The tools are offered only when a project is active.
+You approve each change with its diff, like a command (at Checkpointed and Autonomous it runs without asking, except a whole-file rewrite of an existing file at Checkpointed; see *Autonomy levels*). Optimux writes the file itself: only inside the active project (never in `.git`, never through a link that leads outside), only UTF-8 text up to 1 MB, and in one step (a temporary file renamed over the old one). A file keeps its permissions. If the file changed after you were asked, nothing is written and the model is told to read it again. In the chat a change shows as one line, like `✎ edit site/index.html (+1 −1)`, with its diff below. The tools are offered only when a project is active.
 
 ### Scope
 
 - Commands start in the active project's folder (or the Workspace folder when no project is selected).
-- Before you approve, Optimux checks every path in the command. If any points outside the project, you see a red **Outside the project** warning and auto-approve does not apply. Scripts inside skill folders are allowed.
+- Before you approve, Optimux checks every path in the command. If any points outside the project, you see a red **Outside the project** warning, and it asks at every autonomy level. Scripts inside skill folders are allowed.
 - The approval box shows **🔒 sandboxed** or **not sandboxed**, so you always know what an approved command can reach.
 
 ### The sandbox
@@ -663,9 +664,23 @@ Either way the sandbox is always on, and nobody can turn it off from the Dashboa
 
 **Not covered by the sandbox:** the project actions (create, archive, GitHub repository) are fixed commands run by the server itself, each one confirmed by you; they don't go through the sandbox. The GitHub token is given only to these, never to model-run commands.
 
-### Auto-approve
+### Autonomy levels
 
-**Dashboard → Execution → Auto-approve terminal commands** runs commands without asking, except commands flagged as outside the project, and creating or archiving projects. It saves clicks; it removes your last check. Combine it with the **sandbox**, and use it on projects you can restore from git. On a server (`OPTIMUX_SERVER=1`) it is always off.
+*New in v0.8.* **Dashboard → Execution → Autonomy** sets how much the models may do without asking, with a default and, if you like, a level for each project:
+
+| Level | Runs without asking | Still asks |
+|---|---|---|
+| **Supervised** (the default) | nothing | every command and file change |
+| **Checkpointed** | file changes and ordinary commands inside the project | commits and other git history (merge, rebase, reset…), a whole-file rewrite of a file that already exists, and the hard limits |
+| **Autonomous** | also commits and whole-file rewrites | the hard limits |
+
+The **hard limits** ask at every level: publishing (`git push`, `gh`), deleting or discarding files (`rm`, `git clean`, `git checkout -- .`…), installing or removing software (`pip install`, `npm i`, `apt`…), using the network (`curl`, `git clone`…), changing the system (`sudo`, services, `kill`), paths outside the project, and commands Optimux can't read before they run (`eval`). Creating and archiving projects always ask too, and budgets still block.
+
+- A command or change that ran without asking is marked **auto · Checkpointed** (or Autonomous) in the chat, with its output or diff as usual, and counts as approved in the task records.
+- With **no project open** (the Workspace), everything asks.
+- The check reads the command's words before it runs. It is a guard against a model doing these things by accident, **not a sandbox**: a script the model writes and runs can still do whatever its code does. Combine a freer level with the **sandbox**, and use it on projects you can restore from git.
+- **On a server** (`OPTIMUX_SERVER=1`), Checkpointed and Autonomous apply only while the sandbox works; if it doesn't, every project is Supervised and Execution says why.
+- **Updating from an older version:** with the old *Auto-approve* setting on, the default is Checkpointed until you choose one (it says so in Execution); with it off, Supervised. Auto-approve used to run every command except paths outside the project; now the hard limits ask again.
 
 ### What commands see, and their limits
 
@@ -883,7 +898,7 @@ Most of the cost is **input tokens resent on every step**. The levers below are 
 | **Models** | Add models, keys, prices, thinking level, test, cooldowns. |
 | **Memory** | Personal, professional and project memory; automatic updates and their history. |
 | **Skills** | When skills run (Off, Manual only, Auto allowed), each skill's mode, editing, removing, usage and drafting cost. |
-| **Execution** | Auto-approve, the sandbox, what commands see and their limits, the step limits. |
+| **Execution** | Autonomy levels, the sandbox, what commands see and their limits, the step limits. |
 | **GitHub** | The GitHub CLI, the GitHub token (check, replace, remove) and who commits. |
 | **Scope** | The Workspace folder. |
 | **Backups** | Snapshots of everything, your data or your projects, kept on this machine: take one, see what goes in, delete, and the space limit. |
@@ -901,7 +916,7 @@ Every page has **?** marks: hover one for an explanation, click to keep it open.
 | Scout before Complex | Routing | On | The Simple model reads the project and writes a brief before a new Complex task. |
 | Thinking per model | Models | Default | Reasoning effort: Default, Minimal, Low, Medium, High. |
 | Prices per model | Models | LiteLLM list | USD per million input, output, cached-input tokens. |
-| Auto-approve commands | Execution | Off | Run commands without asking (never outside the project, never creating or archiving projects). |
+| Autonomy | Execution (default and per project) | Supervised | What runs without asking: Supervised, Checkpointed or Autonomous; the hard limits always ask. |
 | Sandbox | Execution | Off | Run commands in bubblewrap: only the working folder can change. Forced on by `OPTIMUX_REQUIRE_SANDBOX=1`. |
 | Sandbox: network | Execution | On (off on a server) | Allow network access inside the sandbox. |
 | Sandbox: extra read-only folders | Execution | (none) | Folders outside the project that commands may read. |
@@ -945,7 +960,8 @@ Everything Optimux keeps is in one folder, `~/.optimux` (set `OPTIMUX_HOME` to m
 │   ├── settings.json             Workspace folder, approvals, sandbox, memory, skills…
 │   ├── models.json               your models, prices and thinking levels
 │   ├── routing.json              which model is Conductor, Simple and Complex
-│   └── budgets.json              monthly budget per project
+│   ├── budgets.json              monthly budget per project
+│   └── autonomy.json             autonomy level, default and per project
 ├── data/
 │   └── optimux.db                SQLite: chats, every model call and its cost, task records (one per request, no text), failed calls and escalations, memory history, sign-ins
 ├── backups/
@@ -1097,7 +1113,7 @@ Optimux can run on a VPS so you can use it from anywhere. A server is reachable 
 Start Optimux with `OPTIMUX_SERVER=1` and:
 
 - the **sandbox is required** (if bubblewrap doesn't work, commands are refused);
-- **auto-approve is off** and can't be turned on: every command waits for you;
+- the **autonomy levels** apply only while the sandbox works; otherwise every command and file change waits for you;
 - commands have **no network** unless you turn it on in **Execution → Sandbox**. When a command fails because of it (*Could not resolve host*, *Temporary failure in name resolution*, *Network is unreachable*…), Optimux adds a line saying so, in the chat and for the model, so the model tells you instead of retrying;
 - the sign-in cookie is only ever sent over **HTTPS**.
 
@@ -1237,7 +1253,7 @@ Choose models in **Dashboard → Routing**.
 The project reached a **Block** budget. Click **Raise budget**, or switch the project to **Warn**.
 
 **"Outside the project" on a command that looks harmless.**
-The command mentions a path outside the active project (for example `cd ..` or an absolute path). Check it; approve it if you meant it. It is never auto-approved.
+The command mentions a path outside the active project (for example `cd ..` or an absolute path). Check it; approve it if you meant it. It asks at every autonomy level.
 
 **"Also on GitHub" is greyed out, or the GitHub step failed.**
 The reason is shown next to it. *gh isn't installed*: install it on the Optimux machine (or run `optimux github`). *GitHub isn't set up*: add a token in Dashboard → GitHub. *Resource not accessible* or *403* during the push: a fine-grained token needs **Administration** and **Contents** set to *Read and write* for **All repositories**. The project folder is kept either way; push it yourself later.
@@ -1260,7 +1276,7 @@ SSH keys are hidden from sandboxed commands. Use an HTTPS remote with a credenti
 Commands stop after the **Timeout** in Dashboard → Execution (120 seconds by default, up to 30 minutes). Raise it for long builds and test runs; run servers and watchers yourself in a terminal.
 
 **The model did work I only asked about.**
-Ask as a question ("how do I…?") and it should explain and offer instead. If it still acts, Reject the command and say so; consider turning auto-approve off.
+Ask as a question ("how do I…?") and it should explain and offer instead. If it still acts, Reject the command and say so; consider setting the project back to Supervised (Dashboard → Execution).
 
 **The cost shows "+".**
 Some calls had no known price. Set the model's prices in **Models**.

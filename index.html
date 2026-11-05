@@ -1716,13 +1716,38 @@
                 <!-- Section: Execution (how the agent runs: approvals, step limits) -->
                 <div v-if="settingsTab === 'execution'" class="space-y-6">
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                        <h3 class="font-bold text-gray-200 mb-1">Command approval</h3>
-                        <label class="flex items-center gap-3 mt-3" :class="sandboxInfo.server_mode ? 'opacity-60' : 'cursor-pointer'">
-                            <input type="checkbox" v-model="appSettings.auto_approve" @change="saveSettings" :disabled="sandboxInfo.server_mode" class="w-4 h-4 text-blue-600 bg-gray-900 border-gray-700 rounded focus:ring-blue-500 focus:ring-2">
-                            <span class="text-[15px] font-bold text-gray-300">Auto-approve terminal commands</span>
-                            <help-tip>If enabled, Optimux runs commands without asking, except commands flagged as reaching outside the project and creating or archiving a project. Without a sandbox, an approved command can still change anything your user account can, so use this with care.</help-tip>
-                        </label>
-                        <p v-if="sandboxInfo.server_mode" class="text-xs text-gray-500 mt-2 ml-7">Off on servers (OPTIMUX_SERVER=1): every command needs your approval.</p>
+                        <h3 class="font-bold text-gray-200 mb-1 flex items-center">Autonomy<help-tip wide>
+                            <p>How much the models may do without asking, per project.</p>
+                            <ul><li><b>Supervised</b>: every command and file change waits for you.</li>
+                            <li><b>Checkpointed</b>: file changes and ordinary commands inside the project run without asking; models stop before commits, before rewriting a whole file that already exists, and at the hard limits.</li>
+                            <li><b>Autonomous</b>: also commits and rewrites files; models stop only at the hard limits.</li></ul>
+                            <p>It reads the command's words before it runs: a guard against accidents, not a sandbox. A script the model runs can still do what its code does; the sandbox is what limits it. With no project open (the Workspace) everything asks.</p>
+                        </help-tip></h3>
+                        <p class="text-[14px] text-gray-400">What the models may do without asking you.</p>
+                        <p v-if="autonomy && autonomy.blocked" class="mt-3 p-3 rounded border border-amber-800/60 bg-amber-950/30 text-[13px] text-amber-200">{{ autonomy.blocked }} Until then every project is Supervised.</p>
+                        <template v-if="autonomy">
+                            <div class="mt-4 flex flex-wrap items-center gap-3">
+                                <span class="text-[14px] text-gray-300 w-32">Default</span>
+                                <div class="inline-flex rounded-lg overflow-hidden border border-gray-700 text-[14px]" role="radiogroup" aria-label="Default autonomy level">
+                                    <button v-for="lv in autonomy.levels" :key="lv.id" role="radio" :aria-checked="autonomy.default === lv.id" :disabled="!!autonomy.blocked && lv.id !== 'supervised'" :title="lv.text" @click="setAutonomy(null, lv.id)" :class="['px-3 py-1.5 disabled:opacity-40', autonomy.default === lv.id ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ LEVEL_NAMES[lv.id] }}</button>
+                                </div>
+                            </div>
+                            <p class="text-[13px] text-gray-500 mt-2">{{ (autonomy.levels.find(l => l.id === autonomy.default) || {}).text }}<template v-if="!autonomy.default_saved && autonomy.default === 'checkpointed'"> (from the old Auto-approve setting)</template></p>
+                            <div v-if="projectsList.length" class="mt-4 border-t border-gray-800 pt-3 space-y-2">
+                                <div v-for="p in projectsList" :key="p" class="flex flex-wrap items-center gap-3">
+                                    <span class="text-[14px] text-gray-300 font-mono w-32 truncate" :title="p">{{ p }}</span>
+                                    <select :value="projectLevel(p)" @change="setAutonomy(p, $event.target.value || null)" :aria-label="'Autonomy level of ' + p" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200">
+                                        <option value="" class="bg-gray-900">Default ({{ LEVEL_NAMES[autonomy.default] }})</option>
+                                        <option v-for="lv in autonomy.levels" :key="lv.id" :value="lv.id" :disabled="!!autonomy.blocked && lv.id !== 'supervised'" class="bg-gray-900">{{ LEVEL_NAMES[lv.id] }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <details class="mt-4 text-[13px] text-gray-400">
+                                <summary class="cursor-pointer hover:text-gray-200">Always asked, at every level</summary>
+                                <ul class="list-disc ml-5 mt-2 space-y-0.5"><li v-for="h in autonomy.hard_limits" :key="h">{{ h.charAt(0).toUpperCase() + h.slice(1) }}</li><li>Creating or archiving a project</li></ul>
+                            </details>
+                            <p v-if="autonomyMsg" :class="['text-[13px] mt-2', autonomyMsg.ok ? 'text-green-400' : 'text-red-400']">{{ autonomyMsg.text }}</p>
+                        </template>
                     </div>
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
                         <h3 class="font-bold text-gray-200 mb-3 flex items-center">Sandbox<help-tip wide>
@@ -2506,6 +2531,7 @@
                             <div v-else-if="blk.kind === 'cmd'" class="bg-black/80 rounded-lg border border-gray-700/80 overflow-hidden font-mono text-xs">
                                 <div class="bg-gray-800/80 px-3 py-2 flex items-start justify-between gap-3 text-gray-300 border-b border-gray-700/60">
                                     <div class="flex items-start gap-2 min-w-0 flex-1"><span class="text-green-400 font-bold flex-shrink-0">{{ blk.file ? '✎' : '$' }}</span><span class="whitespace-pre-wrap break-all max-h-40 overflow-y-auto min-w-0">{{ blk.file ? blk.command.replace(/^✎ /, '') : blk.command }}</span></div>
+                                    <span v-if="blk.auto" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-blue-300 border-blue-900/60 bg-blue-950/40" :title="'Ran without asking: the project is ' + (LEVEL_NAMES[blk.auto] || blk.auto) + ' (Dashboard → Execution)'">auto · {{ LEVEL_NAMES[blk.auto] || blk.auto }}</span>
                                     <span v-if="blk.hidden" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-green-300 border-green-800 bg-green-950/40" :title="'The output had ' + (blk.hidden === 1 ? 'a key' : blk.hidden + ' keys') + ' saved in Optimux. Shown as ••••(NAME): the chat, the history and the model never see the value.'">🔒 {{ blk.hidden === 1 ? 'key' : blk.hidden + ' keys' }} hidden</span>
                                     <span v-if="blk.cut" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-amber-300 border-amber-900/60 bg-amber-950/40" :title="'The output was too long: ' + blk.cut.toLocaleString() + ' bytes from its middle were cut, so they don\'t cost tokens at every step. The model was told how to see a part.'">output cut</span>
                                     <span v-if="blk.exit_code !== undefined" :class="['flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border', blk.exit_code === 0 ? 'text-green-400 border-green-900/60 bg-green-950/40' : 'text-red-400 border-red-900/60 bg-red-950/40']">exit {{ blk.exit_code }}</span>
@@ -2595,6 +2621,7 @@
                             <div class="bg-black/80 rounded-lg border border-gray-700/80 overflow-hidden font-mono text-xs">
                                 <div class="bg-gray-800/80 px-3 py-2 flex items-start justify-between gap-3 text-gray-300 border-b border-gray-700/60">
                                     <div class="flex items-start gap-2 min-w-0 flex-1"><span class="text-green-400 font-bold flex-shrink-0">$</span><span class="whitespace-pre-wrap break-all max-h-40 overflow-y-auto min-w-0">{{ cmdItem.command }}</span></div>
+                                    <span v-if="cmdItem.auto" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-blue-300 border-blue-900/60 bg-blue-950/40" :title="'Ran without asking: the project is ' + (LEVEL_NAMES[cmdItem.auto] || cmdItem.auto) + ' (Dashboard → Execution)'">auto · {{ LEVEL_NAMES[cmdItem.auto] || cmdItem.auto }}</span>
                                     <span v-if="cmdItem.hidden" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-green-300 border-green-800 bg-green-950/40" :title="'The output had ' + (cmdItem.hidden === 1 ? 'a key' : cmdItem.hidden + ' keys') + ' saved in Optimux. Shown as ••••(NAME): the chat, the history and the model never see the value.'">🔒 {{ cmdItem.hidden === 1 ? 'key' : cmdItem.hidden + ' keys' }} hidden</span>
                                     <span v-if="cmdItem.cut" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-amber-300 border-amber-900/60 bg-amber-950/40" :title="'The output was too long: ' + cmdItem.cut.toLocaleString() + ' bytes from its middle were cut, so they don\'t cost tokens at every step. The model was told how to see a part.'">output cut</span>
                                     <span v-if="cmdItem.exit_code !== undefined" :class="['flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border', cmdItem.exit_code === 0 ? 'text-green-400 border-green-900/60 bg-green-950/40' : 'text-red-400 border-red-900/60 bg-red-950/40']">exit {{ cmdItem.exit_code }}</span>
@@ -2736,8 +2763,9 @@
                             <span v-if="!pendingAction && !pendingFile && pendingSandboxProblem" class="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border text-red-300 border-red-800 bg-red-950/40" :title="pendingSandboxProblem">⚠ sandbox broken: will be refused</span>
                             <span v-else-if="pendingFile" class="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border text-green-300 border-green-800 bg-green-950/40" title="Optimux writes it itself, only inside the active project (never .git), and replaces the file in one step">✎ project file</span>
                             <span v-else-if="!pendingAction" :class="['text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border', pendingSandboxed ? 'text-green-300 border-green-800 bg-green-950/40' : 'text-gray-400 border-gray-700']" :title="pendingSandboxed ? 'Runs in the sandbox: it can only change the working folder' : 'The sandbox is off: the command runs with all your permissions'">{{ pendingSandboxed ? '🔒 sandboxed' : 'not sandboxed' }}</span></h3>
-                        <p class="text-sm text-gray-300 mb-2">{{ pendingAction ? 'The assistant wants to do this (always asked, even with auto-approve on):' : (pendingFile ? 'The assistant wants to change this file in the project:' : 'The assistant wants to run this command on your machine:') }}</p>
+                        <p class="text-sm text-gray-300 mb-2">{{ pendingAction ? 'The assistant wants to do this (always asked, at every level):' : (pendingFile ? 'The assistant wants to change this file in the project:' : 'The assistant wants to run this command on your machine:') }}</p>
                         <p v-if="pendingFile && pendingStillAsking" class="text-[12px] text-yellow-300/90 mb-2">This rewrites a file that already exists, so it asks even after "Approve all edits": check that nothing important is dropped.</p>
+                        <p v-else-if="pendingAskReason && !pendingAskReason.startsWith('Supervised')" class="text-[12px] text-yellow-300/90 mb-2">{{ pendingAskReason }}</p>
                         <div class="bg-black/60 p-3 rounded font-mono text-sm text-yellow-200 whitespace-pre-wrap break-all max-h-96 overflow-y-auto">{{ pendingCommand }}</div>
                         <pre v-if="pendingFile && pendingFile.diff" class="mt-2 bg-black/60 p-3 rounded font-mono text-xs whitespace-pre overflow-auto max-h-96"><span v-for="(l, i) in pendingFile.diff.split('\n')" :key="i" :class="diffLineClass(l)">{{ l }}
 </span></pre>
@@ -2752,7 +2780,7 @@
                         <div v-if="pendingOutside.length" class="mt-3 p-3 rounded border border-red-700 bg-red-900/30 text-sm text-red-300">
                             <div class="font-bold">⚠ Outside the project</div>
                             <div class="text-xs mt-1">This command refers to paths outside <span class="font-mono">{{ pendingWorkdir }}</span>:
-                                <span class="font-mono text-red-200">{{ pendingOutside.join(', ') }}</span>. {{ pendingSandboxed ? 'The sandbox stops it from changing them (and hides your home folder), but it can read system files.' : 'The sandbox is off, so it can read or change them.' }} Auto-approve never applies to these.</div>
+                                <span class="font-mono text-red-200">{{ pendingOutside.join(', ') }}</span>. {{ pendingSandboxed ? 'The sandbox stops it from changing them (and hides your home folder), but it can read system files.' : 'The sandbox is off, so it can read or change them.' }} No autonomy level skips these.</div>
                         </div>
                     </div>
                 </div>
@@ -2762,7 +2790,7 @@
                            title="Optional. Typed text goes to the model with Reject, so it knows what to do instead. Enter rejects."
                            class="flex-1 min-w-[16rem] bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-500 outline-none focus:border-red-700">
                     <button @click="sendApprovalResponse(false)" class="px-5 py-2 bg-gray-800 hover:bg-gray-700 text-red-400 font-bold rounded transition border border-red-900/50 text-sm" :title="rejectReason.trim() ? 'Reject and send the reason to the model' : 'Reject'">{{ rejectReason.trim() ? 'Reject with reason' : 'Reject' }}</button>
-                    <button v-if="!pendingOutside.length && !pendingAction && !pendingFile && !sandboxInfo.server_mode" @click="sendApprovalResponse(true, true)" class="px-5 py-2 bg-green-900/30 hover:bg-green-800/50 text-green-400 font-bold rounded transition border border-green-800 text-sm">Always Approve</button>
+                    <button v-if="pendingRaiseTo && !pendingOutside.length && !pendingAction && !pendingFile" @click="sendApprovalResponse(true, true)" class="px-5 py-2 bg-green-900/30 hover:bg-green-800/50 text-green-400 font-bold rounded transition border border-green-800 text-sm" :title="'Approve this command and set ' + (appSettings.active_project || 'this project') + ' to ' + LEVEL_NAMES[pendingRaiseTo] + ': file changes and ordinary commands run without asking; pushes, deletions, installs, network use and paths outside the project still ask. Change it in Dashboard → Execution.'">Approve and stop asking in {{ appSettings.active_project }}</button>
                     <button v-if="pendingFile" @click="sendApprovalResponse(true, false, true)" class="px-5 py-2 bg-green-900/30 hover:bg-green-800/50 text-green-400 font-bold rounded transition border border-green-800 text-sm" title="Approve this change and the next file edits of this reply. Commands still ask, and the next reply asks again.">Approve all edits in this reply</button>
                     <button @click="sendApprovalResponse(true)" class="px-5 py-2 bg-green-700 hover:bg-green-600 text-white font-bold rounded transition shadow-lg shadow-green-900/20 text-sm">Approve</button>
                 </div>

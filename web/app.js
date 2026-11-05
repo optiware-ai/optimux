@@ -566,6 +566,28 @@ createApp({
         const pendingCommand = ref('');
         const pendingFile = ref(null);    // write_file / edit_file: path, op, counts and the diff (v0.4-5i)
         const pendingStillAsking = ref(false);   // an overwrite after "Approve all edits" (it always asks)
+        // v0.8 autonomy levels: why this asks, and the level "Approve and stop asking" would set
+        const pendingAskReason = ref('');
+        const pendingRaiseTo = ref('');
+        const autonomy = ref(null);              // GET /api/autonomy (Dashboard -> Execution)
+        const autonomyMsg = ref(null);
+        const LEVEL_NAMES = { supervised: 'Supervised', checkpointed: 'Checkpointed', autonomous: 'Autonomous' };
+        const fetchAutonomy = async () => {
+            try { autonomy.value = await (await fetch('/api/autonomy')).json(); } catch (e) { console.error('autonomy', e); }
+        };
+        // project null: the default level; level null: the project follows the default again
+        const setAutonomy = async (project, level) => {
+            autonomyMsg.value = null;
+            try {
+                const res = await fetch('/api/autonomy', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                           body: JSON.stringify({ project, level }) });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { autonomyMsg.value = { ok: false, text: data.detail || 'Not saved.' }; return; }
+                autonomy.value = data;
+                autonomyMsg.value = { ok: true, text: 'Saved.' };
+            } catch (e) { autonomyMsg.value = { ok: false, text: 'Not saved: ' + e }; }
+        };
+        const projectLevel = (name) => (autonomy.value && autonomy.value.projects[name]) || '';
         const pendingOutside = ref([]);
         const pendingWorkdir = ref('');
         const pendingSandboxed = ref(false);
@@ -2847,7 +2869,7 @@ createApp({
             if (id === 'system') { fetchSystemInfo(); fetchAuth(); }
             if (id === 'github') { githubMsg.value = null; fetchGithub(true); }
             if (id === 'guide') loadGuide();
-            if (id === 'execution') { fetchSandbox(); commandEnvText.value = (appSettings.value.command_env || []).join('\n'); }
+            if (id === 'execution') { fetchSandbox(); fetchAutonomy(); fetchProjectsList(); autonomyMsg.value = null; commandEnvText.value = (appSettings.value.command_env || []).join('\n'); }
             if (id === 'skills') fetchSkills();
             if (id === 'models') { fetchCatalog(); loadProviderModels(); }
             if (id === 'backups') { fetchSnapshots(); fetchBackups(); fetchRestoreStatus(); fetchProjectsList().then(snapSyncProjects); }
@@ -3692,12 +3714,10 @@ createApp({
                     pendingAction.value = data.action || '';  // project actions always ask
                     pendingFile.value = data.file_change || null;
                     pendingStillAsking.value = !!data.still_asking;
+                    pendingAskReason.value = data.ask_reason || '';      // v0.8: the server decides what asks
+                    pendingRaiseTo.value = data.raise_to || '';
                     pendingForm.value = data.form ? { form: data.form, error: data.error || '', github: data.github || {},
                                                       active_project: data.active_project || '', key: ++formSeq } : null;
-                    if (appSettings.value.auto_approve && pendingOutside.value.length === 0 && !data.always_ask) {
-                        ws.value.send(JSON.stringify({ type: 'approval_response', approved: true }));
-                        return;
-                    }
                     pendingCommand.value = data.command;
                     rejectReason.value = '';
                     pendingApproval.value = true;
@@ -3739,6 +3759,7 @@ createApp({
                 else if (data.type === "command_start") {
                     if (!lastMsg.commands) lastMsg.commands = [];
                     const cmd = { kind: 'cmd', command: data.command, output: "", file: data.file || null,
+                                  auto: data.auto || (data.file && typeof data.file.auto === 'string' ? data.file.auto : ''),
                                   limit: data.time_limit ?? null, started: replay || data.time_limit === undefined ? null : Date.now() };
                     lastMsg.commands.push(cmd);
                     if (lastMsg.blocks) lastMsg.blocks.push(cmd);  // same object: output updates both
@@ -3870,18 +3891,15 @@ createApp({
 
         // Reject can carry a reason, sent to the model with the refusal (v0.5.1)
         const rejectReason = ref('');
-        const sendApprovalResponse = async (isApproved, alwaysApprove = false, allEdits = false) => {
-            if (alwaysApprove && isApproved) {
-                appSettings.value.auto_approve = true;
-                await saveSettings();
-            }
+        const sendApprovalResponse = async (isApproved, raiseLevel = false, allEdits = false) => {
             const reason = isApproved ? '' : rejectReason.value.trim().slice(0, 500);
             rejectReason.value = '';
             const limit = isApproved && pendingTimeLimit.value !== '' ? { time_limit: Number(pendingTimeLimit.value) } : {};
             pendingTimeLimit.value = '';
             const edits = isApproved && allEdits ? { all_edits: true } : {};   // IM-12: this reply's file edits
+            const raise = isApproved && raiseLevel ? { raise_level: true } : {};  // v0.8: the project stops asking
             ws.value.send(JSON.stringify(reason ? { type: 'approval_response', approved: false, reason }
-                                                : { type: 'approval_response', approved: isApproved, ...limit, ...edits }));
+                                                : { type: 'approval_response', approved: isApproved, ...limit, ...edits, ...raise }));
             pendingApproval.value = false;
             pendingForm.value = null;
             pendingCommand.value = ''; pendingFile.value = null;
@@ -4108,7 +4126,8 @@ createApp({
 
         return { 
             userInput, chatInputRef, messages, sendMessage, handleEnter, isGenerating,
-            pendingStillAsking, selectedModel, availableModels, setupModels, handleModelChange,
+            pendingStillAsking, pendingAskReason, pendingRaiseTo, autonomy, autonomyMsg, setAutonomy, projectLevel, LEVEL_NAMES,
+            selectedModel, availableModels, setupModels, handleModelChange,
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
             pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
