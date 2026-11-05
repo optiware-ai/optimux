@@ -247,3 +247,46 @@ def test_the_styles_and_scripts_api(mocker, tmp_path, ws):
     assert r["sheets"] == ["css/a.css"] and r["rules"][0]["selectors"] == "h1"
     r = client.post("/api/files/scripts", headers=H, json={"page": "index.html", "element": {"tag": "h1", "classes": ["nothing"]}})
     assert r.status_code == 200 and r.json()["matches"] == []
+
+
+# ---- Ctrl+click in the editor: where a name is defined (v0.8)
+
+def test_definition_of_classes_ids_files_and_functions(ws):
+    p, _ = ws
+    (p / "pages").mkdir()
+    (p / "js").mkdir()
+    (p / "css" / "site.css").write_text(".note { color: red }\n.notes { x: 1 }\n@media (min-width: 4px) {\n  .card .note { y: 2 }\n}\n#learn { z: 3 }\n")
+    (p / "js" / "app.js").write_text("export function openCard(id) {\n  return id;\n}\nconst toggle = (el) => el;\n"
+                                     "const api = {\n  save: async function () {},\n  load() { return 1; }\n};\n")
+    (p / "pages" / "about.html").write_text(
+        '<link rel="stylesheet" href="../css/site.css">\n<style>\n.note { margin: 0 }\n</style>\n'
+        '<p class="note" id="learn" onclick="openCard(1)">x</p><a href="../index.html">home</a>\n'
+        '<script src="../js/app.js"></script>\n<script>\nfunction local() {}\n</script>\n')
+    d = pf.definition(str(p), "pages/about.html", "class", "note")
+    assert d["where"] == "file"
+    assert [(r["path"], r["from"]["line"], r["text"]) for r in d["results"]] == [
+        ("css/site.css", 1, ".note"), ("css/site.css", 4, ".card .note · @media (min-width: 4px)"), ("pages/about.html", 3, ".note")]
+    assert [r["from"]["line"] for r in pf.definition(str(p), "pages/about.html", "id", "learn")["results"]] == [6]
+    f = pf.definition(str(p), "pages/about.html", "file", "../index.html")["results"]
+    assert f[0]["path"] == "index.html" and f[0]["from"] == {"line": 1, "col": 0}
+    assert pf.definition(str(p), "pages/about.html", "file", "../../outside.txt")["results"] == []
+    assert pf.definition(str(p), "pages/about.html", "file", "https://example.com/x")["results"] == []
+    fn = pf.definition(str(p), "pages/about.html", "symbol", "openCard")["results"]
+    assert fn[0]["path"] == "js/app.js" and fn[0]["from"] == {"line": 1, "col": 16} and fn[0]["to"]["col"] == 24
+    assert pf.definition(str(p), "pages/about.html", "symbol", "local")["results"][0]["path"] == "pages/about.html"
+    for sym, line in (("toggle", 4), ("save", 6), ("load", 7), ("api", 5)):
+        assert pf.definition(str(p), "js/app.js", "symbol", sym)["results"][0]["from"]["line"] == line, sym
+    (p / "src").mkdir()
+    (p / "src" / "util.js").write_text("export const helper = () => 1;\n")
+    h = pf.definition(str(p), "pages/about.html", "symbol", "helper")
+    assert h["where"] == "project" and h["results"][0]["path"] == "src/util.js"
+    assert pf.definition(str(p), "pages/about.html", "symbol", "nowhere")["results"] == []
+    with pytest.raises(pf.FilesError):
+        pf.definition(str(p), "pages/about.html", "weird", "x")
+
+
+def test_the_definition_api(mocker, tmp_path, ws):
+    client = make_client(mocker, tmp_path)
+    r = client.post("/api/files/definition", headers=H, json={"path": "index.html", "kind": "file", "name": "css/a.css"})
+    assert r.status_code == 200 and r.json()["results"][0]["path"] == "css/a.css"
+    assert client.post("/api/files/definition", headers=H, json={"path": "index.html", "kind": "x", "name": "y"}).status_code == 400

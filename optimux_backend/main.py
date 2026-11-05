@@ -357,6 +357,19 @@ async def files_scripts(payload: LocatePayload):
     return {"project": name, **await _files_op(files_studio.script_refs, root, payload.page, payload.element)}
 
 
+class DefinitionPayload(BaseModel):
+    path: str                         # the file the name is in
+    kind: str                         # class, id, file or symbol
+    name: str
+
+
+@app.post("/api/files/definition")
+async def files_definition(payload: DefinitionPayload):
+    """Ctrl+click in the editor: where a class, an id, a file or a function is defined."""
+    name, root = _studio_root()
+    return {"project": name, **await _files_op(files_studio.definition, root, payload.path, payload.kind, payload.name)}
+
+
 class FilesPathPayload(BaseModel):
     path: str
     to: str = ""

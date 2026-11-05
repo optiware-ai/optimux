@@ -1,14 +1,14 @@
 // The Studio's code editor (v0.8): CodeMirror 6, bundled once into one pinned file in
 // web/vendor/ by scripts/build-editor.sh (Optimux has no bundler at run time).
 // window.OptimuxEditor.create(parent, options) returns a small handle the page drives.
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
 import {
-  EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars,
+  Decoration, EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars,
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
-import { HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting, StreamLanguage, foldGutter, foldKeymap } from '@codemirror/language';
+import { HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting, syntaxTree, StreamLanguage, foldGutter, foldKeymap } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 import { javascript } from '@codemirror/lang-javascript';
 import { html } from '@codemirror/lang-html';
@@ -105,8 +105,99 @@ export function languageName(path) {
   return names[ext] || 'Plain text';
 }
 
+// ---- v0.8: Ctrl (⌘ on a Mac) + hover shows what can be followed; Ctrl + click follows it.
+// In HTML: a class, an id (also in for=), a local file in href/src, a function in onclick=...;
+// in scripts: a name. The page asks Optimux where it is defined (options.onGoto).
+const setGoto = StateEffect.define();
+const gotoMark = Decoration.mark({ class: 'cm-goto' });
+const gotoField = StateField.define({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    for (const e of tr.effects) if (e.is(setGoto)) return e.value ? Decoration.set([gotoMark.range(e.value.from, e.value.to)]) : Decoration.none;
+    return tr.docChanged ? Decoration.none : deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+const IDENT = /[A-Za-z0-9_$]/;
+const FILE_ATTRS = ['href', 'src', 'action', 'poster', 'data-src', 'srcset'];
+const SCRIPT_NODES = ['VariableName', 'PropertyName', 'VariableDefinition', 'PropertyDefinition', 'TypeName', 'ClassName'];
+
+/** What can be followed at `pos`: {kind: class|id|file|symbol, name, from, to} or null. */
+export function targetAt(state, pos) {
+  const text = (a, b) => state.sliceDoc(a, b);
+  const word = (from, to, isChar) => {
+    let a = pos, b = pos;
+    while (a > from && isChar(text(a - 1, a))) a--;
+    while (b < to && isChar(text(b, b + 1))) b++;
+    return a < b ? { from: a, to: b, name: text(a, b) } : null;
+  };
+  const node = syntaxTree(state).resolveInner(pos, 1);
+  for (let n = node, i = 0; n && i < 4; n = n.parent, i++) {
+    if (n.name !== 'AttributeValue') continue;
+    const nameNode = n.parent && n.parent.getChild('AttributeName');
+    const attr = nameNode ? text(nameNode.from, nameNode.to).toLowerCase() : '';
+    let from = n.from, to = n.to;
+    if (/^["']/.test(text(from, from + 1))) from++;
+    if (to > from && /["']/.test(text(to - 1, to))) to--;
+    if (pos < from || pos > to) return null;
+    if (attr === 'class' || attr === 'id' || attr === 'for') {
+      const w = word(from, to, (c) => !/\s/.test(c));
+      return w ? { kind: attr === 'class' ? 'class' : 'id', ...w } : null;
+    }
+    if (FILE_ATTRS.includes(attr)) {
+      const value = text(from, to).trim();
+      if (!value || /^(?:[a-z][a-z0-9+.-]*:|\/\/|#|\{)/i.test(value)) return null;
+      return { kind: 'file', name: value.split(/\s+/)[0], from, to };
+    }
+    if (attr.startsWith('on')) {
+      const w = word(from, to, (c) => IDENT.test(c));
+      return w && /^[A-Za-z_$]/.test(w.name) ? { kind: 'symbol', ...w } : null;
+    }
+    return null;
+  }
+  for (let n = node, i = 0; n && i < 2; n = n.parent, i++) {
+    if (SCRIPT_NODES.includes(n.name) && n.from <= pos && pos <= n.to) return { kind: 'symbol', from: n.from, to: n.to, name: text(n.from, n.to) };
+  }
+  return null;
+}
+
+function gotoExtension(onGoto) {
+  let mouse = null, held = false, shown = null;
+  const at = (view, x, y) => {
+    const pos = view.posAtCoords({ x, y });
+    return pos === null ? null : targetAt(view.state, pos);
+  };
+  const refresh = (view) => {
+    const t = held && mouse ? at(view, mouse.x, mouse.y) : null;
+    const key = t ? t.from + ':' + t.to : null;
+    if (key === shown) return;
+    shown = key;
+    view.dispatch({ effects: setGoto.of(t ? { from: t.from, to: t.to } : null) });
+  };
+  return [
+    gotoField,
+    EditorView.domEventHandlers({
+      mousemove(e, view) { mouse = { x: e.clientX, y: e.clientY }; held = e.ctrlKey || e.metaKey; refresh(view); return false; },
+      mouseleave(e, view) { mouse = null; refresh(view); return false; },
+      keydown(e, view) { if (e.key === 'Control' || e.key === 'Meta') { held = true; refresh(view); } return false; },
+      keyup(e, view) { if (e.key === 'Control' || e.key === 'Meta') { held = false; refresh(view); } return false; },
+      blur(e, view) { held = false; refresh(view); return false; },
+      mousedown(e, view) {
+        if (e.button !== 0 || !(e.ctrlKey || e.metaKey) || !onGoto) return false;
+        const t = at(view, e.clientX, e.clientY);
+        if (!t) return false;
+        e.preventDefault();                       // not CodeMirror's Ctrl+click (another cursor)
+        held = false; refresh(view);
+        onGoto({ kind: t.kind, name: t.name }, { x: e.clientX, y: e.clientY });
+        return true;
+      },
+    }),
+    EditorView.theme({ '.cm-goto': { fontWeight: 'bold', textDecoration: 'underline', textUnderlineOffset: '2px', cursor: 'pointer' } }),
+  ];
+}
+
 /**
- * create(parent, { label, nonce, onChange(text), onSave() }) -> handle
+ * create(parent, { label, nonce, onChange(text), onSave(), onGoto({kind, name}, {x, y}) }) -> handle
  * nonce: the page's CSP style nonce (CodeMirror adds its styles as <style> elements)
  * Each open file keeps its own state (undo history, selection) while the page keeps it open.
  * handle.show(id, text, path): show a file (a new id gets a fresh state); handle.replace(text): new text
@@ -131,6 +222,7 @@ export function create(parent, options = {}) {
       EditorView.contentAttributes.of({ 'aria-label': options.label || 'Code editor' }),
       ...(options.nonce ? [EditorView.cspNonce.of(options.nonce)] : []),
       EditorView.updateListener.of((u) => { if (u.docChanged && options.onChange) options.onChange(u.state.doc.toString()); }),
+      gotoExtension(options.onGoto),
     ],
   });
   const view = new EditorView({ state: make('', ''), parent });

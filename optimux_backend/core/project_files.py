@@ -746,6 +746,118 @@ def script_refs(root: str, page: str, el: dict) -> dict:
     return {"matches": [x[3] for x in found[:SCRIPT_MATCHES]], "where": where}
 
 
+# ---------------------------------------------------------------- Ctrl+click in the editor (v0.8)
+# Where a name used in a file is defined: a class or an id in CSS rules, a local file in an
+# href or src, a function or variable in scripts. The file's own stylesheets and scripts
+# first (for an HTML page: its <link>, <style> and <script>), then the project's.
+
+STYLE_EXTS = (".css", ".scss", ".sass", ".less")
+DEFINITIONS = 30
+
+
+def _definitions_js(name: str) -> re.Pattern:
+    n = re.escape(name)
+    return re.compile(
+        r"(?:\bfunction\s*\*?\s*(" + n + r")\s*\("                                # function name(
+        r"|\b(?:const|let|var)\s+(" + n + r")\b\s*="                             # const name =
+        r"|\bclass\s+(" + n + r")\b"                                             # class Name
+        r"|^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?(" + n + r")\s*\([^)\n]*\)\s*\{"   # name(...) {  (a method)
+        r"|(?<![\w$.])(" + n + r")\s*:\s*(?:async\s+)?(?:function\b|\([^)\n]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)"  # name: function / () =>
+        r"|\bdef\s+(" + n + r")\s*\()",                                           # Python def
+        re.M)
+
+
+def _span_of(body: str, path: str, a: int, b: int) -> dict:
+    fl, fc = _line_col(body, a)
+    tl, tc = _line_col(body, b)
+    line_start = body.rfind("\n", 0, a) + 1
+    line_end = body.find("\n", a)
+    return {"path": path, "from": {"line": fl, "col": fc}, "to": {"line": tl, "col": tc},
+            "text": body[line_start:line_end if line_end >= 0 else len(body)].strip()[:160]}
+
+
+def definition(root: str, path: str, kind: str, name: str) -> dict:
+    """{results: [{path, from, to, text}], where: file|project} for a name in `path`."""
+    path = _clean_rel(path or "")
+    name = str(name or "").strip()
+    if kind not in ("class", "id", "file", "symbol") or not name or len(name) > 300:
+        raise FilesError("Nothing to follow here.", 400)
+    if kind == "file":
+        target = _local_ref(path, name)
+        if target is None:
+            return {"results": [], "where": "file"}
+        try:
+            real, rel = filetools.resolve_target(root, target)
+        except filetools.FileToolError:
+            return {"results": [], "where": "file"}
+        if os.path.isdir(real):
+            index = os.path.join(rel, "index.html")
+            if os.path.isfile(os.path.join(real, "index.html")):
+                rel = index.replace(os.sep, "/")
+            else:
+                return {"results": [{"path": rel, "dir": True, "from": {"line": 1, "col": 0}, "to": {"line": 1, "col": 0}, "text": ""}], "where": "file"}
+        elif not os.path.isfile(real):
+            return {"results": [], "where": "file"}
+        return {"results": [{"path": rel, "from": {"line": 1, "col": 0}, "to": {"line": 1, "col": 0}, "text": ""}], "where": "file"}
+
+    html = bool(re.search(r"\.html?$", path, re.I))
+    own: list[tuple[str, str, int, int]] = []           # (path, text, start, end) of the file's own code
+    own_files: set[str] = set()
+    if html:
+        text, parts = _page_parts(root, path)
+        for tag, a, start, end in parts if text is not None else []:
+            if kind in ("class", "id") and tag == "link" and "stylesheet" in (a.get("rel") or "").lower().split():
+                ref = _local_ref(path, a.get("href", ""))
+                body = _read_text(root, ref) if ref else None
+                if body is not None:
+                    own.append((ref, body, 0, len(body))); own_files.add(ref)
+            elif kind in ("class", "id") and tag == "style":
+                own.append((path, text, start, end))
+            elif kind == "symbol" and tag == "script":
+                if a.get("src"):
+                    ref = _local_ref(path, a["src"])
+                    body = _read_text(root, ref) if ref else None
+                    if body is not None:
+                        own.append((ref, body, 0, len(body))); own_files.add(ref)
+                else:
+                    own.append((path, text, start, end))
+    else:
+        body = _read_text(root, path)
+        if body is not None:
+            own.append((path, body, 0, len(body))); own_files.add(path)
+
+    def find(sources) -> list[dict]:
+        out = []
+        if kind in ("class", "id"):
+            token = re.compile(("\\." if kind == "class" else "#") + re.escape(name) + r"(?![\w-])")
+            for p_, body, a, b in sources:
+                for sel, s_, e_, media in _css_rules(body, a, b):
+                    if token.search(sel):
+                        out.append(_span_of(body, p_, s_, e_) | {"text": re.sub(r"\s+", " ", sel)[:160] + (" · " + media if media else "")})
+        else:
+            pat = _definitions_js(name)
+            for p_, body, a, b in sources:
+                for m in pat.finditer(body, a, b):
+                    g = next(i for i in range(1, 7) if m.group(i))
+                    out.append(_span_of(body, p_, m.start(g), m.end(g)))
+        return out[:DEFINITIONS]
+
+    results = find(own)
+    if results:
+        return {"results": results, "where": "file"}
+    exts = STYLE_EXTS if kind in ("class", "id") else SCRIPT_EXTS + (".py",)
+    files, _ = _project_paths(root)
+    sources = []
+    for f in files:
+        if f.lower().endswith(exts) and f not in own_files and not any(x.startswith(".") for x in f.split("/")):
+            body = _read_text(root, f)
+            if body is not None:
+                sources.append((f, body, 0, len(body)))
+        if len(sources) >= LOCATE_FILES:
+            break
+    return {"results": find(sources), "where": "project"}
+
+
 COUNT_LIMIT = 20_000      # entries counted for the delete question
 
 

@@ -3742,7 +3742,7 @@ createApp({
         const openBudgets = () => openSettings('budgets');
 
         // ---- v0.8: the Studio. The active project's files (tree), a code editor and a sandboxed preview.
-        const EDITOR_SCRIPT = '/static/vendor/codemirror-6.43.15-3.min.js';   // built by scripts/build-editor.sh
+        const EDITOR_SCRIPT = '/static/vendor/codemirror-6.43.15-4.min.js';   // built by scripts/build-editor.sh
         const studio = Vue.reactive({
             open: false, project: '', dirs: {}, opened: { '': true }, status: {}, branch: '', msg: null,
             file: null,        // {path, text (as opened), digest, hidden, binary, too_large, size, lang}
@@ -3784,6 +3784,7 @@ createApp({
                 label: 'Code editor', nonce: meta ? meta.content : '',
                 onChange: (text) => { studio.live = text; studio.dirty = !!studio.file && text !== studio.file.text; },
                 onSave: () => saveStudioFile(),
+                onGoto: (target, at) => followDefinition(target, at),
             });
             return true;
         };
@@ -4384,6 +4385,11 @@ createApp({
         };
         // Open a file with a range selected: {path, from: {line, col}, to: {line, col}}
         const openRange = async (r) => {
+            if (editor && studio.file && studio.file.path === r.path && studio.file.text !== undefined) {   // the open file: just select
+                studio.showEditor = true;
+                editor.select(r.from, r.to);
+                return true;
+            }
             if (studio.dirty && studio.file && studio.file.path !== r.path
                 && !confirm(`${studio.file.path} has unsaved changes. Open ${r.path} and drop them?`)) return false;
             studio.showEditor = true;
@@ -4397,6 +4403,32 @@ createApp({
                 if (row) row.scrollIntoView({ block: 'nearest' });
             });
             return true;
+        };
+        // v0.8: Ctrl+click in the editor: where a class, an id, a file or a function is defined
+        const GOTO_WHAT = { class: (n) => '.' + n, id: (n) => '#' + n, file: (n) => n, symbol: (n) => n + '()' };
+        const followDefinition = async (target, at) => {
+            const f = studio.file;
+            if (!f) return;
+            studio.msg = null;
+            let r;
+            try {
+                r = await studioFetch('/api/files/definition', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ path: f.path, kind: target.kind, name: target.name }) });
+            } catch (e) { studio.msg = { ok: false, text: e.message }; return; }
+            const label = (GOTO_WHAT[target.kind] || ((n) => n))(target.name);
+            if (!r.results.length) {
+                studio.msg = { ok: false, text: target.kind === 'file' ? `${target.name} isn't a file of the project.`
+                    : `No definition of ${label} found in ${target.kind === 'symbol' ? 'the scripts' : 'the stylesheets'} of ${f.path} or the project.` };
+                return;
+            }
+            const go = (x) => {
+                if (x.dir) { studio.find = ''; revealStudioPath(x.path); return; }
+                openRange(x);
+            };
+            if (r.results.length === 1) { go(r.results[0]); return; }
+            openCtxMenu(at.x, at.y + 12, `${r.results.length} definitions of ${clip(label, 40)}${r.where === 'project' ? ' (in other files)' : ''}`,
+                r.results.map(x => ({ icon: target.kind === 'symbol' ? 'ƒ' : '#', label: x.text || x.path, hint: where(x),
+                                      title: `${where(x)}\n${x.text}`, run: () => go(x) })));
         };
         // Ask the preview about the element under the pointer; the answer comes as a message
         const askCode = (want, x, y) => {
