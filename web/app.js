@@ -3742,7 +3742,7 @@ createApp({
         const openBudgets = () => openSettings('budgets');
 
         // ---- v0.8: the Studio. The active project's files (tree), a code editor and a sandboxed preview.
-        const EDITOR_SCRIPT = '/static/vendor/codemirror-6.43.15-2.min.js';   // built by scripts/build-editor.sh
+        const EDITOR_SCRIPT = '/static/vendor/codemirror-6.43.15-3.min.js';   // built by scripts/build-editor.sh
         const studio = Vue.reactive({
             open: false, project: '', dirs: {}, opened: { '': true }, status: {}, branch: '', msg: null,
             file: null,        // {path, text (as opened), digest, hidden, binary, too_large, size, lang}
@@ -3755,6 +3755,7 @@ createApp({
             edit: null,        // v0.8: an inline name box in the tree: {mode: new-file|new-folder|rename, parent, path, kind, value, busy, error}
             menuPath: null,    // v0.8: the tree row a right-click menu is for
             find: '', found: null, finding: false,   // v0.8: search by name in the file list
+            locating: 0,       // v0.8: when "Open in file" asked the preview (an answer is taken for 5 s)
             dev: false,        // v0.8: the preview shows a running dev server (devUrl) instead of the files
             devUrl: '',        // e.g. localhost:5173 or localhost:5173/admin; kept per project in this browser
             devFor: null,      // the project whose dev-server setting is loaded
@@ -3872,7 +3873,7 @@ createApp({
         };
         const PREVIEW_PAGE = /\.(html?|svg|png|jpe?g|gif|webp|avif|ico|pdf|txt)$/i;
         const previewKind = (path) => (/\.(md|markdown)$/i.test(path || '') ? 'markdown' : (PREVIEW_PAGE.test(path || '') ? 'page' : ''));
-        const openStudioFile = async (path) => {
+        const openStudioFile = async (path, opts = {}) => {
             if (studio.dirty && studio.file && studio.file.path !== path
                 && !confirm(`${studio.file.path} has unsaved changes. Open ${path} and drop them?`)) return;
             studio.msg = null; studio.conflict = false;
@@ -3887,7 +3888,7 @@ createApp({
                     editor.show(path, f.text, path);
                     studio.live = f.text;
                 }
-                if (studio.follow && previewKind(path)) { studio.preview.path = path; studio.preview.stamp++; }
+                if (studio.follow && !opts.noFollow && previewKind(path)) { studio.preview.path = path; studio.preview.stamp++; }
             } catch (e) { studio.msg = { ok: false, text: e.message }; }
         };
         const saveStudioFile = async () => {
@@ -4332,13 +4333,20 @@ createApp({
                 const x = Number(d.x) || 0, y = Number(d.y) || 0;
                 const what = clip(d.what, 48);
                 openCtxMenu(r.left + x, r.top + y, studio.preview.path || 'Preview', [
-                    ...(what ? [{ icon: '◎', label: 'Select this', hint: what, run: () => pickCmd('at', { x, y }) }] : []),
+                    ...(what ? [{ icon: '◎', label: 'Select this', hint: what, run: () => pickCmd('at', { x, y }) },
+                                { icon: '‹›', label: 'Open in file', hint: 'its code in the editor', run: () => { studio.locating = Date.now(); pickCmd('locate', { x, y }); } }] : []),
                     { icon: '⌖', label: 'Select an element…', hint: 'a title, text or image', run: () => pickCmd('element') },
                     { icon: '⬚', label: 'Select an area…', hint: 'drag a box', run: () => pickCmd('area') },
                     { sep: true },
                     { icon: '↻', label: 'Reload the preview', run: () => { studio.preview.stamp++; } },
                     { icon: '↗', label: 'Open in a new tab', run: studioOpenInTab },
                 ]);
+                return;
+            }
+            // "Open in file": only an answer the Studio asked for, within a few seconds
+            if (d.type === 'locate' && studio.locating && Date.now() - studio.locating < 5000 && d.payload && typeof d.payload === 'object') {
+                studio.locating = 0;
+                openInFile(d.payload);
                 return;
             }
             // Only what the user picked after choosing a command (a page can't push text into the chat on its own)
@@ -4348,6 +4356,31 @@ createApp({
             }
         });
         const onPreviewLoad = () => { studio.picking = ''; };
+        // "Open in file": find where the element comes from, open that file with its code selected,
+        // its folders opened in the tree and its row in view
+        const openInFile = async (el) => {
+            studio.msg = null;
+            const page = String(el.page || studio.preview.path || '');
+            let r;
+            try {
+                r = await studioFetch('/api/files/locate', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                             body: JSON.stringify({ page, element: el }) });
+            } catch (e) { studio.msg = { ok: false, text: e.message }; return; }
+            if (!r.found) { studio.msg = { ok: false, text: `Couldn't find the code of this <${el.tag}> in ${page} or the project's files.` }; return; }
+            if (studio.dirty && studio.file && studio.file.path !== r.path
+                && !confirm(`${studio.file.path} has unsaved changes. Open ${r.path} and drop them?`)) return;
+            studio.showEditor = true;
+            studio.find = '';
+            const parent = r.path.includes('/') ? r.path.slice(0, r.path.lastIndexOf('/')) : '';
+            if (parent) await revealStudioPath(parent);
+            if (!studio.file || studio.file.path !== r.path || studio.dirty) { studio.dirty = false; await openStudioFile(r.path, { noFollow: true }); }
+            if (editor && studio.file && studio.file.path === r.path) editor.select(r.from, r.to);
+            nextTick(() => {
+                const row = document.querySelector(`nav[aria-label="Project files"] [data-path="${CSS.escape(r.path)}"]`);
+                if (row) row.scrollIntoView({ block: 'nearest' });
+            });
+            if (r.how !== 'page') studio.msg = { ok: true, text: `Found ${r.how === 'text' ? 'its text' : 'its name'} in ${r.path} (made by a script, or not matched in the page).` };
+        };
 
         // The chat beside the Studio: the page's chat moves into a column on the right
         watch(() => studio.open && studio.chat, (on) => { document.body.classList.toggle('cm-studio-chat', !!on); });

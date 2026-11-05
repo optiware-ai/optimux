@@ -4,9 +4,9 @@
    Studio only through postMessage, and it does nothing when the page isn't inside the
    Studio's frame (e.g. opened in its own tab).
 
-   Studio → page: {optimux: 'pick-cmd', cmd: 'element' | 'area' | 'at' | 'cancel', x, y}
+   Studio → page: {optimux: 'pick-cmd', cmd: 'element' | 'area' | 'at' | 'locate' | 'cancel', x, y}
    Page → Studio: {optimux: 'pick', type: 'menu' (x, y, what) | 'dismiss' | 'mode' (mode)
-                   | 'selected' (payload) | 'cancelled'}
+                   | 'selected' (payload) | 'cancelled' | 'locate' (payload, for "Open in file")}
    Shift + right-click keeps the browser's own menu. */
 (function () {
     'use strict';
@@ -322,6 +322,18 @@
         var d = e.data;
         if (d.cmd === 'element' || d.cmd === 'area') start(d.cmd);
         else if (d.cmd === 'cancel') reset(true);
+        else if (d.cmd === 'locate') {
+            // "Open in file": what the Studio needs to find the element's source
+            var t = document.elementFromPoint(Number(d.x) || 0, Number(d.y) || 0);
+            if (!pickable(t)) return;
+            var attrs = {};
+            Array.prototype.forEach.call(t.attributes, function (a) { if (a.value.length < 300) attrs[a.name] = a.value; });
+            post({ type: 'locate', payload: {
+                page: page(), tag: t.tagName.toLowerCase(), id: t.id || '', attrs: attrs,
+                classes: Array.prototype.slice.call(t.classList, 0, 12),
+                text: clean(t.innerText || t.getAttribute('alt') || '', 200),
+                index: Array.prototype.indexOf.call(document.getElementsByTagName(t.tagName), t) } });
+        }
         else if (d.cmd === 'at') {
             var el = document.elementFromPoint(Number(d.x) || 0, Number(d.y) || 0);
             if (pickable(el)) { reset(false); choose({ el: el, label: selectorLabel(el) }); }

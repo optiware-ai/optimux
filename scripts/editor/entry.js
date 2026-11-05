@@ -110,7 +110,7 @@ export function languageName(path) {
  * nonce: the page's CSP style nonce (CodeMirror adds its styles as <style> elements)
  * Each open file keeps its own state (undo history, selection) while the page keeps it open.
  * handle.show(id, text, path): show a file (a new id gets a fresh state); handle.replace(text): new text
- * handle.selection(): the main selection with its lines; handle.selectAll().
+ * handle.selection(): the main selection with its lines; handle.selectAll(); handle.select({line, col}, {line, col}).
  * for the shown file (a reload from disk); handle.text(); handle.forget(ids kept); handle.focus(); handle.destroy().
  */
 export function create(parent, options = {}) {
@@ -154,6 +154,17 @@ export function create(parent, options = {}) {
       return { text: doc.sliceString(r.from, r.to), fromLine: from.number, toLine: to.number, empty: r.empty, lineText: from.text };
     },
     selectAll() { view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } }); view.focus(); },
+    // v0.8: select a range given as lines (from 1) and columns (from 0) and scroll it to the middle
+    select(from, to) {
+      const doc = view.state.doc;
+      const pos = (p) => {
+        const line = doc.line(Math.max(1, Math.min(doc.lines, p.line | 0 || 1)));
+        return Math.min(line.to, line.from + Math.max(0, p.col | 0));
+      };
+      const a = pos(from), b = Math.max(a, pos(to || from));
+      view.dispatch({ selection: { anchor: a, head: b }, effects: EditorView.scrollIntoView(a, { y: 'center' }) });
+      view.focus();
+    },
     destroy() { view.destroy(); states.clear(); },
   };
 }

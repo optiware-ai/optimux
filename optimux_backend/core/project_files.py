@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import mimetypes
 import os
+import re
 import secrets
 import subprocess
 
@@ -409,6 +410,147 @@ def search(root: str, query: str) -> dict:
     found.sort()
     results = [{"path": p, "name": p.rsplit("/", 1)[-1], "type": k} for *_, p, k in found[:SEARCH_RESULTS]]
     return {"query": query, "results": results, "total": len(found), "truncated": truncated}
+
+
+# ---------------------------------------------------------------- "Open in file" (v0.8)
+# The preview's right-click "Open in file": find the source of an element the user
+# pointed at. First the page's own HTML (its start tags, scored by id, classes, other
+# attributes, text and position), then, for content a script made, the project's text
+# files (the element's text, its id or a class).
+
+VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+LOCATE_EXTS = (".html", ".htm", ".js", ".mjs", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".astro", ".php", ".erb",
+               ".hbs", ".njk", ".liquid", ".jinja", ".j2", ".twig", ".md", ".py", ".rb")
+LOCATE_FILES = 3000            # files looked at for text
+LOCATE_BYTES = 1_000_000       # larger files are skipped
+_ATTR = re.compile(r"""([^\s=/>"']+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s>]+))?""")
+
+
+def _attrs(tag_text: str) -> dict:
+    inner = re.sub(r"^<\s*[^\s/>]+", "", tag_text).rstrip(">").rstrip("/")
+    out = {}
+    for m in _ATTR.finditer(inner):
+        v = m.group(2) or ""
+        if v[:1] in "\"'":
+            v = v[1:-1]
+        out[m.group(1).lower()] = v
+    return out
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]*>", " ", text or "")).strip().lower()
+
+
+def _line_col(text: str, offset: int) -> tuple[int, int]:
+    line = text.count("\n", 0, offset) + 1
+    return line, offset - (text.rfind("\n", 0, offset) + 1)
+
+
+def _element_end(text: str, tag: str, start: int, open_end: int) -> int:
+    """Offset after the element's closing tag (or after its start tag for a void or
+    self-closing one, or when no closing tag is found)."""
+    if tag in VOID_TAGS or text[open_end - 2:open_end] == "/>":
+        return open_end
+    pat = re.compile(r"<(/?)" + re.escape(tag) + r"(?=[\s/>])[^>]*>", re.I)
+    depth = 1
+    for m in pat.finditer(text, open_end):
+        if m.group(1):
+            depth -= 1
+            if depth == 0:
+                return m.end()
+        elif not m.group(0).endswith("/>"):
+            depth += 1
+    return open_end
+
+
+def _span(text: str, start: int, end: int, path: str, how: str) -> dict:
+    fl, fc = _line_col(text, start)
+    tl, tc = _line_col(text, end)
+    return {"found": True, "path": path, "from": {"line": fl, "col": fc}, "to": {"line": tl, "col": tc}, "how": how}
+
+
+def _in_page(text: str, el: dict) -> tuple[int, int, int] | None:
+    """(score, start, end) of the best start tag in an HTML text."""
+    tag = el["tag"]
+    want_classes = set(el.get("classes") or [])
+    want_text = _norm(el.get("text") or "")[:80]
+    best = None
+    for i, m in enumerate(re.finditer(r"<" + re.escape(tag) + r"(?=[\s/>])[^>]*>", text, re.I)):
+        a = _attrs(m.group(0))
+        score = 0
+        if el.get("id") and a.get("id") == el["id"]:
+            score += 100
+        elif a.get("id") and el.get("id") != a.get("id"):
+            score -= 30
+        have = set((a.get("class") or "").split())
+        score += 10 * len(want_classes & have) - 4 * len(have - want_classes)
+        for k, v in (el.get("attrs") or {}).items():
+            if k in ("id", "class", "style"):
+                continue
+            if a.get(k) == v:
+                score += 8
+        end = _element_end(text, tag, m.start(), m.end())
+        if want_text and want_text in _norm(text[m.end():end if end > m.end() else m.end() + 4000]):
+            score += 25
+        if el.get("index") is not None:
+            score += max(0, 12 - 4 * abs(int(el["index"]) - i))
+        if best is None or score > best[0]:
+            best = (score, m.start(), end)
+    return best
+
+
+def locate(root: str, page: str, el: dict) -> dict:
+    """Where an element of the previewed `page` comes from: {found, path, from: {line, col},
+    to: {line, col}, how: page|text|name} (lines from 1, columns from 0), or {found: false}."""
+    tag = str(el.get("tag") or "").lower()
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,40}", tag):
+        raise FilesError("Invalid element.")
+    el = {**el, "tag": tag}
+    page = _clean_rel(page or "")
+    text = None
+    if page and re.search(r"\.html?$", page, re.I):
+        try:
+            got = read_file(root, page)
+            real, _ = filetools.resolve_target(root, page)
+            with open(real, encoding="utf-8") as f:
+                text = f.read() if got.get("text") is not None else None
+        except (FilesError, filetools.FileToolError, OSError, UnicodeDecodeError):
+            text = None
+    if text is not None:
+        best = _in_page(text, el)
+        if best and best[0] >= 15:
+            return _span(text, best[1], best[2], page, "page")
+    # Content made by a script, or a page we couldn't match: the text, the id or a class in the project's files
+    needles = []
+    words = re.sub(r"\s+", " ", str(el.get("text") or "")).strip()
+    if 4 <= len(words):
+        needles.append(("text", words[:60]))
+    if el.get("id"):
+        needles.append(("name", str(el["id"])))
+    needles += [("name", c) for c in (el.get("classes") or [])[:3] if len(c) >= 4]
+    if not needles:
+        return {"found": False}
+    files, _ = _project_paths(root)
+    files = [f for f in files if f.lower().endswith(LOCATE_EXTS) and not any(p.startswith(".") for p in f.split("/"))]
+    files.sort(key=lambda f: (f != page, not f.lower().endswith((".html", ".htm")), len(f)))
+    for how, needle in needles:
+        for f in files[:LOCATE_FILES]:
+            try:
+                real, rel = filetools.resolve_target(root, f)
+                if os.path.getsize(real) > LOCATE_BYTES:
+                    continue
+                with open(real, encoding="utf-8") as fh:
+                    body = fh.read()
+            except (filetools.FileToolError, OSError, UnicodeDecodeError):
+                continue
+            pos = body.find(needle)
+            if pos < 0 and how == "text":
+                # the same words across line breaks and indentation
+                m = re.search(r"\s+".join(re.escape(w) for w in needle.split(" ")), body)
+                pos = m.start() if m else -1
+            if pos >= 0:
+                return _span(body, pos, pos + len(needle), rel, how)
+    return {"found": False}
 
 
 COUNT_LIMIT = 20_000      # entries counted for the delete question

@@ -147,3 +147,52 @@ def test_the_search_api_and_the_dev_server_frames(mocker, tmp_path, ws):
     mocker.patch("optimux_backend.core.auth.check_session", return_value="login-1")
     csp = client.get("/").headers["content-security-policy"]
     assert "frame-src 'self' http://localhost:* http://127.0.0.1:*;" in csp and "frame-ancestors 'none'" in csp
+
+
+# ---- "Open in file": where an element of the preview comes from (v0.8)
+
+PAGE = """<!doctype html>
+<html><body>
+  <section class="hero">
+    <h1 class="title big">Build. Share.</h1>
+    <p class="lead">First paragraph</p>
+    <p class="lead">Second
+       paragraph</p>
+    <img src="logo.png" alt="logo">
+  </section>
+  <div id="cards"><div class="card"><h3>Share</h3></div></div>
+</body></html>
+"""
+
+
+def test_locate_finds_the_start_tag_and_the_whole_element(ws):
+    p, _ = ws
+    (p / "index.html").write_text(PAGE)
+    r = pf.locate(str(p), "index.html", {"tag": "h1", "classes": ["title", "big"], "text": "Build. Share.", "index": 0})
+    assert r == {"found": True, "path": "index.html", "from": {"line": 4, "col": 4}, "to": {"line": 4, "col": 44}, "how": "page"}
+    second = pf.locate(str(p), "index.html", {"tag": "p", "classes": ["lead"], "text": "Second paragraph", "index": 1})
+    assert (second["from"]["line"], second["to"]["line"]) == (6, 7)              # the text decides between the two
+    img = pf.locate(str(p), "index.html", {"tag": "img", "attrs": {"src": "logo.png", "alt": "logo"}, "index": 0})
+    assert img["from"]["line"] == 8 and img["to"] == {"line": 8, "col": 35}      # a void element: its tag
+    div = pf.locate(str(p), "index.html", {"tag": "div", "id": "cards", "classes": [], "index": 0})
+    assert div["from"] == {"line": 10, "col": 2} and div["to"]["col"] == len('  <div id="cards"><div class="card"><h3>Share</h3></div></div>')
+
+
+def test_locate_falls_back_to_the_text_in_the_project_files(ws):
+    p, _ = ws
+    (p / "index.html").write_text("<!doctype html><div id=app></div><script src=app.js></script>\n")
+    (p / "app.js").write_text("const x = 1;\nrender(`<h2 class=\"made\">Made by\n    a script</h2>`);\n")
+    r = pf.locate(str(p), "index.html", {"tag": "h2", "classes": ["made"], "text": "Made by a script", "index": 0})
+    assert r["path"] == "app.js" and r["how"] == "text" and r["from"] == {"line": 2, "col": 25} and r["to"]["line"] == 3
+    assert pf.locate(str(p), "index.html", {"tag": "h2", "text": "nowhere at all"}) == {"found": False}
+    with pytest.raises(pf.FilesError):
+        pf.locate(str(p), "index.html", {"tag": "<script>"})
+    assert pf.locate(str(p), "../../outside.txt", {"tag": "h1", "text": "secret outside"}) == {"found": False}   # never read outside
+
+
+def test_the_locate_api(mocker, tmp_path, ws):
+    p, _ = ws
+    (p / "index.html").write_text(PAGE)
+    client = make_client(mocker, tmp_path)
+    r = client.post("/api/files/locate", headers=H, json={"page": "index.html", "element": {"tag": "h3", "text": "Share", "index": 0}})
+    assert r.status_code == 200 and r.json()["from"]["line"] == 10

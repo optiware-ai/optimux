@@ -179,7 +179,7 @@
                                 <div v-if="studio.edit.error" class="text-[12px] text-red-400 mt-0.5 ml-4 break-words" role="alert">{{ studio.edit.error }}</div>
                             </div>
                             <button v-else type="button" @click="r.e.type === 'dir' ? toggleStudioDir(r.e.path) : (r.e.type === 'file' ? openStudioFile(r.e.path) : null)" :disabled="r.e.type === 'outside'"
-                                    @contextmenu.stop="onTreeMenu($event, r.e)" @keydown="treeKey($event, r.e)"
+                                    @contextmenu.stop="onTreeMenu($event, r.e)" @keydown="treeKey($event, r.e)" :data-path="r.e.path"
                                     :class="['w-full text-left flex items-center gap-1.5 py-0.5 pr-2 hover:bg-gray-800/60 disabled:opacity-40', studio.file && studio.file.path === r.e.path ? 'bg-blue-950/60 text-blue-100' : (r.e.ignored ? 'text-gray-500' : 'text-gray-300'), studio.menuPath === r.e.path ? 'cm-tree-menu' : '']"
                                     :style="{ paddingLeft: (10 + r.depth * 14) + 'px' }" :title="r.e.type === 'outside' ? r.e.path + ': a link that leads outside the project' : r.e.path + (r.e.ignored ? ' (ignored by git)' : '')">
                                 <span class="w-3 text-gray-500 flex-shrink-0 text-[11px]">{{ r.e.type === 'dir' ? (studio.opened[r.e.path] ? '▾' : '▸') : '' }}</span>

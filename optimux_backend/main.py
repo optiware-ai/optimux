@@ -331,6 +331,18 @@ async def files_search(q: str = ""):
     return {"project": name, **await asyncio.to_thread(files_studio.search, root, q[:200])}
 
 
+class LocatePayload(BaseModel):
+    page: str = ""                    # the previewed page, relative to the project
+    element: dict
+
+
+@app.post("/api/files/locate")
+async def files_locate(payload: LocatePayload):
+    """The preview's "Open in file": where an element comes from (a file and a range)."""
+    name, root = _studio_root()
+    return {"project": name, **await _files_op(files_studio.locate, root, payload.page, payload.element)}
+
+
 class FilesPathPayload(BaseModel):
     path: str
     to: str = ""
