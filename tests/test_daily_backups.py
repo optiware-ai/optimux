@@ -59,9 +59,10 @@ def test_restore_a_daily_backup(home):  # noqa: F811
     assert os.path.exists(os.path.join(store.BACKUP_DIR, name))          # the backup stays in the list
     log = restore.apply_pending()
     assert "from daily backup" in log[0]
-    assert rows("SELECT id FROM sessions ORDER BY id") == [("old-chat",)]       # chats from that day
-    assert sorted(r[0] for r in rows("SELECT cost FROM usage")) == [0.25, 0.5]  # usage never rolled back
-    assert rows("SELECT id FROM logins") == [("new-login",)]                    # nor sign-ins
+    # Merged (phase 7): that day's chats and today's, usage from both, today's sign-ins
+    assert rows("SELECT id FROM sessions ORDER BY id") == [("new-chat",), ("old-chat",)]
+    assert sorted(r[0] for r in rows("SELECT cost FROM usage")) == [0.25, 0.5]
+    assert rows("SELECT id FROM logins") == [("new-login",)]
 
 
 def test_api(client, home):  # noqa: F811

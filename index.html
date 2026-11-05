@@ -1700,7 +1700,7 @@
                         <div class="flex-1 min-w-0 text-[14px] space-y-1">
                             <template v-if="rsStatus.last.ok">
                                 <div class="font-bold text-green-300">Restore finished</div>
-                                <div class="text-gray-300">Put back: <b>{{ rsStatus.last.parts.join(', ') }}</b> ({{ new Date(rsStatus.last.ts * 1000).toLocaleString() }}). Usage and cost history and your sign-ins were kept as they were.</div>
+                                <div class="text-gray-300">Put back: <b>{{ rsStatus.last.parts.join(', ') }}</b> ({{ new Date(rsStatus.last.ts * 1000).toLocaleString() }}). It was merged with your data: nothing recorded on either side was lost.</div>
                                 <div class="text-gray-400 flex flex-wrap items-center gap-2">The files they replaced are in
                                     <span class="cm-path-box"><code>{{ rsStatus.last.aside }}</code>
                                         <button type="button" @click="snapCopy('rs-aside', rsStatus.last.aside)" :class="['cm-copy-btn', snapCopied['rs-aside'] ? 'cm-copied' : '']">{{ snapCopied['rs-aside'] ? 'Copied ✓' : 'Copy' }}</button></span></div>
@@ -1859,7 +1859,7 @@
                                     <ul class="text-[13px] text-gray-400 list-disc pl-5 space-y-0.5">
                                         <li v-if="rsChosen(s).some(x => x.kind === 'data')">Your current data is saved first, in a new Data snapshot. Data is put back when Optimux <b>restarts</b>; chat replies wait until then.</li>
                                         <li v-if="rsChosen(s).some(x => x.kind === 'project')">Projects are put back now. A project that exists moves to <b>Archived projects</b> first.</li>
-                                        <li>Usage and cost history and your sign-ins are never rolled back. Nothing is deleted: replaced files are moved aside.</li>
+                                        <li>The database is merged, not rolled back: history from both sides, and the newer copy of each chat. Nothing is deleted: replaced files are moved aside.</li>
                                         <li>Every file is checked against the snapshot's checksums first. If one doesn't match, nothing is restored.</li>
                                     </ul>
                                     <div>
@@ -1997,7 +1997,7 @@
                         <h3 class="font-bold text-gray-200 mb-1 flex items-center">Daily backups of the database<help-tip wide>
                             <p>Optimux copies its <b>database</b> every time it starts (one file per day): your chats, usage and costs, memory history and sign-ins. Settings, keys, memory files and projects are not in them: use snapshots for those.</p>
                             <p>Each copy is <b>checked</b> (SQLite's quick_check) before it replaces anything; a copy that fails is kept aside in <code>failed/</code>.</p>
-                            <p><b>Restore</b> puts that day's chats and memory history back when Optimux restarts. Your current data is saved in a snapshot first, and usage, costs and sign-ins are never rolled back.</p>
+                            <p><b>Restore</b> merges that day's database with yours when Optimux restarts: missing chats come back, history from both is kept. Your current data is saved in a snapshot first.</p>
                         </help-tip></h3>
                         <p class="text-[15px] text-gray-400 mb-3">An automatic copy of your chats and history each day, kept on this machine.</p>
                         <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[14px] text-gray-400 mb-3">
@@ -2038,7 +2038,7 @@
                                     <ul class="text-[13px] text-gray-400 list-disc pl-5 space-y-0.5">
                                         <li>Chats and memory history go back to how they were on {{ b.date }}. Chats from after that day leave the list.</li>
                                         <li>Your current data is saved first, in a new Data snapshot, so this can be undone. The database is put back when Optimux <b>restarts</b>; chat replies wait until then.</li>
-                                        <li>Usage and cost history and your sign-ins are never rolled back. Settings, keys, memory files and projects don't change.</li>
+                                        <li>Merged, not rolled back: history from both sides, the newer copy of each chat, your current sign-ins. Settings, keys, memory files and projects don't change.</li>
                                     </ul>
                                     <div>
                                         <label :for="'drs-' + b.name" class="block text-gray-300 mb-1">To confirm, type <span class="font-mono text-red-300 select-none">{{ rsStatus.confirm_phrase }}</span></label>

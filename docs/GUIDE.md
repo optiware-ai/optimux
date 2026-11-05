@@ -1111,7 +1111,7 @@ Besides snapshots, Optimux copies its **database** every time it starts (one fil
 
 - **✓ checked**: the copy passed SQLite's check when it was made. Copies made before v0.5.2 show **not checked: check now**.
 - **Back up now** takes today's copy right away (checked, like the one at start). **Keep the newest** sets how many are kept, from 3 to 60 (14 by default); the oldest go at the next backup.
-- **Restore…** puts that day's database back: chats and memory history return to how they were that day. As with a snapshot, you type the confirmation, your current data is saved in a Data snapshot first, the database is put back when Optimux restarts, and usage, costs and sign-ins are never rolled back.
+- **Restore…** merges that day's database with your current one: chats and plans you no longer have come back, and the history of both is kept (see **Merged, never rolled back** below). As with a snapshot, you type the confirmation, your current data is saved in a Data snapshot first, and the merge happens when Optimux restarts.
 - **Download…** gives an encrypted copy (a one-time key or your public key, as for snapshots): it holds your chats, so it never leaves the server unencrypted. `age -d` turns it into an SQLite file.
 - **Delete** removes one, after asking in the row.
 
@@ -1152,7 +1152,13 @@ Then type **yes I am sure I want to restore the backup** and click **Restore**. 
 
 Links (shortcuts) inside your projects come back as links. In Optimux's own data a link could point your keys or database somewhere else, so links there are never restored (the result says how many were left out).
 
-**Never rolled back:** your **usage and cost history** (Usage and budgets always show what you really spent) and your **current sign-ins** (a sign-out you did is not undone). A restored database gets the current ones.
+**Merged, never rolled back.** A restored database is merged with your current one, so you can move work between two computers with backups and lose nothing on either side:
+
+- **History from both sides, each row once:** usage and costs, task records (with working time), failed calls and escalations, memory history (in time order) and the list of deleted projects.
+- **Chats and plans from both sides.** One that is on both keeps its **more recently updated** copy, with its messages. A task's rating keeps the most recent one.
+- **Your current sign-ins** stay (a sign-out you did is not undone).
+
+So a restore brings back what is missing, but it doesn't turn a chat back to an older state. To see an old state, open the Data snapshot or daily backup elsewhere.
 
 A restore is refused while a reply is running, while a snapshot is being taken, or while another restore waits for the restart.
 

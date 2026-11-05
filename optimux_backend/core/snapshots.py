@@ -52,7 +52,7 @@ FREE_MARGIN = 200 * 1024 * 1024      # never fill the disk to the last byte
 # Data snapshot: (path under OPTIMUX_HOME, what it is). The database is copied
 # with SQLite's backup API, never as a raw file, so it is consistent while in use.
 DATA_ITEMS = (
-    ("config", "Settings, models, routing and budgets"),
+    ("config", "Settings, models, routing, budgets, autonomy and project settings"),
     ("memory", "Personal, professional and project memory"),
     ("skills", "Global skills"),
     ("data/optimux.db", "Database: chats, usage and costs, memory history, sign-ins"),

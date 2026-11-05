@@ -13,8 +13,10 @@ The rules:
 - Before anything changes, a Data snapshot of the current state is taken (when
   data parts are restored); projects are moved to the Workspace archive (they
   show under Archived projects). Nothing is deleted.
-- Usage and cost history, and the current sign-ins, are never rolled back: the
-  restored database gets the current ones.
+- Nothing recorded is lost on either side: the restored database is merged
+  with the current one (usage, task records, failures, memory history and
+  deleted projects as a union; chats and plans keep their newer copy), and the
+  current sign-ins are kept (_merge_database).
 - Projects are restored at once. Data (settings, memory, skills, database,
   keys) is staged in ~/.optimux/restore-pending and put in place when Optimux
   next starts (apply_pending, called before any module reads config or the
@@ -390,8 +392,9 @@ def inspect(sid: str) -> dict:
                 row["note"] = (f"Off by default: this brings back {SENSITIVE[path]} as they were in the snapshot "
                                "(turn it on for a new server, or if you lost them).")
             if path == "data/optimux.db":
-                row["note"] = ("Chats, memory history and the list of deleted projects come back. Your usage and "
-                               "cost history and your current sign-ins are kept as they are now.")
+                row["note"] = ("Merged with your current data: chats missing here come back, and a chat on "
+                               "both sides keeps its newer copy. All history is kept from both. "
+                               "Your current sign-ins stay.")
             row["effect"] = "The current copy moves to the legacy folder when Optimux restarts."
         parts.append(row)
     return {"id": sid, "kind": manifest["kind"], "created": manifest.get("created"),
@@ -549,8 +552,8 @@ def restore(sid: str, parts: list[str], confirm: str, replies_running=False) -> 
 def restore_daily(name: str, confirm: str, replies_running=False) -> dict:
     """Put a daily database backup back (v0.5.2, Dashboard -> Backups). The same
     rules as a snapshot's database part: the confirm phrase, a Data snapshot of
-    the current state first, staged and put in place at the next start, and the
-    current usage and cost history and sign-ins kept (never rolled back)."""
+    the current state first, staged and put in place at the next start, merged
+    with the current database (_merge_database)."""
     global _busy
     from optimux_backend.core import snapshots, store
     if (confirm or "").strip() != CONFIRM_PHRASE:
@@ -610,8 +613,17 @@ def cancel_pending() -> str:
 # ------------------------------------------------------------------ at start
 
 def _merge_database(new: str, current: str) -> None:
-    """Bring the restored database up to date and give it the current usage and
-    cost history and the current sign-ins (never rolled back)."""
+    """Bring the restored database up to date and merge the current one into it,
+    so moving work between two computers with backups loses nothing on either side:
+    - Sign-ins stay the current ones (never rolled back, never brought from
+      another computer).
+    - Usage and cost, task records (with working time), model failures and
+      escalations, memory history, deleted projects: the union, a row in both
+      counted once (by HISTORY_KEYS; row ids aren't compared, two computers number
+      their rows separately). Memory history is renumbered by time.
+    - Chats and plans: both sides' are kept; one in both keeps its more recently
+      updated version (a chat's events come with it). A task in both keeps its
+      most recent rating."""
     from optimux_backend.core import store
     conn = sqlite3.connect(new)
     conn.row_factory = sqlite3.Row
@@ -619,18 +631,107 @@ def _merge_database(new: str, current: str) -> None:
         store._migrate(conn)
         if os.path.exists(current):
             conn.execute("ATTACH DATABASE ? AS cur", (current,))
-            for table in ("usage", "logins"):
-                cols = [r[1] for r in conn.execute(f"PRAGMA main.table_info({table})")]
-                have = {r[1] for r in conn.execute(f"PRAGMA cur.table_info({table})")}
-                common = ", ".join(c for c in cols if c in have)
-                with conn:
-                    conn.execute(f"DELETE FROM main.{table}")
-                    if common:
-                        conn.execute(f"INSERT INTO main.{table} ({common}) SELECT {common} FROM cur.{table}")
+            with conn:
+                _keep_current_logins(conn)
+                for table, key in HISTORY_KEYS.items():
+                    _union(conn, table, key)
+                _renumber_memory_versions(conn)
+                _merge_newer(conn, "plans", "id", "updated")
+                _merge_newer(conn, "tasks", "id", "COALESCE({t}.rated_ts, 0)")
+                _merge_sessions(conn)
             conn.execute("DETACH DATABASE cur")
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     finally:
         conn.close()
+
+
+def _has(conn, schema: str, table: str) -> bool:
+    return bool(conn.execute(f"SELECT 1 FROM {schema}.sqlite_master WHERE type = 'table' AND name = ?",
+                             (table,)).fetchone())
+
+
+def _common(conn, table: str, skip: tuple = ("id",)) -> list[str]:
+    """The columns both databases have (the current one may be older or newer)."""
+    if not _has(conn, "cur", table) or not _has(conn, "main", table):
+        return []
+    have = {r[1] for r in conn.execute(f"PRAGMA cur.table_info({table})")}
+    return [r[1] for r in conn.execute(f"PRAGMA main.table_info({table})") if r[1] not in skip and r[1] in have]
+
+
+def _keep_current_logins(conn) -> None:
+    cols = _common(conn, "logins", skip=())
+    conn.execute("DELETE FROM main.logins")
+    if cols:
+        conn.execute(f"INSERT INTO main.logins ({', '.join(cols)}) SELECT {', '.join(cols)} FROM cur.logins")
+
+
+def _union(conn, table: str, key: tuple) -> None:
+    """Add the current rows the restored database doesn't have (compared by `key`)."""
+    cols = _common(conn, table, skip=() if "id" in key else ("id",))
+    key = [c for c in key if c in cols]
+    if not cols or not key:
+        return
+    same = " AND ".join(f"m.{c} IS c.{c}" for c in key)
+    order = "c.ts" if "ts" in cols else ("c.deleted" if "deleted" in cols else "c.rowid")
+    conn.execute(f"INSERT INTO main.{table} ({', '.join(cols)}) SELECT {', '.join('c.' + x for x in cols)} "
+                 f"FROM cur.{table} AS c WHERE NOT EXISTS (SELECT 1 FROM main.{table} AS m WHERE {same}) "
+                 f"ORDER BY {order}")
+
+
+def _renumber_memory_versions(conn) -> None:
+    """Memory history is listed by id: after the union, renumber it in time order."""
+    cols = [r[1] for r in conn.execute("PRAGMA main.table_info(memory_versions)") if r[1] != "id"]
+    conn.execute("CREATE TEMP TABLE mv AS SELECT * FROM main.memory_versions ORDER BY ts, id")
+    conn.execute("DELETE FROM main.memory_versions")
+    conn.execute(f"INSERT INTO main.memory_versions ({', '.join(cols)}) SELECT {', '.join(cols)} FROM temp.mv "
+                 "ORDER BY rowid")
+    conn.execute("DROP TABLE temp.mv")
+
+
+def _merge_newer(conn, table: str, key: str, updated: str) -> list[str]:
+    """Rows only the current database has are added; a row in both is replaced by
+    the current one when that is more recently updated. `updated` is a column, or
+    an expression with {t} for the table alias. Returns the keys taken from the
+    current database."""
+    cols = _common(conn, table, skip=())
+    if key not in cols:
+        return []
+    expr = updated if "{t}" in updated else "{t}." + updated
+    if "{t}" not in updated and updated not in cols:
+        return []
+    newer, older = expr.format(t="c"), expr.format(t="m")
+    taken = [r[0] for r in conn.execute(
+        f"SELECT c.{key} FROM cur.{table} AS c LEFT JOIN main.{table} AS m ON m.{key} = c.{key} "
+        f"WHERE m.{key} IS NULL OR {newer} > {older}")]
+    for k in taken:
+        conn.execute(f"DELETE FROM main.{table} WHERE {key} = ?", (k,))
+        conn.execute(f"INSERT INTO main.{table} ({', '.join(cols)}) SELECT {', '.join(cols)} FROM cur.{table} "
+                     f"WHERE {key} = ?", (k,))
+    return taken
+
+
+def _merge_sessions(conn) -> None:
+    """Chats: a chat taken from the current database brings its events (in their order)."""
+    taken = _merge_newer(conn, "sessions", "id", "updated")
+    cols = _common(conn, "session_events")
+    if not cols:
+        return
+    for sid in taken:
+        conn.execute("DELETE FROM main.session_events WHERE session_id = ?", (sid,))
+        conn.execute(f"INSERT INTO main.session_events ({', '.join(cols)}) SELECT {', '.join(cols)} "
+                     "FROM cur.session_events WHERE session_id = ? ORDER BY id", (sid,))
+
+
+# The columns that say two usage rows are the same call
+USAGE_KEY = ("ts", "session", "project", "role", "model", "prompt_tokens", "completion_tokens", "cost")
+# Every history table merged as a union, and what says two rows are the same.
+# Task records (one per request, with its working time) have their own id.
+HISTORY_KEYS = {
+    "usage": USAGE_KEY,
+    "model_events": ("ts", "project", "role", "model", "kind", "detail"),
+    "memory_versions": ("project", "ts", "source", "summary", "before", "after"),
+    "deleted_projects": ("name",),
+}
 
 
 def apply_pending() -> list[str]:

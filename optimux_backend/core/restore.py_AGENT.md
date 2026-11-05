@@ -5,7 +5,7 @@
 - The archive is checked while it is read (`scan`); every file must match `SHA256SUMS`, otherwise nothing is restored.
 - The user chooses the parts and types `CONFIRM_PHRASE` ("yes I am sure I want to restore the backup").
 - When data parts are restored, a **Data snapshot of the current state** is taken (`snapshots.create("data", note="Before restoring <id>")`, not automatic, so never removed to make room) after the archive has been checked and before anything changes. If it fails, nothing is restored. The snapshot being restored is **held** (`snapshots.hold`/`release`) for the whole restore, so making room for the safety snapshot never removes it, and it can't be deleted meanwhile.
-- **Usage and cost history and the current sign-ins are never rolled back** (`_merge_database`).
+- **Merged, never rolled back** (`_merge_database`, v0.8 phase 7): history from both databases, the newer copy of each chat and plan, the current sign-ins. Two computers can swap backups without losing anything.
 - **Nothing is deleted**: projects move to the Workspace archive (`workspace.archive_project`, shown under Archived projects), data files to `~/.optimux/legacy/before-restore-<time>/`.
 - Refused while a reply runs (`replies_running`, from `main.BUSY_PROJECTS`), while a snapshot is being taken, or while another restore waits for the restart.
 
@@ -32,7 +32,11 @@ The staging folder is always removed (it holds only copies). Returns `{source, p
 
 ## At start: `apply_pending()`
 Called by `main.py` right after `paths.prepare_home()`, **before any module reads config, keys or the database**. It **never raises** (an error, e.g. a full disk, is reported and the staged files stay for the next start), so a restore can't stop Optimux from starting. For a damaged plan, the folder moves to `legacy/damaged-restore-<time>` and nothing is applied. Otherwise:
-1. `_merge_database(new, store.DB_PATH)`: migrates the restored database (`store._migrate`), then replaces its `usage` and `logins` rows with the current ones (`ATTACH`, common columns), and checkpoints the WAL.
+1. `_merge_database(new, store.DB_PATH)`: migrates the restored database (`store._migrate`), `ATTACH`es the current one and, in one transaction (only the columns and tables both have, `_common`):
+   - `logins`: replaced by the current rows (`_keep_current_logins`).
+   - `HISTORY_KEYS` (`usage` by `USAGE_KEY`, `model_events`, `memory_versions`, `deleted_projects` by name): `_union` adds current rows the restored database lacks, compared by key, never by row id (two computers number rows separately). `memory_versions` is then renumbered by time (`_renumber_memory_versions`).
+   - `_merge_newer(table, key, updated)`: rows only in the current database are added; a row in both is replaced by the current one when it is newer. `plans` by `updated`; `tasks` (with working time) by `COALESCE(rated_ts, 0)`, so the most recent rating wins; `sessions` by `updated` through `_merge_sessions`, which also brings a taken chat's `session_events` in order.
+   Then it checkpoints the WAL.
 2. Each part in `DATA_PARTS` order: the current copy (for the database also `-wal` / `-shm`) moves to `legacy/before-restore-<time>/<part>`, the staged one into place (`os.replace`; the database goes to `store.DB_PATH`). `secrets.env` and `auth.json` are set to 600.
 3. Each `project_memory` file replaces the project's memory file (the current one moves aside) and a `restore` row is added to `memory_versions` in the restored database.
 4. `plan.json` moves to the aside folder; `restore-last.json` records the result (`ok`, `ts`, `source`, `parts`, `projects`, `before_snapshot`, `aside`).

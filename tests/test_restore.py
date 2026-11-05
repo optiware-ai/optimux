@@ -90,7 +90,7 @@ def test_inspect_lists_parts_with_safe_defaults(home):
             "workspace/alpha", "workspace/beta"} <= set(parts)
     assert parts["config"]["default"] and parts["data/optimux.db"]["default"] and parts["workspace/alpha"]["default"]
     assert parts["secrets.env"]["default"] is False and parts["auth.json"]["default"] is False   # never by surprise
-    assert "usage and cost history" in parts["data/optimux.db"]["note"]
+    assert "newer copy" in parts["data/optimux.db"]["note"]
     assert parts["workspace/alpha"]["exists"] and "Archived projects" in parts["workspace/alpha"]["effect"]
     assert info["confirm_phrase"] == OK and not any(p.startswith("memory/projects/") for p in parts)
 
@@ -122,8 +122,8 @@ def test_full_restore_projects_now_data_after_restart_usage_and_sign_ins_kept(ho
     assert (h / "memory" / "personal.md").read_text() == "old personal"
     assert (h / "secrets.env").read_text() == "GEMINI_API_KEY=new-key\n"          # not chosen: untouched
     assert (h / "skills" / "notes" / "SKILL.md").read_text() == "new skill"
-    # Chats come back as they were; usage and cost history and sign-ins are never rolled back
-    assert rows("SELECT id FROM sessions ORDER BY id") == [("old-chat",)]
+    # Merged: the chat made after the snapshot stays; usage from both; current sign-ins
+    assert rows("SELECT id FROM sessions ORDER BY id") == [("new-chat",), ("old-chat",)]
     assert rows("SELECT session, cost FROM usage ORDER BY ts") == [("old-chat", 0.5), ("new-chat", 0.25)]
     assert rows("SELECT id FROM logins") == [("new-login",)]
     # Nothing is deleted: the replaced files are in the legacy folder
@@ -134,6 +134,112 @@ def test_full_restore_projects_now_data_after_restart_usage_and_sign_ins_kept(ho
     assert restore.pending() is None and not os.path.exists(restore.pending_dir()) and not restore.blocked_reason()
     restore.dismiss_last()
     assert restore.last_result() is None
+
+
+def test_office_and_home_history_merge_both_ways(home):
+    """Phase 7: the office's backup restored at home, a weekend at home, then home's
+    backup restored at the office after a morning's work there: chats, plans, task
+    records (working time), model failures, memory history and usage from both
+    computers, nothing lost, nothing twice."""
+    def add(chat, t, title, events, fail_model=None, memory=None):
+        conn = store.connect()
+        with conn:
+            conn.execute("INSERT OR REPLACE INTO sessions (id, project, title, created, updated) "
+                         "VALUES (?, 'alpha', ?, ?, ?)", (chat, title, t, t))
+            conn.execute("DELETE FROM session_events WHERE session_id = ?", (chat,))
+            for e in events:
+                conn.execute("INSERT INTO session_events (session_id, ts, data) VALUES (?, ?, ?)", (chat, t, e))
+            conn.execute("INSERT INTO usage (ts, session, project, role, model, cost) "
+                         "VALUES (?, ?, 'alpha', 'simple', 'm', 0.1)", (t, chat))
+            conn.execute("INSERT INTO tasks (id, ts, session, project, kind, duration_ms, wait_ms, waits) "
+                         "VALUES (?, ?, ?, 'alpha', 'prompt', 1000, 0, 0)", (f"task-{chat}-{t}", t, chat))
+            if fail_model:
+                conn.execute("INSERT INTO model_events (ts, project, role, model, kind, detail) "
+                             "VALUES (?, 'alpha', 'simple', ?, 'error', 'transient')", (t, fail_model))
+            if memory:
+                conn.execute("INSERT INTO memory_versions (project, ts, source, summary, before, after) "
+                             "VALUES ('alpha', ?, 'curator', ?, 'a', 'b')", (t, memory))
+            conn.execute("INSERT OR REPLACE INTO plans (id, session, project, goal, plan, status, created, updated) "
+                         "VALUES (?, ?, 'alpha', ?, '{}', 'done', ?, ?)", (f"plan-{chat}", chat, title, t, t))
+        conn.close()
+
+    # Friday at the office: one chat, then the backup goes home
+    add("friday", 10, "Friday", ["f1"], fail_model="haiku", memory="office friday")
+    office_backup = snapshots.create("data")["id"]
+    # The weekend at home (restored from the office's backup): Friday's chat continued, a new chat
+    restore.restore(office_backup, ["data/optimux.db"], OK)
+    restore.apply_pending()
+    add("friday", 30, "Friday, continued at home", ["f1", "f2-home"])
+    add("saturday", 40, "Saturday", ["s1"], fail_model="sonnet", memory="home saturday")
+    conn = store.connect()
+    with conn:                                     # a rating given at home
+        conn.execute("UPDATE tasks SET rating = 1, rated_ts = 45 WHERE id = 'task-friday-10'")
+    conn.close()
+    home_backup = snapshots.create("data")["id"]
+    # Monday at the office, which still has Friday's state: undo the weekend here
+    conn = store.connect()
+    with conn:
+        conn.execute("DELETE FROM sessions WHERE id = 'saturday'")
+        conn.execute("DELETE FROM session_events WHERE session_id = 'saturday' OR data = 'f2-home'")
+        conn.execute("UPDATE sessions SET title = 'Friday', updated = 10 WHERE id = 'friday'")
+        for t in ("usage", "tasks", "model_events", "memory_versions"):
+            conn.execute(f"DELETE FROM {t} WHERE ts >= 30")
+        conn.execute("UPDATE tasks SET rating = NULL, rated_ts = NULL")
+        conn.execute("DELETE FROM plans WHERE id = 'plan-saturday'")
+        conn.execute("UPDATE plans SET goal = 'Friday', updated = 10 WHERE id = 'plan-friday'")
+    conn.close()
+    add("monday", 50, "Monday", ["m1"], memory="office monday")
+    add("old-chat", 60, "Old chat, updated at the office", ["o1"])      # newer here than in the backup
+    restore.restore(home_backup, ["data/optimux.db"], OK)
+    restore.apply_pending()
+    # Every chat, each in its newest version, with its own events
+    assert rows("SELECT id, title FROM sessions ORDER BY id") == [
+        ("friday", "Friday, continued at home"), ("monday", "Monday"),
+        ("old-chat", "Old chat, updated at the office"), ("saturday", "Saturday")]
+    assert rows("SELECT data FROM session_events WHERE session_id = 'friday' ORDER BY id") == [("f1",), ("f2-home",)]
+    assert rows("SELECT data FROM session_events WHERE session_id = 'monday'") == [("m1",)]
+    assert rows("SELECT id, goal FROM plans ORDER BY id") == [
+        ("plan-friday", "Friday, continued at home"), ("plan-monday", "Monday"),
+        ("plan-old-chat", "Old chat, updated at the office"), ("plan-saturday", "Saturday")]
+    # Usage and task records: the weekend and the office's Monday, each once; the rating kept
+    assert [r[0] for r in rows("SELECT ts FROM usage WHERE ts >= 10 ORDER BY ts")] == [10, 30, 40, 50, 60]
+    assert [r[0] for r in rows("SELECT ts FROM tasks ORDER BY ts")] == [10, 30, 40, 50, 60]
+    assert rows("SELECT rating FROM tasks WHERE id = 'task-friday-10'") == [(1,)]
+    # Failures from both computers; memory history from both, in time order
+    assert rows("SELECT model FROM model_events ORDER BY ts") == [("haiku",), ("sonnet",)]
+    assert rows("SELECT summary FROM memory_versions ORDER BY id") == [
+        ("office friday",), ("home saturday",), ("office monday",)]
+
+
+def test_a_rating_given_after_the_backup_is_kept(home):
+    """A task in both: the more recent rating wins, whichever side has it."""
+    conn = store.connect()
+    with conn:
+        conn.execute("INSERT INTO tasks (id, ts, kind) VALUES ('t1', 5, 'prompt')")
+    conn.close()
+    sid = snapshots.create("data")["id"]
+    conn = store.connect()
+    with conn:
+        conn.execute("UPDATE tasks SET rating = -1, rated_ts = 9 WHERE id = 't1'")
+    conn.close()
+    restore.restore(sid, ["data/optimux.db"], OK)
+    restore.apply_pending()
+    assert rows("SELECT rating FROM tasks") == [(-1,)]
+
+
+def test_a_database_without_newer_tables_still_merges(home):
+    """The current database can be older than the restored one (or the other way):
+    only the columns and tables both have are merged."""
+    sid = snapshots.create("data")["id"]
+    conn = store.connect()
+    with conn:
+        conn.execute("DROP TABLE model_events")
+        conn.execute("INSERT INTO usage (ts, session, project, role, model, cost) "
+                     "VALUES (7, 'x', 'alpha', 'simple', 'm', 0.2)")
+    conn.close()
+    restore.restore(sid, ["data/optimux.db"], OK)
+    assert "restored" in restore.apply_pending()[0]
+    assert rows("SELECT ts FROM usage ORDER BY ts") == [(1,), (7,)]
 
 
 def test_projects_only_needs_no_restart_and_no_data_snapshot(home):
