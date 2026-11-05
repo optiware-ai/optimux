@@ -3,7 +3,7 @@ import pytest
 
 import optimux_backend.core.config_manager as cm
 import optimux_backend.core.onboarding as ob
-from optimux_backend.core import auth, budgets, sandbox
+from optimux_backend.core import auth, autonomy, budgets, sandbox, snapshots, workspace
 from optimux_backend.core import usage
 from tests.ws_helpers import make_client
 
@@ -16,7 +16,12 @@ def world(mocker, tmp_path):
     w = {"models": {"available": [], "requires_setup": []},
          "routing": {"conductor_model": "", "simple_model": "", "complex_model": ""},
          "settings": {"projects_root": "", "active_project": "", "memory_curator": True, "skills_mode": "auto"},
-         "sandbox": {"works": False}, "enabled": False, "budgets": {}, "server": False, "totp": False}
+         "sandbox": {"works": False}, "enabled": False, "budgets": {}, "server": False, "totp": False,
+         "autonomy": {"default": "supervised", "default_saved": False, "projects": {}},
+         "github": {"ready": False, "reason": "GitHub isn't set up."}, "snapshots": []}
+    mocker.patch.object(autonomy, "overview", lambda: w["autonomy"])
+    mocker.patch.object(workspace, "github_status", lambda fresh=False: w["github"])
+    mocker.patch.object(snapshots, "list_snapshots", lambda: w["snapshots"])
     mocker.patch.object(cm, "get_models_config", lambda: w["models"])
     mocker.patch.object(cm, "get_routing_config", lambda: w["routing"])
     mocker.patch.object(cm, "get_settings", lambda: w["settings"])
@@ -39,7 +44,7 @@ def test_a_fresh_install_starts_at_the_models(world):
     assert st["next"] == "models" and st["done"] == 0 and st["total"] == 7
     assert st["show_in_chat"] and not st["existing"] and not st["ready"]
     assert [s["id"] for s in st["steps"]] == ["models", "routing", "workspace", "sandbox", "features", "project",
-                                             "first", "budget"]
+                                             "first", "budget", "autonomy", "backups", "github"]
     assert steps(st)["budget"]["optional"] and steps(st)["models"]["target"] == "models"
 
 
@@ -110,3 +115,38 @@ def test_the_endpoints(mocker, tmp_path):
     client.post("/api/settings", json={**settings, "skills_mode": "manual"}, headers=H)
     st = client.get("/api/onboarding", headers=H).json()
     assert steps(st)["features"]["done"]
+
+
+def test_each_step_says_what_it_found(world):
+    """v0.8 (port plan phase 10): a short check line per step, and three optional steps."""
+    st = steps(ob.status())
+    assert st["models"]["check"] == "No model with a key yet." and st["project"]["check"] == "None open."
+    assert st["workspace"]["check"] == "Not set." and st["first"]["check"] == "None yet."
+    assert all(st[i]["optional"] and not st[i]["done"] for i in ("autonomy", "backups", "github"))
+    assert "not chosen yet" in st["autonomy"]["check"] and st["github"]["check"] == "GitHub isn't set up."
+    world["models"]["available"] = [{"id": "a"}, {"id": "b"}]
+    world["routing"].update(simple_model="a", complex_model="b", conductor_model="off")
+    world["settings"].update(projects_root=world["dir"] + "/gone")
+    world["autonomy"].update(default="checkpointed", default_saved=True, projects={"demo": "autonomous"})
+    world["github"] = {"ready": True, "login": "octo"}
+    world["snapshots"] = [{"status": "ready"}, {"status": "failed"}]
+    st = steps(ob.status())
+    assert st["models"]["check"] == "2 models ready."
+    assert st["routing"]["check"] == "Simple: a, Complex: b, Conductor: off."
+    assert st["workspace"]["check"].endswith("doesn't exist.") and not st["workspace"]["done"]
+    assert st["autonomy"]["done"] and st["autonomy"]["check"] == "Default: checkpointed, 1 project with its own level."
+    assert st["github"]["done"] and st["github"]["check"] == "Connected as octo."
+    assert st["backups"]["done"] and st["backups"]["check"] == "1 snapshot."
+
+
+def test_optional_steps_never_hold_back_ready(world, mocker):
+    world["models"]["available"] = [{"id": "m"}]
+    world["routing"].update(simple_model="m", complex_model="m", conductor_model="off")
+    world["settings"].update(projects_root=world["dir"], active_project="demo")
+    world["sandbox"]["works"] = True
+    world["enabled"] = True
+    ob.act("features_ok")
+    mocker.patch.object(ob, "_requests_made", return_value=3)
+    st = ob.status()
+    assert st["ready"] and st["done"] == st["total"] == 7 and st["next"] == "budget"
+    assert steps(st)["first"]["check"] == "3 requests so far."

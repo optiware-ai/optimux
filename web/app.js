@@ -767,6 +767,7 @@ const OnboardSteps = {
                         <span class="flex-1"></span>
                         <button v-if="!s.done && (s.id !== 'features' || !full(s))" @click="go(s)" :class="['text-[12px] px-2 py-0.5 rounded border flex-shrink-0', s.id === data.next ? 'border-blue-600 text-blue-200 hover:bg-blue-900/40' : 'border-gray-700 text-gray-400 hover:text-gray-200']">Go →</button>
                     </div>
+                    <p v-if="s.check && full(s)" :class="['text-[11.5px] font-mono mt-0.5 truncate', s.done ? 'text-green-500/80' : 'text-gray-500']" :title="s.check">{{ s.check }}</p>
                     <p v-if="(!s.done && full(s)) || s.info" class="text-[12px] text-gray-400 mt-0.5 leading-snug">{{ s.info || s.why }}</p>
                     <div v-if="s.id === 'features' && !s.done && full(s)" class="mt-2 space-y-1.5 text-[12px]">
                         <label class="flex items-center justify-between gap-2 text-gray-300">Update memory after each chat

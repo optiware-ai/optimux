@@ -124,7 +124,7 @@ The token stays useful for scripts: they can call the API with the header `Autho
 
 ### First-time setup (5 minutes)
 
-A new install shows a **Getting started** card in the chat with these same steps. Each step ticks itself when it's really done, and **Go →** opens the right page; **–** makes the card small, **Don't show again** hides it, and it always stays in **Dashboard → Getting started** (under Help, with **Show in the chat** to bring it back). An install that already had requests before this card existed doesn't get the pop-up, only that list. The card never calls a model.
+A new install shows a **Getting started** card in the chat with these same steps. Each step ticks itself when it's really done, and **Go →** opens the right page; **–** makes the card small, **Don't show again** hides it, and it always stays in **Dashboard → Getting started** (under Help, with **Show in the chat** to bring it back). An install that already had requests before this card existed doesn't get the pop-up, only that list. The card never calls a model. Under each step, a short line says what Optimux found (for example *2 models ready.* or *Active: notes-api.*), green when the step is done.
 
 1. **Add your models.** Open **Dashboard → Models**, add a model (for example `gemini/gemini-3.6-flash`) and paste its API key. Click **Test**: a tiny call (a fraction of a cent) checks that the model and key work. See *Models* for details.
 2. **Choose who does what.** In **Dashboard → Routing**, pick the Conductor, the Simple model and the Complex model. A good start: a fast, cheap model for the Conductor and Simple, a strong one for Complex.
@@ -133,7 +133,7 @@ A new install shows a **Getting started** card in the chat with these same steps
 5. **Choose your features:** automatic **memory** updates after each chat (a small cost per chat), **plan mode** for big tasks, and **skills**. The defaults are fine to start; the card has the three switches and a **These are fine** button.
 6. **Pick a project** in the drop-down next to the logo, or create one with the **+** next to it (or by asking: *"create a new python project called notes-api"*).
 7. **Send your first request.**
-8. **Optional but wise:** set a monthly **budget** for the project in **Dashboard → Budgets**, and on a server turn on **two-step codes** in **Dashboard → System**.
+8. **Optional but wise:** set a monthly **budget** for the project in **Dashboard → Budgets**, choose the **autonomy** level (what runs without asking) in **Dashboard → Execution**, take a first **snapshot** in **Dashboard → Backups**, connect **GitHub** in **Dashboard → GitHub**, and on a server turn on **two-step codes** in **Dashboard → System**. Optional steps never hold back *You're ready*.
 
 You're ready. Type a request and press **Enter**.
 
