@@ -343,6 +343,20 @@ async def files_locate(payload: LocatePayload):
     return {"project": name, **await _files_op(files_studio.locate, root, payload.page, payload.element)}
 
 
+@app.get("/api/files/styles")
+async def files_styles(page: str):
+    """The page's CSS rules with where each one is ("Open the CSS"; the preview picks those that apply)."""
+    name, root = _studio_root()
+    return {"project": name, **await _files_op(files_studio.style_rules, root, page)}
+
+
+@app.post("/api/files/scripts")
+async def files_scripts(payload: LocatePayload):
+    """Lines of the page's scripts that name the element ("Open the script")."""
+    name, root = _studio_root()
+    return {"project": name, **await _files_op(files_studio.script_refs, root, payload.page, payload.element)}
+
+
 class FilesPathPayload(BaseModel):
     path: str
     to: str = ""

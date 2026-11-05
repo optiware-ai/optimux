@@ -4,9 +4,9 @@
    Studio only through postMessage, and it does nothing when the page isn't inside the
    Studio's frame (e.g. opened in its own tab).
 
-   Studio → page: {optimux: 'pick-cmd', cmd: 'element' | 'area' | 'at' | 'locate' | 'cancel', x, y}
+   Studio → page: {optimux: 'pick-cmd', cmd: 'element' | 'area' | 'at' | 'locate' (want) | 'match-css' (rules) | 'cancel', x, y}
    Page → Studio: {optimux: 'pick', type: 'menu' (x, y, what) | 'dismiss' | 'mode' (mode)
-                   | 'selected' (payload) | 'cancelled' | 'locate' (payload, for "Open in file")}
+                   | 'selected' (payload) | 'cancelled' | 'locate' (want, what, payload) | 'css' (what, matches)}
    Shift + right-click keeps the browser's own menu. */
 (function () {
     'use strict';
@@ -302,6 +302,29 @@
         choose({ area: area, label: 'Area ' + area.w + '×' + area.h });
     }
 
+    // ---- matching CSS selectors (for "Open the CSS")
+    var STATE = /::?(hover|focus-visible|focus-within|focus|active|visited|link|target|before|after|placeholder|selection|marker|first-line|first-letter|backdrop|file-selector-button)(?![\w-])/gi;
+    function splitSelectors(s) {
+        var out = [], depth = 0, cur = '';
+        for (var i = 0; i < s.length; i++) {
+            var ch = s[i];
+            if (ch === '(' || ch === '[') depth++;
+            else if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1);
+            if (ch === ',' && !depth) { out.push(cur.trim()); cur = ''; } else cur += ch;
+        }
+        if (cur.trim()) out.push(cur.trim());
+        return out;
+    }
+    function matchSelectors(el, selectors) {
+        var list = splitSelectors(selectors);
+        for (var i = 0; i < list.length; i++) {
+            var sel = list[i], plain = sel.replace(STATE, '').trim();
+            if (!plain || /[>+~]$/.test(plain)) continue;
+            try { if (el.matches(plain)) return { selector: sel, state: plain !== sel }; } catch (e) { /* a selector this browser can't read */ }
+        }
+        return null;
+    }
+
     // ---- the menu, the keyboard and the Studio's commands
     window.addEventListener('contextmenu', function (e) {
         if (e.shiftKey) return;                       // Shift + right-click: the browser's own menu
@@ -322,13 +345,25 @@
         var d = e.data;
         if (d.cmd === 'element' || d.cmd === 'area') start(d.cmd);
         else if (d.cmd === 'cancel') reset(true);
+        else if (d.cmd === 'match-css') {
+            // "Open the CSS": which of the page's rules apply to the element (states like
+            // :hover and pseudo-elements like ::before count, marked as such)
+            var el = document.elementFromPoint(Number(d.x) || 0, Number(d.y) || 0);
+            if (!pickable(el)) return;
+            var matches = [];
+            (Array.isArray(d.rules) ? d.rules : []).slice(0, 5000).forEach(function (r) {
+                var hit = matchSelectors(el, String(r.selectors || ''));
+                if (hit) matches.push({ i: r.i, selector: hit.selector, state: hit.state });
+            });
+            post({ type: 'css', what: short(el), matches: matches });
+        }
         else if (d.cmd === 'locate') {
-            // "Open in file": what the Studio needs to find the element's source
+            // "Open the HTML" / "Open the script": what the Studio needs to find the element's code
             var t = document.elementFromPoint(Number(d.x) || 0, Number(d.y) || 0);
             if (!pickable(t)) return;
             var attrs = {};
             Array.prototype.forEach.call(t.attributes, function (a) { if (a.value.length < 300) attrs[a.name] = a.value; });
-            post({ type: 'locate', payload: {
+            post({ type: 'locate', want: String(d.want || 'html'), what: short(t), payload: {
                 page: page(), tag: t.tagName.toLowerCase(), id: t.id || '', attrs: attrs,
                 classes: Array.prototype.slice.call(t.classList, 0, 12),
                 text: clean(t.innerText || t.getAttribute('alt') || '', 200),

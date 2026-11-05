@@ -196,3 +196,54 @@ def test_the_locate_api(mocker, tmp_path, ws):
     client = make_client(mocker, tmp_path)
     r = client.post("/api/files/locate", headers=H, json={"page": "index.html", "element": {"tag": "h3", "text": "Share", "index": 0}})
     assert r.status_code == 200 and r.json()["from"]["line"] == 10
+
+
+# ---- "Open the CSS" and "Open the script" (v0.8)
+
+def test_style_rules_lists_local_sheets_and_style_blocks_in_order(ws):
+    p, _ = ws
+    (p / "pages").mkdir()
+    (p / "css" / "site.css").write_text("/* top */\n.lead { color: red }\n@media (max-width: 600px) {\n  p.lead, h1 { margin: 0 }\n}\n"
+                                        "@font-face { font-family: x }\n.btn:hover::after { content: \"}\" }\n")
+    (p / "pages" / "about.html").write_text(
+        '<!doctype html><link rel="stylesheet" href="../css/site.css"><link rel="stylesheet" href="https://cdn.example/x.css">\n'
+        '<link rel=icon href=fav.ico><style>\n.lead { font-size: 2rem }\n</style><!-- <style>.no{}</style> -->\n<p class="lead">x</p>\n')
+    r = pf.style_rules(str(p), "pages/about.html")
+    assert r["sheets"] == ["css/site.css"] and r["truncated"] is False
+    got = [(x["path"], x["selectors"], x["media"], x["from"]["line"]) for x in r["rules"]]
+    assert got == [("css/site.css", ".lead", "", 2), ("css/site.css", "p.lead, h1", "@media (max-width: 600px)", 4),
+                   ("css/site.css", ".btn:hover::after", "", 7), ("pages/about.html", ".lead", "", 3)]
+    assert r["rules"][1]["to"] == {"line": 4, "col": 26}
+    with pytest.raises(pf.FilesError):
+        pf.style_rules(str(p), "css/site.css")
+    (p / "pages" / "bad.html").write_text('<link rel=stylesheet href="../../../outside.txt"><link rel=stylesheet href="/css/site.css">')
+    assert pf.style_rules(str(p), "pages/bad.html")["sheets"] == ["css/site.css"]      # never outside the project
+
+
+def test_script_refs_finds_lines_naming_the_element(ws):
+    p, _ = ws
+    (p / "js").mkdir()
+    (p / "js" / "app.js").write_text("const cards = document.getElementById('cards');\nconst x = 'cardsx';\n"
+                                     "document.querySelectorAll('.card').forEach(c => c.addEventListener('click', go));\n"
+                                     "el.dataset.action; // data-action\n")
+    (p / "index.html").write_text('<div id="cards" class="card" data-action="open"></div>\n<script src="js/app.js"></script>\n'
+                                  "<script>\n  document.querySelector('#cards').hidden = false;\n</script>\n")
+    r = pf.script_refs(str(p), "index.html", {"tag": "div", "id": "cards", "classes": ["card"], "attrs": {"data-action": "open"}})
+    where = [(m["path"], m["from"]["line"], m["why"]) for m in r["matches"]]
+    assert r["where"] == "page" and ("js/app.js", 2, "#cards") not in where           # cardsx isn't cards
+    assert where[:2] == [("index.html", 4, "#cards"), ("js/app.js", 1, "#cards")]       # the id first
+    assert ("js/app.js", 3, ".card") in where and ("js/app.js", 4, "[data-action]") in where
+    (p / "src").mkdir()
+    (p / "src" / "Card.jsx").write_text("export default () => <div className=\"widget\">x</div>;\n")
+    r = pf.script_refs(str(p), "index.html", {"tag": "div", "classes": ["widget"]})
+    assert r["where"] == "project" and r["matches"][0]["path"] == "src/Card.jsx"
+    assert pf.script_refs(str(p), "index.html", {"tag": "div"}) == {"matches": [], "where": "page"}
+
+
+def test_the_styles_and_scripts_api(mocker, tmp_path, ws):
+    p, _ = ws
+    client = make_client(mocker, tmp_path)
+    r = client.get("/api/files/styles", params={"page": "index.html"}, headers=H).json()
+    assert r["sheets"] == ["css/a.css"] and r["rules"][0]["selectors"] == "h1"
+    r = client.post("/api/files/scripts", headers=H, json={"page": "index.html", "element": {"tag": "h1", "classes": ["nothing"]}})
+    assert r.status_code == 200 and r.json()["matches"] == []

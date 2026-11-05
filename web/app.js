@@ -3755,7 +3755,8 @@ createApp({
             edit: null,        // v0.8: an inline name box in the tree: {mode: new-file|new-folder|rename, parent, path, kind, value, busy, error}
             menuPath: null,    // v0.8: the tree row a right-click menu is for
             find: '', found: null, finding: false,   // v0.8: search by name in the file list
-            locating: 0,       // v0.8: when "Open in file" asked the preview (an answer is taken for 5 s)
+            locating: null,    // v0.8: "Open the HTML / CSS / script" waiting for the preview: {want, x, y, at, step}; answers are taken for 5 s
+            lastMenuAt: null,  // v0.8: where the preview's last menu opened (in the frame)
             dev: false,        // v0.8: the preview shows a running dev server (devUrl) instead of the files
             devUrl: '',        // e.g. localhost:5173 or localhost:5173/admin; kept per project in this browser
             devFor: null,      // the project whose dev-server setting is loaded
@@ -4331,10 +4332,15 @@ createApp({
             if (d.type === 'menu') {
                 const r = f.getBoundingClientRect();
                 const x = Number(d.x) || 0, y = Number(d.y) || 0;
+                studio.lastMenuAt = { x, y };
                 const what = clip(d.what, 48);
                 openCtxMenu(r.left + x, r.top + y, studio.preview.path || 'Preview', [
                     ...(what ? [{ icon: '◎', label: 'Select this', hint: what, run: () => pickCmd('at', { x, y }) },
-                                { icon: '‹›', label: 'Open in file', hint: 'its code in the editor', run: () => { studio.locating = Date.now(); pickCmd('locate', { x, y }); } }] : []),
+                                { sep: true },
+                                { icon: '‹›', label: 'Open the HTML', hint: 'where the element is', run: () => askCode('html', x, y) },
+                                { icon: '#', label: 'Open the CSS', hint: 'the rules that style it', run: () => askCode('css', x, y) },
+                                { icon: 'ƒ', label: 'Open the script', hint: 'code that names it', run: () => askCode('script', x, y) },
+                                { sep: true }] : []),
                     { icon: '⌖', label: 'Select an element…', hint: 'a title, text or image', run: () => pickCmd('element') },
                     { icon: '⬚', label: 'Select an area…', hint: 'drag a box', run: () => pickCmd('area') },
                     { sep: true },
@@ -4343,10 +4349,16 @@ createApp({
                 ]);
                 return;
             }
-            // "Open in file": only an answer the Studio asked for, within a few seconds
-            if (d.type === 'locate' && studio.locating && Date.now() - studio.locating < 5000 && d.payload && typeof d.payload === 'object') {
-                studio.locating = 0;
-                openInFile(d.payload);
+            // "Open the HTML / CSS / script": only answers the Studio asked for, within a few seconds
+            const asked = studio.locating && Date.now() - studio.locating.at < 5000 ? studio.locating : null;
+            if (d.type === 'locate' && asked && asked.step === 'element' && d.payload && typeof d.payload === 'object') {
+                if (asked.want === 'css') { asked.step = 'css'; asked.what = String(d.what || ''); asked.at = Date.now(); findCss(d.payload, asked); }
+                else { studio.locating = null; if (asked.want === 'script') findScript(d.payload, String(d.what || '')); else openInFile(d.payload); }
+                return;
+            }
+            if (d.type === 'css' && asked && asked.step === 'match' && Array.isArray(d.matches)) {
+                studio.locating = null;
+                showCss(asked, d.matches);
                 return;
             }
             // Only what the user picked after choosing a command (a page can't push text into the chat on its own)
@@ -4367,8 +4379,13 @@ createApp({
                                                              body: JSON.stringify({ page, element: el }) });
             } catch (e) { studio.msg = { ok: false, text: e.message }; return; }
             if (!r.found) { studio.msg = { ok: false, text: `Couldn't find the code of this <${el.tag}> in ${page} or the project's files.` }; return; }
+            if (!await openRange(r)) return;
+            if (r.how !== 'page') studio.msg = { ok: true, text: `Found ${r.how === 'text' ? 'its text' : 'its name'} in ${r.path} (made by a script, or not matched in the page).` };
+        };
+        // Open a file with a range selected: {path, from: {line, col}, to: {line, col}}
+        const openRange = async (r) => {
             if (studio.dirty && studio.file && studio.file.path !== r.path
-                && !confirm(`${studio.file.path} has unsaved changes. Open ${r.path} and drop them?`)) return;
+                && !confirm(`${studio.file.path} has unsaved changes. Open ${r.path} and drop them?`)) return false;
             studio.showEditor = true;
             studio.find = '';
             const parent = r.path.includes('/') ? r.path.slice(0, r.path.lastIndexOf('/')) : '';
@@ -4379,7 +4396,62 @@ createApp({
                 const row = document.querySelector(`nav[aria-label="Project files"] [data-path="${CSS.escape(r.path)}"]`);
                 if (row) row.scrollIntoView({ block: 'nearest' });
             });
-            if (r.how !== 'page') studio.msg = { ok: true, text: `Found ${r.how === 'text' ? 'its text' : 'its name'} in ${r.path} (made by a script, or not matched in the page).` };
+            return true;
+        };
+        // Ask the preview about the element under the pointer; the answer comes as a message
+        const askCode = (want, x, y) => {
+            studio.msg = null;
+            studio.locating = { want, x, y, at: Date.now(), step: 'element' };
+            pickCmd('locate', { x, y, want });
+        };
+        const where = (r) => `${r.path}:${r.from.line}`;
+        const codeMenu = (asked, title, items) => {
+            const f = previewFrame.value, box = f ? f.getBoundingClientRect() : { left: 0, top: 0 };
+            openCtxMenu(box.left + asked.x, box.top + asked.y, title, items);
+        };
+        const findCss = async (el, asked) => {
+            const page = String(el.page || studio.preview.path || '');
+            try {
+                const r = await studioFetch(`/api/files/styles?page=${encodeURIComponent(page)}`);
+                if (!r.rules.length) {
+                    studio.locating = null;
+                    studio.msg = { ok: false, text: `${page} has no stylesheet of its own in the project${r.sheets.length ? ' with rules' : ''} (CSS from other sites or added by a script isn't listed).` };
+                    return;
+                }
+                asked.rules = r.rules; asked.step = 'match'; asked.at = Date.now();
+                studio.locating = asked;
+                pickCmd('match-css', { x: asked.x, y: asked.y, rules: r.rules.map(x => ({ i: x.i, selectors: x.selectors })) });
+            } catch (e) { studio.locating = null; studio.msg = { ok: false, text: e.message }; }
+        };
+        const showCss = (asked, matches) => {
+            const rules = matches.map(m => ({ ...asked.rules[m.i], selector: m.selector, state: m.state })).filter(r => r.path);
+            if (!rules.length) {
+                studio.msg = { ok: false, text: `No rule of the page's own stylesheets applies to this ${asked.what || 'element'} (inherited styles, CSS from other sites or added by a script aren't listed).` };
+                return;
+            }
+            if (rules.length === 1) { openRange(rules[0]); return; }
+            codeMenu(asked, `${rules.length} CSS rules for ${clip(asked.what || 'it', 28)} (later ones win)`,
+                rules.map(r => ({ icon: '#', label: r.selector, hint: where(r) + (r.media ? ' · @media' : '') + (r.state ? ' · state' : ''),
+                                  title: `${r.selectors}${r.media ? '\n' + r.media : ''}\n${where(r)}`, run: () => openRange(r) })));
+        };
+        const findScript = async (el, what) => {
+            const page = String(el.page || studio.preview.path || '');
+            let r;
+            try {
+                r = await studioFetch('/api/files/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                              body: JSON.stringify({ page, element: el }) });
+            } catch (e) { studio.msg = { ok: false, text: e.message }; return; }
+            if (!r.matches.length) {
+                studio.msg = { ok: false, text: `No script names this ${what || 'element'} (by its id, a class or a data- attribute)${el.id || (el.classes || []).length ? '' : ': it has none of them'}.` };
+                return;
+            }
+            const asked = { x: 0, y: 0 };
+            const last = studio.lastMenuAt || {};
+            asked.x = last.x || 0; asked.y = last.y || 0;
+            if (r.matches.length === 1) { openRange(r.matches[0]); return; }
+            codeMenu(asked, `Scripts naming ${clip(what || 'it', 28)}${r.where === 'project' ? ' (other files)' : ''}`,
+                r.matches.map(m => ({ icon: 'ƒ', label: m.text || '(empty line)', hint: where(m) + ' · ' + m.why, title: `${where(m)} · ${m.why}\n${m.text}`,
+                                      run: () => openRange(m) })));
         };
 
         // The chat beside the Studio: the page's chat moves into a column on the right

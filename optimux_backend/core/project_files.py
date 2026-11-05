@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import mimetypes
 import os
+import posixpath
 import re
 import secrets
 import subprocess
@@ -551,6 +552,198 @@ def locate(root: str, page: str, el: dict) -> dict:
             if pos >= 0:
                 return _span(body, pos, pos + len(needle), rel, how)
     return {"found": False}
+
+
+# ---------------------------------------------------------------- "Open the CSS", "Open the script" (v0.8)
+# The page's styles: the rules of its local stylesheets and <style> blocks, with where each
+# one is. Which rules apply to an element is decided in the preview (element.matches), so
+# only selectors go there. The page's scripts: lines that mention the element (its id, a
+# class, a data- attribute). Code that only finds elements some other way isn't found.
+
+STYLE_RULES = 5000             # rules returned per page
+SCRIPT_MATCHES = 40            # lines returned
+_NESTING = ("@media", "@supports", "@layer", "@container", "@document", "@scope")
+
+
+def _skip(text: str, i: int) -> int:
+    """After a comment or a string starting at i (or i itself)."""
+    if text.startswith("/*", i):
+        j = text.find("*/", i + 2)
+        return len(text) if j < 0 else j + 2
+    if text[i] in "\"'":
+        q, j = text[i], i + 1
+        while j < len(text) and text[j] != q:
+            j += 2 if text[j] == "\\" else 1
+        return j + 1
+    return i
+
+
+def _css_rules(text: str, i: int = 0, end: int | None = None, media: str = "") -> list[tuple[str, int, int, str]]:
+    """(selectors, start, end, media) of every style rule, inside @media and the like too."""
+    end = len(text) if end is None else end
+    rules: list[tuple[str, int, int, str]] = []
+    while i < end:
+        while i < end and (text[i].isspace() or text.startswith("/*", i)):
+            i = _skip(text, i) if text.startswith("/*", i) else i + 1
+        start = j = i
+        while j < end and text[j] not in "{;}":
+            k = _skip(text, j)
+            j = k if k != j else j + 1
+        if j >= end:
+            break
+        if text[j] != "{":                          # @import ...; or a stray }
+            i = j + 1
+            continue
+        prelude = re.sub(r"/\*.*?\*/", "", text[start:j], flags=re.S).strip()
+        depth, k = 1, j + 1                         # the block's end
+        while k < end and depth:
+            n = _skip(text, k)
+            if n != k:
+                k = n
+                continue
+            depth += {"{": 1, "}": -1}.get(text[k], 0)
+            k += 1
+        if prelude.lower().startswith(_NESTING):
+            rules += _css_rules(text, j + 1, k - 1, (media + " " if media else "") + prelude)
+        elif prelude and not prelude.startswith("@"):
+            rules.append((prelude, start, k, media))
+        i = k
+    return rules
+
+
+def _local_ref(page: str, ref: str) -> str | None:
+    """A link or script src of `page` as a path in the project, or None (another site, data:...)."""
+    ref = (ref or "").split("#")[0].split("?")[0].strip()
+    if not ref or re.match(r"^[a-z][a-z0-9+.-]*:|^//", ref, re.I):
+        return None
+    path = ref.lstrip("/") if ref.startswith("/") else posixpath.join(posixpath.dirname(page), ref)
+    path = posixpath.normpath(path)
+    return None if path.startswith("..") or path == "." else path
+
+
+def _read_text(root: str, rel: str) -> str | None:
+    try:
+        real, _ = filetools.resolve_target(root, rel)
+        if not os.path.isfile(real) or os.path.getsize(real) > LOCATE_BYTES:
+            return None
+        with open(real, encoding="utf-8") as f:
+            return f.read()
+    except (filetools.FileToolError, OSError, UnicodeDecodeError, ValueError):
+        return None
+
+
+def _page_parts(root: str, page: str) -> tuple[str | None, list[tuple[str, dict, int, int]]]:
+    """The page's text and its <link>, <style> and <script> tags: (tag, attrs, content start, content end)."""
+    page = _clean_rel(page or "")
+    text = _read_text(root, page) if re.search(r"\.html?$", page, re.I) else None
+    if text is None:
+        return None, []
+    parts = []
+    for m in re.finditer(r"<!--.*?-->|<(link|style|script)(?=[\s/>])[^>]*>", text, re.I | re.S):
+        if not m.group(1):
+            continue
+        tag = m.group(1).lower()
+        if tag == "link":
+            parts.append((tag, _attrs(m.group(0)), m.end(), m.end()))
+            continue
+        close = re.compile(r"</" + tag + r"\s*>", re.I).search(text, m.end())
+        parts.append((tag, _attrs(m.group(0)), m.end(), close.start() if close else len(text)))
+    return text, parts
+
+
+def style_rules(root: str, page: str) -> dict:
+    """{rules: [{i, path, selectors, media, from, to}], sheets: [paths], truncated} for the
+    page's local stylesheets and <style> blocks, in the page's order."""
+    page = _clean_rel(page or "")
+    text, parts = _page_parts(root, page)
+    if text is None:
+        raise FilesError("Open the CSS works on HTML pages of the project.", 400)
+    rules, sheets = [], []
+    for tag, a, start, end in parts:
+        if tag == "link" and "stylesheet" in (a.get("rel") or "").lower().split():
+            path = _local_ref(page, a.get("href", ""))
+            css = _read_text(root, path) if path else None
+            if css is None:
+                continue
+            sheets.append(path)
+            found = [(path, css, r) for r in _css_rules(css)]
+        elif tag == "style":
+            found = [(page, text, r) for r in _css_rules(text, start, end)]
+        else:
+            continue
+        for path, body, (sel, a_, b_, media) in found:
+            fl, fc = _line_col(body, a_)
+            tl, tc = _line_col(body, b_)
+            rules.append({"i": len(rules), "path": path, "selectors": re.sub(r"\s+", " ", sel)[:500], "media": media[:200],
+                          "from": {"line": fl, "col": fc}, "to": {"line": tl, "col": tc}})
+            if len(rules) >= STYLE_RULES:
+                return {"rules": rules, "sheets": sheets, "truncated": True}
+    return {"rules": rules, "sheets": sheets, "truncated": False}
+
+
+SCRIPT_EXTS = (".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".vue", ".svelte")
+
+
+def script_refs(root: str, page: str, el: dict) -> dict:
+    """Lines of the page's scripts (its <script> blocks and local script files; when none
+    mention the element, the project's other script files) that name the element's id, a
+    class or a data- attribute. {matches: [{path, from, to, text, why}], where: page|project}."""
+    page = _clean_rel(page or "")
+    names = []
+    if el.get("id"):
+        names.append((str(el["id"])[:100], 3, "#" + str(el["id"])[:100]))
+    for c in (el.get("classes") or [])[:8]:
+        if len(str(c)) >= 3:
+            names.append((str(c)[:100], 2, "." + str(c)[:100]))
+    for k in (el.get("attrs") or {}):
+        if str(k).startswith("data-") and len(k) > 5:
+            names.append((str(k)[:100], 2, "[" + str(k)[:100] + "]"))
+    if not names:
+        return {"matches": [], "where": "page"}
+    pats = [(re.compile(r"(?<![\w-])" + re.escape(n) + r"(?![\w-])"), w, why) for n, w, why in names]
+
+    def scan(path: str, body: str, a: int = 0, b: int | None = None) -> list:
+        out = []
+        b = len(body) if b is None else b
+        line_start = body.rfind("\n", 0, a) + 1
+        for line in body[line_start:b].split("\n"):
+            hits = [(w + (1 if ("#" + n if w == 3 else "." + n) in line or "getElementById" in line else 0), why)
+                    for (p_, w, why), (n, _, _) in zip(pats, names) if p_.search(line)]
+            if hits:
+                weight = max(h[0] for h in hits)
+                fl, fc = _line_col(body, line_start)
+                out.append((-weight, path, fl, {"path": path, "from": {"line": fl, "col": 0}, "to": {"line": fl, "col": len(line)},
+                                               "text": line.strip()[:160], "why": ", ".join(sorted({h[1] for h in hits}))}))
+            line_start += len(line) + 1
+        return out
+
+    found = []
+    text, parts = _page_parts(root, page)
+    local = []
+    for tag, a, start, end in parts if text is not None else []:
+        if tag != "script":
+            continue
+        if a.get("src"):
+            path = _local_ref(page, a["src"])
+            body = _read_text(root, path) if path else None
+            if body is not None:
+                local.append(path)
+                found += scan(path, body)
+        elif (a.get("type") or "text/javascript").lower() in ("text/javascript", "module", "application/javascript", ""):
+            found += scan(page, text, start, end)
+    where = "page"
+    if not found:
+        where = "project"
+        files, _ = _project_paths(root)
+        for f in [f for f in files if f.lower().endswith(SCRIPT_EXTS) and f not in local
+                  and not any(x.startswith(".") for x in f.split("/"))][:LOCATE_FILES]:
+            body = _read_text(root, f)
+            if body is not None:
+                found += scan(f, body)
+            if len(found) > SCRIPT_MATCHES * 4:
+                break
+    found.sort(key=lambda x: (x[0], x[1] != page, x[1], x[2]))
+    return {"matches": [x[3] for x in found[:SCRIPT_MATCHES]], "where": where}
 
 
 COUNT_LIMIT = 20_000      # entries counted for the delete question

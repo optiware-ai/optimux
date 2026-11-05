@@ -266,7 +266,7 @@
             <div class="cm-menu-title">{{ ctxMenu.title }}</div>
             <template v-for="(it, i) in ctxMenu.items" :key="i">
                 <div v-if="it.sep" class="cm-menu-sep" role="separator"></div>
-                <button v-else type="button" role="menuitem" :class="['cm-menu-item', it.danger ? 'cm-menu-danger' : '']" :disabled="it.disabled" @click="runCtxItem(it)">
+                <button v-else type="button" role="menuitem" :class="['cm-menu-item', it.danger ? 'cm-menu-danger' : '']" :disabled="it.disabled" :title="it.title || null" @click="runCtxItem(it)">
                     <span class="cm-menu-icon" aria-hidden="true">{{ it.icon }}</span><span class="cm-menu-label">{{ it.label }}</span><span v-if="it.hint" class="cm-menu-hint">{{ it.hint }}</span>
                 </button>
             </template>
