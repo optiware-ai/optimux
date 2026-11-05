@@ -117,86 +117,120 @@
                 <span v-if="studio.branch" class="text-xs font-mono text-gray-500" title="The git branch">⑂ {{ studio.branch }}</span>
                 <span v-if="studio.msg" :class="['text-[13px] truncate min-w-0', studio.msg.ok ? 'text-green-400' : 'text-red-400']" role="status">{{ studio.msg.text }}</span>
                 <span class="flex-1"></span>
-                <div class="inline-flex rounded-lg overflow-hidden border border-gray-700 text-[13px]" role="group" aria-label="Panes">
-                    <button @click="studio.showEditor = !studio.showEditor || !studio.showPreview" :aria-pressed="studio.showEditor" :class="['px-3 py-1', studio.showEditor ? 'bg-gray-800 text-gray-100' : 'bg-gray-950 text-gray-500 hover:text-gray-300']">Editor</button>
-                    <button @click="studio.showPreview = !studio.showPreview || !studio.showEditor" :aria-pressed="studio.showPreview" :class="['px-3 py-1', studio.showPreview ? 'bg-gray-800 text-gray-100' : 'bg-gray-950 text-gray-500 hover:text-gray-300']">Preview</button>
+                <div class="cm-seg" role="group" aria-label="Panes">
+                    <button @click="toggleStudioTree" :aria-pressed="studio.showTree" :class="studio.showTree ? 'cm-seg-on' : ''" title="Show or hide the file list">Files</button>
+                    <button @click="studio.showEditor = !studio.showEditor || !studio.showPreview" :aria-pressed="studio.showEditor" :class="studio.showEditor ? 'cm-seg-on' : ''" title="Show or hide the code editor">Editor</button>
+                    <button @click="studio.showPreview = !studio.showPreview || !studio.showEditor" :aria-pressed="studio.showPreview" :class="studio.showPreview ? 'cm-seg-on' : ''" title="Show or hide the preview">Preview</button>
+                    <button @click="toggleStudioChat" :aria-pressed="studio.chat" :class="studio.chat ? 'cm-seg-on' : ''" :title="studio.chat ? 'Hide the chat column' : 'Show the chat beside the Studio. Right-click code, a file or the preview to send it to the chat'">
+                        Chat<span v-if="chatContext.length" class="cm-ctx-count">{{ chatContext.length }}</span></button>
                 </div>
-                <button @click="refreshStudio" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500" title="Read the files again (after a model changed them)">↻ Refresh</button>
-                <button @click="toggleStudioChat" :aria-pressed="studio.chat" :class="['text-[13px] px-3 py-1 rounded-lg border flex items-center gap-1.5', studio.chat ? 'border-blue-600 bg-blue-950/50 text-blue-200' : 'border-gray-700 text-gray-200 hover:border-gray-500']" :title="studio.chat ? 'Hide the chat column' : 'Show the chat beside the Studio. Right-click code or the preview to send a part of it'">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h8M8 14h5m-9 6l2.5-3H18a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v14z"></path></svg>
-                    Chat<span v-if="chatContext.length" class="cm-ctx-count">{{ chatContext.length }}</span>
-                </button>
-                <button @click="closeStudio()" class="text-[13px] px-3 py-1 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500">← Back to chat</button>
+                <button @click="refreshStudio" class="text-[13px] px-2 py-1 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500" title="Read the files again (after a model changed them)">↻ Refresh</button>
+                <button @click="openSettings()" class="text-[13px] px-3 py-1 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500 flex items-center gap-1.5" title="Dashboard: usage, budgets, models and settings">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 12a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z"></path></svg>
+                    Dashboard</button>
+                <button @click="closeStudio()" class="text-[13px] px-3 py-1 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500" title="Close the Studio and go back to the chat">← Back to chat</button>
             </div>
             <div class="flex-1 flex min-h-0">
                 <!-- The file tree -->
-                <nav class="w-64 flex-shrink-0 border-r border-gray-800 overflow-auto py-2 text-[13px]" aria-label="Project files">
-                    <div v-if="!studioRows.length" class="px-3 text-gray-500 italic">{{ studio.dirs[''] ? 'No files yet.' : 'Loading…' }}</div>
-                    <template v-for="r in studioRows" :key="r.e.path">
-                        <div v-if="r.e.type === 'more'" class="px-3 py-0.5 text-gray-600 italic" :style="{ paddingLeft: (12 + r.depth * 14) + 'px' }">{{ r.e.name }}</div>
-                        <button v-else type="button" @click="r.e.type === 'dir' ? toggleStudioDir(r.e.path) : (r.e.type === 'file' ? openStudioFile(r.e.path) : null)" :disabled="r.e.type === 'outside'"
-                                :class="['w-full text-left flex items-center gap-1.5 py-0.5 pr-2 hover:bg-gray-800/60 disabled:opacity-40', studio.file && studio.file.path === r.e.path ? 'bg-blue-950/60 text-blue-100' : (r.e.ignored ? 'text-gray-500' : 'text-gray-300')]"
-                                :style="{ paddingLeft: (10 + r.depth * 14) + 'px' }" :title="r.e.type === 'outside' ? r.e.path + ': a link that leads outside the project' : r.e.path + (r.e.ignored ? ' (ignored by git)' : '')">
-                            <span class="w-3 text-gray-500 flex-shrink-0 text-[11px]">{{ r.e.type === 'dir' ? (studio.opened[r.e.path] ? '▾' : '▸') : '' }}</span>
-                            <span class="truncate">{{ r.e.name }}{{ r.e.type === 'dir' ? '/' : '' }}</span>
-                            <span v-if="studioMark(r.e)" :class="['ml-auto text-[11px] font-mono flex-shrink-0', studioMark(r.e) === 'U' || studioMark(r.e) === 'A' ? 'text-green-400' : (studioMark(r.e) === 'D' || studioMark(r.e) === 'C' ? 'text-red-400' : 'text-amber-300')]" :title="({ M: 'changed', U: 'new, not added to git', A: 'added', D: 'deleted', R: 'renamed', C: 'conflict', '•': 'something inside changed' })[studioMark(r.e)]">{{ studioMark(r.e) }}</span>
-                        </button>
-                    </template>
+                <nav v-show="studio.showTree" class="flex-shrink-0 flex flex-col min-h-0" :style="{ width: studioLayout.tree + 'px' }" aria-label="Project files">
+                    <div class="flex items-center gap-1 px-3 py-1.5 border-b border-gray-800 text-[13px] flex-shrink-0 min-h-[38px]">
+                        <span class="text-gray-500 flex-1">Files</span>
+                        <button @click="startStudioEdit('new-file', null)" class="cm-icon-btn" title="New file in the project's top folder (right-click a folder for one inside it)" aria-label="New file">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5zM14 3v5h5M12 12v6M9 15h6"></path></svg></button>
+                        <button @click="startStudioEdit('new-folder', null)" class="cm-icon-btn" title="New folder in the project's top folder" aria-label="New folder">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7zM12 10v6M9 13h6"></path></svg></button>
+                        <button @click="expandAllStudio" class="cm-icon-btn" title="Expand all (not ignored or hidden folders like node_modules or .venv)" aria-label="Expand all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 8l5 5 5-5M7 13l5 5 5-5"></path></svg></button>
+                        <button @click="collapseAllStudio" class="cm-icon-btn" title="Collapse all" aria-label="Collapse all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16l5-5 5 5M7 11l5-5 5 5"></path></svg></button>
+                    </div>
+                    <div class="flex-1 min-h-0 overflow-auto py-2 text-[13px]" @contextmenu="onTreeMenu($event, null)">
+                        <div v-if="!studioRows.length" class="px-3 text-gray-500 italic">{{ studio.dirs[''] ? 'No files yet.' : 'Loading…' }}</div>
+                        <template v-for="r in studioRows" :key="r.e.path">
+                            <div v-if="r.e.type === 'more'" class="px-3 py-0.5 text-gray-600 italic" :style="{ paddingLeft: (12 + r.depth * 14) + 'px' }">{{ r.e.name }}</div>
+                            <div v-else-if="r.e.type === 'edit'" class="py-0.5 pr-2" :style="{ paddingLeft: (10 + r.depth * 14) + 'px' }">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="w-3 text-gray-500 flex-shrink-0 text-[11px]">{{ studio.edit.kind === 'dir' ? '▸' : '' }}</span>
+                                    <input ref="studioNameBox" v-model="studio.edit.value" @keydown="studioNameKey" @blur="commitStudioEdit" :disabled="studio.edit.busy" spellcheck="false" autocomplete="off"
+                                           :aria-label="studio.edit.mode === 'rename' ? 'New name' : (studio.edit.mode === 'new-folder' ? 'Name of the new folder' : 'Name of the new file')"
+                                           :placeholder="studio.edit.mode === 'new-folder' ? 'folder name' : (studio.edit.mode === 'new-file' ? 'file name (a/b.js makes folders)' : '')"
+                                           class="cm-name-box">
+                                </div>
+                                <div v-if="studio.edit.error" class="text-[12px] text-red-400 mt-0.5 ml-4 break-words" role="alert">{{ studio.edit.error }}</div>
+                            </div>
+                            <button v-else type="button" @click="r.e.type === 'dir' ? toggleStudioDir(r.e.path) : (r.e.type === 'file' ? openStudioFile(r.e.path) : null)" :disabled="r.e.type === 'outside'"
+                                    @contextmenu.stop="onTreeMenu($event, r.e)" @keydown="treeKey($event, r.e)"
+                                    :class="['w-full text-left flex items-center gap-1.5 py-0.5 pr-2 hover:bg-gray-800/60 disabled:opacity-40', studio.file && studio.file.path === r.e.path ? 'bg-blue-950/60 text-blue-100' : (r.e.ignored ? 'text-gray-500' : 'text-gray-300'), studio.menuPath === r.e.path ? 'cm-tree-menu' : '']"
+                                    :style="{ paddingLeft: (10 + r.depth * 14) + 'px' }" :title="r.e.type === 'outside' ? r.e.path + ': a link that leads outside the project' : r.e.path + (r.e.ignored ? ' (ignored by git)' : '')">
+                                <span class="w-3 text-gray-500 flex-shrink-0 text-[11px]">{{ r.e.type === 'dir' ? (studio.opened[r.e.path] ? '▾' : '▸') : '' }}</span>
+                                <span class="truncate">{{ r.e.name }}{{ r.e.type === 'dir' ? '/' : '' }}</span>
+                                <span v-if="studioMark(r.e)" :class="['ml-auto text-[11px] font-mono flex-shrink-0', studioMark(r.e) === 'U' || studioMark(r.e) === 'A' ? 'text-green-400' : (studioMark(r.e) === 'D' || studioMark(r.e) === 'C' ? 'text-red-400' : 'text-amber-300')]" :title="({ M: 'changed', U: 'new, not added to git', A: 'added', D: 'deleted', R: 'renamed', C: 'conflict', '•': 'something inside changed' })[studioMark(r.e)]">{{ studioMark(r.e) }}</span>
+                            </button>
+                        </template>
+                    </div>
                 </nav>
-                <!-- The editor -->
-                <section v-show="studio.showEditor" class="flex-1 min-w-0 flex flex-col" aria-label="Editor">
-                    <div class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-[13px] flex-shrink-0 min-h-[38px]">
-                        <template v-if="studio.file">
-                            <span class="font-mono text-gray-200 truncate" :title="studio.file.path">{{ studio.file.path }}</span>
-                            <button @click="writeClipboard(studio.file.path)" class="text-gray-500 hover:text-gray-200 flex-shrink-0" title="Copy the path">⧉</button>
-                            <span v-if="studio.dirty" class="text-amber-300 flex-shrink-0" title="Unsaved changes">●</span>
-                            <span v-if="studio.file.hidden" class="text-[11px] rounded px-1.5 border text-green-300 border-green-800 bg-green-950/40 flex-shrink-0" title="Saved keys are shown as ••••(NAME); they are written back as the key when you save. You can't add one here.">🔒 {{ studio.file.hidden === 1 ? 'key' : studio.file.hidden + ' keys' }} hidden</span>
+                <div v-show="studio.showTree" class="cm-split" role="separator" aria-orientation="vertical" aria-label="Resize the file list" tabindex="0"
+                     :aria-valuenow="Math.round(studioLayout.tree)" @pointerdown="startResize('tree', $event)" @dblclick="resetResize('tree')" @keydown="resizeKey('tree', $event)" title="Drag to resize · double-click to reset"></div>
+                <div ref="studioPanes" class="flex-1 min-w-0 flex">
+                    <!-- The editor -->
+                    <section v-show="studio.showEditor" class="flex-1 min-w-0 flex flex-col" :style="studio.showEditor && studio.showPreview ? { flex: '0 0 ' + (studioLayout.split * 100) + '%' } : null" aria-label="Editor">
+                        <div class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-[13px] flex-shrink-0 min-h-[38px]">
+                            <template v-if="studio.file">
+                                <span class="font-mono text-gray-200 truncate" :title="studio.file.path">{{ studio.file.path }}</span>
+                                <button @click="writeClipboard(studio.file.path)" class="text-gray-500 hover:text-gray-200 flex-shrink-0" title="Copy the path">⧉</button>
+                                <span v-if="studio.dirty" class="text-amber-300 flex-shrink-0" title="Unsaved changes">●</span>
+                                <span v-if="studio.file.hidden" class="text-[11px] rounded px-1.5 border text-green-300 border-green-800 bg-green-950/40 flex-shrink-0" title="Saved keys are shown as ••••(NAME); they are written back as the key when you save. You can't add one here.">🔒 {{ studio.file.hidden === 1 ? 'key' : studio.file.hidden + ' keys' }} hidden</span>
+                                <span class="flex-1"></span>
+                                <span class="text-gray-500 flex-shrink-0">{{ studio.file.lang }}</span>
+                                <button v-if="studio.conflict" @click="reloadStudioFile" class="px-2 py-0.5 rounded border border-amber-700 text-amber-300 hover:border-amber-500 flex-shrink-0" title="Drop your changes and open the version on disk">Reload from disk</button>
+                                <button v-if="studio.file.text !== undefined" @click="saveStudioFile" :disabled="!studio.dirty || studio.saving" class="px-3 py-0.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold flex-shrink-0" title="Save (Ctrl+S)">{{ studio.saving ? 'Saving…' : 'Save' }}</button>
+                            </template>
+                            <span v-else class="text-gray-500">Open a file from the list.</span>
+                        </div>
+                        <div class="flex-1 min-h-0 relative">
+                            <div ref="editorHost" v-show="studio.file && studio.file.text !== undefined" @contextmenu="onEditorMenu" class="absolute inset-0"></div>
+                            <div v-if="studio.editorError" class="p-4 text-red-400 text-[13px]">{{ studio.editorError }}</div>
+                            <div v-else-if="studio.file && studio.file.binary" class="p-4 text-gray-500 text-[13px]">A binary file ({{ studio.file.size.toLocaleString() }} bytes): nothing to edit here. Images show in the preview.</div>
+                            <div v-else-if="studio.file && studio.file.too_large" class="p-4 text-gray-500 text-[13px]">Too large to open here ({{ studio.file.size.toLocaleString() }} bytes; up to 1 MB).</div>
+                        </div>
+                    </section>
+                    <div v-show="studio.showEditor && studio.showPreview" class="cm-split" role="separator" aria-orientation="vertical" aria-label="Resize the editor and the preview" tabindex="0"
+                         :aria-valuenow="Math.round(studioLayout.split * 100)" @pointerdown="startResize('split', $event)" @dblclick="resetResize('split')" @keydown="resizeKey('split', $event)" title="Drag to resize · double-click to reset"></div>
+                    <!-- The preview -->
+                    <section v-show="studio.showPreview" class="flex-1 min-w-0 flex flex-col" aria-label="Preview">
+                        <div class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-[13px] flex-shrink-0 min-h-[38px]">
+                            <span class="text-gray-500 flex-shrink-0">Preview</span>
+                            <span class="font-mono text-gray-300 truncate" :title="studio.preview.path">{{ studio.preview.path || '—' }}</span>
                             <span class="flex-1"></span>
-                            <span class="text-gray-500 flex-shrink-0">{{ studio.file.lang }}</span>
-                            <button v-if="studio.conflict" @click="reloadStudioFile" class="px-2 py-0.5 rounded border border-amber-700 text-amber-300 hover:border-amber-500 flex-shrink-0" title="Drop your changes and open the version on disk">Reload from disk</button>
-                            <button v-if="studio.file.text !== undefined" @click="saveStudioFile" :disabled="!studio.dirty || studio.saving" class="px-3 py-0.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold flex-shrink-0" title="Save (Ctrl+S)">{{ studio.saving ? 'Saving…' : 'Save' }}</button>
-                        </template>
-                        <span v-else class="text-gray-500">Open a file from the list.</span>
-                    </div>
-                    <div class="flex-1 min-h-0 relative">
-                        <div ref="editorHost" v-show="studio.file && studio.file.text !== undefined" @contextmenu="onEditorMenu" class="absolute inset-0"></div>
-                        <div v-if="studio.editorError" class="p-4 text-red-400 text-[13px]">{{ studio.editorError }}</div>
-                        <div v-else-if="studio.file && studio.file.binary" class="p-4 text-gray-500 text-[13px]">A binary file ({{ studio.file.size.toLocaleString() }} bytes): nothing to edit here. Images show in the preview.</div>
-                        <div v-else-if="studio.file && studio.file.too_large" class="p-4 text-gray-500 text-[13px]">Too large to open here ({{ studio.file.size.toLocaleString() }} bytes; up to 1 MB).</div>
-                    </div>
-                </section>
-                <!-- The preview -->
-                <section v-show="studio.showPreview" :class="['flex-1 min-w-0 flex flex-col', studio.showEditor ? 'border-l border-gray-800' : '']" aria-label="Preview">
-                    <div class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-[13px] flex-shrink-0 min-h-[38px]">
-                        <span class="text-gray-500 flex-shrink-0">Preview</span>
-                        <span class="font-mono text-gray-300 truncate" :title="studio.preview.path">{{ studio.preview.path || '—' }}</span>
-                        <span class="flex-1"></span>
-                        <label class="flex items-center gap-1.5 text-gray-400 flex-shrink-0 cursor-pointer" title="Show each page, Markdown file or image you open"><input type="checkbox" v-model="studio.follow" class="accent-blue-600"> Follow</label>
-                        <button v-if="studio.preview.index && studio.preview.path !== studio.preview.index" @click="studio.preview.path = studio.preview.index; studio.preview.stamp++" class="text-gray-400 hover:text-gray-200 flex-shrink-0" :title="'Back to ' + studio.preview.index">⌂</button>
-                        <template v-if="previewSrc">
-                            <span v-if="studio.picking === 'element' || studio.picking === 'area'" class="text-blue-300 flex-shrink-0">{{ studio.picking === 'area' ? 'Drag over the page…' : 'Click an element…' }}
-                                <button @click="pickCmd('cancel')" class="ml-1 text-gray-400 hover:text-gray-200 underline" title="Stop selecting (Esc)">cancel</button></span>
-                            <button @click="pickCmd('element')" :class="['flex-shrink-0 px-1', studio.picking === 'element' ? 'text-blue-300' : 'text-gray-400 hover:text-gray-200']" title="Select an element of the page (a title, text or image) and send it to the chat. Or right-click the page" aria-label="Select an element">⌖</button>
-                            <button @click="pickCmd('area')" :class="['flex-shrink-0 px-1', studio.picking === 'area' ? 'text-blue-300' : 'text-gray-400 hover:text-gray-200']" title="Select an area of the page and send what is in it to the chat" aria-label="Select an area">⬚</button>
-                        </template>
-                        <button @click="studio.preview.stamp++" class="text-gray-400 hover:text-gray-200 flex-shrink-0" title="Reload the preview">↻</button>
-                        <button @click="studioOpenInTab" :disabled="!previewSrc" class="text-gray-400 hover:text-gray-200 disabled:opacity-30 flex-shrink-0" title="Open the preview in a new tab">↗</button>
-                    </div>
-                    <div class="flex-1 min-h-0 relative">
-                        <iframe v-if="previewSrc" ref="previewFrame" @load="onPreviewLoad" :key="previewSrc" :src="previewSrc" sandbox="allow-scripts allow-forms allow-popups allow-modals" referrerpolicy="no-referrer" title="Preview" class="absolute inset-0 w-full h-full bg-white border-0"></iframe>
-                        <div v-else-if="previewKind(studio.preview.path) === 'markdown'" class="absolute inset-0 overflow-auto p-6 prose prose-invert prose-blue max-w-none" v-html="previewMarkdown"></div>
-                        <div v-else class="p-4 text-gray-500 text-[13px]">Nothing to preview yet: open an HTML page, a Markdown file or an image. The project has no <span class="font-mono">index.html</span> at its top (or in dist/, build/ or public/).</div>
-                    </div>
-                </section>
+                            <label class="flex items-center gap-1.5 text-gray-400 flex-shrink-0 cursor-pointer" title="Show each page, Markdown file or image you open"><input type="checkbox" v-model="studio.follow" class="accent-blue-600"> Follow</label>
+                            <button v-if="studio.preview.index && studio.preview.path !== studio.preview.index" @click="studio.preview.path = studio.preview.index; studio.preview.stamp++" class="text-gray-400 hover:text-gray-200 flex-shrink-0" :title="'Back to ' + studio.preview.index">⌂</button>
+                            <template v-if="previewSrc">
+                                <span v-if="studio.picking === 'element' || studio.picking === 'area'" class="text-blue-300 flex-shrink-0">{{ studio.picking === 'area' ? 'Drag over the page…' : 'Click an element…' }}
+                                    <button @click="pickCmd('cancel')" class="ml-1 text-gray-400 hover:text-gray-200 underline" title="Stop selecting (Esc)">cancel</button></span>
+                                <button @click="pickCmd('element')" :class="['flex-shrink-0 px-1', studio.picking === 'element' ? 'text-blue-300' : 'text-gray-400 hover:text-gray-200']" title="Select an element of the page (a title, text or image) and send it to the chat. Or right-click the page" aria-label="Select an element">⌖</button>
+                                <button @click="pickCmd('area')" :class="['flex-shrink-0 px-1', studio.picking === 'area' ? 'text-blue-300' : 'text-gray-400 hover:text-gray-200']" title="Select an area of the page and send what is in it to the chat" aria-label="Select an area">⬚</button>
+                            </template>
+                            <button @click="studio.preview.stamp++" class="text-gray-400 hover:text-gray-200 flex-shrink-0" title="Reload the preview">↻</button>
+                            <button @click="studioOpenInTab" :disabled="!previewSrc" class="text-gray-400 hover:text-gray-200 disabled:opacity-30 flex-shrink-0" title="Open the preview in a new tab">↗</button>
+                        </div>
+                        <div class="flex-1 min-h-0 relative">
+                            <iframe v-if="previewSrc" ref="previewFrame" @load="onPreviewLoad" :key="previewSrc" :src="previewSrc" sandbox="allow-scripts allow-forms allow-popups allow-modals" referrerpolicy="no-referrer" title="Preview" class="absolute inset-0 w-full h-full bg-white border-0"></iframe>
+                            <div v-else-if="previewKind(studio.preview.path) === 'markdown'" class="absolute inset-0 overflow-auto p-6 prose prose-invert prose-blue max-w-none" v-html="previewMarkdown"></div>
+                            <div v-else class="p-4 text-gray-500 text-[13px]">Nothing to preview yet: open an HTML page, a Markdown file or an image. The project has no <span class="font-mono">index.html</span> at its top (or in dist/, build/ or public/).</div>
+                        </div>
+                    </section>
+                </div>
             </div>
+            <div v-if="studio.chat" class="cm-split cm-split-dock" role="separator" aria-orientation="vertical" aria-label="Resize the chat" tabindex="0"
+                 :aria-valuenow="Math.round(studioLayout.dock)" @pointerdown="startResize('dock', $event)" @dblclick="resetResize('dock')" @keydown="resizeKey('dock', $event)" title="Drag to resize · double-click to reset"></div>
         </div>
 
-        <!-- v0.8: the right-click menu of the Studio's editor and preview -->
+        <!-- v0.8: the right-click menu of the Studio's editor, files and preview -->
         <div v-if="ctxMenu.open" ref="ctxMenuEl" class="cm-menu" role="menu" :aria-label="ctxMenu.title" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }" @keydown="ctxMenuKey" @contextmenu.prevent>
             <div class="cm-menu-title">{{ ctxMenu.title }}</div>
             <template v-for="(it, i) in ctxMenu.items" :key="i">
                 <div v-if="it.sep" class="cm-menu-sep" role="separator"></div>
-                <button v-else type="button" role="menuitem" class="cm-menu-item" :disabled="it.disabled" @click="runCtxItem(it)">
+                <button v-else type="button" role="menuitem" :class="['cm-menu-item', it.danger ? 'cm-menu-danger' : '']" :disabled="it.disabled" @click="runCtxItem(it)">
                     <span class="cm-menu-icon" aria-hidden="true">{{ it.icon }}</span><span class="cm-menu-label">{{ it.label }}</span><span v-if="it.hint" class="cm-menu-hint">{{ it.hint }}</span>
                 </button>
             </template>
@@ -2786,7 +2820,7 @@
                 <p v-if="confirmBox.cost" class="text-sm text-purple-300 font-mono mt-3">{{ confirmBox.cost }}</p>
                 <label v-if="confirmBox.skipLabel" class="flex items-center gap-2 text-xs text-gray-400 mt-3 cursor-pointer"><input type="checkbox" v-model="confirmBox.skip" class="w-3.5 h-3.5"> {{ confirmBox.skipLabel }}</label>
                 <div class="flex justify-end gap-3 mt-5">
-                    <button @click="answerConfirm(false)" class="px-4 py-1.5 text-sm rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Cancel</button>
+                    <button v-if="confirmBox.cancel !== false" @click="answerConfirm(false)" class="px-4 py-1.5 text-sm rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Cancel</button>
                     <button @click="answerConfirm(true)" ref="confirmOkRef" :class="['px-4 py-1.5 text-sm rounded-lg font-bold text-white', confirmBox.danger ? 'bg-red-700 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-500']">{{ confirmBox.ok }}</button>
                 </div>
             </div>

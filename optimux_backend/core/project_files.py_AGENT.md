@@ -18,6 +18,14 @@ The Studio (v0.8, ported from OmniLatch's Files panel): list, read and save the 
 - `find_index(root)`: the first page: `index.html`, else in dist/, build/, public/, out/, site/, docs/, www/.
 - The sandbox itself (CSP `sandbox` without `allow-same-origin`, `frame-ancestors 'self'`, CORP cross-origin) is set by main.py (`PREVIEW_CSP`).
 
+## File operations (v0.8)
+- `expand_all(root)`: every folder's `list_dir`, level by level, for "Expand all"; folders that are ignored by git, links or hidden (`.github`, `.venv`) aren't opened; at most `EXPAND_MAX` (400). `{folders: {path: listing}, expanded, truncated}`.
+- `_target(root, rel)`: an existing entry to rename or delete: its folder must resolve inside the project (`resolve_dir`), the entry itself isn't followed (a link is a "link"); never the project itself, `.git`, or anything holding or inside Optimux's data folder (`paths.HOME`).
+- `_new_target(root, rel)`: a free place inside the project (parent resolved and checked with `_forbidden`; nothing into `.git`); 409 when taken or the parent is a file.
+- `make_folder`, `rename_path` (moves too; missing folders made; a folder never into itself; files that mention the old path aren't changed).
+- `delete_info` (files, folders, size, `truncated` past `COUNT_LIMIT`, how many git tracks, `trash`: home|workspace|null) and `delete_path`: `trash.where` then `trash.move_to_trash`; with no trash on the same filesystem it's a 409 and nothing changes (never a permanent delete).
+
 ## Links
 - `files.py` (`resolve_target`, `prepare_user_save`, `apply`, `_digest`, `MAX_BYTES`), `security.py` (`mask_secrets`, `resolve_project_dir`), `changes.py` (`SECRET_NAME`), `config_manager.get_settings`.
-- Tests: `tests/test_studio.py`.
+- `trash.py` (Delete).
+- Tests: `tests/test_studio.py`, `tests/test_studio_files.py`.

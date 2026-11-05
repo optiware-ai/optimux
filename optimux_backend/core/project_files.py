@@ -23,7 +23,7 @@ import os
 import secrets
 import subprocess
 
-from optimux_backend.core import config_manager, files as filetools, paths
+from optimux_backend.core import config_manager, files as filetools, paths, trash
 from optimux_backend.core.changes import SECRET_NAME
 from optimux_backend.core.security import ScopeError, mask_secrets, resolve_project_dir
 
@@ -249,6 +249,156 @@ def save_file(root: str, rel: str, text: str, digest: str | None) -> dict:
         raise FilesError(msg.replace(" can be written", " can be saved"), 400)
     return {"path": change["path"], "digest": filetools._digest(change["new_text"]), "changed": True,
             "op": change["op"], "added": change["added"], "removed": change["removed"]}
+
+
+# ---------------------------------------------------------------- expand all, new folder, rename, delete (v0.8)
+# Ported from OmniLatch (p74, p81). The user's own clicks: no approval, but the same
+# boundary as everything else here (inside the project, never .git or Optimux's data).
+
+EXPAND_MAX = 400          # folders "Expand all" opens at most
+
+
+def expand_all(root: str) -> dict:
+    """Every folder's listing for "Expand all", level by level. Not opened: folders
+    git ignores (node_modules, builds), links, and hidden folders (.github, .venv).
+    {folders: {path: listing}, expanded: [paths], truncated}."""
+    listings: dict[str, dict] = {}
+    expanded: list[str] = []
+    level, truncated = [""], False
+    while level:
+        nxt = []
+        for rel in level:
+            try:
+                listing = list_dir(root, rel)
+            except FilesError:
+                continue
+            listings[listing["path"]] = listing
+            for e in listing["entries"]:
+                if e["type"] != "dir" or e["link"] or e["ignored"] or e["name"].startswith("."):
+                    continue
+                if len(expanded) >= EXPAND_MAX:
+                    truncated = True
+                    continue
+                expanded.append(e["path"])
+                nxt.append(e["path"])
+        level = nxt
+    return {"folders": listings, "expanded": expanded, "truncated": truncated}
+
+
+def _target(root: str, rel: str) -> tuple[str, str, str]:
+    """(path, relative path, kind: file|folder|link) of an existing entry to rename or
+    delete. Its folder must be inside the project; the entry itself isn't followed."""
+    rel = _clean_rel(rel)
+    if not rel:
+        raise FilesError("The project folder itself can't be changed here.", 400)
+    parent, name = os.path.split(rel)
+    if name in ("", ".", ".."):
+        raise FilesError("Invalid path.", 400)
+    parent_real, _ = resolve_dir(root, parent)
+    full = os.path.join(parent_real, name)
+    if not os.path.lexists(full):
+        raise FilesError(f"{rel} doesn't exist (any more).", 404)
+    rel = os.path.relpath(full, root)
+    if name in HIDDEN or ".git" in rel.split(os.sep):
+        raise FilesError(f"{rel} is git's own data; it can't be changed here.", 403)
+    if os.path.islink(full):
+        return full, rel, "link"
+    home = os.path.realpath(paths.HOME)
+    if _inside(full, home) or _inside(home, full):
+        raise FilesError(f"{rel} holds Optimux's own data folder; it can't be changed here.", 403)
+    return full, rel, "folder" if os.path.isdir(full) else "file"
+
+
+def _new_target(root: str, rel: str) -> tuple[str, str]:
+    """(path, relative path) of a free place for a new entry, inside the project."""
+    rel = _clean_rel(rel)
+    parent, name = os.path.split(rel)
+    if not rel or name in ("", ".", ".."):
+        raise FilesError("Give the new name.", 400)
+    if name in HIDDEN or ".git" in rel.split("/"):
+        raise FilesError("Nothing goes into .git from here.", 403)
+    parent_real = os.path.realpath(os.path.join(root, parent)) if parent else root
+    why = _forbidden(parent_real, root)
+    if why:
+        raise FilesError(f"{parent or 'That folder'} {why}.", 403)
+    if os.path.exists(parent_real) and not os.path.isdir(parent_real):
+        raise FilesError(f"{parent} is a file, not a folder.", 409)
+    full = os.path.join(parent_real, name)
+    if os.path.lexists(full):
+        raise FilesError(f"{os.path.relpath(full, root)} already exists.", 409)
+    return full, os.path.relpath(full, root)
+
+
+def make_folder(root: str, rel: str) -> dict:
+    full, rel = _new_target(root, rel)
+    os.makedirs(full)
+    return {"path": rel}
+
+
+def rename_path(root: str, rel: str, to: str) -> dict:
+    """Rename or move a file, folder or link inside the project (missing folders on
+    the way are made). Files that mention the old path aren't changed."""
+    full, rel, kind = _target(root, rel)
+    new_full, new_rel = _new_target(root, to)
+    if kind == "folder" and _inside(new_full, full):
+        raise FilesError("A folder can't go inside itself.", 400)
+    os.makedirs(os.path.dirname(new_full), exist_ok=True)
+    if os.path.realpath(os.path.dirname(new_full)) != os.path.dirname(new_full):
+        raise FilesError(f"{os.path.dirname(new_rel)} changed while renaming.", 409)
+    os.rename(full, new_full)
+    return {"path": rel, "to": new_rel, "kind": kind}
+
+
+COUNT_LIMIT = 20_000      # entries counted for the delete question
+
+
+def _workspace() -> str:
+    return os.path.realpath(config_manager.get_settings().get("projects_root") or "") or ""
+
+
+def delete_info(root: str, rel: str) -> dict:
+    """What Delete would move aside, for the question: {path, kind, files, folders, size,
+    truncated, tracked, trash: home|workspace|null}. Changes nothing."""
+    full, rel, kind = _target(root, rel)
+    files = folders = size = 0
+    truncated = False
+    if kind == "folder":
+        for d, ds, fs in os.walk(full):          # links are not followed
+            folders += len(ds)
+            for f in fs:
+                files += 1
+                try:
+                    size += os.lstat(os.path.join(d, f)).st_size
+                except OSError:
+                    pass
+            if files + folders > COUNT_LIMIT:
+                truncated = True
+                break
+    else:
+        files, size = 1, os.lstat(full).st_size
+    tracked = 0
+    if is_repo(root):
+        r = _git(["ls-files", "-z", "--", rel], root)
+        tracked = len([p for p in r.stdout.split(b"\0") if p]) if r and r.returncode == 0 else 0
+    place = trash.where(full, _workspace())
+    return {"path": rel, "kind": kind, "files": files, "folders": folders, "size": size, "truncated": truncated,
+            "tracked": tracked, "trash": None if place is None else ("home" if place == trash.home_trash() else "workspace")}
+
+
+def delete_path(root: str, rel: str) -> dict:
+    """Move a file, folder or link aside: to the desktop Trash, else the Workspace's
+    .trash/. Never deleted for good: when neither is possible, nothing changes."""
+    full, rel, kind = _target(root, rel)
+    place = trash.where(full, _workspace())
+    if place is None:
+        raise FilesError(f"{rel} is on another disk than the Trash and the Workspace's .trash folder, so it can't be "
+                         "moved aside. Nothing was deleted; delete it yourself if you're sure.", 409)
+    try:
+        name = trash.move_to_trash(full, place)
+    except OSError as e:
+        raise FilesError(f"Couldn't move {rel} aside: {e.strerror or e}. Nothing was deleted.", 500)
+    return {"path": rel, "kind": kind, "trash": "home" if place == trash.home_trash() else "workspace",
+            "trash_path": os.path.join(place, "files", name)}
 
 
 # ---------------------------------------------------------------- the preview

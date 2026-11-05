@@ -191,7 +191,7 @@
 .cm-tip-up .cm-tip-arrow { top: auto; bottom: -5px; transform: rotate(225deg); }
 @media (prefers-reduced-motion: reduce) { .cm-tip { transition: none; transform: none; } }
 /* v0.8: the chat as a column beside the Studio (body.cm-studio-chat while it shows) */
-:root { --cm-dock: min(460px, 42vw); }
+:root { --cm-dock: min(var(--cm-dock-w, 460px), 70vw); }
 body.cm-studio-chat #app { position: fixed; top: 0; right: 0; bottom: 0; height: auto; width: var(--cm-dock); max-width: none; margin: 0;
   padding: 0 12px 12px; z-index: 41; background: #030712; border-left: 1px solid #1f2937; }
 body.cm-studio-chat #app > header { display: none; }
@@ -218,3 +218,33 @@ body.cm-studio-chat #app > header { display: none; }
 .cm-ctx-x { width: 18px; height: 18px; border-radius: 9999px; font-size: 10px; line-height: 18px; text-align: center; color: inherit; opacity: .7; flex-shrink: 0; }
 .cm-ctx-x:hover { opacity: 1; background: rgba(255, 255, 255, .12); }
 .cm-ctx-count { margin-left: 2px; min-width: 18px; padding: 0 5px; border-radius: 9999px; background: #2563eb; color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+
+/* v0.8: scrollbars, the same everywhere: slim, rounded, quiet until hovered */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background-color: #263142; border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; min-height: 32px; }
+::-webkit-scrollbar-thumb:hover { background-color: #3b82f6; }
+::-webkit-scrollbar-thumb:active { background-color: #60a5fa; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+@supports not selector(::-webkit-scrollbar) { * { scrollbar-width: thin; scrollbar-color: #2b3646 transparent; } }
+/* v0.8: the Studio's dividers (drag, arrow keys, double-click resets) */
+.cm-split { flex: 0 0 5px; position: relative; cursor: col-resize; background: #0b111c; border-left: 1px solid #1f2937; touch-action: none; outline: none; transition: background-color .12s; }
+.cm-split::after { content: ""; position: absolute; top: 0; bottom: 0; left: -3px; right: -3px; }
+.cm-split:hover, .cm-split:focus-visible, .cm-split:active { background: #3b82f6; border-color: #3b82f6; }
+.cm-split-dock { position: absolute; top: 0; bottom: 0; right: -3px; width: 5px; z-index: 5; border: 0; background: transparent; }
+body.cm-resizing, body.cm-resizing * { cursor: col-resize !important; user-select: none !important; }
+body.cm-resizing iframe { pointer-events: none; }
+/* v0.8: the Studio's pane switches, in the logo's blue */
+.cm-seg { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 10px; background: #0b1220; border: 1px solid #1e2a3d; font-size: 13px; }
+.cm-seg button { display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; border-radius: 8px; color: #94a3b8; transition: background-color .12s, color .12s; }
+.cm-seg button:hover { color: #e2e8f0; background: rgba(59, 130, 246, .12); }
+.cm-seg button.cm-seg-on { background: #3b82f6; color: #fff; box-shadow: 0 1px 6px rgba(59, 130, 246, .35); }
+.cm-seg button.cm-seg-on .cm-ctx-count { background: #fff; color: #1d4ed8; }
+.cm-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; color: #6b7280; }
+.cm-icon-btn:hover { color: #e5e7eb; background: #1f2937; }
+/* v0.8: the file tree's name box and the row a menu is for */
+.cm-name-box { flex: 1; min-width: 0; background: #030712; border: 1px solid #3b82f6; border-radius: 4px; padding: 1px 6px; color: #f3f4f6; font-size: 13px; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, .25); }
+.cm-tree-menu { outline: 1px solid rgba(59, 130, 246, .6); outline-offset: -1px; }
+.cm-menu-danger:not(:disabled) { color: #fca5a5; }
+.cm-menu-danger:not(:disabled) .cm-menu-icon { color: #f87171; }
+.cm-menu-item.cm-menu-danger:hover:not(:disabled), .cm-menu-item.cm-menu-danger:focus { background: rgba(220, 38, 38, .3); }

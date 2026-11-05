@@ -3626,6 +3626,9 @@ createApp({
             preview: { base: '', index: null, path: '', stamp: 0 },
             editorError: '',
             chat: false,       // v0.8: the chat as a column beside the Studio
+            showTree: true,    // v0.8: the file tree can be hidden (Files in the top bar)
+            edit: null,        // v0.8: an inline name box in the tree: {mode: new-file|new-folder|rename, parent, path, kind, value, busy, error}
+            menuPath: null,    // v0.8: the tree row a right-click menu is for
             picking: '',       // v0.8: the preview's picker: '' | element | area | chosen
         });
         let editor = null;           // the CodeMirror handle (window.OptimuxEditor.create)
@@ -3717,8 +3720,10 @@ createApp({
             const walk = (path, depth) => {
                 const d = studio.dirs[path];
                 if (!d) return;
+                const ed = studio.edit;
+                if (ed && ed.mode !== 'rename' && ed.parent === path) rows.push({ e: { type: 'edit', path: '\u0000edit', name: '' }, depth });
                 for (const e of d.entries) {
-                    rows.push({ e, depth });
+                    rows.push(ed && ed.mode === 'rename' && ed.path === e.path ? { e: { ...e, type: 'edit', path: '\u0000edit', was: e.type } , depth } : { e, depth });
                     if (e.type === 'dir' && studio.opened[e.path]) walk(e.path, depth + 1);
                 }
                 if (d.truncated) rows.push({ e: { name: `… ${d.total - d.entries.length} more`, path: path + '/…more', type: 'more' }, depth });
@@ -3784,6 +3789,216 @@ createApp({
             return renderMarkdown(text || '');
         });
         const studioOpenInTab = () => { if (previewSrc.value) window.open(previewSrc.value, '_blank', 'noopener'); };
+
+        // ---- v0.8: resizable panes. Widths are kept in this browser -------------------------------
+        const LAYOUT_KEY = 'optimux.studioLayout';
+        const LAYOUT_DEFAULT = { tree: 256, split: 0.5, dock: 460 };
+        const studioLayout = Vue.reactive({ ...LAYOUT_DEFAULT });
+        try {
+            const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) || '{}');
+            for (const k of Object.keys(LAYOUT_DEFAULT)) if (typeof saved[k] === 'number' && isFinite(saved[k])) studioLayout[k] = saved[k];
+            if (typeof saved.showTree === 'boolean') studio.showTree = saved.showTree;
+        } catch (_) { /* no storage: the defaults */ }
+        const saveLayout = () => {
+            try { localStorage.setItem(LAYOUT_KEY, JSON.stringify({ ...studioLayout, showTree: studio.showTree })); } catch (_) { /* ignore */ }
+        };
+        const clampNum = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        const studioPanes = ref(null);
+        const LIMITS = {
+            tree: () => [140, Math.max(200, window.innerWidth * 0.45)],
+            dock: () => [320, Math.max(360, window.innerWidth * 0.7)],
+            split: () => [0.15, 0.85],
+        };
+        const setLayout = (kind, value) => { const [lo, hi] = LIMITS[kind](); studioLayout[kind] = clampNum(value, lo, hi); };
+        watch(() => studioLayout.dock, (w) => document.documentElement.style.setProperty('--cm-dock-w', Math.round(w) + 'px'), { immediate: true });
+        // Drag a divider (pointer capture keeps it working over the preview's frame)
+        const startResize = (kind, e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            const handle = e.currentTarget;
+            try { handle.setPointerCapture(e.pointerId); } catch (_) { /* old browser */ }
+            document.body.classList.add('cm-resizing');
+            const x0 = e.clientX, start = { ...studioLayout };
+            const panes = studioPanes.value ? studioPanes.value.getBoundingClientRect() : null;
+            const move = (ev) => {
+                const dx = ev.clientX - x0;
+                if (kind === 'tree') setLayout('tree', start.tree + dx);
+                else if (kind === 'dock') setLayout('dock', start.dock - dx);
+                else if (panes && panes.width) setLayout('split', (ev.clientX - panes.left) / panes.width);
+            };
+            const up = () => {
+                handle.removeEventListener('pointermove', move);
+                handle.removeEventListener('pointerup', up);
+                handle.removeEventListener('pointercancel', up);
+                document.body.classList.remove('cm-resizing');
+                saveLayout();
+            };
+            handle.addEventListener('pointermove', move);
+            handle.addEventListener('pointerup', up);
+            handle.addEventListener('pointercancel', up);
+        };
+        // Arrow keys move a focused divider; Home resets it (double-click too)
+        const resizeKey = (kind, e) => {
+            const step = kind === 'split' ? 0.02 : 16, sign = kind === 'dock' ? -1 : 1;
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                setLayout(kind, studioLayout[kind] + (e.key === 'ArrowRight' ? step : -step) * sign);
+                saveLayout();
+            } else if (e.key === 'Home') { e.preventDefault(); resetResize(kind); }
+        };
+        const resetResize = (kind) => { studioLayout[kind] = LAYOUT_DEFAULT[kind]; saveLayout(); };
+        const toggleStudioTree = () => { studio.showTree = !studio.showTree; saveLayout(); };
+
+        // ---- v0.8: the file tree's menu and file operations --------------------------------------
+        const parentOf = (path) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
+        const absPath = (rel) => {
+            const base = projectPath(studio.project || appSettings.value.active_project);
+            return base ? (rel ? base + '/' + rel : base) : rel;
+        };
+        const reloadStudioTree = async () => {
+            const keep = Object.keys(studio.opened).filter(p => studio.opened[p]).sort((a, b) => a.length - b.length);
+            const next = {};
+            for (const p of keep) {
+                try { next[p] = await studioFetch(`/api/files/tree?path=${encodeURIComponent(p)}`); }
+                catch (e) { if (p === '') { studio.msg = { ok: false, text: e.message }; return; } delete studio.opened[p]; }
+            }
+            studio.dirs = next;
+            loadStudioStatus();
+        };
+        const studioPost = (url, body) => studioFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ project: studio.project, ...body }) });
+        const expandAllStudio = async () => {
+            studio.msg = null;
+            try {
+                const r = await studioFetch('/api/files/expand');
+                studio.dirs = { ...studio.dirs, ...r.folders };
+                for (const p of r.expanded) studio.opened[p] = true;
+                if (r.truncated) studio.msg = { ok: true, text: `Opened the first ${r.expanded.length} folders.` };
+            } catch (e) { studio.msg = { ok: false, text: e.message }; }
+        };
+        const collapseAllStudio = () => { studio.opened = { '': true }; };
+        // The inline name box: new file, new folder, rename
+        const studioNameBox = ref(null);
+        const startStudioEdit = async (mode, entry) => {
+            const isDir = entry && (entry.type === 'dir' || entry.was === 'dir');
+            const parent = mode === 'rename' ? parentOf(entry.path) : (entry ? (isDir ? entry.path : parentOf(entry.path)) : '');
+            if (mode !== 'rename' && parent && !studio.opened[parent]) await toggleStudioDir(parent);
+            studio.edit = { mode, parent, path: mode === 'rename' ? entry.path : '', kind: mode === 'rename' ? entry.type : (mode === 'new-folder' ? 'dir' : 'file'),
+                            value: mode === 'rename' ? entry.name : '', busy: false, error: '' };
+            nextTick(() => {
+                const el = studioNameBox.value && (Array.isArray(studioNameBox.value) ? studioNameBox.value[0] : studioNameBox.value);
+                if (!el) return;
+                el.focus();
+                if (mode === 'rename') { const dot = entry.type === 'file' ? entry.name.lastIndexOf('.') : -1; el.setSelectionRange(0, dot > 0 ? dot : entry.name.length); }
+            });
+        };
+        const cancelStudioEdit = () => { studio.edit = null; };
+        const commitStudioEdit = async () => {
+            const ed = studio.edit;
+            if (!ed || ed.busy) return;
+            const name = ed.value.trim().replace(/^\/+|\/+$/g, '');
+            if (!name || (ed.mode === 'rename' && name === ed.path.split('/').pop())) { studio.edit = null; return; }
+            const target = ed.parent ? ed.parent + '/' + name : name;
+            ed.busy = true; ed.error = '';
+            try {
+                if (ed.mode === 'new-folder') await studioPost('/api/files/folder', { path: target });
+                else if (ed.mode === 'new-file') await studioPost('/api/files/save', { path: target, text: '', digest: null });
+                else {
+                    if (studio.file && (studio.file.path === ed.path || studio.file.path.startsWith(ed.path + '/')) && studio.dirty) {
+                        throw new Error(`Save or close ${studio.file.path} first: it has unsaved changes.`);
+                    }
+                    await studioPost('/api/files/rename', { path: ed.path, to: target });
+                    // The open file follows its new name
+                    if (studio.file && (studio.file.path === ed.path || studio.file.path.startsWith(ed.path + '/'))) {
+                        const moved = target + studio.file.path.slice(ed.path.length);
+                        studio.file = null;
+                        studio.edit = null;
+                        await reloadStudioTree();
+                        openStudioFile(moved);
+                        return;
+                    }
+                }
+                studio.edit = null;
+                await reloadStudioTree();
+                if (ed.mode === 'new-file') openStudioFile(target);
+                if (ed.mode === 'new-folder') studio.opened[target] = true;
+            } catch (e) {
+                if (studio.edit === ed) { ed.busy = false; ed.error = e.message; }
+            }
+        };
+        const studioNameKey = (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commitStudioEdit(); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelStudioEdit(); }
+        };
+        const deleteStudioEntry = async (entry) => {
+            let info;
+            try { info = await studioFetch(`/api/files/delete?path=${encodeURIComponent(entry.path)}`); }
+            catch (e) { studio.msg = { ok: false, text: e.message }; return; }
+            if (!info.trash) {
+                await askConfirm({ title: `Can't move ${info.path} aside`, ok: 'OK', cancel: false,
+                                   detail: 'It is on another disk than the Trash and the Workspace\'s .trash folder. Optimux never deletes files for good: delete it yourself if you are sure.' });
+                return;
+            }
+            const what = info.kind === 'folder'
+                ? `${info.files.toLocaleString()}${info.truncated ? '+' : ''} file${info.files === 1 ? '' : 's'} in ${info.folders.toLocaleString()} folder${info.folders === 1 ? '' : 's'}, ${fmtBytes(info.size)}`
+                : (info.kind === 'link' ? 'A link (what it points to stays)' : (info.size ? fmtBytes(info.size) : 'An empty file'));
+            const where = info.trash === 'home' ? 'the Trash (restore it from your file manager)' : "the Workspace's .trash folder";
+            const ok = await askConfirm({ title: `Delete ${info.path}?`, ok: 'Move to Trash', danger: true,
+                detail: `${what}. It goes to ${where}.` + (info.tracked ? ` Git tracks ${info.tracked} of these files: the deletion shows in git status until you commit it.` : '') });
+            if (!ok) return;
+            const open = studio.file && (studio.file.path === info.path || studio.file.path.startsWith(info.path + '/'));
+            if (open && studio.dirty && !confirm(`${studio.file.path} has unsaved changes. Delete it anyway?`)) return;
+            try {
+                await studioPost('/api/files/delete', { path: info.path });
+                if (open) { studio.file = null; studio.dirty = false; }
+                studio.msg = { ok: true, text: `${info.path} moved to ${info.trash === 'home' ? 'the Trash' : 'the Workspace\'s .trash'}.` };
+                await reloadStudioTree();
+                studio.preview.stamp++;
+            } catch (e) { studio.msg = { ok: false, text: e.message }; }
+        };
+        const onTreeMenu = (e, entry) => {
+            if (e.shiftKey) return;
+            e.preventDefault();
+            if (studio.edit) cancelStudioEdit();
+            const items = [];
+            if (entry && entry.type === 'file') {
+                items.push({ icon: '↗', label: 'Open', run: () => openStudioFile(entry.path) });
+                if (previewKind(entry.path)) items.push({ icon: '◩', label: 'Show in the preview', run: () => { studio.preview.path = entry.path; studio.preview.stamp++; studio.showPreview = true; } });
+            }
+            if (entry && entry.type !== 'outside') {
+                items.push({ icon: '＠', label: 'Mention in chat', hint: 'its path only',
+                             run: () => addChatContext({ kind: 'file', label: entry.name, detail: entry.path,
+                                                         text: `${entry.type === 'dir' ? 'Folder' : 'File'}: ${entry.path} (in the project; read it if you need it)` }) });
+                items.push({ sep: true });
+            }
+            const inDir = entry && entry.type === 'dir' ? entry.name + '/' : (entry ? (parentOf(entry.path) || 'the project') : 'the project');
+            items.push({ icon: '＋', label: 'New file…', hint: entry ? 'in ' + inDir : '', run: () => startStudioEdit('new-file', entry && entry.type !== 'outside' ? entry : null) });
+            items.push({ icon: '▤', label: 'New folder…', hint: entry ? 'in ' + inDir : '', run: () => startStudioEdit('new-folder', entry && entry.type !== 'outside' ? entry : null) });
+            if (entry) {
+                items.push({ sep: true });
+                items.push({ icon: '✎', label: 'Rename…', hint: 'F2', run: () => startStudioEdit('rename', entry) });
+                items.push({ icon: '⌫', label: 'Delete…', hint: 'to the Trash', danger: true, run: () => deleteStudioEntry(entry) });
+                items.push({ sep: true });
+                items.push({ icon: '⧉', label: 'Copy path', run: () => writeClipboard(absPath(entry.path)) });
+                items.push({ icon: '⌁', label: 'Copy relative path', run: () => writeClipboard(entry.path) });
+            } else {
+                items.push({ sep: true });
+                items.push({ icon: '⊞', label: 'Expand all', run: expandAllStudio });
+                items.push({ icon: '⊟', label: 'Collapse all', run: collapseAllStudio });
+                items.push({ icon: '⧉', label: 'Copy the project\'s path', run: () => writeClipboard(absPath('')) });
+            }
+            studio.menuPath = entry ? entry.path : '';
+            openCtxMenu(e.clientX, e.clientY, entry ? entry.path : (studio.project || 'Project'), items);
+        };
+        const treeKey = (e, entry) => {
+            if (e.key === 'F2') { e.preventDefault(); startStudioEdit('rename', entry); }
+            else if (e.key === 'Delete') { e.preventDefault(); deleteStudioEntry(entry); }
+            else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+                e.preventDefault();
+                const r = e.currentTarget.getBoundingClientRect();
+                onTreeMenu({ preventDefault() {}, shiftKey: false, clientX: r.left + 24, clientY: r.bottom }, entry);
+            }
+        };
 
         // ---- v0.8: send code or a part of the preview to the chat ------------------------------
         // What the user picked waits as chips above the prompt box; sendMessage adds them after the
@@ -3851,7 +4066,7 @@ createApp({
         // ---- the right-click menu (one for the editor and the preview)
         const ctxMenu = Vue.reactive({ open: false, x: 0, y: 0, title: '', items: [] });
         const ctxMenuEl = ref(null);
-        const closeCtxMenu = () => { ctxMenu.open = false; };
+        const closeCtxMenu = () => { ctxMenu.open = false; studio.menuPath = null; };
         const openCtxMenu = (x, y, title, items) => {
             Object.assign(ctxMenu, { open: true, x, y, title, items });
             nextTick(() => {
@@ -4968,6 +5183,8 @@ createApp({
             studio, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
             saveStudioFile, reloadStudioFile, previewSrc, previewMarkdown, previewKind, studioOpenInTab,
             gitTerm, openGitTerm, closeGitTerm, gitTermLines, copyGitTerm,
+            studioLayout, studioPanes, startResize, resizeKey, resetResize, toggleStudioTree, expandAllStudio, collapseAllStudio,
+            studioNameBox, startStudioEdit, cancelStudioEdit, commitStudioEdit, studioNameKey, onTreeMenu, treeKey,
             chatContext, removeChatContext, ctxMenu, ctxMenuEl, closeCtxMenu, runCtxItem, ctxMenuKey, onEditorMenu, previewFrame, pickCmd, onPreviewLoad, toggleStudioChat,
             projectPage, openProjectPage, loadProjectPage, setProjectSetting, ownValue, globalValue, boolOf, onOff, numberOf, saveProjectBudget, saveProjectMemory,
             curateProjectNow, projectRow, projectSkills,

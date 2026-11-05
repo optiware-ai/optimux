@@ -97,6 +97,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── project_records.py   (Deleted projects: kept records listed as deleted, or forgotten)
 │       ├── project_files.py     (The Studio: the project's files, the editor's reads and saves, the preview)
 │       ├── project_files.py_AGENT.md
+│       ├── trash.py             (The Studio's Delete: to the desktop Trash or the Workspace's .trash, never for good)
+│       ├── trash.py_AGENT.md
 │       ├── project_settings.py  (A project's own values for some global settings: Dashboard → Project)
 │       ├── project_settings.py_AGENT.md
 │       ├── project_records.py_AGENT.md

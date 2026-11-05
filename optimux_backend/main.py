@@ -311,6 +311,62 @@ async def files_status():
     return {"project": name, **await asyncio.to_thread(files_studio.git_status, root)}
 
 
+@app.get("/api/files/expand")
+async def files_expand():
+    """Every folder of the active project for "Expand all" (not ignored, hidden or linked ones)."""
+    name, root = _studio_root()
+    return {"project": name, **await asyncio.to_thread(files_studio.expand_all, root)}
+
+
+class FilesPathPayload(BaseModel):
+    path: str
+    to: str = ""
+    project: str = ""                # the project the Studio showed (a switch meanwhile is refused)
+
+
+def _studio_same(payload: "FilesPathPayload") -> tuple[str, str]:
+    name, root = _studio_root()
+    if payload.project and payload.project != name:
+        raise HTTPException(409, f"This was asked for {payload.project}, but {name} is the active project now.")
+    return name, root
+
+
+async def _files_op(fn, *args):
+    try:
+        return await asyncio.to_thread(fn, *args)
+    except files_studio.FilesError as e:
+        _files_error(e)
+    except OSError as e:
+        raise HTTPException(500, f"Couldn't do it: {e.strerror or e}.")
+
+
+@app.post("/api/files/folder")
+async def files_new_folder(payload: FilesPathPayload):
+    name, root = _studio_same(payload)
+    return {"project": name, **await _files_op(files_studio.make_folder, root, payload.path)}
+
+
+@app.post("/api/files/rename")
+async def files_rename(payload: FilesPathPayload):
+    """Rename or move a file or folder of the active project (the user's own click)."""
+    name, root = _studio_same(payload)
+    return {"project": name, **await _files_op(files_studio.rename_path, root, payload.path, payload.to)}
+
+
+@app.get("/api/files/delete")
+async def files_delete_info(path: str):
+    """What Delete would move aside (for the question). Changes nothing."""
+    name, root = _studio_root()
+    return {"project": name, **await _files_op(files_studio.delete_info, root, path)}
+
+
+@app.post("/api/files/delete")
+async def files_delete(payload: FilesPathPayload):
+    """Move a file or folder of the active project to the Trash (never deleted for good)."""
+    name, root = _studio_same(payload)
+    return {"project": name, **await _files_op(files_studio.delete_path, root, payload.path)}
+
+
 @app.get("/api/files/read")
 async def files_read(path: str):
     name, root = _studio_root()
