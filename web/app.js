@@ -3181,7 +3181,20 @@ createApp({
             if (id === 'models') { fetchCatalog(); loadProviderModels(); }
             if (id === 'backups') { fetchSnapshots(); fetchBackups(); fetchRestoreStatus(); fetchProjectsList().then(snapSyncProjects); }
         };
-        const dashboardHash = () => `#/dashboard/${settingsTab.value}`;
+        // v0.8: Usage and Performance open on Charts or Details; remembered here and in the address
+        const DASH_VIEWS = ['charts', 'details'];
+        const dashView = Vue.reactive({ usage: 'charts', performance: 'charts' });
+        try {
+            const saved = JSON.parse(localStorage.getItem('optimux.dashView') || '{}');
+            for (const k of Object.keys(dashView)) if (DASH_VIEWS.includes(saved[k])) dashView[k] = saved[k];
+        } catch (e) { /* no storage: keep the defaults */ }
+        const setDashView = (view, section = settingsTab.value) => {
+            if (!(section in dashView) || !DASH_VIEWS.includes(view)) return;
+            dashView[section] = view;
+            try { localStorage.setItem('optimux.dashView', JSON.stringify(dashView)); } catch (e) { /* ignore */ }
+            if (showSettingsModal.value && section === settingsTab.value && location.hash !== dashboardHash()) location.hash = dashboardHash();
+        };
+        const dashboardHash = () => `#/dashboard/${settingsTab.value}` + (settingsTab.value in dashView ? '/' + dashView[settingsTab.value] : '');
         const openSettings = (section) => {
             if (typeof section === 'string' && dashboardSections.some(x => x.id === section)) settingsTab.value = section;
             if (!dashboardSections.some(x => x.id === settingsTab.value)) settingsTab.value = 'overview';
@@ -3197,9 +3210,10 @@ createApp({
         const applyHash = () => {
             if (location.hash.startsWith('#/studio')) { if (!studio.open) openStudio(); return; }
             if (studio.open) closeStudio(true);
-            const m = location.hash.match(/^#\/dashboard(?:\/([\w-]+))?/);
+            const m = location.hash.match(/^#\/dashboard(?:\/([\w-]+))?(?:\/([\w-]+))?/);
             if (m) {
                 const id = m[1] && dashboardSections.some(x => x.id === m[1]) ? m[1] : settingsTab.value;
+                if (m[2]) setDashView(m[2], id);
                 if (!showSettingsModal.value || id !== settingsTab.value) openSettings(id);
             } else if (showSettingsModal.value) {
                 showSettingsModal.value = false;
@@ -4704,7 +4718,7 @@ createApp({
             MEMORY_MAX_CHARS, pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
             pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
 					renderMarkdown,
-            showSettingsModal, openSettings, closeSettings, settingsTab, dashboardSections, dashboardGroups,
+            showSettingsModal, openSettings, closeSettings, settingsTab, dashView, setDashView, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,
             newModelBase, newModelAck, newModelMsg, onEnvKeyInput, newModelHost, newModelHostLocal, newModelNeedsAck,
             newModelPricesSet, newModelKeyUsers, newModelKeySaved, newModelKeyConflict, newModelKeyValid,

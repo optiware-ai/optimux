@@ -198,6 +198,10 @@
                     <div>
                         <h1 class="text-xl font-bold text-gray-100 flex items-center">{{ (dashboardSections.find(x => x.id === settingsTab) || {}).label }}<help-tip :text="(dashboardSections.find(x => x.id === settingsTab) || {}).hint"></help-tip></h1>
                     </div>
+                    <!-- v0.8: Usage and Performance show their charts or their tables -->
+                    <div v-if="settingsTab in dashView" class="inline-flex rounded-lg overflow-hidden border border-gray-700 text-[15px] mr-auto ml-6" role="radiogroup" aria-label="Show">
+                        <button v-for="o in [['charts', 'Charts'], ['details', 'Details']]" :key="o[0]" type="button" role="radio" :aria-checked="dashView[settingsTab] === o[0]" @click="setDashView(o[0])" :class="['px-4 py-1.5', dashView[settingsTab] === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                    </div>
                     <span class="text-[13px] font-mono text-gray-500">{{ projectLabel(appSettings.active_project) }}</span>
                 </div>
                 <div class="flex-1 overflow-y-auto px-8 py-6" id="dash-scroll" @scroll="onDashScroll">
@@ -263,6 +267,7 @@
                         No model calls in this period{{ perfProject ? ' for ' + perfProject : '' }}. Chat a little, then come back.
                     </div>
                     <template v-if="perf && !perf.empty">
+                        <template v-if="dashView.performance === 'charts'">
                         <!-- 0. Savings (IM-08) -->
                         <div v-if="perf.sv" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                             <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -311,26 +316,6 @@
                                 </g>
                                 <text v-for="l in perf.sv.xlabels" :key="'x' + l.x" :x="l.x" :y="perf.sv.H - 6" :text-anchor="l.anchor" class="cm-pf-axis">{{ l.text }}</text>
                             </svg>
-                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-                                <div v-for="t in [['By role', perf.sv.roles], ['By project', perf.sv.projects]]" :key="t[0]" class="overflow-x-auto">
-                                    <table class="w-full text-[13px]">
-                                        <thead><tr class="text-xs text-gray-500 text-left">
-                                            <th class="font-normal py-1 pr-3">{{ t[0] }}</th><th class="font-normal py-1 pr-3 text-right">Calls</th>
-                                            <th class="font-normal py-1 pr-3 text-right">Spent</th><th class="font-normal py-1 pr-3 text-right">Would have cost</th>
-                                            <th class="font-normal py-1 text-right">Saved</th>
-                                        </tr></thead>
-                                        <tbody>
-                                            <tr v-for="r in t[1]" :key="r.key" class="border-t border-gray-800 text-gray-300">
-                                                <td class="py-1 pr-3 truncate max-w-[12rem]" :title="r.key">{{ r.label }}</td>
-                                                <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString() }}</td>
-                                                <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.spent) }}</td>
-                                                <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.reference) }}</td>
-                                                <td :class="['py-1 text-right font-mono', r.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(r.saved) }}<span class="text-gray-500"> · {{ r.saved_share === null ? 'extra' : fmtPct(r.saved_share) }}</span></td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
                             <p class="text-xs text-gray-500 mt-3">
                                 <span v-if="perf.sv.v.estimated_calls">{{ perf.sv.v.estimated_calls.toLocaleString() }} older calls are estimated with today's prices. </span>
                                 <span v-if="perf.sv.v.not_measured_calls">{{ perf.sv.v.not_measured_calls.toLocaleString() }} calls are not measured (unknown price). </span>
@@ -368,26 +353,6 @@
                                     <div class="text-xs text-gray-500 mt-1">counted {{ fmtDur(perf.wt.tm.totals.approval_ms) }}; you waited {{ fmtDur(perf.wt.tm.totals.wait_ms) }}</div></div>
                             </div>
                             <day-columns :label="'Working time per ' + perf.wt.per" :buckets="perf.wt.buckets" :per="perf.wt.per" :format="fmtDur" empty="No timed requests in this period yet."></day-columns>
-                            <details v-if="!perfProject && perf.wt.tm.projects.length" class="mt-4">
-                                <summary class="cursor-pointer text-xs text-gray-400 hover:text-gray-200">Per project</summary>
-                                <div class="overflow-x-auto mt-2"><table class="w-full text-[13px]">
-                                    <thead><tr class="text-xs text-gray-500 text-left">
-                                        <th class="font-normal py-1 pr-3">Project</th><th class="font-normal py-1 pr-3 text-right">Requests</th>
-                                        <th class="font-normal py-1 pr-3 text-right">Working time</th><th class="font-normal py-1 pr-3 text-right">Models</th>
-                                        <th class="font-normal py-1 pr-3 text-right">Commands and tools</th><th class="font-normal py-1 pr-3 text-right">Approvals</th>
-                                        <th class="font-normal py-1 text-right">First request</th>
-                                    </tr></thead>
-                                    <tbody><tr v-for="p in perf.wt.tm.projects" :key="p.project" class="border-t border-gray-800 text-gray-300">
-                                        <td class="py-1 pr-3 truncate max-w-[12rem]" :title="p.project">{{ projectLabel(p.project) }}</td>
-                                        <td class="py-1 pr-3 text-right font-mono">{{ p.requests.toLocaleString() }}</td>
-                                        <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.counted_ms) }}</td>
-                                        <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.model_ms) }}</td>
-                                        <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.other_ms) }}</td>
-                                        <td class="py-1 pr-3 text-right font-mono">{{ p.waits.toLocaleString() }}</td>
-                                        <td class="py-1 text-right font-mono">{{ new Date(p.first * 1000).toLocaleDateString() }}</td>
-                                    </tr></tbody>
-                                </table></div>
-                            </details>
                             <p class="text-xs text-gray-500 mt-3">{{ perf.wt.tm.recorded_since ? 'Request times are recorded since ' + new Date(perf.wt.tm.recorded_since * 1000).toLocaleDateString() + '; model call time covers older calls too.' : 'Request times are recorded from now on; model call time covers older calls too.' }}</p>
                         </div>
                         <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -400,13 +365,6 @@
                             </div>
                         </div>
 
-                        <div v-if="perf.insights.length" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <h3 class="text-[15px] font-bold text-gray-200 mb-2">What stands out</h3>
-                            <ul class="space-y-1.5 text-[14px] text-gray-300">
-                                <li v-for="(s, i) in perf.insights" :key="i" class="flex gap-2"><span class="text-blue-400">›</span><span>{{ s }}</span></li>
-                            </ul>
-                            <div v-if="perf.sinceEvents" class="text-xs text-gray-500 mt-3">Failures and escalations are counted since {{ perf.sinceEvents }}, when Optimux started recording them.</div>
-                        </div>
 
                         <!-- 1. Over time -->
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
@@ -556,6 +514,59 @@
                             </div>
                         </div>
 
+                        </template>
+                        <template v-if="dashView.performance === 'details'">
+                        <div v-if="perf.insights.length" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-2">What stands out</h3>
+                            <ul class="space-y-1.5 text-[14px] text-gray-300">
+                                <li v-for="(s, i) in perf.insights" :key="i" class="flex gap-2"><span class="text-blue-400">›</span><span>{{ s }}</span></li>
+                            </ul>
+                            <div v-if="perf.sinceEvents" class="text-xs text-gray-500 mt-3">Failures and escalations are counted since {{ perf.sinceEvents }}, when Optimux started recording them.</div>
+                        </div>
+                        <!-- What routing saved: the same numbers per role and per project -->
+                        <div v-if="perf.sv" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-3">What routing saved</h3>
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div v-for="t in [['By role', perf.sv.roles], ['By project', perf.sv.projects]]" :key="t[0]" class="overflow-x-auto">
+                                    <table class="w-full text-[13px]">
+                                        <thead><tr class="text-xs text-gray-500 text-left">
+                                            <th class="font-normal py-1 pr-3">{{ t[0] }}</th><th class="font-normal py-1 pr-3 text-right">Calls</th>
+                                            <th class="font-normal py-1 pr-3 text-right">Spent</th><th class="font-normal py-1 pr-3 text-right">Would have cost</th>
+                                            <th class="font-normal py-1 text-right">Saved</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            <tr v-for="r in t[1]" :key="r.key" class="border-t border-gray-800 text-gray-300">
+                                                <td class="py-1 pr-3 truncate max-w-[12rem]" :title="r.key">{{ r.label }}</td>
+                                                <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString() }}</td>
+                                                <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.spent) }}</td>
+                                                <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.reference) }}</td>
+                                                <td :class="['py-1 text-right font-mono', r.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(r.saved) }}<span class="text-gray-500"> · {{ r.saved_share === null ? 'extra' : fmtPct(r.saved_share) }}</span></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-if="perf.wt && !perfProject && perf.wt.tm.projects.length" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-3">Working time per project</h3>
+                            <div class="overflow-x-auto"><table class="w-full text-[13px]">
+                                <thead><tr class="text-xs text-gray-500 text-left">
+                                    <th class="font-normal py-1 pr-3">Project</th><th class="font-normal py-1 pr-3 text-right">Requests</th>
+                                    <th class="font-normal py-1 pr-3 text-right">Working time</th><th class="font-normal py-1 pr-3 text-right">Models</th>
+                                    <th class="font-normal py-1 pr-3 text-right">Commands and tools</th><th class="font-normal py-1 pr-3 text-right">Approvals</th>
+                                    <th class="font-normal py-1 text-right">First request</th>
+                                </tr></thead>
+                                <tbody><tr v-for="p in perf.wt.tm.projects" :key="p.project" class="border-t border-gray-800 text-gray-300">
+                                    <td class="py-1 pr-3 truncate max-w-[12rem]" :title="p.project">{{ projectLabel(p.project) }}</td>
+                                    <td class="py-1 pr-3 text-right font-mono">{{ p.requests.toLocaleString() }}</td>
+                                    <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.counted_ms) }}</td>
+                                    <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.model_ms) }}</td>
+                                    <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.other_ms) }}</td>
+                                    <td class="py-1 pr-3 text-right font-mono">{{ p.waits.toLocaleString() }}</td>
+                                    <td class="py-1 text-right font-mono">{{ new Date(p.first * 1000).toLocaleDateString() }}</td>
+                                </tr></tbody>
+                            </table></div>
+                        </div>
                         <!-- The same numbers as a table -->
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                             <h3 class="text-[15px] font-bold text-gray-200 mb-3">By Models</h3>
@@ -610,6 +621,7 @@
                                 </tr></tbody>
                             </table></div>
                         </div>
+                        </template>
                     </template>
                     <div v-if="perfTip" ref="perfTipEl" class="cm-pf-tip" :style="{ left: perfTip.x + 'px', top: perfTip.y + 'px' }" role="tooltip">
                         <div class="cm-pf-tip-title">{{ perfTip.title }}<span v-if="perfTip.total" class="cm-pf-tip-total">{{ perfTip.total }}</span></div>
@@ -2175,7 +2187,7 @@
                 <!-- Tab Content: Usage -->
                 <div v-if="['usage', 'budgets', 'system'].includes(settingsTab)" class="overflow-y-auto flex-1 pr-2">
                     <!-- v0.8: the Usage charts, last 30 days, each with its own project filter -->
-                    <div v-if="settingsTab === 'usage'" class="space-y-6 mb-6">
+                    <div v-if="settingsTab === 'usage' && dashView.usage === 'charts'" class="space-y-6 mb-6">
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                             <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
                                 <h3 class="text-[15px] font-bold text-gray-200">{{ charts.cost.metric === 'cost' ? 'Cost' : 'Calls' }} per {{ chartData.per }}</h3>
@@ -2212,20 +2224,20 @@
                             </template>
                         </div>
                     </div>
-                    <div v-if="settingsTab === 'usage'" class="flex items-center justify-between mb-4">
+                    <div v-if="settingsTab === 'usage' && dashView.usage === 'details'" class="flex items-center justify-between mb-4">
                         <div class="flex gap-2">
                             <button v-for="p in [['today','Today'],['last_7_days','7 days'],['this_month','This month'],['all_time','All time']]" :key="p[0]" @click="usagePeriod = p[0]" :class="['text-[13px] px-3 py-1 rounded-lg border', usagePeriod === p[0] ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:text-gray-200']">{{ p[1] }}</button>
                         </div>
                         <button @click="fetchUsage" class="text-[13px] text-gray-400 hover:text-gray-200">Refresh</button>
                     </div>
                     <div v-if="usageData && usageData[usagePeriod]" class="space-y-6">
-                        <div v-if="settingsTab === 'usage'" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div v-if="settingsTab === 'usage' && dashView.usage === 'details'" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">Cost</div><div class="text-lg font-mono text-gray-100">{{ fmtCost(usageData[usagePeriod].total.cost) }}<span v-if="usageData[usagePeriod].total.calls_without_cost" class="text-[13px] text-yellow-400" :title="usageData[usagePeriod].total.calls_without_cost + ' calls without a known price'">+</span></div></div>
                             <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">Calls</div><div class="text-lg font-mono text-gray-100">{{ usageData[usagePeriod].total.calls }}</div></div>
                             <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">Input / cached</div><div class="text-lg font-mono text-gray-100">{{ fmtTokens(usageData[usagePeriod].total.prompt_tokens) }} <span class="text-[15px] text-gray-400">/ {{ fmtTokens(usageData[usagePeriod].total.cached_tokens) }}</span></div></div>
                             <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">Output</div><div class="text-lg font-mono text-gray-100">{{ fmtTokens(usageData[usagePeriod].total.completion_tokens) }}</div></div>
                         </div>
-                        <div v-for="group in [['by_project','By project'],['by_role','By role'],['by_model','By model'],['by_skill','By skill (using)'],['skill_drafts','Skill drafting (Save as skill)'],['memory_updates','Memory updates (automatic, per project)']]" v-show="settingsTab === 'usage'" :key="group[0]">
+                        <div v-for="group in [['by_project','By project'],['by_role','By role'],['by_model','By model'],['by_skill','By skill (using)'],['skill_drafts','Skill drafting (Save as skill)'],['memory_updates','Memory updates (automatic, per project)']]" v-show="settingsTab === 'usage' && dashView.usage === 'details'" :key="group[0]">
                             <h3 class="font-bold text-gray-200 mb-2 text-[15px]">{{ group[1] }}</h3>
                             <div class="overflow-x-auto">
                                 <table class="w-full text-[13px] font-mono">
@@ -2249,13 +2261,13 @@
                                 </table>
                             </div>
                         </div>
-                        <div v-if="settingsTab === 'usage'" class="text-xs text-gray-500 flex items-center">About these numbers<help-tip wide>
+                        <div v-if="settingsTab === 'usage' && dashView.usage === 'details'" class="text-xs text-gray-500 flex items-center">About these numbers<help-tip wide>
                             <p>"+" means some calls had no known price, so the real cost is higher. Set prices in Models.</p>
                             <p><b>Cached</b> input is billed at a fraction of the normal price. <b>Thinking</b> is the part of the output spent on reasoning.</p>
                             <p><b>Skill drafting</b> and <b>Memory updates</b> are the extra calls made by "Save as skill" and by automatic memory updates.</p>
                         </help-tip></div>
                         <!-- IM-09: task records, one per request -->
-                        <div v-if="settingsTab === 'usage' && taskStats" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                        <div v-if="settingsTab === 'usage' && dashView.usage === 'details' && taskStats" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                             <h3 class="text-[15px] font-bold text-gray-200 mb-1 flex items-center">Task records<help-tip wide>
                                 <p>One row per request: the tier and model, what the Conductor decided, whether it escalated and why, how it ended, steps, calls, cost, time, files and lines changed, commands approved and rejected, and your 👍 / 👎.</p>
                                 <p>No message text: the chat keeps that, and the <b>session</b> column links the two. Nothing is sent anywhere; the records are for routing that learns from outcomes later.</p>
