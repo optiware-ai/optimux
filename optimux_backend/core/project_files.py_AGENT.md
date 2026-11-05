@@ -25,6 +25,9 @@ The Studio (v0.8, ported from OmniLatch's Files panel): list, read and save the 
 - `make_folder`, `rename_path` (moves too; missing folders made; a folder never into itself; files that mention the old path aren't changed).
 - `delete_info` (files, folders, size, `truncated` past `COUNT_LIMIT`, how many git tracks, `trash`: home|workspace|null) and `delete_path`: `trash.where` then `trash.move_to_trash`; with no trash on the same filesystem it's a 409 and nothing changes (never a permanent delete).
 
+## Search (v0.8)
+- `search(root, query)` (OmniLatch p81): files and folders whose lowercase path contains every word (at most 10); `_project_paths` lists `git ls-files --cached --others --exclude-standard` (or, without git, `os.walk` skipping dot folders), up to `SEARCH_MAX_FILES`; parts starting with a dot are skipped. Ranked: the name is the query, the name starts with the first word, the name has every word, the path does; folders first; shorter paths first. At most `SEARCH_RESULTS` (200) with `total` and `truncated`.
+
 ## Links
 - `files.py` (`resolve_target`, `prepare_user_save`, `apply`, `_digest`, `MAX_BYTES`), `security.py` (`mask_secrets`, `resolve_project_dir`), `changes.py` (`SECRET_NAME`), `config_manager.get_settings`.
 - `trash.py` (Delete).

@@ -114,3 +114,36 @@ def test_the_file_operations_api(mocker, tmp_path, ws, home):
     assert client.post("/api/files/delete", headers=H, json={"path": "img", "project": "site"}).json()["trash"] == "home"
     assert not (p / "img").exists() and (home / "files" / "img" / "readme.md").exists()
     assert client.post("/api/files/rename", headers=H, json={"path": "index.html", "to": "../x.html"}).status_code == 403
+
+
+# ---- search by name and the dev-server preview (v0.8)
+
+def test_search_finds_names_first_and_skips_ignored_and_hidden(ws):
+    p, _ = ws
+    for f in ("src/app/Button.vue", "src/app/button-test.js", "docs/buttons.md", "node_modules/button/index.js",
+              ".github/button.yml", "about.html"):
+        (p / f).parent.mkdir(parents=True, exist_ok=True)
+        (p / f).write_text("x")
+    r = pf.search(str(p), "button")                     # no git: hidden folders skipped
+    paths = [x["path"] for x in r["results"]]
+    assert ".github/button.yml" not in paths and "node_modules/button" in paths   # without git, nothing is "ignored"
+    subprocess.run(["git", "init", "-q"], cwd=p, check=True)
+    (p / ".gitignore").write_text("node_modules/\n")
+    r = pf.search(str(p), "BUTTON")
+    paths = [x["path"] for x in r["results"]]
+    assert not any(x.startswith("node_modules") for x in paths) and ".github/button.yml" not in paths
+    assert set(paths[:3]) == {"src/app/Button.vue", "src/app/button-test.js", "docs/buttons.md"}   # names that start with it
+    assert r["total"] == len(paths)
+    assert [x["path"] for x in pf.search(str(p), "app vue")["results"]] == ["src/app/Button.vue"]   # every word, in the path
+    assert pf.search(str(p), "src")["results"][0] == {"path": "src", "name": "src", "type": "dir"}  # folders first
+    assert pf.search(str(p), "   ")["results"] == []
+
+
+def test_the_search_api_and_the_dev_server_frames(mocker, tmp_path, ws):
+    p, _ = ws
+    client = make_client(mocker, tmp_path)
+    r = client.get("/api/files/search", params={"q": "a.css"}, headers=H).json()
+    assert r["project"] == "site" and r["results"][0]["path"] == "css/a.css"
+    mocker.patch("optimux_backend.core.auth.check_session", return_value="login-1")
+    csp = client.get("/").headers["content-security-policy"]
+    assert "frame-src 'self' http://localhost:* http://127.0.0.1:*;" in csp and "frame-ancestors 'none'" in csp

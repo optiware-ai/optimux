@@ -3754,6 +3754,10 @@ createApp({
             showTree: true,    // v0.8: the file tree can be hidden (Files in the top bar)
             edit: null,        // v0.8: an inline name box in the tree: {mode: new-file|new-folder|rename, parent, path, kind, value, busy, error}
             menuPath: null,    // v0.8: the tree row a right-click menu is for
+            find: '', found: null, finding: false,   // v0.8: search by name in the file list
+            dev: false,        // v0.8: the preview shows a running dev server (devUrl) instead of the files
+            devUrl: '',        // e.g. localhost:5173 or localhost:5173/admin; kept per project in this browser
+            devFor: null,      // the project whose dev-server setting is loaded
             picking: '',       // v0.8: the preview's picker: '' | element | area | chosen
         });
         let editor = null;           // the CodeMirror handle (window.OptimuxEditor.create)
@@ -3791,6 +3795,7 @@ createApp({
             const d = await studioFetch(`/api/files/tree?path=${encodeURIComponent(path)}`);
             studio.dirs[path] = d;
             studio.project = d.project;
+            if (studio.devFor !== d.project) { studio.devFor = d.project; loadDevFor(d.project); }
         };
         const loadStudioStatus = async () => {
             try { const d = await studioFetch('/api/files/status'); studio.status = d.files || {}; studio.branch = d.branch || ''; }
@@ -3820,6 +3825,8 @@ createApp({
             ensureEditor();
         };
         const resetStudio = () => {
+            studio.devFor = null;          // the dev-server setting is loaded with the project's files
+            studio.find = ''; studio.found = null;
             studio.dirs = {}; studio.opened = { '': true }; studio.file = null; studio.dirty = false; studio.conflict = false;
             studio.live = ''; studio.preview = { base: '', index: null, path: '', stamp: 0 }; studio.status = {};
             if (editor) { editor.show('(none)', '', ''); editor.forget([]); }
@@ -3902,7 +3909,36 @@ createApp({
             studio.saving = false;
         };
         const reloadStudioFile = () => { if (studio.file) { studio.dirty = false; openStudioFile(studio.file.path); } };
+        // v0.8: a running dev server, opened directly at http://localhost:<port> (on a server
+        // through an SSH tunnel). Only localhost or 127.0.0.1, http, a port 1-65535.
+        const devTarget = (text) => {
+            const m = String(text || '').trim().match(/^(?:https?:\/\/)?(?:(localhost|127\.0\.0\.1):)?(\d{1,5})(\/[^\s]*)?$/i);
+            if (!m) return null;
+            const port = Number(m[2]);
+            if (port < 1 || port > 65535) return null;
+            return { host: (m[1] || 'localhost').toLowerCase(), port, path: m[3] || '/' };
+        };
+        const devSrc = Vue.computed(() => {
+            const t = devTarget(studio.devUrl);
+            return t ? `http://${t.host}:${t.port}${t.path}` : '';
+        });
+        const DEV_KEY = 'optimux.devPreview';
+        const devSaved = () => { try { return JSON.parse(localStorage.getItem(DEV_KEY) || '{}') || {}; } catch (_) { return {}; } };
+        const loadDevFor = (project) => { const d = devSaved()[project] || {}; studio.dev = !!d.on; studio.devUrl = d.url || ''; };
+        const saveDev = () => {
+            const all = devSaved();
+            if (!studio.project) return;
+            all[studio.project] = { on: studio.dev, url: studio.devUrl };
+            try { localStorage.setItem(DEV_KEY, JSON.stringify(all)); } catch (_) { /* ignore */ }
+        };
+        const setPreviewDev = (on) => { studio.dev = on; studio.picking = ''; saveDev(); studio.preview.stamp++; };
+        const devHelp = Vue.computed(() => {
+            const t = devTarget(studio.devUrl) || { port: 5173 };
+            const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+            return { local, port: t.port, ssh: `ssh -L ${t.port}:localhost:${t.port} you@${location.hostname}` };
+        });
         const previewSrc = Vue.computed(() => {
+            if (studio.dev) return devSrc.value;
             const p = studio.preview;
             if (!p.base || !p.path || previewKind(p.path) !== 'page') return '';
             return p.base + p.path.split('/').map(encodeURIComponent).join('/') + `?v=${p.stamp}`;
@@ -3914,6 +3950,40 @@ createApp({
             return renderMarkdown(text || '');
         });
         const studioOpenInTab = () => { if (previewSrc.value) window.open(previewSrc.value, '_blank', 'noopener'); };
+        // ---- v0.8: search the file list by name
+        let findTimer = null, findSeq = 0;
+        watch(() => studio.find, (q) => {
+            clearTimeout(findTimer);
+            if (!q.trim()) { studio.found = null; studio.finding = false; return; }
+            studio.finding = true;
+            findTimer = setTimeout(async () => {
+                const seq = ++findSeq;
+                try {
+                    const r = await studioFetch(`/api/files/search?q=${encodeURIComponent(q)}`);
+                    if (seq === findSeq && studio.find === q) studio.found = r;
+                } catch (e) { if (seq === findSeq) studio.found = { results: [], total: 0, error: e.message }; }
+                finally { if (seq === findSeq) studio.finding = false; }
+            }, 200);
+        });
+        const revealStudioPath = async (path) => {
+            const parts = path.split('/');
+            for (let i = 1; i <= parts.length; i++) {
+                const dir = parts.slice(0, i).join('/');
+                studio.opened[dir] = true;
+                if (!studio.dirs[dir]) { try { await loadStudioDir(dir); } catch (_) { break; } }
+            }
+        };
+        const openFound = async (r) => {
+            if (!r) return;
+            if (r.type === 'dir') { studio.find = ''; await revealStudioPath(r.path); return; }
+            const parent = r.path.includes('/') ? r.path.slice(0, r.path.lastIndexOf('/')) : '';
+            if (parent) revealStudioPath(parent);
+            openStudioFile(r.path);
+        };
+        const findKey = (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); studio.find = ''; }
+            else if (e.key === 'Enter') { e.preventDefault(); if (studio.found && studio.found.results.length) openFound(studio.found.results[0]); }
+        };
 
         // ---- v0.8: resizable panes. Widths are kept in this browser -------------------------------
         const LAYOUT_KEY = 'optimux.studioLayout';
@@ -5310,6 +5380,7 @@ createApp({
             gitTerm, openGitTerm, closeGitTerm, gitTermLines, copyGitTerm,
             studioLayout, studioPanes, startResize, resizeKey, resetResize, toggleStudioTree, expandAllStudio, collapseAllStudio,
             studioNameBox, startStudioEdit, cancelStudioEdit, commitStudioEdit, studioNameKey, onTreeMenu, treeKey,
+            devSrc, devHelp, setPreviewDev, saveDev, openFound, findKey,
             chatContext, removeChatContext, ctxMenu, ctxMenuEl, closeCtxMenu, runCtxItem, ctxMenuKey, onEditorMenu, previewFrame, pickCmd, onPreviewLoad, toggleStudioChat,
             projectPage, openProjectPage, loadProjectPage, setProjectSetting, ownValue, globalValue, boolOf, onOff, numberOf, saveProjectBudget, saveProjectMemory,
             curateProjectNow, projectRow, projectSkills,

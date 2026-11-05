@@ -349,6 +349,68 @@ def rename_path(root: str, rel: str, to: str) -> dict:
     return {"path": rel, "to": new_rel, "kind": kind}
 
 
+# ---------------------------------------------------------------- search by name (v0.8, OmniLatch p81)
+
+SEARCH_MAX_FILES = 50_000      # files looked at per search
+SEARCH_RESULTS = 200           # results returned
+
+
+def _project_paths(root: str) -> tuple[list[str], bool]:
+    """Every file of the project that git doesn't ignore (tracked and new), or for a
+    project without git every file outside hidden folders. (paths, truncated)."""
+    files: list[str] = []
+    if is_repo(root):
+        r = _git(["-c", "core.quotePath=false", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], root)
+        if r and r.returncode == 0:
+            seen = set()
+            for p in r.stdout.decode("utf-8", errors="replace").split("\0"):
+                if p and p not in seen and os.path.lexists(os.path.join(root, p)):
+                    seen.add(p)
+                    files.append(p)
+                    if len(files) >= SEARCH_MAX_FILES:
+                        return files, True
+            return files, False
+    for here, dirs, names in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in HIDDEN and not d.startswith("."))
+        rel = os.path.relpath(here, root)
+        for n in sorted(names):
+            files.append(n if rel == "." else os.path.join(rel, n).replace(os.sep, "/"))
+            if len(files) >= SEARCH_MAX_FILES:
+                return files, True
+    return files, False
+
+
+def search(root: str, query: str) -> dict:
+    """Files and folders whose path contains every word of `query` (any case). Not
+    searched: what git ignores (node_modules, builds), .git, and hidden names (a part
+    starting with a dot). Best first: the name is the query, the name starts with its
+    first word, the name has every word, then the path does; folders before files;
+    shorter paths first. {query, results: [{path, name, type}], total, truncated}."""
+    terms = [t for t in str(query or "").lower().split() if t][:10]
+    if not terms:
+        return {"query": query, "results": [], "total": 0, "truncated": False}
+    files, truncated = _project_paths(root)
+    folders: set[str] = set()
+    for f in files:
+        parts = f.split("/")
+        for i in range(1, len(parts)):
+            folders.add("/".join(parts[:i]))
+    whole = " ".join(terms)
+    found = []
+    for path, kind in [(d, "dir") for d in folders] + [(f, "file") for f in files]:
+        if any(part.startswith(".") for part in path.split("/")):
+            continue
+        low = path.lower()
+        if not all(t in low for t in terms):
+            continue
+        name = low.rsplit("/", 1)[-1]
+        rank = 0 if name == whole else 1 if name.startswith(terms[0]) else 2 if all(t in name for t in terms) else 3
+        found.append((rank, kind != "dir", len(path), low, path, kind))
+    found.sort()
+    results = [{"path": p, "name": p.rsplit("/", 1)[-1], "type": k} for *_, p, k in found[:SEARCH_RESULTS]]
+    return {"query": query, "results": results, "total": len(found), "truncated": truncated}
+
+
 COUNT_LIMIT = 20_000      # entries counted for the delete question
 
 

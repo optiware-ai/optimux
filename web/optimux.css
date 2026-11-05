@@ -266,3 +266,13 @@ body.cm-resizing iframe { pointer-events: none; }
 .cm-menu-danger:not(:disabled) { color: #fca5a5; }
 .cm-menu-danger:not(:disabled) .cm-menu-icon { color: #f87171; }
 .cm-menu-item.cm-menu-danger:hover:not(:disabled), .cm-menu-item.cm-menu-danger:focus { background: rgba(220, 38, 38, .3); }
+/* v0.8: the file search box and the dev server's address */
+.cm-find { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 8px; background: #030712; border: 1px solid #1f2937; }
+.cm-find:focus-within { border-color: #3b82f6; }
+.cm-find input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: #e5e7eb; font-size: 13px; }
+.cm-seg-sm { font-size: 12px; padding: 1px; border-radius: 8px; }
+.cm-seg-sm button { padding: 1px 8px; border-radius: 6px; }
+.cm-dev-url { display: inline-flex; align-items: center; gap: 1px; padding: 1px 6px; border-radius: 6px; background: #030712; border: 1px solid #1f2937; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 0; }
+.cm-dev-url:focus-within { border-color: #3b82f6; }
+.cm-dev-url input { width: 8rem; min-width: 3rem; background: transparent; border: 0; outline: none; color: #e5e7eb; font: inherit; }
+.cm-dev-bad { border-color: #b91c1c; }

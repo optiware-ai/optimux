@@ -186,6 +186,12 @@ def same_origin(request: Request) -> bool:
     return bool(origin) and origin != "null" and origin_allowed(origin, request.headers.get("host"))
 
 
+# v0.8: the Studio's preview of a running dev server (npm run dev, Vite, Flask...) opens it
+# directly at http://localhost:<port>: on this computer as is, on a server through an SSH
+# tunnel. Browsers treat localhost as secure, so an https page may frame it.
+DEV_FRAME_SRC = "http://localhost:* http://127.0.0.1:*"
+
+
 def page_csp(request, style_nonce: str = "") -> str:
     """The Content-Security-Policy of Optimux's own pages. 'unsafe-eval' is needed by
     Vue's in-page template compiler; no inline or remote scripts are allowed, so injected
@@ -196,7 +202,7 @@ def page_csp(request, style_nonce: str = "") -> str:
     nonce = f" 'nonce-{style_nonce}'" if style_nonce else ""
     return ("default-src 'self'; script-src 'self' 'unsafe-eval'; " f"style-src 'self'{nonce}; img-src 'self' data:; "
             f"font-src 'self'; connect-src 'self'{ws}; object-src 'none'; base-uri 'none'; "
-            "form-action 'self'; frame-src 'self'; frame-ancestors 'none'")
+            "form-action 'self'; frame-src 'self' " + DEV_FRAME_SRC + "; frame-ancestors 'none'")
 
 
 def security_headers(request, response) -> None:
@@ -316,6 +322,13 @@ async def files_expand():
     """Every folder of the active project for "Expand all" (not ignored, hidden or linked ones)."""
     name, root = _studio_root()
     return {"project": name, **await asyncio.to_thread(files_studio.expand_all, root)}
+
+
+@app.get("/api/files/search")
+async def files_search(q: str = ""):
+    """Files and folders of the active project whose path has every word of q."""
+    name, root = _studio_root()
+    return {"project": name, **await asyncio.to_thread(files_studio.search, root, q[:200])}
 
 
 class FilesPathPayload(BaseModel):

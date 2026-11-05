@@ -144,7 +144,27 @@
                         <button @click="collapseAllStudio" class="cm-icon-btn" title="Collapse all" aria-label="Collapse all">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16l5-5 5 5M7 11l5-5 5 5"></path></svg></button>
                     </div>
-                    <div class="flex-1 min-h-0 overflow-auto py-2 text-[13px]" @contextmenu="onTreeMenu($event, null)">
+                    <div class="px-2 pt-2 flex-shrink-0">
+                        <div class="cm-find">
+                            <svg class="w-3.5 h-3.5 flex-shrink-0 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 110-15 7.5 7.5 0 010 15z"></path></svg>
+                            <input v-model="studio.find" @keydown="findKey" type="search" placeholder="Find a file…" aria-label="Find a file or folder by name" spellcheck="false" autocomplete="off">
+                        </div>
+                    </div>
+                    <!-- v0.8: search results replace the tree while there is a query -->
+                    <div v-if="studio.find.trim()" class="flex-1 min-h-0 overflow-auto py-2 text-[13px]" role="list" aria-label="Files found">
+                        <div v-if="studio.finding && !studio.found" class="px-3 text-gray-500 italic">Searching…</div>
+                        <template v-else-if="studio.found">
+                            <div v-if="studio.found.error" class="px-3 text-red-400">{{ studio.found.error }}</div>
+                            <div v-else-if="!studio.found.results.length" class="px-3 text-gray-500 italic">Nothing found.</div>
+                            <button v-for="r in studio.found.results" :key="r.path" type="button" role="listitem" @click="openFound(r)" @contextmenu.stop="onTreeMenu($event, r)"
+                                    :class="['w-full text-left px-3 py-1 hover:bg-gray-800/60 block', studio.file && studio.file.path === r.path ? 'bg-blue-950/60' : '']" :title="r.path">
+                                <span class="block truncate text-gray-200">{{ r.name }}{{ r.type === 'dir' ? '/' : '' }}</span>
+                                <span v-if="r.path !== r.name" class="block truncate text-[11px] text-gray-500 font-mono">{{ r.path.slice(0, -r.name.length - 1) }}</span>
+                            </button>
+                            <div v-if="studio.found.total > studio.found.results.length" class="px-3 pt-1 text-[11px] text-gray-500">{{ studio.found.total - studio.found.results.length }} more: type more of the name.</div>
+                        </template>
+                    </div>
+                    <div v-show="!studio.find.trim()" class="flex-1 min-h-0 overflow-auto py-2 text-[13px]" @contextmenu="onTreeMenu($event, null)">
                         <div v-if="!studioRows.length" class="px-3 text-gray-500 italic">{{ studio.dirs[''] ? 'No files yet.' : 'Loading…' }}</div>
                         <template v-for="r in studioRows" :key="r.e.path">
                             <div v-if="r.e.type === 'more'" class="px-3 py-0.5 text-gray-600 italic" :style="{ paddingLeft: (12 + r.depth * 14) + 'px' }">{{ r.e.name }}</div>
@@ -199,12 +219,27 @@
                     <!-- The preview -->
                     <section v-show="studio.showPreview" class="flex-1 min-w-0 flex flex-col" aria-label="Preview">
                         <div class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-[13px] flex-shrink-0 min-h-[38px]">
-                            <span class="text-gray-500 flex-shrink-0">Preview</span>
-                            <span class="font-mono text-gray-300 truncate" :title="studio.preview.path">{{ studio.preview.path || '—' }}</span>
+                            <div class="cm-seg cm-seg-sm flex-shrink-0" role="group" aria-label="What the preview shows">
+                                <button @click="setPreviewDev(false)" :aria-pressed="!studio.dev" :class="!studio.dev ? 'cm-seg-on' : ''" title="The project's files, as they are (static pages, Markdown, images)">Files</button>
+                                <button @click="setPreviewDev(true)" :aria-pressed="studio.dev" :class="studio.dev ? 'cm-seg-on' : ''" title="A running dev server (npm run dev, Vite, Flask…), at http://localhost:port">Dev server</button>
+                            </div>
+                            <template v-if="studio.dev">
+                                <label class="cm-dev-url" :class="studio.devUrl && !devSrc ? 'cm-dev-bad' : ''" title="The dev server's port, with a path if you like: 5173, 3000/admin, 127.0.0.1:8000">
+                                    <span class="text-gray-500">localhost:</span>
+                                    <input v-model="studio.devUrl" @change="saveDev(); studio.preview.stamp++" @keydown.enter="saveDev(); studio.preview.stamp++" placeholder="5173" aria-label="Dev server port (and path)" spellcheck="false" autocomplete="off">
+                                </label>
+                                <help-tip wide>
+                                    <p>Start the dev server first (in a terminal, or ask the model: <b>npm run dev</b>), then type its port. The preview opens <b>http://localhost:port</b> directly, so hot reload works as usual.</p>
+                                    <p v-if="devHelp.local">Optimux runs on this computer, so that's all.</p>
+                                    <p v-else>Optimux runs on a server, so <b>localhost</b> is your own computer: forward the port first, in a terminal on this computer: <span class="font-mono">{{ devHelp.ssh }}</span></p>
+                                    <p>A dev server page runs with its own address (not Optimux's), so the right-click menu and Send to chat work only for <b>Files</b>.</p>
+                                </help-tip>
+                            </template>
+                            <span v-else class="font-mono text-gray-300 truncate" :title="studio.preview.path">{{ studio.preview.path || '—' }}</span>
                             <span class="flex-1"></span>
-                            <label class="flex items-center gap-1.5 text-gray-400 flex-shrink-0 cursor-pointer" title="Show each page, Markdown file or image you open"><input type="checkbox" v-model="studio.follow" class="accent-blue-600"> Follow</label>
-                            <button v-if="studio.preview.index && studio.preview.path !== studio.preview.index" @click="studio.preview.path = studio.preview.index; studio.preview.stamp++" class="text-gray-400 hover:text-gray-200 flex-shrink-0" :title="'Back to ' + studio.preview.index">⌂</button>
-                            <template v-if="previewSrc">
+                            <label v-if="!studio.dev" class="flex items-center gap-1.5 text-gray-400 flex-shrink-0 cursor-pointer" title="Show each page, Markdown file or image you open"><input type="checkbox" v-model="studio.follow" class="accent-blue-600"> Follow</label>
+                            <button v-if="!studio.dev && studio.preview.index && studio.preview.path !== studio.preview.index" @click="studio.preview.path = studio.preview.index; studio.preview.stamp++" class="text-gray-400 hover:text-gray-200 flex-shrink-0" :title="'Back to ' + studio.preview.index">⌂</button>
+                            <template v-if="previewSrc && !studio.dev">
                                 <span v-if="studio.picking === 'element' || studio.picking === 'area'" class="text-blue-300 flex-shrink-0">{{ studio.picking === 'area' ? 'Drag over the page…' : 'Click an element…' }}
                                     <button @click="pickCmd('cancel')" class="ml-1 text-gray-400 hover:text-gray-200 underline" title="Stop selecting (Esc)">cancel</button></span>
                                 <button @click="pickCmd('element')" :class="['flex-shrink-0 px-1', studio.picking === 'element' ? 'text-blue-300' : 'text-gray-400 hover:text-gray-200']" title="Select an element of the page (a title, text or image) and send it to the chat. Or right-click the page" aria-label="Select an element">⌖</button>
@@ -214,7 +249,8 @@
                             <button @click="studioOpenInTab" :disabled="!previewSrc" class="text-gray-400 hover:text-gray-200 disabled:opacity-30 flex-shrink-0" title="Open the preview in a new tab">↗</button>
                         </div>
                         <div class="flex-1 min-h-0 relative">
-                            <iframe v-if="previewSrc" ref="previewFrame" @load="onPreviewLoad" :key="previewSrc" :src="previewSrc" sandbox="allow-scripts allow-forms allow-popups allow-modals" referrerpolicy="no-referrer" title="Preview" class="absolute inset-0 w-full h-full bg-white border-0"></iframe>
+                            <iframe v-if="previewSrc" ref="previewFrame" @load="onPreviewLoad" :key="previewSrc + '#' + studio.preview.stamp" :src="previewSrc" :sandbox="studio.dev ? 'allow-scripts allow-forms allow-popups allow-modals allow-same-origin' : 'allow-scripts allow-forms allow-popups allow-modals'" referrerpolicy="no-referrer" title="Preview" class="absolute inset-0 w-full h-full bg-white border-0"></iframe>
+                            <div v-else-if="studio.dev" class="p-4 text-gray-500 text-[13px]">Type the dev server's port above (for example <span class="font-mono">5173</span>), then press Enter.</div>
                             <div v-else-if="previewKind(studio.preview.path) === 'markdown'" class="absolute inset-0 overflow-auto p-6 prose prose-invert prose-blue max-w-none" v-html="previewMarkdown"></div>
                             <div v-else class="p-4 text-gray-500 text-[13px]">Nothing to preview yet: open an HTML page, a Markdown file or an image. The project has no <span class="font-mono">index.html</span> at its top (or in dist/, build/ or public/).</div>
                         </div>
