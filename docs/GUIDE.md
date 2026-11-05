@@ -475,7 +475,9 @@ The preview also gets the Studio's slim scrollbars, unless the page styles its o
 
 For a project with a dev server (`npm run dev`, Vite, Next.js, Flask, Django…), switch the preview from **Files** to **Dev server** and type its port (`5173`, or with a path: `3000/admin`; `127.0.0.1:8000` works too). The preview opens **http://localhost:port** directly, so hot reload, absolute paths and everything else work as in your browser. The choice is kept per project in this browser.
 
-- Start the server first: in a terminal, or ask the model (it runs inside the sandbox, which keeps the network if *Network for commands* is on).
+- Start the server yourself, in a terminal on the machine Optimux runs on, in the project's folder (on a server: over SSH, inside `tmux` or `screen` so it keeps running when you log out). Not through the model: its commands run in a sandbox that stops everything they started when the command ends.
+- Everything runs where Optimux runs: the dev server, its backend, its database and the project's files are on that machine (your server, if Optimux is on one), and the model's and the Studio's edits show at once (hot reload). Your browser only shows the pages.
+- If the page calls a second port from the browser (a separate API on `8000`, say), forward that port too (`-L 8000:localhost:8000`), or let the dev server pass API calls on (Vite's `server.proxy`). A database the backend uses needs no tunnel: the backend reaches it on the server.
 - **Optimux on a server**: `localhost` is then your own computer, so forward the port first, in a terminal on your computer: `ssh -L 5173:localhost:5173 you@your-server` (the **?** next to the port shows the command for yours). Optimux doesn't proxy dev servers: nothing new is exposed on the server.
 - A dev server page runs at its own address (`http://localhost:5173`), not Optimux's, so it keeps its own storage and cookies, and the right-click menu and **Send to chat** work only for **Files**.
 

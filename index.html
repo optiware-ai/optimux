@@ -229,7 +229,7 @@
                                     <input v-model="studio.devUrl" @change="saveDev(); studio.preview.stamp++" @keydown.enter="saveDev(); studio.preview.stamp++" placeholder="5173" aria-label="Dev server port (and path)" spellcheck="false" autocomplete="off">
                                 </label>
                                 <help-tip wide>
-                                    <p>Start the dev server first (in a terminal, or ask the model: <b>npm run dev</b>), then type its port. The preview opens <b>http://localhost:port</b> directly, so hot reload works as usual.</p>
+                                    <p>Start the dev server yourself first, in a terminal on the machine Optimux runs on (on a server: over SSH, inside <b>tmux</b> or <b>screen</b> so it keeps running), in the project's folder: <b>npm run dev</b>. Then type its port. The preview opens <b>http://localhost:port</b> directly, so hot reload works as usual.</p><p>Not through the model: its commands run in a sandbox that stops everything they started when they end.</p>
                                     <p v-if="devHelp.local">Optimux runs on this computer, so that's all.</p>
                                     <p v-else>Optimux runs on a server, so <b>localhost</b> is your own computer: forward the port first, in a terminal on this computer: <span class="font-mono">{{ devHelp.ssh }}</span></p>
                                     <p>A dev server page runs with its own address (not Optimux's), so the right-click menu and Send to chat work only for <b>Files</b>.</p>
