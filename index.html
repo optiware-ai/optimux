@@ -1149,12 +1149,12 @@
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-wrap items-start gap-4">
                         <div>
                             <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">Project</label>
-                            <chart-pick :model-value="historyPage.project" @update:model-value="setHistoryProject" :options="historyProjects" label="History: project"></chart-pick>
+                            <chart-pick class="cm-pick-tall" :model-value="historyPage.project" @update:model-value="setHistoryProject" :options="historyProjects" label="History: project"></chart-pick>
                         </div>
                         <div>
                             <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">Updated</label>
                             <div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="radiogroup" aria-label="Updated">
-                                <button v-for="o in [['all','Any time'],['1','Today'],['7','7 days'],['30','30 days']]" :key="o[0]" @click="historyPage.period = o[0]" role="radio" :aria-checked="historyPage.period === o[0]" :class="['text-[13px] px-2.5 py-1 rounded-md', historyPage.period === o[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                                <button v-for="o in [['1','Today'],['7','7 days'],['30','30 days'],['all','Any time']]" :key="o[0]" @click="historyPage.period = o[0]" role="radio" :aria-checked="historyPage.period === o[0]" :class="['text-[13px] px-2.5 py-1 rounded-md', historyPage.period === o[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
                             </div>
                         </div>
                         <div>
@@ -1165,7 +1165,7 @@
                         </div>
                         <div class="flex-1 min-w-[180px]">
                             <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">Search</label>
-                            <input v-model="historyPage.q" @input="fetchHistoryPage" type="text" placeholder="Words in the title" aria-label="Search titles" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-1 text-[13px] text-gray-200 outline-none focus:border-blue-500">
+                            <input v-model="historyPage.q" @input="fetchHistoryPage" type="text" placeholder="Words in the title" aria-label="Search titles" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-[13px] text-gray-200 outline-none focus:border-blue-500">
                         </div>
                         <button v-if="historyFiltered" @click="resetHistoryFilters" class="text-[13px] text-gray-400 hover:text-gray-200 self-end pb-2">Clear filters</button>
                     </div>

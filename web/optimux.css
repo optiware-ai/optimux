@@ -162,6 +162,8 @@
 .cm-pick:hover { border-color: #3b82f6; background: #0f1a2e; }
 .cm-pick:focus-visible { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, .35); }
 .cm-pick-open { border-color: #3b82f6; background: #0f1a2e; }
+/* A filter bar whose toggles are taller (Dashboard -> History): the same height, room for longer names */
+.cm-pick-tall .cm-pick { width: 13rem; padding-top: 6.65px; padding-bottom: 6.65px; }
 .cm-pick-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cm-pick-chev { width: 12px; height: 12px; flex-shrink: 0; color: #60a5fa; transition: transform .15s; }
 .cm-pick-open .cm-pick-chev { transform: rotate(180deg); }
