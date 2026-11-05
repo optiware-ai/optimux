@@ -99,9 +99,17 @@
                 </button>
             </div>
         </header>
+        <!-- v0.8: the chat as a column beside the Studio -->
+        <div v-if="studio.open && studio.chat" class="cm-dock-bar">
+            <span class="font-bold text-gray-100 text-[14px]">Chat</span>
+            <span class="text-xs font-mono text-gray-500 truncate">{{ studio.project || appSettings.active_project }}</span>
+            <span class="flex-1"></span>
+            <button @click="newChat" :disabled="isGenerating || pendingApproval" class="text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40" title="Start a new chat in this project">+ New chat</button>
+            <button @click="toggleStudioChat" class="text-gray-400 hover:text-gray-100 px-1" title="Hide the chat column" aria-label="Hide the chat">✕</button>
+        </div>
 
         <!-- v0.8: the Studio, full page over the chat: the project's files, a code editor and a preview -->
-        <div v-show="studio.open" class="fixed inset-0 z-40 bg-gray-950 flex flex-col text-gray-200" role="region" aria-label="Studio">
+        <div v-show="studio.open" class="fixed inset-0 z-40 bg-gray-950 flex flex-col text-gray-200" :style="studio.chat ? { right: 'var(--cm-dock)' } : null" role="region" aria-label="Studio">
             <div class="flex items-center gap-3 px-4 py-2 border-b border-gray-800 flex-shrink-0">
                 <a href="#/" @click.prevent="closeStudio()" title="Close the Studio and go back to the chat" class="text-lg font-bold tracking-wide flex items-center gap-2 rounded hover:opacity-80"><img src="/static/logo.svg" alt="" class="w-6 h-6"><span><span class="text-gray-100">Opti</span><span class="text-blue-400">mux</span></span></a>
                 <span class="text-xs text-gray-500 font-mono">Studio</span>
@@ -114,6 +122,10 @@
                     <button @click="studio.showPreview = !studio.showPreview || !studio.showEditor" :aria-pressed="studio.showPreview" :class="['px-3 py-1', studio.showPreview ? 'bg-gray-800 text-gray-100' : 'bg-gray-950 text-gray-500 hover:text-gray-300']">Preview</button>
                 </div>
                 <button @click="refreshStudio" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500" title="Read the files again (after a model changed them)">↻ Refresh</button>
+                <button @click="toggleStudioChat" :aria-pressed="studio.chat" :class="['text-[13px] px-3 py-1 rounded-lg border flex items-center gap-1.5', studio.chat ? 'border-blue-600 bg-blue-950/50 text-blue-200' : 'border-gray-700 text-gray-200 hover:border-gray-500']" :title="studio.chat ? 'Hide the chat column' : 'Show the chat beside the Studio. Right-click code or the preview to send a part of it'">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h8M8 14h5m-9 6l2.5-3H18a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v14z"></path></svg>
+                    Chat<span v-if="chatContext.length" class="cm-ctx-count">{{ chatContext.length }}</span>
+                </button>
                 <button @click="closeStudio()" class="text-[13px] px-3 py-1 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500">← Back to chat</button>
             </div>
             <div class="flex-1 flex min-h-0">
@@ -147,7 +159,7 @@
                         <span v-else class="text-gray-500">Open a file from the list.</span>
                     </div>
                     <div class="flex-1 min-h-0 relative">
-                        <div ref="editorHost" v-show="studio.file && studio.file.text !== undefined" class="absolute inset-0"></div>
+                        <div ref="editorHost" v-show="studio.file && studio.file.text !== undefined" @contextmenu="onEditorMenu" class="absolute inset-0"></div>
                         <div v-if="studio.editorError" class="p-4 text-red-400 text-[13px]">{{ studio.editorError }}</div>
                         <div v-else-if="studio.file && studio.file.binary" class="p-4 text-gray-500 text-[13px]">A binary file ({{ studio.file.size.toLocaleString() }} bytes): nothing to edit here. Images show in the preview.</div>
                         <div v-else-if="studio.file && studio.file.too_large" class="p-4 text-gray-500 text-[13px]">Too large to open here ({{ studio.file.size.toLocaleString() }} bytes; up to 1 MB).</div>
@@ -161,16 +173,33 @@
                         <span class="flex-1"></span>
                         <label class="flex items-center gap-1.5 text-gray-400 flex-shrink-0 cursor-pointer" title="Show each page, Markdown file or image you open"><input type="checkbox" v-model="studio.follow" class="accent-blue-600"> Follow</label>
                         <button v-if="studio.preview.index && studio.preview.path !== studio.preview.index" @click="studio.preview.path = studio.preview.index; studio.preview.stamp++" class="text-gray-400 hover:text-gray-200 flex-shrink-0" :title="'Back to ' + studio.preview.index">⌂</button>
+                        <template v-if="previewSrc">
+                            <span v-if="studio.picking === 'element' || studio.picking === 'area'" class="text-blue-300 flex-shrink-0">{{ studio.picking === 'area' ? 'Drag over the page…' : 'Click an element…' }}
+                                <button @click="pickCmd('cancel')" class="ml-1 text-gray-400 hover:text-gray-200 underline" title="Stop selecting (Esc)">cancel</button></span>
+                            <button @click="pickCmd('element')" :class="['flex-shrink-0 px-1', studio.picking === 'element' ? 'text-blue-300' : 'text-gray-400 hover:text-gray-200']" title="Select an element of the page (a title, text or image) and send it to the chat. Or right-click the page" aria-label="Select an element">⌖</button>
+                            <button @click="pickCmd('area')" :class="['flex-shrink-0 px-1', studio.picking === 'area' ? 'text-blue-300' : 'text-gray-400 hover:text-gray-200']" title="Select an area of the page and send what is in it to the chat" aria-label="Select an area">⬚</button>
+                        </template>
                         <button @click="studio.preview.stamp++" class="text-gray-400 hover:text-gray-200 flex-shrink-0" title="Reload the preview">↻</button>
                         <button @click="studioOpenInTab" :disabled="!previewSrc" class="text-gray-400 hover:text-gray-200 disabled:opacity-30 flex-shrink-0" title="Open the preview in a new tab">↗</button>
                     </div>
                     <div class="flex-1 min-h-0 relative">
-                        <iframe v-if="previewSrc" :key="previewSrc" :src="previewSrc" sandbox="allow-scripts allow-forms allow-popups allow-modals" referrerpolicy="no-referrer" title="Preview" class="absolute inset-0 w-full h-full bg-white border-0"></iframe>
+                        <iframe v-if="previewSrc" ref="previewFrame" @load="onPreviewLoad" :key="previewSrc" :src="previewSrc" sandbox="allow-scripts allow-forms allow-popups allow-modals" referrerpolicy="no-referrer" title="Preview" class="absolute inset-0 w-full h-full bg-white border-0"></iframe>
                         <div v-else-if="previewKind(studio.preview.path) === 'markdown'" class="absolute inset-0 overflow-auto p-6 prose prose-invert prose-blue max-w-none" v-html="previewMarkdown"></div>
                         <div v-else class="p-4 text-gray-500 text-[13px]">Nothing to preview yet: open an HTML page, a Markdown file or an image. The project has no <span class="font-mono">index.html</span> at its top (or in dist/, build/ or public/).</div>
                     </div>
                 </section>
             </div>
+        </div>
+
+        <!-- v0.8: the right-click menu of the Studio's editor and preview -->
+        <div v-if="ctxMenu.open" ref="ctxMenuEl" class="cm-menu" role="menu" :aria-label="ctxMenu.title" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }" @keydown="ctxMenuKey" @contextmenu.prevent>
+            <div class="cm-menu-title">{{ ctxMenu.title }}</div>
+            <template v-for="(it, i) in ctxMenu.items" :key="i">
+                <div v-if="it.sep" class="cm-menu-sep" role="separator"></div>
+                <button v-else type="button" role="menuitem" class="cm-menu-item" :disabled="it.disabled" @click="runCtxItem(it)">
+                    <span class="cm-menu-icon" aria-hidden="true">{{ it.icon }}</span><span class="cm-menu-label">{{ it.label }}</span><span v-if="it.hint" class="cm-menu-hint">{{ it.hint }}</span>
+                </button>
+            </template>
         </div>
 
         <!-- Dashboard: full page over the chat (the chat stays mounted underneath) -->
@@ -3144,7 +3173,15 @@
                     <button type="button" @click="leaveReadOnly" class="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs">Back to {{ appSettings.active_project || 'the Workspace' }}</button>
                 </div>
                 <div class="bg-gray-900 border border-gray-700 focus-within:border-blue-500 focus-within:shadow-md transition rounded-xl flex flex-col w-full shadow-inner">
-                    <textarea v-model="userInput" ref="chatInputRef" @keydown="handleEnter" class="w-full bg-transparent px-5 pt-5 pb-3 focus:outline-none font-mono text-sm disabled:opacity-50 resize-none overflow-y-auto max-h-60 leading-tight min-h-[52px]" :disabled="isGenerating || pendingApproval || !!readOnlyChat" rows="1"></textarea>
+                    <!-- v0.8: what was picked in the Studio, sent after the prompt -->
+                    <div v-if="chatContext.length" class="flex flex-wrap gap-1.5 px-3 pt-3" aria-label="Attached from the Studio">
+                        <span v-for="c in chatContext" :key="c.id" :class="['cm-ctx-chip', 'cm-ctx-' + c.kind]" :title="c.detail">
+                            <span aria-hidden="true">{{ c.kind === 'code' ? '&lt;/&gt;' : c.kind === 'file' ? '＠' : c.kind === 'area' ? '⬚' : '⌖' }}</span>
+                            <span class="truncate">{{ c.label }}</span>
+                            <button type="button" @click="removeChatContext(c.id)" class="cm-ctx-x" :aria-label="'Remove ' + c.label" title="Remove">✕</button>
+                        </span>
+                    </div>
+                    <textarea v-model="userInput" ref="chatInputRef" @keydown="handleEnter" :placeholder="chatContext.length ? 'What should happen with the selection?' : null" class="w-full bg-transparent px-5 pt-5 pb-3 focus:outline-none font-mono text-sm disabled:opacity-50 resize-none overflow-y-auto max-h-60 leading-tight min-h-[52px]" :disabled="isGenerating || pendingApproval || !!readOnlyChat" rows="1"></textarea>
                     
                     <div class="flex items-center justify-between px-3 pb-3">
                         <div class="relative flex items-center">

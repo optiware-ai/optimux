@@ -21,7 +21,7 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 ├── .github/ISSUE_TEMPLATE/      (bug report and feature request forms; config.yml links Q&A, Ideas and private security reporting)
 ├── index.html                   (Vue 3 SPA page and templates)
 ├── index.html_AGENT.md
-├── web/                         (app.js, boot.js, login page, styles, logo.svg, pinned libraries in vendor/)
+├── web/                         (app.js, boot.js, login page, styles, logo.svg, preview-pick.js (the Studio preview's picker, inlined into previewed pages), pinned libraries in vendor/)
 ├── deploy/                      (server kit: systemd unit, Caddyfile, env example, AppArmor profile)
 ├── install.sh                   (one-line installer, local or server; library of the optimux command)
 ├── install.sh_AGENT.md

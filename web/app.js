@@ -3617,7 +3617,7 @@ createApp({
         const openBudgets = () => openSettings('budgets');
 
         // ---- v0.8: the Studio. The active project's files (tree), a code editor and a sandboxed preview.
-        const EDITOR_SCRIPT = '/static/vendor/codemirror-6.43.15.min.js';   // built by scripts/build-editor.sh
+        const EDITOR_SCRIPT = '/static/vendor/codemirror-6.43.15-2.min.js';   // built by scripts/build-editor.sh
         const studio = Vue.reactive({
             open: false, project: '', dirs: {}, opened: { '': true }, status: {}, branch: '', msg: null,
             file: null,        // {path, text (as opened), digest, hidden, binary, too_large, size, lang}
@@ -3625,6 +3625,8 @@ createApp({
             showEditor: true, showPreview: true, follow: true,
             preview: { base: '', index: null, path: '', stamp: 0 },
             editorError: '',
+            chat: false,       // v0.8: the chat as a column beside the Studio
+            picking: '',       // v0.8: the preview's picker: '' | element | area | chosen
         });
         let editor = null;           // the CodeMirror handle (window.OptimuxEditor.create)
         let editorLoading = null;
@@ -3782,6 +3784,179 @@ createApp({
             return renderMarkdown(text || '');
         });
         const studioOpenInTab = () => { if (previewSrc.value) window.open(previewSrc.value, '_blank', 'noopener'); };
+
+        // ---- v0.8: send code or a part of the preview to the chat ------------------------------
+        // What the user picked waits as chips above the prompt box; sendMessage adds them after the
+        // prompt as plain text, so every model and the history get the same thing.
+        const MAX_CONTEXT = 10;
+        const chatContext = ref([]);          // [{id, kind: code|file|element|area, label, detail, text}]
+        let contextSeq = 0;
+        const fence = (text, lang = '') => {
+            const runs = String(text).match(/`{3,}/g) || [];
+            const ticks = '`'.repeat(Math.max(3, ...runs.map(r => r.length + 1)));
+            return `${ticks}${lang}\n${String(text).replace(/\n$/, '')}\n${ticks}`;
+        };
+        const FENCE_LANG = { js: 'js', mjs: 'js', cjs: 'js', jsx: 'jsx', ts: 'ts', tsx: 'tsx', html: 'html', htm: 'html', vue: 'vue',
+                             css: 'css', scss: 'scss', json: 'json', md: 'markdown', py: 'python', sh: 'bash', yml: 'yaml', yaml: 'yaml',
+                             sql: 'sql', xml: 'xml', svg: 'xml', go: 'go', rs: 'rust', toml: 'toml' };
+        const fenceLang = (path) => FENCE_LANG[(String(path).split('.').pop() || '').toLowerCase()] || '';
+        const clip = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n) + '…' : s; };
+        const styleLine = (st) => Object.entries(st || {}).map(([k, v]) => `${k}: ${v}`).join('; ');
+        const addChatContext = (item) => {
+            if (chatContext.value.length >= MAX_CONTEXT) {
+                pushToast({ kind: 'warn', title: 'Too many selections', text: `Up to ${MAX_CONTEXT} at a time: send them or remove some first.`, timeout: 5000 });
+                return;
+            }
+            chatContext.value.push({ id: ++contextSeq, ...item });
+            if (studio.open) studio.chat = true;
+            nextTick(() => { if (chatInputRef.value && !chatInputRef.value.disabled) chatInputRef.value.focus(); });
+        };
+        const removeChatContext = (id) => { chatContext.value = chatContext.value.filter(c => c.id !== id); };
+        const contextFromCode = (path, sel) => {
+            const lines = sel.fromLine === sel.toLine ? `line ${sel.fromLine}` : `lines ${sel.fromLine}-${sel.toLine}`;
+            return { kind: 'code', label: `${path.split('/').pop()} · ${sel.fromLine === sel.toLine ? 'L' + sel.fromLine : 'L' + sel.fromLine + '-' + sel.toLine}`,
+                     detail: `${path}, ${lines}\n${clip(sel.text, 160)}`,
+                     text: `Code from ${path}, ${lines}:\n${fence(sel.text, fenceLang(path))}` };
+        };
+        const contextFromPage = (d) => {
+            const page = String(d.page || 'index.html').slice(0, 300);
+            if (d.kind === 'area') {
+                const r = d.rect || {}, v = d.viewport || {};
+                const parts = [`Area of the page ${page} (in the Studio preview): ${r.w}×${r.h} px at x ${r.x}, y ${r.y} of the page (the preview window is ${v.w}×${v.h}).`];
+                const list = (d.elements || []).slice(0, 25);
+                if (list.length) {
+                    parts.push(`Elements inside it (${list.length}${d.more ? ` of ${list.length + d.more}` : ''}):`);
+                    list.forEach((e, i) => {
+                        parts.push(`${i + 1}. ${e.selector}${e.text ? ` · "${clip(e.text, 300)}"` : ''}`);
+                        if (e.html) parts.push(fence(String(e.html).slice(0, 4200), 'html'));
+                    });
+                } else if (d.inside) {
+                    parts.push(`It lies inside ${d.inside.selector}${d.inside.text ? ` · "${clip(d.inside.text, 300)}"` : ''}.`);
+                }
+                return { kind: 'area', label: `${page.split('/').pop()} · area ${r.w}×${r.h}`,
+                         detail: `${page}: area ${r.w}×${r.h} at ${r.x}, ${r.y}\n${list.length} element${list.length === 1 ? '' : 's'} inside`,
+                         text: parts.join('\n') };
+            }
+            const r = d.rect || {};
+            const parts = [`Element on the page ${page} (in the Studio preview): ${d.selector}`,
+                           `Size ${r.w}×${r.h} px at x ${r.x}, y ${r.y} of the page.`];
+            if (d.text) parts.push(`Text: "${clip(d.text, 1500)}"`);
+            if (d.image) parts.push(`Image: ${d.image.src} (alt "${d.image.alt}", ${d.image.natural})`);
+            if (d.styles && Object.keys(d.styles).length) parts.push(`Computed styles: ${styleLine(d.styles)}`);
+            if (d.html) parts.push('HTML:\n' + fence(String(d.html).slice(0, 4200), 'html'));
+            return { kind: 'element', label: `${page.split('/').pop()} · <${d.tag}>`,
+                     detail: `${page}: ${d.selector}${d.text ? '\n' + clip(d.text, 160) : ''}`, text: parts.join('\n') };
+        };
+
+        // ---- the right-click menu (one for the editor and the preview)
+        const ctxMenu = Vue.reactive({ open: false, x: 0, y: 0, title: '', items: [] });
+        const ctxMenuEl = ref(null);
+        const closeCtxMenu = () => { ctxMenu.open = false; };
+        const openCtxMenu = (x, y, title, items) => {
+            Object.assign(ctxMenu, { open: true, x, y, title, items });
+            nextTick(() => {
+                const el = ctxMenuEl.value;
+                if (!el) return;
+                const w = el.offsetWidth, h = el.offsetHeight;
+                ctxMenu.x = Math.max(6, Math.min(x, window.innerWidth - w - 6));
+                ctxMenu.y = y + h > window.innerHeight - 6 ? Math.max(6, y - h) : y;
+                const first = el.querySelector('[role="menuitem"]:not([disabled])');
+                if (first) first.focus();
+            });
+        };
+        const runCtxItem = (item) => { if (item.disabled) return; closeCtxMenu(); item.run(); };
+        const ctxMenuKey = (e) => {
+            const items = Array.from(ctxMenuEl.value ? ctxMenuEl.value.querySelectorAll('[role="menuitem"]:not([disabled])') : []);
+            const i = items.indexOf(document.activeElement);
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const n = items.length, down = e.key === 'ArrowDown';
+                if (n) items[i < 0 ? (down ? 0 : n - 1) : (i + (down ? 1 : n - 1)) % n].focus();
+            } else if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); closeCtxMenu(); }
+        };
+        document.addEventListener('mousedown', (e) => { if (ctxMenu.open && !(ctxMenuEl.value && ctxMenuEl.value.contains(e.target))) closeCtxMenu(); }, true);
+        window.addEventListener('blur', closeCtxMenu);          // a click into the preview's frame
+        window.addEventListener('resize', closeCtxMenu);
+
+        // Code: right-click in the editor
+        const onEditorMenu = (e) => {
+            if (e.shiftKey || !editor || !studio.file || studio.file.text === undefined) return;   // Shift: the browser's menu
+            e.preventDefault();
+            const path = studio.file.path, sel = editor.selection();
+            const items = [];
+            if (!sel.empty && sel.text.trim()) {
+                items.push({ icon: '↗', label: 'Send selection to chat', hint: sel.fromLine === sel.toLine ? `line ${sel.fromLine}` : `lines ${sel.fromLine}-${sel.toLine}`,
+                             run: () => addChatContext(contextFromCode(path, sel)) });
+            } else {
+                items.push({ icon: '↗', label: `Send line ${sel.fromLine} to chat`, disabled: !sel.lineText.trim(),
+                             run: () => addChatContext(contextFromCode(path, { text: sel.lineText, fromLine: sel.fromLine, toLine: sel.fromLine })) });
+            }
+            items.push({ icon: '＠', label: 'Mention this file in chat', hint: 'its path only',
+                         run: () => addChatContext({ kind: 'file', label: path.split('/').pop(), detail: path,
+                                                     text: `File: ${path} (in the project; read it if you need it)` }) });
+            items.push({ sep: true });
+            items.push({ icon: '⧉', label: 'Copy', disabled: sel.empty, run: () => writeClipboard(sel.text) });
+            items.push({ icon: '▣', label: 'Select all', run: () => editor.selectAll() });
+            items.push({ icon: '⌁', label: 'Copy path', run: () => writeClipboard(path) });
+            openCtxMenu(e.clientX, e.clientY, path, items);
+        };
+
+        // The preview: its picker script (web/preview-pick.js) asks for the menu and sends what was picked
+        const previewFrame = ref(null);
+        const pickCmd = (cmd, extra = {}) => {
+            const f = previewFrame.value;
+            if (!f || !f.contentWindow) return;
+            f.contentWindow.postMessage({ optimux: 'pick-cmd', cmd, ...extra }, '*');   // its origin is opaque ("null")
+            if (cmd === 'element' || cmd === 'area') studio.picking = cmd;
+            if (cmd === 'cancel') studio.picking = '';
+        };
+        window.addEventListener('message', (e) => {
+            const f = previewFrame.value;
+            if (!f || e.source !== f.contentWindow || !e.data || e.data.optimux !== 'pick') return;
+            const d = e.data;
+            if (d.type === 'dismiss') { closeCtxMenu(); return; }
+            if (d.type === 'mode') { studio.picking = String(d.mode || ''); return; }
+            if (d.type === 'cancelled') { studio.picking = ''; return; }
+            if (d.type === 'menu') {
+                const r = f.getBoundingClientRect();
+                const x = Number(d.x) || 0, y = Number(d.y) || 0;
+                const what = clip(d.what, 48);
+                openCtxMenu(r.left + x, r.top + y, studio.preview.path || 'Preview', [
+                    ...(what ? [{ icon: '◎', label: 'Select this', hint: what, run: () => pickCmd('at', { x, y }) }] : []),
+                    { icon: '⌖', label: 'Select an element…', hint: 'a title, text or image', run: () => pickCmd('element') },
+                    { icon: '⬚', label: 'Select an area…', hint: 'drag a box', run: () => pickCmd('area') },
+                    { sep: true },
+                    { icon: '↻', label: 'Reload the preview', run: () => { studio.preview.stamp++; } },
+                    { icon: '↗', label: 'Open in a new tab', run: studioOpenInTab },
+                ]);
+                return;
+            }
+            // Only what the user picked after choosing a command (a page can't push text into the chat on its own)
+            if (d.type === 'selected' && studio.picking && d.payload && typeof d.payload === 'object') {
+                studio.picking = '';
+                addChatContext(contextFromPage(d.payload));
+            }
+        });
+        const onPreviewLoad = () => { studio.picking = ''; };
+
+        // The chat beside the Studio: the page's chat moves into a column on the right
+        watch(() => studio.open && studio.chat, (on) => { document.body.classList.toggle('cm-studio-chat', !!on); });
+        const toggleStudioChat = () => {
+            studio.chat = !studio.chat;
+            if (studio.chat) nextTick(() => { if (chatInputRef.value && !chatInputRef.value.disabled) chatInputRef.value.focus(); scrollToBottom(); });
+        };
+        // After a reply, show what the model changed: the tree, the open file (unless edited) and the preview
+        const studioAfterReply = async () => {
+            if (!studio.open) return;
+            await refreshStudio();
+            const f = studio.file;
+            if (f && !studio.dirty && f.text !== undefined) {
+                try {
+                    const disk = await studioFetch(`/api/files/read?path=${encodeURIComponent(f.path)}`);
+                    if (disk.digest !== f.digest && studio.file === f && !studio.dirty) openStudioFile(f.path);
+                } catch (_) { /* deleted or unreadable: the tree shows it */ }
+            }
+        };
         watch(() => appSettings.value.active_project, (n, old) => {
             if (studio.open && n !== old && studio.project && n !== studio.project) { resetStudio(); refreshStudio(); }
         });
@@ -4439,6 +4614,7 @@ createApp({
                     pendingForm.value = null;
                     pendingCommand.value = ''; pendingFile.value = null;
                     scrollToBottom();     // the usage line and "Copy session" appear only now
+                    if (!replay && studio.open) studioAfterReply();   // v0.8: show the model's changes in the Studio
                     if (!replay && moveChatTo !== null && ws.value) {
                         // The model switched projects: the reply is done, so continue in the
                         // new project's own chat (this one stays in History under the old project)
@@ -4541,12 +4717,18 @@ createApp({
         const sendMessage = () => {
             if (!userInput.value.trim() || readOnlyChat.value) return;
 
-            messages.value.push({ role: 'user', content: userInput.value });
+            // v0.8: what was picked in the Studio goes after the prompt, as plain text
+            const prompt = chatContext.value.length
+                ? userInput.value.trimEnd() + '\n\n---\nSelected in the Studio (project ' + (studio.project || appSettings.value.active_project || 'Workspace') + '):\n\n'
+                  + chatContext.value.map((c, i) => `[${i + 1}] ${c.text}`).join('\n\n')
+                : userInput.value;
+            messages.value.push({ role: 'user', content: prompt });
             messages.value.push({ role: 'agent', content: '', events: [], commands: [], blocks: [] });
-            
-            ws.value.send(JSON.stringify({ prompt: userInput.value, model: selectedModel.value }));
-            
+
+            ws.value.send(JSON.stringify({ prompt, model: selectedModel.value }));
+
             userInput.value = '';
+            chatContext.value = [];
             isGenerating.value = true;
             scrollToBottom();
         };
@@ -4786,6 +4968,7 @@ createApp({
             studio, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
             saveStudioFile, reloadStudioFile, previewSrc, previewMarkdown, previewKind, studioOpenInTab,
             gitTerm, openGitTerm, closeGitTerm, gitTermLines, copyGitTerm,
+            chatContext, removeChatContext, ctxMenu, ctxMenuEl, closeCtxMenu, runCtxItem, ctxMenuKey, onEditorMenu, previewFrame, pickCmd, onPreviewLoad, toggleStudioChat,
             projectPage, openProjectPage, loadProjectPage, setProjectSetting, ownValue, globalValue, boolOf, onOff, numberOf, saveProjectBudget, saveProjectMemory,
             curateProjectNow, projectRow, projectSkills,
             planModeNow, planModeTitle, cyclePlanMode,

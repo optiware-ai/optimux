@@ -465,6 +465,16 @@ The preview shows the project's files as they are (static files): a project that
 
 In that sandbox a page's `localStorage`, `sessionStorage` and cookies would fail, and many pages use them first thing (to remember the theme, say); the error stopped the rest of their script, so content that appears on scroll stayed hidden. Optimux gives previewed pages working ones that live in memory: they work while the page is open and start empty on every reload. (*v0.8*)
 
+#### Send code or a part of the page to the chat
+
+**Chat** in the Studio's top bar opens the chat as a column on the right, so you can work on the files and talk to the models side by side. Right-click to pick what the model should look at; it waits above the prompt box as a chip until you send, and the chat opens by itself with the cursor in the prompt box.
+
+- **In the editor**, right-click: **Send selection to chat** (or **Send line N to chat** with nothing selected), **Mention this file in chat** (only its path: the model reads the file if it needs to), **Copy**, **Select all**, **Copy path**.
+- **In the preview**, right-click: **Select this** (the element under the pointer), **Select an element…** (move over the page, the element under the pointer is outlined with its name and size; click to pick it: a title, a text, an image, a block), **Select an area…** (drag a box over the page), **Reload the preview**, **Open in a new tab**. The **⌖** and **⬚** buttons in the preview's bar do the same. A picked element or area stays outlined with a **↗ Send to chat** badge beside it; **✕** or **Esc** cancels. **Shift + right-click** shows the browser's own menu.
+- **What the model gets**, after your prompt, as text: for code, the file, the lines and the code; for an element, the page, its CSS path (like `section.hero > p.lead`), size and position, its text, its main computed styles (font, colours, spacing) and its HTML; for an area, its size and position and the elements fully inside it (up to 25, with their text and HTML), or the element it lies in. Nothing is sent before you press Send, and **✕** on a chip removes it. Up to 10 chips at a time.
+- **Pictures aren't sent**: an area is described by what's in it, so every model can use it and it costs only the text.
+- **After each reply** the Studio reads the files again: the tree, the open file (unless you changed it) and the preview show what the model did.
+
 ## How routing works
 
 ### The two tiers

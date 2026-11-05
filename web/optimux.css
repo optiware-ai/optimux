@@ -190,3 +190,31 @@
 .cm-tip-arrow { position: absolute; top: -5px; width: 8px; height: 8px; margin-left: -4px; background: #111827; border-left: 1px solid #374151; border-top: 1px solid #374151; transform: rotate(45deg); }
 .cm-tip-up .cm-tip-arrow { top: auto; bottom: -5px; transform: rotate(225deg); }
 @media (prefers-reduced-motion: reduce) { .cm-tip { transition: none; transform: none; } }
+/* v0.8: the chat as a column beside the Studio (body.cm-studio-chat while it shows) */
+:root { --cm-dock: min(460px, 42vw); }
+body.cm-studio-chat #app { position: fixed; top: 0; right: 0; bottom: 0; height: auto; width: var(--cm-dock); max-width: none; margin: 0;
+  padding: 0 12px 12px; z-index: 41; background: #030712; border-left: 1px solid #1f2937; }
+body.cm-studio-chat #app > header { display: none; }
+.cm-dock-bar { display: flex; align-items: center; gap: 8px; padding: 10px 2px; border-bottom: 1px solid #1f2937; flex-shrink: 0; min-width: 0; }
+/* v0.8: the right-click menu of the Studio */
+.cm-menu { position: fixed; z-index: 95; min-width: 236px; max-width: 360px; background: #111827; border: 1px solid #374151; border-radius: 10px; padding: 5px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .6); animation: cm-menu-in .1s ease-out; }
+@keyframes cm-menu-in { from { opacity: 0; transform: translateY(-2px) scale(.98); } to { opacity: 1; transform: none; } }
+.cm-menu-title { font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: #6b7280; padding: 4px 10px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: #e5e7eb; }
+.cm-menu-item:hover:not(:disabled), .cm-menu-item:focus { background: rgba(37, 99, 235, .35); outline: none; }
+.cm-menu-item:disabled { color: #4b5563; cursor: default; }
+.cm-menu-icon { width: 16px; text-align: center; color: #93c5fd; flex-shrink: 0; }
+.cm-menu-item:disabled .cm-menu-icon { color: #4b5563; }
+.cm-menu-label { flex: 1; white-space: nowrap; }
+.cm-menu-hint { font-size: 11.5px; color: #6b7280; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-menu-sep { height: 1px; background: #1f2937; margin: 4px 6px; }
+@media (prefers-reduced-motion: reduce) { .cm-menu { animation: none; } }
+/* v0.8: what was picked, waiting above the prompt */
+.cm-ctx-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 280px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #bfdbfe;
+  background: rgba(37, 99, 235, .15); border: 1px solid rgba(59, 130, 246, .35); border-radius: 9999px; padding: 1px 3px 1px 10px; }
+.cm-ctx-area { color: #ddd6fe; background: rgba(124, 58, 237, .15); border-color: rgba(139, 92, 246, .4); }
+.cm-ctx-file { color: #d1d5db; background: rgba(75, 85, 99, .25); border-color: #4b5563; }
+.cm-ctx-x { width: 18px; height: 18px; border-radius: 9999px; font-size: 10px; line-height: 18px; text-align: center; color: inherit; opacity: .7; flex-shrink: 0; }
+.cm-ctx-x:hover { opacity: 1; background: rgba(255, 255, 255, .12); }
+.cm-ctx-count { margin-left: 2px; min-width: 18px; padding: 0 5px; border-radius: 9999px; background: #2563eb; color: #fff; font-size: 11px; line-height: 18px; text-align: center; }

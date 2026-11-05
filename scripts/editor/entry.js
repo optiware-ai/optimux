@@ -110,6 +110,7 @@ export function languageName(path) {
  * nonce: the page's CSP style nonce (CodeMirror adds its styles as <style> elements)
  * Each open file keeps its own state (undo history, selection) while the page keeps it open.
  * handle.show(id, text, path): show a file (a new id gets a fresh state); handle.replace(text): new text
+ * handle.selection(): the main selection with its lines; handle.selectAll().
  * for the shown file (a reload from disk); handle.text(); handle.forget(ids kept); handle.focus(); handle.destroy().
  */
 export function create(parent, options = {}) {
@@ -146,6 +147,13 @@ export function create(parent, options = {}) {
     forget(keep) { for (const id of Array.from(states.keys())) if (!keep.includes(id)) states.delete(id); if (!keep.includes(shown)) states.delete(shown); },
     drop(id) { states.delete(id); },
     focus() { view.focus(); },
+    // v0.8: the main selection, for "Send to chat": {text, fromLine, toLine, empty}; the cursor's line when empty
+    selection() {
+      const r = view.state.selection.main, doc = view.state.doc;
+      const from = doc.lineAt(r.from), to = doc.lineAt(r.to);
+      return { text: doc.sliceString(r.from, r.to), fromLine: from.number, toLine: to.number, empty: r.empty, lineText: from.text };
+    },
+    selectAll() { view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } }); view.focus(); },
     destroy() { view.destroy(); states.clear(); },
   };
 }

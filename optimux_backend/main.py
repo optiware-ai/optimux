@@ -381,6 +381,12 @@ PREVIEW_SHIM = (
     "return/^max-age=\\s*(-|0+$)/.test(a)||(a.indexOf('expires=')===0&&Date.parse(a.slice(8))<Date.now())});"
     "if(gone)delete c[k];else c[k]=val}})}catch(_){}}})();</script>"
 )
+# v0.8: the Studio's picker (web/preview-pick.js): right-click menu, select an element
+# or an area, send it to the chat. Inline, after the storage shim; it talks to the
+# Studio only through postMessage and does nothing outside the Studio's frame.
+with open(os.path.join(WEB_DIR, "preview-pick.js"), encoding="utf-8") as _f:
+    PREVIEW_PICK = "<script>" + _f.read().replace("</script", "<\\/script") + "</script>"
+PREVIEW_SHIM += PREVIEW_PICK
 _HEAD_TAG = re.compile(r"<head(?:\s[^>]*)?>", re.I)
 _HTML_TAG = re.compile(r"<html(?:\s[^>]*)?>", re.I)
 _DOCTYPE = re.compile(r"^\ufeff?\s*<!doctype[^>]*>", re.I)

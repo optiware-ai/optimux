@@ -164,3 +164,18 @@ def test_the_page_carries_a_fresh_style_nonce(mocker, tmp_path):
     assert nonces[0] != nonces[1]
     api = client.get("/api/files/preview", headers=H)
     assert "nonce-" not in api.headers.get("content-security-policy", "")
+
+
+def test_previewed_pages_carry_the_studio_picker(mocker, tmp_path, ws):
+    """web/preview-pick.js is inlined after the storage shim; it talks only by postMessage
+    and never sends the preview's private token (it strips /preview/<project>/<token>/)."""
+    import optimux_backend.main as main
+    src = open(os.path.join(main.WEB_DIR, "preview-pick.js"), encoding="utf-8").read()
+    assert "</script" not in src.lower() or "<\\/script" in main.PREVIEW_PICK
+    assert main.PREVIEW_PICK.startswith("<script>") and main.PREVIEW_PICK.endswith("</script>")
+    assert main.PREVIEW_PICK in main.PREVIEW_SHIM
+    assert "window.parent === window" in src                  # nothing outside the Studio's frame
+    assert "slice(4)" in src and "'pick-cmd'" in src
+    client = make_client(mocker, tmp_path)
+    page = client.get(pf.preview_base("site")).text
+    assert page.count("Optimux Studio picker") == 1 and page.index("Optimux Studio picker") < page.index("<h1>Hi</h1>")
