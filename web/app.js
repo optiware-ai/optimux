@@ -2590,8 +2590,8 @@ const optimuxApp = createApp({
                 { label: tr('Cache hit · month'), value: hit + '%', sub: tr('{v} of {v2} input tokens', { v: fmtTokens(month.cached_tokens), v2: fmtTokens(month.prompt_tokens) }) },
                 { label: tr('Output · month'), value: fmtTokens(month.completion_tokens), sub: tr('{v} of it thinking', { v: fmtTokens(month.reasoning_tokens || 0) }) },
                 ...(monthSavings.value && monthSavings.value.calls ? [{
-                    label: tr('Saved · month'), value: fmtUsd(monthSavings.value.saved),
-                    sub: monthSavings.value.saved_share !== null ? tr('{v} less than all on Complex', { v: fmtPct(monthSavings.value.saved_share) }) : '' }] : []),
+                    label: tr('Est. saved · month'), value: fmtUsd(monthSavings.value.saved),
+                    sub: monthSavings.value.saved_share !== null ? tr('{v} less than the same tokens on Complex', { v: fmtPct(monthSavings.value.saved_share) }) : '' }] : []),
             ];
         });
         // Getting started (v0.6.1): the first-run checklist
@@ -2793,7 +2793,8 @@ const optimuxApp = createApp({
                 { label: tr('Calls'), value: t.calls.toLocaleString(appLocale()), sub: tr('{v} in · {v2} out', { v: fmtTokens(t.prompt_tokens), v2: fmtTokens(t.completion_tokens) }) },
                 { label: tr('Average per call'), value: t.calls - t.calls_without_cost ? fmtUsd(t.cost / (t.calls - t.calls_without_cost)) : '—', sub: t.prompt_tokens ? tr('{v} of input from cache', { v: fmtPct(t.cached_tokens / t.prompt_tokens) }) : tr('no input yet') },
                 { label: tr('Median latency'), value: fmtSec(t.p50_ms), sub: tr('request to last token') },
-                { label: tr('Reliability'), value: fmtPct(t.reliability, t.reliability !== null && t.reliability < 1 ? 1 : 0), sub: tr('{errors} failed · {escalations} escalated', { errors: t.errors, escalations: t.escalations }),
+                { label: tr('Call success'), value: t.reliability === null ? tr('unavailable') : fmtPct(t.reliability, t.reliability < 1 ? 1 : 0),
+                  sub: t.reliability === null ? tr('no call in this period can be judged') : tr('{errors} failed · {escalations} escalated', { errors: t.errors, escalations: t.escalations }),
                   status: t.reliability === null ? '' : t.reliability >= 0.99 ? 'good' : t.reliability >= 0.95 ? 'warning' : 'critical' },
             ];
 
@@ -2821,7 +2822,7 @@ const optimuxApp = createApp({
             if (failing) {
                 tk('quota'); tk('transient'); tk('fatal');   // the kinds of provider error, translated here
                 const kind = tr(Object.entries(failing.error_kinds).sort((a, b) => b[1] - a[1])[0][0]);
-                insights.push(tr('{name} failed {errors} time{v} (mostly {kind}); reliability {v2}{v3}.', { name: failing.name, errors: failing.errors, v: failing.errors === 1 ? '' : 's', kind: kind, v2: fmtPct(failing.reliability, 1), v3: few(failing) }));
+                insights.push(tr('{name} failed {errors} time{v} (mostly {kind}); call success {v2}{v3}.', { name: failing.name, errors: failing.errors, v: failing.errors === 1 ? '' : 's', kind: kind, v2: fmtPct(failing.reliability, 1), v3: few(failing) }));
             }
             const simple = (d.roles || []).find(r => r.role === 'simple');
             const allCalls = (d.roles || []).reduce((a, r) => a + r.calls, 0);
@@ -3181,7 +3182,7 @@ const optimuxApp = createApp({
             ['p50_ms', tk('Latency'), tk('Median time from request to last token; p90 (slow calls) below.')],
             ['speed_tps', tk('Speed'), tk('Median output tokens per second, over answers of 20 tokens or more.')],
             ['cache_share', tk('Cache'), tk('Part of the input tokens read from the provider\'s cache (cheaper).')],
-            ['reliability', tk('Reliable'), tk('Calls that worked / all attempts, failed ones included.')],
+            ['reliability', tk('Call success'), tk('Calls the provider answered without an error / all attempts, failed ones included. It says nothing about whether the answer or the task was right. Only calls made since failures are recorded count; "unavailable" when there are none.')],
             ['escalations', tk('Stuck'), tk('Times this model got stuck and the task moved to the Complex model.')],
         ];
 
@@ -3379,7 +3380,7 @@ const optimuxApp = createApp({
         const dashboardSections = [
             { id: 'overview', label: tk('Overview'), icon: '◎', group: tk('Activity'), hint: tk('Spending, budgets, models and recent chats at a glance.') },
             { id: 'usage', label: tk('Usage'), icon: '▤', group: tk('Activity'), hint: tk('Tokens, cost and time per project, role and model.') },
-            { id: 'performance', label: tk('Performance'), icon: '◔', group: tk('Activity'), hint: tk('Cost, speed and reliability of every model, per project: which model gives you the most for your money.') },
+            { id: 'performance', label: tk('Performance'), icon: '◔', group: tk('Activity'), hint: tk('Cost, speed and call success of every model, per project: which model gives you the most for your money.') },
             { id: 'budgets', label: tk('Budgets'), icon: '$', group: tk('Activity'), hint: tk('Monthly spending limits per project.') },
             { id: 'projects', label: tk('Projects'), icon: '▦', group: tk('Activity'), hint: tk('Cost, budget, chats and memory per project.') },
             { id: 'history', label: tk('History'), icon: '◷', group: tk('Activity'), hint: tk('Every stored chat; open one to continue it.') },

@@ -40,7 +40,16 @@ def test_percentile_interpolates():
     assert an.percentile([3, 1, 2], 0.9) == pytest.approx(2.8)        # unsorted input
 
 
+def task_record(ts):
+    """A request record (v0.6+): from then on failures are known to be recorded."""
+    conn = store.connect()
+    with conn:
+        conn.execute("INSERT INTO tasks (id, ts, project, kind) VALUES (?, ?, 'alpha', 'prompt')", (f"t{ts}", ts))
+    conn.close()
+
+
 def test_per_model_figures():
+    task_record(NOW - 2 * DAY)
     for ms in (500, 1000, 1500, 2000, 10000):
         add("cheap", cost=0.001, ms=ms, out=200, prompt=1000, cached=600)
     add("strong", cost=0.05, ms=4000, out=500, prompt=2000, thinking=300, role="complex")
@@ -191,3 +200,33 @@ def test_roles_share():
     assert roles["simple"]["calls"] == 2 and roles["simple"]["cost"] == pytest.approx(0.002)
     assert roles["complex"]["models"] == {"strong": 1}
     assert roles["conductor"]["calls_without_cost"] == 1
+
+
+def test_call_success_ignores_calls_from_before_failures_were_recorded():
+    """Failures are recorded since v0.5 (model_events), so calls from before can't be
+    judged: counting them as successes would inflate the rate. The rate counts only
+    calls since recording is known to be on (the first event or task record), and is
+    None (shown as unavailable) when no call in the period can be judged."""
+    for _ in range(8):
+        add("cheap", ts=NOW - 20 * DAY)                    # before any failure was recorded
+    an.record_event("error", "cheap", "simple", "transient", project="alpha")
+    conn = store.connect()
+    with conn:
+        conn.execute("UPDATE model_events SET ts = ?", (NOW - 10 * DAY,))
+    conn.close()
+    add("cheap", ts=NOW - 5 * DAY)                         # one success since
+    r = an.analytics(30, now=NOW)
+    m = {x["model"]: x for x in r["models"]}["cheap"]
+    assert m["calls"] == 9                                 # every call is still counted as a call
+    assert m["reliability_calls"] == 1                     # but only one can be judged
+    assert m["reliability"] == pytest.approx(1 / 2)        # 1 success, 1 failure (not 9 / 10)
+    assert r["totals"]["reliability"] == pytest.approx(1 / 2)
+
+
+def test_call_success_unavailable_without_a_judgeable_call():
+    for _ in range(3):
+        add("cheap", ts=NOW - 20 * DAY)                    # usage only, no events, no task records
+    r = an.analytics(30, now=NOW)
+    m = {x["model"]: x for x in r["models"]}["cheap"]
+    assert m["reliability"] is None and m["reliability_calls"] == 0
+    assert r["totals"]["reliability"] is None

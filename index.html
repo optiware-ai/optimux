@@ -361,7 +361,8 @@
                             <p><span v-html="$t('<b>Latency</b> is the time from the request to the last token, thinking and tool calls included. <b>p10 / median / p90</b>: 10% of calls were faster than p10, half faster than the median, 90% faster than p90.')"></span></p>
                             <p><span v-html="$t('<b>Speed</b> is output tokens per second of that time, the median over answers of 20 tokens or more.')"></span></p>
                             <p><span v-html="$t('<b>$ / 1K out</b> is what a model cost for every 1,000 tokens it wrote, its input included: the price of its work.')"></span></p>
-                            <p><span v-html="$t('<b>Reliability</b> counts every failed attempt, retried ones too. <b>Stuck</b> counts escalations: the model hit the step limit or repeated itself, and the Complex model took over.')"></span></p>
+                            <p><span v-html="$t('<b>Call success</b> is the share of calls the provider answered without an error, every failed attempt counted (retried ones too). It says nothing about whether the answer or the task was right. Failures are recorded since v0.5, so older calls aren\'t counted; <i>unavailable</i> means no call in the period can be judged.')"></span></p>
+                            <p><span v-html="$t('<b>Stuck</b> counts escalations: the model hit the step limit or repeated itself, and the Complex model took over.')"></span></p>
                             <p>{{ $t('All from this machine\'s own records; nothing is sent anywhere.') }}</p>
                         </help-tip></span>
                     </div>
@@ -401,11 +402,12 @@
                                     <div class="text-xs text-gray-500 mt-1 truncate" :title="P.sv.refTitle">{{ $t('all on {refName}', { refName: P.sv.refName }) }}</div>
                                 </div>
                                 <div>
-                                    <div class="text-xs uppercase tracking-wider text-gray-500">{{ $t('Saved') }}</div>
+                                    <div class="text-xs uppercase tracking-wider text-gray-500">{{ $t('Saved (est.)') }}</div>
                                     <div :class="['text-2xl font-mono mt-1', P.sv.v.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(P.sv.v.saved) }}</div>
                                     <div class="text-xs text-gray-500 mt-1">{{ P.sv.v.saved_share === null ? '—' : fmtPct(P.sv.v.saved_share) + (P.sv.v.saved >= 0 ? ' less' : ' more') }}</div>
                                 </div>
                             </div>
+                            <p class="text-xs text-gray-400 mb-3">{{ $t('An estimate, not a measured saving: the same tokens priced on the Complex model of each call. Another model might need more or fewer tokens and steps, and only prices are compared, not results.') }}</p>
                             <svg :width="P.sv.W" :height="P.sv.H" class="cm-pf-svg" role="img" :aria-label="$t('Spent against what the same calls would have cost on the reference model')" @mouseleave="hideTip">
                                 <g v-for="g in P.sv.grid" :key="'g' + g.y">
                                     <line :x1="P.sv.left" :x2="P.sv.W" :y1="g.y" :y2="g.y" class="cm-pf-grid"></line>
@@ -763,7 +765,7 @@
                                             <td class="py-2 px-2 text-right font-mono text-gray-300">{{ m.speed_tps !== null ? Math.round(m.speed_tps) + '/s' : '—' }}</td>
                                             <td class="py-2 px-2 text-right font-mono text-gray-300">{{ fmtPct(m.cache_share) }}</td>
                                             <td class="py-2 px-2 text-right font-mono" :title="Object.entries(m.error_kinds).map(e => e[1] + ' ' + e[0]).join(', ')">
-                                                <span :class="m.reliability === null ? 'text-gray-500' : m.reliability >= 0.99 ? 'text-gray-300' : m.reliability >= 0.95 ? 'cm-pf-warn' : 'cm-pf-bad'">{{ m.reliability !== null && m.reliability < 0.99 ? (m.reliability >= 0.95 ? '! ' : '✕ ') : '' }}{{ fmtPct(m.reliability, m.reliability !== null && m.reliability < 1 ? 1 : 0) }}</span>
+                                                <span :class="m.reliability === null ? 'text-gray-500' : m.reliability >= 0.99 ? 'text-gray-300' : m.reliability >= 0.95 ? 'cm-pf-warn' : 'cm-pf-bad'">{{ m.reliability !== null && m.reliability < 0.99 ? (m.reliability >= 0.95 ? '! ' : '✕ ') : '' }}{{ m.reliability === null ? $t('unavailable') : fmtPct(m.reliability, m.reliability < 1 ? 1 : 0) }}</span>
                                                 <div v-if="m.errors" class="text-xs text-gray-500">{{ $t('{errors} failed', { errors: m.errors }) }}</div>
                                             </td>
                                             <td class="py-2 px-2 text-right font-mono text-gray-300">{{ m.escalations }}<div v-if="m.escalations" class="text-xs text-gray-500">{{ fmtPct(m.escalation_rate, 1) }}</div></td>

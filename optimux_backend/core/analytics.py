@@ -13,8 +13,12 @@ Definitions (shown in the Guide):
 - cost per call, and cost per 1,000 output tokens (what a model charges for
   the work it writes, input included).
 - cache share: cached input tokens / all input tokens.
-- reliability: calls / (calls + failed calls), counted since events were first
-  recorded (older calls have no failure records).
+- reliability ("call success" on the page): successful calls / (successful + failed
+  calls). It says whether the provider answered, not whether the answer or the task
+  was right. Failures are recorded since v0.5, so only calls made since recording is
+  known to be on are judged (judge_start: the first event or task record, whichever is
+  earlier); older calls would count as successes with no failures to set against them.
+  None (unavailable) when no call in the period can be judged.
 - escalation rate: escalations away from the model / its calls.
 - working time (v0.8, tasks.py): per request, from the message to the end of the
   reply, each approval counted as tasks.APPROVAL_MS whatever the real wait.
@@ -65,6 +69,18 @@ def _events(project: str | None, since: float) -> tuple[list[dict], float | None
     finally:
         conn.close()
     return [dict(r) for r in rows], (first["t"] if first and first["t"] else None)
+
+
+def reliability_start(events_since: float | None) -> float | None:
+    """From when a call's success can be judged: failures were being recorded by then.
+    The first event (error or escalation) or the first task record (v0.6, after v0.5
+    started recording failures), whichever is earlier; None if neither exists."""
+    try:
+        first_task = tasks.first_ts()
+    except Exception:
+        first_task = None
+    known = [t for t in (events_since, first_task) if t is not None]
+    return min(known) if known else None
 
 
 def color_order() -> list[str]:
@@ -154,7 +170,7 @@ def _bucket(ts: float, weekly: bool) -> str:
 def _empty_model() -> dict:
     return {"calls": 0, "cost": 0.0, "calls_without_cost": 0, "estimated": 0, "prompt_tokens": 0,
             "cached_tokens": 0, "completion_tokens": 0, "reasoning_tokens": 0, "roles": {}, "projects": {},
-            "_durations": [], "_speeds": [], "errors": 0, "error_kinds": {}, "escalations": 0}
+            "_durations": [], "_speeds": [], "_judged": 0, "errors": 0, "error_kinds": {}, "escalations": 0}
 
 
 def savings_of(entries: list[dict], escalations: int = 0) -> dict:
@@ -267,11 +283,14 @@ def analytics(days: int = 30, project: str | None = None, now: float | None = No
     since = _start(days, now)
     entries = usage.read_entries(project=project, since=since)
     events, events_since = _events(project, since)
+    judge_start = reliability_start(events_since)
 
     models: dict[str, dict] = {}
     for e in entries:
         m = models.setdefault(e.get("model") or "?", _empty_model())
         m["calls"] += 1
+        if judge_start is not None and e["ts"] >= judge_start:
+            m["_judged"] += 1
         if e.get("cost") is None:
             m["calls_without_cost"] += 1
         else:
@@ -304,7 +323,7 @@ def analytics(days: int = 30, project: str | None = None, now: float | None = No
     total_cost = sum(m["cost"] for m in models.values())
     rows = []
     for model_id, m in models.items():
-        d, sp = m.pop("_durations"), m.pop("_speeds")
+        d, sp, judged = m.pop("_durations"), m.pop("_speeds"), m.pop("_judged")
         calls, out = m["calls"], m["completion_tokens"]
         priced = calls - m["calls_without_cost"]
         rows.append({
@@ -316,7 +335,8 @@ def analytics(days: int = 30, project: str | None = None, now: float | None = No
             "timed_calls": len(d),
             "speed_tps": percentile(sp, 0.50), "speed_calls": len(sp),
             "cache_share": (m["cached_tokens"] / m["prompt_tokens"]) if m["prompt_tokens"] else None,
-            "reliability": (calls / (calls + m["errors"])) if (calls + m["errors"]) else None,
+            "reliability": (judged / (judged + m["errors"])) if (judged + m["errors"]) else None,
+            "reliability_calls": judged,
             "escalation_rate": (m["escalations"] / calls) if calls else None,
         })
     rows.sort(key=lambda r: (-r["cost"], -r["calls"], r["model"]))
@@ -373,10 +393,11 @@ def analytics(days: int = 30, project: str | None = None, now: float | None = No
         "cached_tokens": sum(r["cached_tokens"] for r in rows),
         "completion_tokens": sum(r["completion_tokens"] for r in rows),
     }
-    totals["reliability"] = (totals["calls"] / (totals["calls"] + totals["errors"])) \
-        if (totals["calls"] + totals["errors"]) else None
+    judged = sum(r["reliability_calls"] for r in rows)
+    totals["reliability_calls"] = judged
+    totals["reliability"] = (judged / (judged + totals["errors"])) if (judged + totals["errors"]) else None
     return {"days": days, "project": project, "since": since or start, "now": now, "weekly": weekly,
-            "events_since": events_since, "totals": totals, "models": rows, "timeline": timeline,
+            "events_since": events_since, "reliability_since": judge_start, "totals": totals, "models": rows, "timeline": timeline,
             "matrix": matrix, "roles": role_rows, "top": TOP_MODELS,
             "savings": savings_of(entries, unlinked_escalations(events)), "color_order": color_order(),
             "time": time_of(entries, project, since, keys, weekly),

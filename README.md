@@ -167,8 +167,8 @@ Memory costs tokens on every model call, so short and precise memory is cheaper 
 **Costs and data**
 - Live cost while a reply runs, and a cost line under every reply.
 - **Dashboard**: overview, usage by project, role, model and skill, a 30-day cost chart, budgets, history with filters.
-- **Model performance** (Dashboard → Performance): cost, latency (p10, median, p90), speed, cache use, reliability and escalations of every model, per project, with charts and a sortable table.
-- **What routing saved**: spent against what the same calls would have cost on your Complex model, per day, role and project, with a "Saved this month" tile on the Overview.
+- **Model performance** (Dashboard → Performance): cost, latency (p10, median, p90), speed, cache use, **call success** (calls the provider answered without an error; not whether the task was right) and escalations of every model, per project, with charts and a sortable table.
+- **What routing saved** (an estimate): spent against what the same tokens would have cost on your Complex model, per day, role and project, with an "Est. saved · month" tile on the Overview. It compares prices only, not results; see [docs/evaluations](docs/evaluations/README.md) for what has been measured.
 - **Task records and 👍 / 👎**: one small record per request (no message text), exportable as CSV, for routing that learns from outcomes later.
 - **Model catalog**: pick a provider, then a model from its list with prices per million tokens and context size, in a sortable price table, offline. An opt-in online catalog refreshes prices (LiteLLM's public list) and asks the provider which models your key can use, only when you click Refresh.
 - **Monthly budgets** per project (block or warn) and **cost warnings** before paid one-off actions.
