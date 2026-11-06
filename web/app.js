@@ -3954,7 +3954,7 @@ const optimuxApp = createApp({
         const openBudgets = () => openSettings('budgets');
 
         // ---- v0.8: the Studio. The active project's files (tree), a code editor and a sandboxed preview.
-        const EDITOR_SCRIPT = '/static/vendor/codemirror-6.43.15-4.min.js';   // built by scripts/build-editor.sh
+        const EDITOR_SCRIPT = '/static/vendor/codemirror-6.43.15-5.min.js';   // built by scripts/build-editor.sh
         const studio = Vue.reactive({
             open: false, project: '', dirs: {}, opened: { '': true }, status: {}, branch: '', msg: null,
             file: null,        // {path, text (as opened), digest, hidden, binary, too_large, size, lang}
@@ -4095,11 +4095,14 @@ const optimuxApp = createApp({
                 const f = await studioFetch(`/api/files/read?path=${encodeURIComponent(path)}`);
                 const ok = await ensureEditor();
                 if (studio.file && editor && studio.file.path !== path && studio.dirty) editor.drop(studio.file.path);
+                // The file already in the editor (a model changed it, or Reload from disk): show() would keep
+                // its old text, so its text is replaced instead (Ctrl+Z still brings the previous one back)
+                const shown = !!studio.file && studio.file.path === path && studio.file.text !== undefined;
                 studio.file = { ...f, lang: window.OptimuxEditor ? window.OptimuxEditor.languageName(path) : '' };
                 studio.dirty = false;
                 if (ok && f.text !== undefined) {
-                    editor.drop(path);                 // always the version on disk
-                    editor.show(path, f.text, path);
+                    if (shown) editor.replace(f.text);  // always the version on disk
+                    else { editor.drop(path); editor.show(path, f.text, path); }
                     studio.live = f.text;
                 }
                 if (studio.follow && !opts.noFollow && previewKind(path)) { studio.preview.path = path; studio.preview.stamp++; }

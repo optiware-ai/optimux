@@ -7,7 +7,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VIEW=6.43.15
-BUILD=4
+BUILD=5
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 npm install --prefix "$tmp" --no-save --silent esbuild@0.28.2 \

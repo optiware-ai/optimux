@@ -232,12 +232,21 @@ export function create(parent, options = {}) {
       view.setState(states.get(id) || make(text, path));
       shown = id;
     },
+    // Only the part that differs is changed, so the cursor, the selection and the scroll stay where they were
     replace(text) {
-      if (view.state.doc.toString() !== text) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+      const old = view.state.doc.toString();
+      if (old === text) return;
+      let a = 0;
+      const max = Math.min(old.length, text.length);
+      while (a < max && old.charCodeAt(a) === text.charCodeAt(a)) a++;
+      let b = 0;
+      while (b < max - a && old.charCodeAt(old.length - 1 - b) === text.charCodeAt(text.length - 1 - b)) b++;
+      view.dispatch({ changes: { from: a, to: old.length - b, insert: text.slice(a, text.length - b) } });
     },
     text() { return view.state.doc.toString(); },
     forget(keep) { for (const id of Array.from(states.keys())) if (!keep.includes(id)) states.delete(id); if (!keep.includes(shown)) states.delete(shown); },
-    drop(id) { states.delete(id); },
+    // Dropping the file on screen too: the next show() of it starts from its new text, not the old state
+    drop(id) { states.delete(id); if (id === shown) shown = null; },
     focus() { view.focus(); },
     // v0.8: the main selection, for "Send to chat": {text, fromLine, toLine, empty}; the cursor's line when empty
     selection() {
