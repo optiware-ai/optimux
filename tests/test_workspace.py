@@ -600,6 +600,55 @@ def test_delete_forgetting_records(root, tmp_path, mocker):
     assert "beta" not in project_records.deleted_projects()
 
 
+def _statistics(name):
+    """Two requests (one 👍, one 👎), an error, an escalation and a plan for `name`, and one request for other."""
+    from optimux_backend.core import store
+    conn = store.connect()
+    with conn:
+        for i, (proj, rating) in enumerate([(name, 1), (name, -1), ("other", 1)]):
+            conn.execute("INSERT INTO tasks (id, ts, project, kind, rating) VALUES (?, ?, ?, 'prompt', ?)", (f"t{i}", 1.0, proj, rating))
+        for proj, kind in [(name, "error"), (name, "escalation"), ("other", "error")]:
+            conn.execute("INSERT INTO model_events (ts, project, role, model, kind) VALUES (1.0, ?, 'simple', 'm', ?)", (proj, kind))
+        conn.execute("INSERT INTO plans (id, project, plan, status, created, updated) VALUES ('p1', ?, '{}', 'done', 1.0, 1.0)", (name,))
+    conn.close()
+
+
+def _left(table, name):
+    from optimux_backend.core import store
+    conn = store.connect()
+    try:
+        return conn.execute(f"SELECT COUNT(*) FROM {table} WHERE project = ?", (name,)).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def test_delete_counts_and_statistics(root, tmp_path, mocker):
+    """v0.8: the confirmation counts everything, keeping keeps all of it, and forgetting
+    removes all of it (requests, ratings, errors, plans too), never another project's."""
+    from optimux_backend.core import project_records
+    _records("beta", tmp_path, mocker)
+    _statistics("beta")
+    counts = project_records.record_counts("beta")
+    assert counts["requests"] == 2 and counts["likes"] == 1 and counts["dislikes"] == 1
+    assert counts["errors"] == 1 and counts["escalations"] == 1 and counts["plans"] == 1
+    assert counts["chats"] == 1 and counts["calls"] == 1 and counts["memory_file"]
+    ws.archive_project("beta")
+    folder = ws.list_archived()[0]["folder"]
+    ws.delete_archived(folder, "yes I want to delete beta", keep_records=False)
+    for table in ("tasks", "model_events", "plans", "usage", "sessions", "memory_versions"):
+        assert _left(table, "beta") == 0, table
+    assert _left("tasks", "other") == 1 and _left("model_events", "other") == 1 and _left("usage", "other") == 1
+
+
+def test_delete_keeping_keeps_statistics(root, tmp_path, mocker):
+    _records("beta", tmp_path, mocker)
+    _statistics("beta")
+    ws.archive_project("beta")
+    folder = ws.list_archived()[0]["folder"]
+    ws.delete_archived(folder, "yes I want to delete beta", keep_records=True)
+    assert _left("tasks", "beta") == 2 and _left("model_events", "beta") == 2 and _left("plans", "beta") == 1
+
+
 def test_forgetting_records_refused_while_another_copy_exists(root, tmp_path, mocker):
     r, _ = root
     _records("beta", tmp_path, mocker)

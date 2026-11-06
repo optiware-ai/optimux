@@ -3,8 +3,9 @@
 When a project is deleted from the Dashboard, its folder is removed and either
 - its records are kept (chats, costs, memory): the name is listed here, so the
   Dashboard can show it as *deleted* next to the others; or
-- its records are forgotten too: chats and their events, usage rows, memory
-  versions, the project memory file and its budget.
+- its records are forgotten too: chats and their events, usage rows (model
+  calls), requests with their ratings, model errors and escalations, plans,
+  memory versions, the project memory file and its budget.
 """
 import os
 import time
@@ -49,16 +50,24 @@ def deleted_projects(root: str | None = None) -> dict:
 
 
 def record_counts(name: str) -> dict:
-    """What would be forgotten: chats, model calls and their cost, memory versions."""
+    """Everything that would be forgotten, for the confirmation: chats, model calls and
+    their cost, requests and their 👍/👎, model errors and escalations, plans, memory."""
     conn = store.connect()
     try:
-        chats = conn.execute("SELECT COUNT(*) FROM sessions WHERE project = ?", (name,)).fetchone()[0]
-        calls, cost = conn.execute("SELECT COUNT(*), COALESCE(SUM(cost), 0) FROM usage WHERE project = ?", (name,)).fetchone()
-        versions = conn.execute("SELECT COUNT(*) FROM memory_versions WHERE project = ?", (name,)).fetchone()[0]
+        one = lambda sql: conn.execute(sql, (name,)).fetchone()
+        chats = one("SELECT COUNT(*) FROM sessions WHERE project = ?")[0]
+        calls, cost = one("SELECT COUNT(*), COALESCE(SUM(cost), 0) FROM usage WHERE project = ?")
+        requests, likes, dislikes = one("SELECT COUNT(*), COALESCE(SUM(rating = 1), 0), COALESCE(SUM(rating = -1), 0) "
+                                        "FROM tasks WHERE project = ?")
+        errors, escalations = one("SELECT COALESCE(SUM(kind = 'error'), 0), COALESCE(SUM(kind = 'escalation'), 0) "
+                                  "FROM model_events WHERE project = ?")
+        plans = one("SELECT COUNT(*) FROM plans WHERE project = ?")[0]
+        versions = one("SELECT COUNT(*) FROM memory_versions WHERE project = ?")[0]
     finally:
         conn.close()
-    return {"chats": chats, "calls": calls, "cost": cost, "memory_versions": versions,
-            "memory_file": os.path.isfile(_memory_file(name))}
+    return {"chats": chats, "calls": calls, "cost": cost, "requests": requests, "likes": likes,
+            "dislikes": dislikes, "errors": errors, "escalations": escalations, "plans": plans,
+            "memory_versions": versions, "memory_file": os.path.isfile(_memory_file(name))}
 
 
 def _memory_file(name: str) -> str:
@@ -66,8 +75,9 @@ def _memory_file(name: str) -> str:
 
 
 def forget(name: str) -> dict:
-    """Remove every record of a project: chats and their events, usage rows,
-    memory versions, its memory file and its budget. Returns what was removed."""
+    """Remove every record of a project: chats and their events, usage rows, requests
+    with their ratings, model errors and escalations, plans, memory versions, its
+    memory file and its budget. Returns what was removed."""
     counts = record_counts(name)
     conn = store.connect()
     try:
@@ -75,6 +85,10 @@ def forget(name: str) -> dict:
             conn.execute("DELETE FROM session_events WHERE session_id IN (SELECT id FROM sessions WHERE project = ?)", (name,))
             conn.execute("DELETE FROM sessions WHERE project = ?", (name,))
             conn.execute("DELETE FROM usage WHERE project = ?", (name,))
+            # v0.8: the rest of its statistics too, so nothing is left half-counted
+            conn.execute("DELETE FROM tasks WHERE project = ?", (name,))
+            conn.execute("DELETE FROM model_events WHERE project = ?", (name,))
+            conn.execute("DELETE FROM plans WHERE project = ?", (name,))
             conn.execute("DELETE FROM memory_versions WHERE project = ?", (name,))
             conn.execute("DELETE FROM deleted_projects WHERE name = ?", (name,))
     finally:

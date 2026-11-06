@@ -1799,7 +1799,7 @@ const optimuxApp = createApp({
                 const r = await postJson(`/api/projects/archived/${encodeURIComponent(b.item.folder)}/delete`, { confirm: b.typed, keep_records: b.keep });
                 deleteBox.value = null;
                 pushToast({ kind: 'success', title: tr('Deleted · {project}', { project: r.project }),
-                            text: r.records_kept ? tr('Its chats, costs and memory are kept and marked as deleted.') : tr('Its chats, costs and memory are gone too.') });
+                            text: r.records_kept ? tr('Its chats, memory, costs and statistics are kept and marked as deleted.') : tr('Everything recorded about it is gone too.') });
             } catch (e) {
                 b.error = e.message; b.busy = false;
                 if (deleteBox.value !== b) pushToast({ kind: 'warn', title: tr('Couldn\'t delete {name}', { name: b.item.name }), text: e.message });

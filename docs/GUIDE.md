@@ -433,12 +433,16 @@ The page starts with the **Workspace folder**'s full path (with a copy button an
 - **Restore** moves the folder back into the Workspace (refused if a project with that name exists).
 - **Delete permanently…** removes the folder from disk. Only archived projects can be deleted, so deleting always takes two deliberate steps. The dialog:
   - asks you to type **`yes I want to delete <name>`** (pasting is blocked; the words in any case, the name exactly);
-  - offers **Keep its chats, costs and memory** (the default) or **Delete them too** (it shows how many chats and model calls, and what they cost);
+  - offers two choices, each saying what goes and what stays:
+    - **Delete only the folder** (the default): the folder and the project's budget go; its chats, project memory, the cost and speed of every model call, your 👍 / 👎 and the model errors stay, marked as deleted, so History, Usage, Performance and every model's statistics are unchanged;
+    - **Delete the folder and everything recorded about it**: also deletes, for good, its chats, its model calls (with their cost, so the totals and the models' statistics go down), its requests with your 👍 / 👎, its model errors and escalations, its plans and its project memory with its history. The dialog shows how many of each;
   - never touches the **GitHub repository**. For a GitHub project it first asks GitHub whether the repository still exists (one request, no model): if it does, it links to its settings page, where you can delete it yourself; if it's gone, it says so. Without a GitHub sign-in (Dashboard → GitHub), GitHub hides private repositories, so the dialog can only say "deleted, or private" and links to GitHub to check.
 
 A deleted project whose records you kept still appears in **History** and **Recent chats** with a red **deleted** mark. In **Usage** (By project, Memory updates), **Budgets** and **Projects**, deleted projects are gathered in one closed line, *Deleted projects (N)*, carrying their combined numbers so the tables still add up; click it to list them (the choice is remembered in this browser). Its budget is removed, since nothing can spend there any more.
 
-An **archived** project's budget is **paused**: kept, so restoring the project brings it back, but listed apart under *Archived projects (N)* in Budgets and left out of the Overview, since nothing can spend in an archived project. Archived projects appear only in the Archived projects list on the Projects page, not as cards. Creating a new project with the same name makes those records belong to the new project. *Delete them too* removes its chats, usage rows, memory and memory history, and budget, so the Usage totals go down; it's refused while another folder (archived or in the Workspace) has the same name, since they share these records.
+An **archived** project's budget is **paused**: kept, so restoring the project brings it back, but listed apart under *Archived projects (N)* in Budgets and left out of the Overview, since nothing can spend in an archived project. Archived projects appear only in the Archived projects list on the Projects page, not as cards. Creating a new project with the same name makes those records belong to the new project. *Delete the folder and everything recorded about it* removes all of the records listed above, so the Usage and Performance totals go down; it's refused while another folder (archived or in the Workspace) has the same name, since they share these records.
+
+Archiving changes no records: an archived project's chats, costs, requests, ratings and model statistics stay and keep counting in Usage and Performance, and Restore brings the project back as it was.
 
 ### Dashboard → Project
 

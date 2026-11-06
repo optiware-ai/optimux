@@ -5,8 +5,8 @@ What Optimux remembers about projects deleted from the Dashboard (fix25a). Calle
 
 ## Functions
 - `mark_deleted(name)` / `unmark_deleted(name)` / `deleted_projects(root=None)`: the `deleted_projects` table (migration 7: name, deleted timestamp). A name is listed only while its records are kept and no folder uses it: with `root`, a name whose folder exists again (cloned or made by hand) is unmarked.
-- `record_counts(name)`: chats, model calls and their cost, memory versions, whether a memory file exists (shown in the delete dialog).
-- `forget(name)`: deletes the project's session events and sessions, usage rows, memory versions, its row in `deleted_projects`, its memory file (`memory_manager.PROJECTS_DIR/<name>.md`, only inside that folder) and its budget. Other projects' rows are untouched.
+- `record_counts(name)`: chats, model calls and their cost, requests with their 👍 (`likes`) and 👎 (`dislikes`), model `errors` and `escalations` (model_events), `plans`, memory versions, whether a memory file exists. The delete dialog lists every one, so the user sees exactly what goes.
+- `forget(name)`: deletes the project's session events and sessions, usage rows, requests (`tasks`, with their ratings), `model_events`, `plans` (v0.8: so no statistic is left half-counted), memory versions, its row in `deleted_projects`, its memory file (`memory_manager.PROJECTS_DIR/<name>.md`, only inside that folder) and its budget. Other projects' rows are untouched.
 
 ## Tests
 `tests/test_workspace.py` (fix25a section).

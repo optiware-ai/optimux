@@ -2762,14 +2762,27 @@
                         <template v-else>{{ ' ' + $t('Couldn\'t check whether it still exists ({reason})', { reason: deleteBox.gh.reason }) }} <a :href="deleteBox.item.github_settings" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">{{ $t('Check on GitHub ↗') }}</a></template>
                     </template>
                 </div>
+                <!-- v0.8: each choice says exactly what goes and what stays -->
                 <div class="space-y-2">
-                    <label :class="['flex gap-3 rounded-lg border px-3 py-2 cursor-pointer', deleteBox.keep ? 'border-blue-600 bg-blue-950/30' : 'border-gray-700']">
+                    <label :class="['flex items-start gap-3 rounded-lg border px-3 py-2 cursor-pointer', deleteBox.keep ? 'border-blue-600 bg-blue-950/30' : 'border-gray-700']">
                         <input type="radio" :value="true" v-model="deleteBox.keep" class="mt-1 accent-blue-600">
-                        <span><span class="text-gray-100">{{ $t('Keep its chats, costs and memory') }}</span><span class="block text-xs text-gray-500">{{ $t('They stay in History, Usage and Budgets, marked as deleted.') }}</span></span>
+                        <span><span class="text-gray-100">{{ $t('Delete only the folder') }}</span>
+                            <span class="block text-xs text-gray-400 mt-0.5">{{ $t('Deleted: the folder and its files, and the project\'s budget.') }}</span>
+                            <span class="block text-xs text-gray-500">{{ $t('Kept, marked as deleted: its chats, its project memory, the cost and speed of every model call, your 👍 / 👎 and the model errors. History, Usage and Performance still show them.') }}</span></span>
                     </label>
-                    <label :class="['flex gap-3 rounded-lg border px-3 py-2 cursor-pointer', !deleteBox.keep ? 'border-red-700 bg-red-950/30' : 'border-gray-700']">
+                    <label :class="['flex items-start gap-3 rounded-lg border px-3 py-2 cursor-pointer', !deleteBox.keep ? 'border-red-700 bg-red-950/30' : 'border-gray-700']">
                         <input type="radio" :value="false" v-model="deleteBox.keep" class="mt-1 accent-red-600">
-                        <span><span class="text-gray-100">{{ $t('Delete them too') }}</span><span class="block text-xs text-gray-500">{{ $t('{chats} chat{v}, {calls} model call{v2} ({v3}){v4}. Totals in Usage go down. Records are matched by name, so a project called {name} in another Workspace folder loses them too; database backups (System) keep older copies.', { chats: deleteBox.item.records.chats, v: deleteBox.item.records.chats === 1 ? '' : 's', calls: deleteBox.item.records.calls, v2: deleteBox.item.records.calls === 1 ? '' : 's', v3: fmtCost(deleteBox.item.records.cost), v4: deleteBox.item.records.memory_versions || deleteBox.item.records.memory_file ? $t(', its project memory and its history') : '', name: deleteBox.item.name }) }}</span></span>
+                        <span class="flex-1 min-w-0"><span class="text-gray-100">{{ $t('Delete the folder and everything recorded about it') }}</span>
+                            <span class="block text-xs text-gray-400 mt-0.5">{{ $t('Also deleted, for good:') }}</span>
+                            <span class="mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-xs">
+                                <span class="text-gray-500">{{ $t('Chats') }}</span><span class="text-gray-200">{{ deleteBox.item.records.chats.toLocaleString($locale()) }}</span>
+                                <span class="text-gray-500">{{ $t('Model calls') }}</span><span class="text-gray-200">{{ $t('{n} ({cost}): they leave Usage, Performance and every model\'s statistics, so the totals go down', { n: deleteBox.item.records.calls.toLocaleString($locale()), cost: fmtCost(deleteBox.item.records.cost) }) }}</span>
+                                <template v-if="deleteBox.item.records.requests"><span class="text-gray-500">{{ $t('Requests') }}</span><span class="text-gray-200">{{ deleteBox.item.records.requests.toLocaleString($locale()) }}<template v-if="deleteBox.item.records.likes || deleteBox.item.records.dislikes">{{ ', ' + $t('with your {likes} 👍 and {dislikes} 👎', { likes: deleteBox.item.records.likes, dislikes: deleteBox.item.records.dislikes }) }}</template></span></template>
+                                <template v-if="deleteBox.item.records.errors || deleteBox.item.records.escalations"><span class="text-gray-500">{{ $t('Model problems') }}</span><span class="text-gray-200">{{ $t('{errors} errors, {escalations} escalations', { errors: deleteBox.item.records.errors, escalations: deleteBox.item.records.escalations }) }}</span></template>
+                                <template v-if="deleteBox.item.records.plans"><span class="text-gray-500">{{ $t('Plans') }}</span><span class="text-gray-200">{{ deleteBox.item.records.plans }}</span></template>
+                                <template v-if="deleteBox.item.records.memory_file || deleteBox.item.records.memory_versions"><span class="text-gray-500">{{ $t('Project memory') }}</span><span class="text-gray-200">{{ deleteBox.item.records.memory_versions ? $t('the file and its {n} earlier versions', { n: deleteBox.item.records.memory_versions }) : $t('the file') }}</span></template>
+                            </span>
+                            <span class="block text-xs text-gray-500 mt-1.5">{{ $t('Records are matched by name, so a project called {name} in another Workspace folder loses them too. Database backups (System) keep older copies.', { name: deleteBox.item.name }) }}</span></span>
                     </label>
                 </div>
                 <div>
