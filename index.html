@@ -72,7 +72,7 @@
                 </template>
                 <button v-else @click="openSettings('scope')" class="bg-yellow-900/30 border border-yellow-700 text-yellow-400 rounded-lg px-2 py-1 text-xs font-bold hover:bg-yellow-800/50 transition">{{ $t('Set Workspace folder') }}</button>
                 <button v-if="projectUsage" @click="openSettings(budgetStatus ? 'budgets' : 'overview')"
-                        :class="['text-xs font-mono px-2 py-1 rounded-lg hidden md:inline-block transition', budgetStatus && budgetStatus.state === 'over' ? 'text-red-300 bg-red-900/30' : (budgetStatus && budgetStatus.state === 'warning' ? 'text-yellow-300 bg-yellow-900/20' : 'text-gray-400 hover:text-gray-200')]"
+                        :class="['text-xs font-mono px-2 py-1 rounded-lg hidden md:inline-block transition', headerCostClass]"
                         :title="headerCostTitle">
                     <odo-text :text="budgetStatus ? fmtCost(budgetStatus.spent) + ' / ' + fmtCost(budgetStatus.monthly_usd) : fmtCost(projectUsage.month.cost)"></odo-text> {{ $t('this month') }}{{ (budgetStatus ? budgetStatus.calls_without_cost : projectUsage.month.calls_without_cost) ? '+' : '' }}
                 </button>
@@ -104,9 +104,15 @@
         <!-- v0.8: the chat as a column beside the Studio -->
         <div v-if="studio.open && studio.chat" class="cm-dock-bar">
             <span class="font-bold text-gray-100 text-[14px]">{{ $t('Chat') }}</span>
-            <span class="text-xs font-mono text-gray-500 truncate">{{ studio.project || appSettings.active_project }}</span>
+            <span class="text-xs font-mono text-gray-500 truncate min-w-0">{{ studio.project || appSettings.active_project }}</span>
+            <!-- the same cost counter as the chat's header (hidden in the Studio) -->
+            <button v-if="projectUsage" @click="openSettings(budgetStatus ? 'budgets' : 'overview')"
+                    :class="['text-xs font-mono px-2 py-1 rounded-lg flex-shrink-0 whitespace-nowrap transition', headerCostClass]"
+                    :title="headerCostTitle">
+                <odo-text :text="budgetStatus ? fmtCost(budgetStatus.spent) + ' / ' + fmtCost(budgetStatus.monthly_usd) : fmtCost(projectUsage.month.cost)"></odo-text> {{ $t('this month') }}{{ (budgetStatus ? budgetStatus.calls_without_cost : projectUsage.month.calls_without_cost) ? '+' : '' }}
+            </button>
             <span class="flex-1"></span>
-            <button @click="newChat" :disabled="isGenerating || pendingApproval" class="text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40" :title="$t('Start a new chat in this project')">{{ $t('+ New chat') }}</button>
+            <button @click="newChat" :disabled="isGenerating || pendingApproval" class="text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 flex-shrink-0 whitespace-nowrap" :title="$t('Start a new chat in this project')">{{ $t('+ New chat') }}</button>
             <button @click="toggleStudioChat" class="text-gray-400 hover:text-gray-100 px-1" :title="$t('Hide the chat column')" :aria-label="$t('Hide the chat')">✕</button>
         </div>
 

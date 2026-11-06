@@ -1206,6 +1206,12 @@ const optimuxApp = createApp({
             }
         };
 
+        // The month's cost counter (chat header and the Studio's chat column): red over budget, yellow near it
+        const headerCostClass = Vue.computed(() => {
+            const b = budgetStatus.value;
+            return b && b.state === 'over' ? 'text-red-300 bg-red-900/30'
+                : (b && b.state === 'warning' ? 'text-yellow-300 bg-yellow-900/20' : 'text-gray-400 hover:text-gray-200');
+        });
         const headerCostTitle = Vue.computed(() => {
             const u = projectUsage.value;
             if (!u) return '';
@@ -5753,7 +5759,7 @@ const optimuxApp = createApp({
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
             openChatFromDashboard, switchProject, routingRole, fmtAgo, overviewKpis, writeClipboard,
             perf, perfData, perfDays, fmtDur, perfPick, perfOf, perfBusy, setPerfPick, perfProjects, perfMetric, perfSort, perfTip, perfBox, perfLoading, fetchPerf, setPerfDays, sortPerf, perfCols, perfRole, perfTipEl, showTip, hideTip, fmtUsd, fmtPct, fmtSec,
-            historyFiltered, resetHistoryFilters, lastPromptBefore, retryFrom, interruptionLabel, wsState, headerCostTitle,
+            historyFiltered, resetHistoryFilters, lastPromptBefore, retryFrom, interruptionLabel, wsState, headerCostTitle, headerCostClass,
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
