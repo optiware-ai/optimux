@@ -2354,7 +2354,7 @@
  "🔒 {n} keys hidden": "🔒 {n} chiavi nascoste",
  "Projects with their own level": "Progetti con un livello proprio",
  "Give a project its own level": "Dai a un progetto un livello proprio",
- "+ Add a project…": "+ Aggiungi un progetto…",
+ "Configure a project…": "Configura un progetto…",
  "None: all {n} projects follow the default.": "Nessuno: tutti i {n} progetti seguono il predefinito.",
  "Follow the default again": "Torna a seguire il predefinito",
  "Use default": "Usa il predefinito"

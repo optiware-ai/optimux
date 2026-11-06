@@ -2256,7 +2256,7 @@
                                 <div class="flex flex-wrap items-center justify-between gap-3">
                                     <span class="text-[14px] text-gray-300">{{ $t('Projects with their own level') }}</span>
                                     <select v-if="!autonomy.blocked && autonomyFree.length" value="" @change="addAutonomyException($event.target.value); $event.target.value = ''" :aria-label="$t('Give a project its own level')" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1 text-[13px] text-gray-300">
-                                        <option value="" class="bg-gray-900">{{ $t('+ Add a project…') }}</option>
+                                        <option value="" class="bg-gray-900">{{ $t('Configure a project…') }}</option>
                                         <option v-for="p in autonomyFree" :key="p" :value="p" class="bg-gray-900">{{ p }}</option>
                                     </select>
                                 </div>
