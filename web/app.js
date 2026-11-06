@@ -1704,7 +1704,10 @@ const optimuxApp = createApp({
         // Rows of a Usage table: live ones, then one summary line for deleted projects
         // (their sums, so the table still adds up), then those projects when opened
         const usageRows = (groupKey) => {
-            const data = ((usageData.value || {})[usagePeriod.value] || {})[groupKey] || {};
+            const period = (usageData.value || {})[usagePeriod.value] || {};
+            let data = period[groupKey === 'by_job' ? 'by_role' : groupKey] || {};
+            if (groupKey === 'by_role' || groupKey === 'by_job')     // v0.8: jobs apart from the roles
+                data = Object.fromEntries(Object.entries(data).filter(([k]) => isJob(k) === (groupKey === 'by_job')));
             const perProject = ['by_project', 'memory_updates'].includes(groupKey);
             const live = [], gone = [];
             Object.entries(data).forEach(([name, b]) => (perProject && (deletedProjects.value || {})[name] ? gone : live)
@@ -2516,7 +2519,7 @@ const optimuxApp = createApp({
                 overview: perDay(charts.ov.daily),
                 timeline, per: perf && perf.weekly ? 'week' : 'day',
                 byModel: charts.model.daily ? treemap(sumBy(charts.model.daily, 'model'), modelName) : null,
-                byRole: charts.role.perf ? roles.map(r => ({ name: r.role, value: r.cost || 0,
+                byRole: charts.role.perf ? roles.map(r => ({ name: perfRole(r.role), value: r.cost || 0,
                     lines: [callsLine(r.calls), shareLine(r.cost || 0, roleTotal), ...(ROLE_HELP[r.role] ? [tr(ROLE_HELP[r.role])] : [])].filter(Boolean) })) : null,
                 byProject: charts.proj.daily ? treemap(sumBy(charts.proj.daily, 'project'), projectLabel) : null,
                 tokModels: tokModels.map(m => ({ value: m, label: modelName(m) })), tokModel,
@@ -3064,7 +3067,7 @@ const optimuxApp = createApp({
                     grid: [{ y: Y(ymax), text: fmtUsd(max) }],
                     xlabels: [...new Set([0, buckets.length - 1])].map(i => ({ x: X(i), anchor: buckets.length === 1 ? 'middle' : (i === 0 ? 'start' : 'end'),
                         text: new Date(buckets[i] + 'T00:00:00').toLocaleDateString(appLocale(), { month: 'short', day: 'numeric' }) })),
-                    v, maxRef, roles: rowsOf(v.by_role, perfRole), projects: rowsOf(v.by_project, (k) => k),
+                    v, maxRef, roles: rowsOf(v.by_role, perfRole).filter(r => !isJob(r.key)), jobs: rowsOf(v.by_role, perfRole).filter(r => isJob(r.key)), projects: rowsOf(v.by_project, (k) => k),
                     refName: refs.length === 1 ? (byId[refs[0]] || {}).name || base(refs[0]) : (refs.length ? refs.length + tr(' reference models') : base(v.today_reference || '')),
                     refTitle: refs.map(r => tr('{r}: {v} calls', { r: r, v: v.reference_models[r] })).join('\n'),
                 };
@@ -3105,9 +3108,15 @@ const optimuxApp = createApp({
             if (v) { perfShown[key] = v; return v; }
             return perfShown[key] || null;
         };
-        const PERF_ROLES = { conductor: tk('Conductor'), scout: tk('Scout'), simple: tk('Simple'), complex: tk('Complex'), override: tk('Chosen by you'), curator: tk('Memory'),
+        const PERF_ROLES = { conductor: tk('Conductor'), scout: tk('Scout'), simple: tk('Simple'), complex: tk('Complex'), override: tk('Chosen by you'), curator: tk('Memory updates'),
                              skill_draft: tk('Skill drafts'), test: tk('Tests'), commit_message: tk('Commit messages'), planner: tk('Planner') };
         const perfRole = (r) => (PERF_ROLES[r] ? tr(PERF_ROLES[r]) : r);
+        // v0.8: calls that don't answer a chat request are jobs, not roles: shown apart.
+        // Future jobs (any model call outside a request) go in this list too.
+        const JOBS = ['commit_message', 'curator', 'skill_draft', 'test'];
+        const isJob = (r) => JOBS.includes(r);
+        const roleGroups = (rows) => [{ key: 'roles', head: tr('Role'), rows: rows.filter(r => !isJob(r.role)) },
+                                      { key: 'jobs', head: tr('Job'), rows: rows.filter(r => isJob(r.role)) }].filter(g => g.rows.length);
         const PERF_PROVIDERS = { anthropic: tk('Anthropic'), openai: tk('OpenAI'), gemini: tk('Google Gemini'), vertex_ai: tk('Google Vertex AI'),
                                  ollama: tk('Ollama (this machine)'), ollama_chat: tk('Ollama (this machine)'), deepseek: tk('DeepSeek'), mistral: tk('Mistral'),
                                  groq: tk('Groq'), openrouter: tk('OpenRouter'), xai: 'xAI', together_ai: tk('Together AI'), bedrock: tk('AWS Bedrock'),
@@ -5735,7 +5744,7 @@ const optimuxApp = createApp({
             historyFiltered, resetHistoryFilters, lastPromptBefore, retryFrom, interruptionLabel, wsState, headerCostTitle,
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
-            ROLE_HELP: roleHelp, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
+            ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
             syncBox, chatProject, openSync, closeSync, syncReady, writeCommitMessage, runSync,
             startClone, cancelClone, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, copyPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,

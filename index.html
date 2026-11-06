@@ -416,8 +416,8 @@
                                 </g>
                                 <text v-for="l in P.sv.xlabels" :key="'x' + l.x" :x="l.x" :y="P.sv.H - 6" :text-anchor="l.anchor" class="cm-pf-axis">{{ l.text }}</text>
                             </svg>
-                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-                                <div v-for="t in [[$t('By role'), P.sv.roles], [$t('By project'), P.sv.projects]]" :key="t[0]" class="overflow-x-auto">
+                            <div :class="['grid grid-cols-1 gap-4 mt-4', P.sv.jobs.length ? 'lg:grid-cols-3' : 'lg:grid-cols-2']">
+                                <div v-for="t in [[$t('By role'), P.sv.roles], [$t('By job'), P.sv.jobs], [$t('By project'), P.sv.projects]].filter(x => x[1].length)" :key="t[0]" class="overflow-x-auto">
                                     <table class="w-full text-[13px]">
                                         <thead><tr class="text-xs text-gray-500 text-left">
                                             <th class="font-normal py-1 pr-3">{{ t[0] }}</th><th class="font-normal py-1 pr-3 text-right">{{ $t('Calls') }}</th>
@@ -771,20 +771,22 @@
                         <!-- v0.8: calls and cost per role -->
                         <template v-for="P in [perfOf('roles')]" :key="'pf-roles'">
                         <div :class="perfBusy.roles ? 'cm-pf-loading' : ''" v-if="perfData.roles && perfData.roles.length" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                            <div class="flex items-start justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">{{ $t('By Role') }}</h3><chart-pick :model-value="perfPick.roles" @update:model-value="setPerfPick('roles', $event)" :options="perfProjects" :label="$t('By Role: project')"></chart-pick></div>
+                            <div class="flex items-start justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">{{ $t('By role and job') }}</h3><chart-pick :model-value="perfPick.roles" @update:model-value="setPerfPick('roles', $event)" :options="perfProjects" :label="$t('By Role: project')"></chart-pick></div>
                             <p v-if="!P || P.empty" class="text-[14px] text-gray-500 italic">{{ P ? $t('No model calls in {v} in this period.', { v: projectLabel(perfPick.roles) }) : $t("Loading…") }}</p>
                             <template v-else-if="P && P.data.roles && P.data.roles.length">
                             <div class="overflow-x-auto"><table class="w-full text-[13px] whitespace-nowrap">
-                                <thead><tr class="text-xs text-gray-500 text-left">
-                                    <th class="font-normal py-1 pr-3">{{ $t('Role') }}</th><th class="font-normal py-1 pr-3 text-right">{{ $t('Calls') }}</th>
-                                    <th class="font-normal py-1 pr-3 text-right">{{ $t('Cost') }}</th><th class="font-normal py-1">{{ $t('Models') }}</th>
-                                </tr></thead>
-                                <tbody><tr v-for="r in P.data.roles" :key="r.role" class="border-t border-gray-800 text-gray-300">
+                                <tbody v-for="g in roleGroups(P.data.roles)" :key="g.key">
+                                <tr class="text-xs text-gray-500 text-left">
+                                    <th :class="['font-normal pb-1 pr-3', g.key === 'jobs' ? 'pt-5' : 'pt-1']">{{ g.head }}</th><th :class="['font-normal pb-1 pr-3 text-right', g.key === 'jobs' ? 'pt-5' : 'pt-1']">{{ $t('Calls') }}</th>
+                                    <th :class="['font-normal pb-1 pr-3 text-right', g.key === 'jobs' ? 'pt-5' : 'pt-1']">{{ $t('Cost') }}</th><th :class="['font-normal pb-1', g.key === 'jobs' ? 'pt-5' : 'pt-1']">{{ $t('Models') }}</th>
+                                </tr>
+                                <tr v-for="r in g.rows" :key="r.role" class="border-t border-gray-800 text-gray-300">
                                     <td class="py-1 pr-3" :title="ROLE_HELP[r.role] ? perfRole(r.role) + ': ' + ROLE_HELP[r.role] : r.role"><span :class="ROLE_HELP[r.role] ? 'cursor-help underline decoration-dotted decoration-gray-600 underline-offset-4' : ''">{{ perfRole(r.role) }}</span></td>
                                     <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString($locale()) }}</td>
                                     <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.cost) }}{{ r.calls_without_cost ? '+' : '' }}</td>
                                     <td class="py-1 text-xs text-gray-400 whitespace-normal">{{ Object.entries(r.models).sort((a, b) => b[1] - a[1]).map(([m, n]) => modelName(m) + ' ' + n).join(' · ') }}</td>
-                                </tr></tbody>
+                                </tr>
+                                </tbody>
                             </table></div>
                             </template>
                         </div>
@@ -1168,7 +1170,7 @@
                         </div>
                         <button v-if="historyFiltered" @click="resetHistoryFilters" class="text-[13px] text-gray-400 hover:text-gray-200 self-end pb-2">{{ $t('Clear filters') }}</button>
                     </div>
-                    <div class="text-[13px] text-gray-500">{{ $t('{length} chat{v} · {v2} total · click a column to sort', { length: historySorted.length, v: historySorted.length === 1 ? '' : 's', v2: fmtCost(historySorted.reduce((a, s) => a + (s.cost || 0), 0)) }) }}<span v-if="historyPageList.length >= HISTORY_LIMIT" class="text-yellow-400"> {{ $t('· showing the newest {HISTORY_LIMIT}: filter to see older ones', { HISTORY_LIMIT: HISTORY_LIMIT }) }}</span></div>
+                    <div class="text-[13px] text-gray-500">{{ $t('{length} chat{v} · {v2} total · click a column to sort', { length: historySorted.length, v: historySorted.length === 1 ? '' : 's', v2: fmtCost(historySorted.reduce((a, s) => a + (s.cost || 0), 0)) }) }}<span v-if="historyPageList.length >= HISTORY_LIMIT" class="text-yellow-400">{{ ' ' + $t('· showing the newest {HISTORY_LIMIT}: filter to see older ones', { HISTORY_LIMIT: HISTORY_LIMIT }) }}</span></div>
                     <div class="overflow-x-auto bg-gray-900 border border-gray-800 rounded-xl">
                         <table class="w-full text-[15px]">
                             <thead><tr class="text-left text-xs uppercase tracking-wider text-gray-500 border-b border-gray-800">
@@ -1355,7 +1357,7 @@
 
                         <template v-if="catProvider">
                             <div>
-                                <label class="text-[13px] text-gray-400 block mb-1">{{ $t('Model') }} <span class="text-gray-500">{{ $t('({length} shown', { length: catVisible.length }) }}<template v-if="catRows.length !== catVisible.length"> {{ $t('of {length}', { length: catRows.length }) }}</template>{{ $t('; cheapest first; prices in USD per 1 million tokens)') }}</span></label>
+                                <label class="text-[13px] text-gray-400 block mb-1">{{ $t('Model') }} <span class="text-gray-500">{{ $t('({length} shown', { length: catVisible.length }) }}<template v-if="catRows.length !== catVisible.length">{{ ' ' + $t('of {length}', { length: catRows.length }) }}</template>{{ $t('; cheapest first; prices in USD per 1 million tokens)') }}</span></label>
                                 <select :value="catModel" @change="catChoose($event.target.value)" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[14px] text-gray-100 focus:border-blue-500 outline-none font-mono">
                                     <option value="" disabled>{{ $t('Choose a model…') }}</option>
                                     <option v-for="r in catVisible" :key="r.id" :value="r.id">{{ $t('{id} · in {v} / out {v2} · {v3}{v4}{v5}', { id: r.id, v: fmtMtok(r.input), v2: fmtMtok(r.output), v3: fmtCtx(r.context), v4: configuredIds.has(r.id) ? $t('  · added') : '', v5: r.new ? $t('  · new, price unknown') : r.unpriced ? (r.zero_listed ? $t('  · listed at $0, unconfirmed') : $t('  · price not listed')) : '' }) }}</option>
@@ -1379,9 +1381,9 @@
                             <div v-if="catSelected" class="text-[13px] text-gray-400">
                                 <span class="text-gray-500 mr-1">{{ $t('Your limits:') }}</span>
                                 <template v-if="fmtLimits(catSelected.limits)"> <span class="text-gray-200">{{ fmtLimits(catSelected.limits) }}</span> <span class="text-gray-500">({{ fmtLimitsTitle(catSelected.limits) }})</span></template>
-                                <template v-else-if="catProvider.limits_url"> {{ $t('{label} doesn\'t send them with replies; Optimux learns one only when it is hit. See', { label: catProvider.label }) }} <a :href="catProvider.limits_url" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline">{{ $t('its rate limits page') }}</a>.</template>
-                                <template v-else-if="!catProvider.env"> {{ $t('none: it runs on this machine.') }}</template>
-                                <template v-else> {{ $t('not known yet: they show after the first call to this model (Test or a chat).') }}</template>
+                                <template v-else-if="catProvider.limits_url">{{ ' ' + $t('{label} doesn\'t send them with replies; Optimux learns one only when it is hit. See', { label: catProvider.label }) }} <a :href="catProvider.limits_url" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline">{{ $t('its rate limits page') }}</a>.</template>
+                                <template v-else-if="!catProvider.env">{{ ' ' + $t('none: it runs on this machine.') }}</template>
+                                <template v-else>{{ ' ' + $t('not known yet: they show after the first call to this model (Test or a chat).') }}</template>
                             </div>
                             <div v-if="catSelected && catSelected.retired" class="text-[13px] text-red-300">{{ $t('The provider retired this model on {deprecated}: requests to it will probably fail. Choose a newer one.', { deprecated: catSelected.deprecated }) }}</div>
                             <div v-else-if="catSelected && catSelected.deprecated" class="text-[13px] text-gray-400">{{ $t('The provider will retire this model on {deprecated}.', { deprecated: catSelected.deprecated }) }}</div>
@@ -1541,7 +1543,7 @@
                             <span class="text-[12px] text-gray-500">{{ $t('last: {v}', { v: fmtWhen(cat.prices_refreshed) }) }}</span>
                             <template v-if="catProvider">
                                 <button @click="catRefresh('models')" :disabled="(!cat.online && catProvider.env) || !!catBusy || (catProvider.env && !catProvider.key_saved && catPid !== 'openrouter')" class="ml-2 text-[14px] px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500 disabled:opacity-40">{{ catBusy === 'models' ? $t('Asking…') : $t('↻ Refresh {provider} models', { provider: catProvider.label }) }}</button>
-                                <span class="text-[12px] text-gray-500">{{ $t('last: {v}', { v: fmtWhen(catInfo && catInfo.models_refreshed) }) }}<template v-if="catProvider.env && !catProvider.key_saved && catPid !== 'openrouter'"> {{ $t('· save the key first') }}</template><template v-if="!catProvider.env"> {{ $t('· Ollama is on this machine, so this works offline too') }}</template></span>
+                                <span class="text-[12px] text-gray-500">{{ $t('last: {v}', { v: fmtWhen(catInfo && catInfo.models_refreshed) }) }}<template v-if="catProvider.env && !catProvider.key_saved && catPid !== 'openrouter'">{{ ' ' + $t('· save the key first') }}</template><template v-if="!catProvider.env">{{ ' ' + $t('· Ollama is on this machine, so this works offline too') }}</template></span>
                             </template>
                         </div>
                         <div v-if="catRefreshMsg" role="status" :class="['text-[13px]', catRefreshMsg.ok ? 'text-green-400' : 'text-red-400']">{{ catRefreshMsg.text }}</div>
@@ -1627,8 +1629,8 @@
                                     <help-tip>{{ $t('How much the model reasons before answering. More thinking = more output tokens, cost and time, usually better on hard tasks. Default lets the provider decide. If support is unknown, use Test after changing it.') }}</help-tip>
                                 </div>
                                 <div class="mt-2 text-[13px] text-gray-500 font-mono flex items-center gap-2 flex-wrap">
-                                    <span v-if="model.input_cost_per_mtok != null">{{ $t('${input_cost_per_mtok} in / ${output_cost_per_mtok} out', { input_cost_per_mtok: model.input_cost_per_mtok, output_cost_per_mtok: model.output_cost_per_mtok }) }}<span v-if="model.cached_input_cost_per_mtok != null"> {{ $t('/ ${cached_input_cost_per_mtok} cached', { cached_input_cost_per_mtok: model.cached_input_cost_per_mtok }) }}</span> {{ $t('per M tokens') }}</span>
-                                    <span v-else-if="model.price_source === 'litellm' && model.list_prices" :title="$t('From LiteLLM\'s price list. Use Edit to set your own prices instead.')">{{ $t('${v} in / ${v2} out', { v: fmtPrice(model.list_prices.input), v2: fmtPrice(model.list_prices.output) }) }}<span v-if="model.list_prices.cached != null"> {{ $t('/ ${v} cached', { v: fmtPrice(model.list_prices.cached) }) }}</span> {{ $t('per M tokens (LiteLLM\'s list)') }}</span>
+                                    <span v-if="model.input_cost_per_mtok != null">{{ $t('${input_cost_per_mtok} in / ${output_cost_per_mtok} out', { input_cost_per_mtok: model.input_cost_per_mtok, output_cost_per_mtok: model.output_cost_per_mtok }) }}<span v-if="model.cached_input_cost_per_mtok != null">{{ ' ' + $t('/ ${cached_input_cost_per_mtok} cached', { cached_input_cost_per_mtok: model.cached_input_cost_per_mtok }) }}</span> {{ $t('per M tokens') }}</span>
+                                    <span v-else-if="model.price_source === 'litellm' && model.list_prices" :title="$t('From LiteLLM\'s price list. Use Edit to set your own prices instead.')">{{ $t('${v} in / ${v2} out', { v: fmtPrice(model.list_prices.input), v2: fmtPrice(model.list_prices.output) }) }}<span v-if="model.list_prices.cached != null">{{ ' ' + $t('/ ${v} cached', { v: fmtPrice(model.list_prices.cached) }) }}</span> {{ $t('per M tokens (LiteLLM\'s list)') }}</span>
                                     <span v-else-if="model.price_source === 'litellm'">{{ $t('Prices: known (LiteLLM)') }}</span>
                                     <span v-else-if="model.price_source === 'local'">{{ $t('Local model: no per-token cost') }}</span>
                                     <span v-else-if="model.price_source === 'proxy'" class="text-yellow-400" :title="$t('Optimux can\'t know what ') + model.api_host + $t(' charges, so LiteLLM\'s price list isn\'t used for this model.')">{{ $t('⚠ Price unknown ({api_host}): set it to track cost', { api_host: model.api_host }) }}</span>
@@ -1678,7 +1680,7 @@
                         <span class="text-2xl leading-none text-yellow-400" aria-hidden="true">⚠</span>
                         <div class="flex-1 min-w-0 space-y-2">
                             <div class="font-bold text-yellow-300">{{ $t('Restart Optimux to finish the restore') }}</div>
-                            <p class="text-[14px] text-yellow-100"><span v-html="$th('Ready to put back: <b>{v}</b>, {v2}', { v: rsStatus.pending.parts.join(', '), v2: rsStatus.pending.daily ? $t('from the {source} (chosen {date})', { source: rsStatus.pending.source, date: new Date(rsStatus.pending.created * 1000).toLocaleString($locale()) }) : $t('from the snapshot of {date}', { date: new Date(rsStatus.pending.created * 1000).toLocaleString($locale()) }) })"></span><template v-if="rsStatus.pending.projects && rsStatus.pending.projects.length"> {{ $t('(projects already restored: {v})', { v: rsStatus.pending.projects.join(', ') }) }}</template>{{ $t('. Chat replies wait until then, so nothing new is lost.') }}</p>
+                            <p class="text-[14px] text-yellow-100"><span v-html="$th('Ready to put back: <b>{v}</b>, {v2}', { v: rsStatus.pending.parts.join(', '), v2: rsStatus.pending.daily ? $t('from the {source} (chosen {date})', { source: rsStatus.pending.source, date: new Date(rsStatus.pending.created * 1000).toLocaleString($locale()) }) : $t('from the snapshot of {date}', { date: new Date(rsStatus.pending.created * 1000).toLocaleString($locale()) }) })"></span><template v-if="rsStatus.pending.projects && rsStatus.pending.projects.length">{{ ' ' + $t('(projects already restored: {v})', { v: rsStatus.pending.projects.join(', ') }) }}</template>{{ $t('. Chat replies wait until then, so nothing new is lost.') }}</p>
                             <p v-if="rsStatus.pending.before_snapshot" class="text-[13px] text-yellow-200/80"><span v-html="$th('Your current data was saved first, in the snapshot <code>{before_snapshot}</code>.', { before_snapshot: rsStatus.pending.before_snapshot })"></span></p>
                             <div class="flex flex-wrap items-center gap-2">
                                 <button v-if="rsStatus.can_restart" @click="restartForRestore" :disabled="rsRestarting" class="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-3 py-1.5 rounded-lg font-bold text-[14px] disabled:opacity-60">{{ rsRestarting ? $t('Restarting… the page reloads by itself') : $t('Restart now') }}</button>
@@ -1898,7 +1900,7 @@
                                 </help-tip></div>
                                 <div v-if="s.status === 'ready'">
                                     <button @click="loadSnapReadme(s)" class="text-[13px] text-blue-400 hover:underline">{{ snapReadme[s.id] ? $t('Hide the README') : $t('Read the README') }}</button>
-                                    <span class="text-[13px] text-gray-500"> {{ $t('(inside the file: contents and how to restore by hand)') }}</span>
+                                    <span class="text-[13px] text-gray-500">{{ ' ' + $t('(inside the file: contents and how to restore by hand)') }}</span>
                                     <div v-if="snapReadme[s.id] && snapReadme[s.id].loading" class="text-[13px] text-gray-500 mt-1">{{ $t('Reading…') }}</div>
                                     <div v-else-if="snapReadme[s.id] && snapReadme[s.id].error" class="text-[13px] text-red-400 mt-1">{{ snapReadme[s.id].error }}</div>
                                     <div v-else-if="snapReadme[s.id] && snapReadme[s.id].html" class="mt-2 max-h-[32rem] overflow-auto bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 prose prose-invert prose-blue max-w-none" @click="onCopyCodeClick" v-html="snapReadme[s.id].html"></div>
@@ -1972,7 +1974,7 @@
                                                 <a :href="snapDl[s.id].result.url" :download="snapDl[s.id].result.filename" @click="dlStarted(s, $event)" @auxclick="dlStarted(s, $event)"
                                                    :class="['px-4 py-2 rounded-lg font-bold text-[14px]', (snapDl[s.id].result.key && !snapDl[s.id].saved) ? 'bg-gray-700 text-gray-400 pointer-events-none' : 'bg-blue-600 hover:bg-blue-500 text-white']"
                                                    :aria-disabled="!!(snapDl[s.id].result.key && !snapDl[s.id].saved)">{{ $t('⬇ Download {v}', { v: snapDl[s.id].result.filename }) }}</a>
-                                                <span class="text-[13px] text-gray-400">{{ fmtBytes(snapDl[s.id].result.size) }}<template v-if="snapDl[s.id].result.expires_in"> {{ $t('· the link works for 1 hour') }}</template></span>
+                                                <span class="text-[13px] text-gray-400">{{ fmtBytes(snapDl[s.id].result.size) }}<template v-if="snapDl[s.id].result.expires_in">{{ ' ' + $t('· the link works for 1 hour') }}</template></span>
                                             </div>
                                             <div v-if="snapDl[s.id].result.mode !== 'plain'" class="text-[13px] text-gray-400 space-y-1">
                                                 <div><span v-html="$t('To open it on your computer, with <a href=&quot;https://age-encryption.org&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot; class=&quot;text-blue-400 hover:underline&quot;>age</a> (<code>apt install age</code>, <code>brew install age</code>):')"></span></div>
@@ -2118,7 +2120,7 @@
                                                 <a :href="snapDl[dailyItem(b).id].result.url" :download="snapDl[dailyItem(b).id].result.filename" @click="dlStarted(dailyItem(b), $event)" @auxclick="dlStarted(dailyItem(b), $event)"
                                                    :class="['px-4 py-2 rounded-lg font-bold text-[14px]', (snapDl[dailyItem(b).id].result.key && !snapDl[dailyItem(b).id].saved) ? 'bg-gray-700 text-gray-400 pointer-events-none' : 'bg-blue-600 hover:bg-blue-500 text-white']"
                                                    :aria-disabled="!!(snapDl[dailyItem(b).id].result.key && !snapDl[dailyItem(b).id].saved)">{{ $t('⬇ Download {v}', { v: snapDl[dailyItem(b).id].result.filename }) }}</a>
-                                                <span class="text-[13px] text-gray-400">{{ fmtBytes(snapDl[dailyItem(b).id].result.size) }}<template v-if="snapDl[dailyItem(b).id].result.expires_in"> {{ $t('· the link works for 1 hour') }}</template></span>
+                                                <span class="text-[13px] text-gray-400">{{ fmtBytes(snapDl[dailyItem(b).id].result.size) }}<template v-if="snapDl[dailyItem(b).id].result.expires_in">{{ ' ' + $t('· the link works for 1 hour') }}</template></span>
                                             </div>
                                             <div v-if="snapDl[dailyItem(b).id].result.mode !== 'plain'" class="text-[13px] text-gray-400 space-y-1">
                                                 <div><span v-html="$t('To open it on your computer, with <a href=&quot;https://age-encryption.org&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot; class=&quot;text-blue-400 hover:underline&quot;>age</a> (<code>apt install age</code>, <code>brew install age</code>):')"></span></div>
@@ -2249,7 +2251,7 @@
                                     <button v-for="lv in autonomy.levels" :key="lv.id" role="radio" :aria-checked="autonomy.default === lv.id" :disabled="!!autonomy.blocked && lv.id !== 'supervised'" :title="lv.text" @click="setAutonomy(null, lv.id)" :class="['px-3 py-1.5 disabled:opacity-40', autonomy.default === lv.id ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ LEVEL_NAMES[lv.id] }}</button>
                                 </div>
                             </div>
-                            <p class="text-[13px] text-gray-500 mt-2">{{ (autonomy.levels.find(l => l.id === autonomy.default) || {}).text }}<template v-if="!autonomy.default_saved && autonomy.default === 'checkpointed'"> {{ $t('(from the old Auto-approve setting)') }}</template></p>
+                            <p class="text-[13px] text-gray-500 mt-2">{{ (autonomy.levels.find(l => l.id === autonomy.default) || {}).text }}<template v-if="!autonomy.default_saved && autonomy.default === 'checkpointed'">{{ ' ' + $t('(from the old Auto-approve setting)') }}</template></p>
                             <div v-if="projectsList.length" class="mt-4 border-t border-gray-800 pt-3 space-y-2">
                                 <div v-for="p in projectsList" :key="p" class="flex flex-wrap items-center gap-3">
                                     <span class="text-[14px] text-gray-300 font-mono w-32 truncate" :title="p">{{ p }}</span>
@@ -2461,7 +2463,7 @@
                             <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">{{ $t('Input / cached') }}</div><div class="text-lg font-mono text-gray-100">{{ fmtTokens(usageData[usagePeriod].total.prompt_tokens) }} <span class="text-[15px] text-gray-400">/ {{ fmtTokens(usageData[usagePeriod].total.cached_tokens) }}</span></div></div>
                             <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">{{ $t('Output') }}</div><div class="text-lg font-mono text-gray-100">{{ fmtTokens(usageData[usagePeriod].total.completion_tokens) }}</div></div>
                         </div>
-                        <div v-for="group in [['by_project',$t('By project')],['by_role',$t('By role')],['by_model',$t('By model')],['by_skill',$t('By skill (using)')],['skill_drafts',$t('Skill drafting (Save as skill)')],['memory_updates',$t('Memory updates (automatic, per project)')]]" v-show="settingsTab === 'usage' && dashView.usage === 'details'" :key="group[0]">
+                        <div v-for="group in [['by_project',$t('By project')],['by_role',$t('By role')],['by_job',$t('By job')],['by_model',$t('By model')],['by_skill',$t('By skill (using)')],['skill_drafts',$t('Skill drafting (Save as skill)')],['memory_updates',$t('Memory updates (automatic, per project)')]]" v-show="settingsTab === 'usage' && dashView.usage === 'details'" :key="group[0]">
                             <h3 class="font-bold text-gray-200 mb-2 text-[15px]">{{ group[1] }}</h3>
                             <div class="overflow-x-auto">
                                 <table class="w-full text-[13px] font-mono">
@@ -2469,9 +2471,9 @@
                                     <tbody>
                                         <tr v-for="row in usageRows(group[0])" :key="row.kind + row.name" @click="row.kind === 'summary' && toggleGroup(row.key)"
                                             :class="['border-b border-gray-800', row.kind === 'summary' ? 'text-gray-400 cursor-pointer hover:bg-gray-800/40' : (row.kind === 'gone' ? 'text-gray-500 bg-gray-900/40' : 'text-gray-300')]">
-                                            <td class="py-1 pr-3 truncate max-w-[240px]" :title="row.kind === 'summary' ? $t('Click to show or hide them') : (group[0] === 'by_role' && ROLE_HELP[row.name] ? row.name + ': ' + ROLE_HELP[row.name] : row.name)">
+                                            <td class="py-1 pr-3 truncate max-w-[240px]" :title="row.kind === 'summary' ? $t('Click to show or hide them') : (['by_role', 'by_job'].includes(group[0]) && ROLE_HELP[row.name] ? perfRole(row.name) + ': ' + ROLE_HELP[row.name] : row.name)">
                                                 <template v-if="row.kind === 'summary'"><span class="inline-block w-3 text-gray-500">{{ openGroups[row.key] ? '▾' : '▸' }}</span> <span class="font-sans italic">{{ row.name }}</span></template>
-                                                <template v-else><span v-if="row.kind === 'gone'" class="inline-block w-4"></span><span :class="[row.kind === 'gone' ? 'line-through decoration-gray-600' : '', group[0] === 'by_role' && ROLE_HELP[row.name] ? 'cursor-help underline decoration-dotted decoration-gray-600 underline-offset-4' : '']">{{ ['by_project', 'memory_updates'].includes(group[0]) ? projectLabel(row.name) : row.name }}</span><deleted-tag v-if="row.kind === 'gone'" :at="deletedProjects[row.name] || 0"></deleted-tag><span v-if="row.archived" class="ml-1.5 text-[10px] font-sans uppercase tracking-wider text-yellow-300/80" :title="$t('Archived: in the Workspace\'s .archive folder')">{{ $t('archived') }}</span></template>
+                                                <template v-else><span v-if="row.kind === 'gone'" class="inline-block w-4"></span><span :class="[row.kind === 'gone' ? 'line-through decoration-gray-600' : '', ['by_role', 'by_job'].includes(group[0]) && ROLE_HELP[row.name] ? 'cursor-help underline decoration-dotted decoration-gray-600 underline-offset-4' : '']">{{ ['by_project', 'memory_updates'].includes(group[0]) ? projectLabel(row.name) : (['by_role', 'by_job'].includes(group[0]) ? perfRole(row.name) : row.name) }}</span><deleted-tag v-if="row.kind === 'gone'" :at="deletedProjects[row.name] || 0"></deleted-tag><span v-if="row.archived" class="ml-1.5 text-[10px] font-sans uppercase tracking-wider text-yellow-300/80" :title="$t('Archived: in the Workspace\'s .archive folder')">{{ $t('archived') }}</span></template>
                                             </td>
                                             <td class="py-1 pr-3 text-right">{{ row.b.calls }}</td>
                                             <td class="py-1 pr-3 text-right">{{ fmtTokens(row.b.prompt_tokens) }}</td>
@@ -2496,7 +2498,7 @@
                                 <p>{{ $t('One row per request: the tier and model, what the Conductor decided, whether it escalated and why, how it ended, steps, calls, cost, time, files and lines changed, commands approved and rejected, and your 👍 / 👎.') }}</p>
                                 <p><span v-html="$t('No message text: the chat keeps that, and the <b>session</b> column links the two. Nothing is sent anywhere; the records are for routing that learns from outcomes later.')"></span></p>
                             </help-tip></h3>
-                            <p class="text-[13px] text-gray-400 mb-3">{{ $t('{v} {v2} recorded', { v: taskStats.count.toLocaleString($locale()), v2: taskStats.count === 1 ? 'request' : 'requests' }) }}<template v-if="taskStats.first"> {{ $t('since {v}', { v: new Date(taskStats.first * 1000).toLocaleDateString($locale()) }) }}</template> · 👍 {{ taskStats.thumbs_up }} · 👎 {{ taskStats.thumbs_down }}</p>
+                            <p class="text-[13px] text-gray-400 mb-3">{{ taskStats.count === 1 ? $t('1 request recorded') : $t('{n} requests recorded', { n: taskStats.count.toLocaleString($locale()) }) }}{{ taskStats.first ? ' ' + $t('since {v}', { v: new Date(taskStats.first * 1000).toLocaleDateString($locale()) }) : '' }} · 👍 {{ taskStats.thumbs_up }} · 👎 {{ taskStats.thumbs_down }}</p>
                             <div class="flex flex-wrap items-center gap-2 text-[13px]">
                                 <a href="/api/tasks.csv" download :class="['px-3 py-1 rounded-lg border', taskStats.count ? 'border-gray-700 text-gray-200 hover:border-gray-500' : 'border-gray-800 text-gray-600 pointer-events-none']">{{ $t('Download CSV') }}</a>
                                 <template v-if="taskStats.count">
@@ -2662,7 +2664,7 @@
                             <h3 class="font-bold text-gray-200 text-[15px] mb-1">{{ $t('Storage') }}</h3>
                             <div class="text-xs text-gray-400 font-mono space-y-0.5">
                                 <div>{{ $t('Database: {path} · {v} · {v2} usage rows', { path: storageInfo.path, v: fmtBytes(storageInfo.size_bytes), v2: (storageInfo.usage_rows || 0).toLocaleString($locale()) }) }}</div>
-                                <div v-if="storageInfo.latest_backup">{{ $t('Latest backup: {latest_backup} ({v}) · {backups} kept', { latest_backup: storageInfo.latest_backup, v: new Date(storageInfo.latest_backup_time * 1000).toLocaleString($locale()), backups: storageInfo.backups }) }}<span v-if="storageInfo.backup_check && storageInfo.backup_check.ok" class="text-green-400" :title="$t('The last backup passed SQLite\'s quick_check before it replaced anything.')"> {{ $t('· ✓ checked') }}</span> · <button @click="openSettings('backups')" class="text-blue-400 hover:underline font-sans">{{ $t('manage in Backups') }}</button></div>
+                                <div v-if="storageInfo.latest_backup">{{ $t('Latest backup: {latest_backup} ({v}) · {backups} kept', { latest_backup: storageInfo.latest_backup, v: new Date(storageInfo.latest_backup_time * 1000).toLocaleString($locale()), backups: storageInfo.backups }) }}<span v-if="storageInfo.backup_check && storageInfo.backup_check.ok" class="text-green-400" :title="$t('The last backup passed SQLite\'s quick_check before it replaced anything.')">{{ ' ' + $t('· ✓ checked') }}</span> · <button @click="openSettings('backups')" class="text-blue-400 hover:underline font-sans">{{ $t('manage in Backups') }}</button></div>
                                 <div v-else class="text-yellow-400">{{ $t('No backup yet; one is made on every server start.') }}</div>
                             </div>
                             <div v-if="storageInfo.backup_check && !storageInfo.backup_check.ok" role="alert" class="mt-2 rounded-lg border border-red-800 bg-red-950/40 p-3 text-[13px] text-red-200">
@@ -2726,9 +2728,9 @@
                     <template v-if="!deleteBox.gh || deleteBox.gh.state === 'checking'">{{ $t('Checking its GitHub repository…') }}</template>
                     <template v-else-if="deleteBox.gh.state === 'missing'"><span v-html="$th('Its GitHub repository <span class=&quot;font-mono text-gray-300&quot;>{repo}</span> <span class=&quot;text-green-400&quot;>doesn\'t exist any more</span>: nothing to do there.', { repo: deleteBox.gh.repo })"></span></template>
                     <template v-else><span v-html="$th('<span class=&quot;text-gray-200&quot;>Its GitHub repository <span class=&quot;font-mono&quot;>{repo}</span> isn\'t touched.</span>', { repo: deleteBox.gh.repo })"></span>
-                        <template v-if="deleteBox.gh.state === 'exists'"> {{ $t('It still exists; to delete it too, use') }} <a :href="deleteBox.item.github_settings" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">{{ $t('its settings page ↗') }}</a> {{ $t('(Danger Zone).') }}</template>
-                        <template v-else-if="deleteBox.gh.state === 'deleted_or_private'"> {{ $t('GitHub doesn\'t show it without signing in: it was deleted, or it\'s private.') }} <a :href="deleteBox.item.github_settings" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">{{ $t('Check on GitHub ↗') }}</a> {{ $t('(set up GitHub in the Dashboard for an exact answer).') }}</template>
-                        <template v-else> {{ $t('Couldn\'t check whether it still exists ({reason})', { reason: deleteBox.gh.reason }) }} <a :href="deleteBox.item.github_settings" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">{{ $t('Check on GitHub ↗') }}</a></template>
+                        <template v-if="deleteBox.gh.state === 'exists'">{{ ' ' + $t('It still exists; to delete it too, use') }} <a :href="deleteBox.item.github_settings" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">{{ $t('its settings page ↗') }}</a> {{ $t('(Danger Zone).') }}</template>
+                        <template v-else-if="deleteBox.gh.state === 'deleted_or_private'">{{ ' ' + $t('GitHub doesn\'t show it without signing in: it was deleted, or it\'s private.') }} <a :href="deleteBox.item.github_settings" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">{{ $t('Check on GitHub ↗') }}</a> {{ $t('(set up GitHub in the Dashboard for an exact answer).') }}</template>
+                        <template v-else>{{ ' ' + $t('Couldn\'t check whether it still exists ({reason})', { reason: deleteBox.gh.reason }) }} <a :href="deleteBox.item.github_settings" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">{{ $t('Check on GitHub ↗') }}</a></template>
                     </template>
                 </div>
                 <div class="space-y-2">
@@ -3101,12 +3103,12 @@
                             <div v-else-if="blk.kind === 'plan'" class="border border-gray-700 rounded-lg bg-gray-900/60 overflow-hidden">
                                 <div class="px-4 py-3 border-b border-gray-800 flex items-start justify-between gap-3">
                                     <div class="min-w-0">
-                                        <div class="text-[11px] uppercase tracking-wide text-gray-500">{{ $t('Plan · {length} steps', { length: blk.plan.steps.length }) }}<span v-if="blk.plan.total_cost" class="normal-case tracking-normal"> {{ $t('· {v} so far', { v: fmtCost(blk.plan.total_cost) }) }}</span></div>
+                                        <div class="text-[11px] uppercase tracking-wide text-gray-500">{{ $t('Plan · {length} steps', { length: blk.plan.steps.length }) }}<span v-if="blk.plan.total_cost" class="normal-case tracking-normal">{{ ' ' + $t('· {v} so far', { v: fmtCost(blk.plan.total_cost) }) }}</span></div>
                                         <div class="text-[15px] text-gray-100 font-medium leading-snug">{{ blk.plan.goal }}</div>
                                         <div v-if="blk.plan.estimate && (blk.plan.status === 'waiting' || blk.plan.status === 'paused')" class="mt-1 text-[13px] text-gray-400" :title="$t('From the average cost of your last calls on each tier: ') + $t('Simple steps 2–4 calls, Complex steps 1–3, the check 1–3. Steps start from a small context, so the real cost is usually lower.')">
                                             <template v-if="blk.plan.estimate.high !== null">{{ blk.plan.status === 'paused' ? 'The rest' : 'Estimate' }}: <span class="text-gray-200 font-mono">{{ fmtCost(blk.plan.estimate.low) }}–{{ fmtCost(blk.plan.estimate.high) }}</span></template>
                                             <template v-else>{{ $t('No estimate yet: no priced {v} call so far.', { v: blk.plan.estimate.missing.join(' or ') }) }}</template>
-                                            <span v-if="blk.plan.planned_cost" class="text-gray-500"> {{ $t('· planning cost {v}', { v: fmtCost(blk.plan.planned_cost) }) }}</span>
+                                            <span v-if="blk.plan.planned_cost" class="text-gray-500">{{ ' ' + $t('· planning cost {v}', { v: fmtCost(blk.plan.planned_cost) }) }}</span>
                                         </div>
                                     </div>
                                     <span :class="['flex-shrink-0 text-[11px] font-mono rounded px-1.5 py-0.5 border', blk.plan.status === 'running' ? 'text-blue-300 border-blue-800' : (blk.plan.status === 'paused' || (blk.plan.status === 'done' && blk.plan.check_verdict === 'not_verified') ? 'text-amber-300 border-amber-800' : (blk.plan.status === 'done' && blk.plan.check_verdict === 'failed' ? 'text-red-300 border-red-800' : (blk.plan.status === 'done' ? 'text-green-300 border-green-900' : 'text-gray-300 border-gray-700')))]" :title="blk.plan.check_note || null">{{ blk.plan.status === 'done' && blk.plan.check_verdict === 'failed' ? $t('done · check failed') : (blk.plan.status === 'done' && blk.plan.check_verdict === 'not_verified' ? $t('done · not verified') : blk.plan.status) }}</span>
@@ -3126,7 +3128,7 @@
                                             <div class="text-[14px] text-gray-300 leading-relaxed">{{ s.do }}</div>
                                             <div class="text-[13px] text-gray-400"><span class="text-gray-500">{{ $t('Done when:') }}</span> {{ s.done_when }}</div>
                                             <div v-if="s.files && s.files.length" class="text-[12px] font-mono text-gray-400 break-all">{{ s.files.join(' · ') }}</div>
-                                            <div v-if="s.model && s.status !== 'pending'" class="text-[12px] font-mono text-gray-500">{{ modelName(s.model) }}{{ s.escalated ? ' (escalated)' : '' }}<span v-if="s.calls"> {{ $t('· {calls} call{v}', { calls: s.calls, v: s.calls === 1 ? '' : 's' }) }}</span><span v-if="s.cost"> · {{ fmtCost(s.cost) }}</span></div>
+                                            <div v-if="s.model && s.status !== 'pending'" class="text-[12px] font-mono text-gray-500">{{ modelName(s.model) }}{{ s.escalated ? ' (escalated)' : '' }}<span v-if="s.calls">{{ ' ' + $t('· {calls} call{v}', { calls: s.calls, v: s.calls === 1 ? '' : 's' }) }}</span><span v-if="s.cost"> · {{ fmtCost(s.cost) }}</span></div>
                                             <div v-if="s.result" :class="['text-[13px] rounded px-2 py-1.5', s.status === 'blocked' ? 'text-amber-200 bg-amber-950/30' : 'text-gray-300 bg-gray-800/50']"><span class="text-gray-500">{{ $t('Result:') }}</span> {{ s.result }}</div>
                                             <details v-if="s.details" class="text-[13px] text-gray-300"><summary class="cursor-pointer text-gray-500 hover:text-gray-300">{{ $t('Notes for the next steps') }}</summary><div class="mt-1 whitespace-pre-line">{{ s.details }}</div></details>
                                         </div>
@@ -3210,7 +3212,7 @@
                                     <span class="flex-shrink-0 whitespace-nowrap">{{ changeLabel(f) }}</span>
                                 </div>
                                 <div v-if="f.secret" class="text-[11px] text-red-300/80 pl-4 mb-0.5">{{ $t('Looks like a file of secrets, and git sees it now: a Push would include it.') }}</div>
-                                <div v-if="f.unignored" class="text-[11px] text-red-300/80 pl-4 mb-0.5">{{ $t('No longer ignored: {v}', { v: f.unignored.join(', ') }) }}<template v-if="f.unignored_more"> {{ $t('and {unignored_more} more', { unignored_more: f.unignored_more }) }}</template></div>
+                                <div v-if="f.unignored" class="text-[11px] text-red-300/80 pl-4 mb-0.5">{{ $t('No longer ignored: {v}', { v: f.unignored.join(', ') }) }}<template v-if="f.unignored_more">{{ ' ' + $t('and {unignored_more} more', { unignored_more: f.unignored_more }) }}</template></div>
                             </template>
                             <div v-if="msg.changes.more" class="text-gray-500">{{ $t('and {more} more', { more: msg.changes.more }) }}</div>
                             <div v-if="msg.changes.files && msg.changes.files.length && chatProject && !readOnlyChat && !isGenerating" class="mt-1.5 text-right">
@@ -3220,7 +3222,7 @@
                     </div>
                     <div v-if="msg.role === 'agent' && !(index === 0 && msg.system_note === 'System') && !(isGenerating && index === messages.length - 1)" class="mt-3 pt-2 border-t border-gray-800 flex items-center justify-between gap-3 text-[11px] font-mono text-gray-500">
                         <span v-if="msg.usage" :title="msg.usage.estimated ? $t('Some token counts are estimates') : ''">
-                            {{ $t('{v} · {v2}{v3} tok{v4} · {v5} · {v6}', { v: callsLabel(msg.usage), v2: msg.usage.estimated ? '≈' : '', v3: fmtTokens(msg.usage.tokens), v4: msg.usage.reasoning ? $t(' ({tokens} thinking)', { tokens: fmtTokens(msg.usage.reasoning) }) : '', v5: msg.usage.costKnown ? fmtCost(msg.usage.cost) : (msg.usage.cost > 0 ? fmtCost(msg.usage.cost) + '+' : $t('cost ?')), v6: fmtMs(msg.usage.ms) }) }}<span v-if="msg.usage.scout" :title="$t('Of which the scout (the Simple model reading the project before Complex started): ') + msg.usage.scout.calls + (msg.usage.scout.calls === 1 ? $t(' call · ') : $t(' calls · ')) + fmtTokens(msg.usage.scout.tokens) + $t(' tok. Included in the totals.')"> {{ $t('· scout {v}', { v: fmtCost(msg.usage.scout.cost) }) }}</span>
+                            {{ $t('{v} · {v2}{v3} tok{v4} · {v5} · {v6}', { v: callsLabel(msg.usage), v2: msg.usage.estimated ? '≈' : '', v3: fmtTokens(msg.usage.tokens), v4: msg.usage.reasoning ? $t(' ({tokens} thinking)', { tokens: fmtTokens(msg.usage.reasoning) }) : '', v5: msg.usage.costKnown ? fmtCost(msg.usage.cost) : (msg.usage.cost > 0 ? fmtCost(msg.usage.cost) + '+' : $t('cost ?')), v6: fmtMs(msg.usage.ms) }) }}<span v-if="msg.usage.scout" :title="$t('Of which the scout (the Simple model reading the project before Complex started): ') + msg.usage.scout.calls + (msg.usage.scout.calls === 1 ? $t(' call · ') : $t(' calls · ')) + fmtTokens(msg.usage.scout.tokens) + $t(' tok. Included in the totals.')">{{ ' ' + $t('· scout {v}', { v: fmtCost(msg.usage.scout.cost) }) }}</span>
                         </span>
                         <span v-else></span>
                         <span class="flex items-center gap-2">
