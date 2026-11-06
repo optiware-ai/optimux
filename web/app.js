@@ -22,23 +22,23 @@ const HelpTip = {
     },
     mounted() { document.addEventListener('click', this.outside, true); window.addEventListener('scroll', this.close, true); },
     unmounted() { document.removeEventListener('click', this.outside, true); window.removeEventListener('scroll', this.close, true); },
-    template: `<span class="cm-help" @mouseenter="enter" @mouseleave="hover = false"><button ref="btn" type="button" class="cm-help-btn" :class="{ 'cm-help-on': open }" @click.stop.prevent="toggle" aria-label="Help">?</button><span v-if="open" class="cm-help-box" :style="pos" @click.stop><slot>{{ text }}</slot></span></span>`,
+    template: `<span class="cm-help" @mouseenter="enter" @mouseleave="hover = false"><button ref="btn" type="button" class="cm-help-btn" :class="{ 'cm-help-on': open }" @click.stop.prevent="toggle" :aria-label="$t('Help')">?</button><span v-if="open" class="cm-help-box" :style="pos" @click.stop><slot>{{ text }}</slot></span></span>`,
 };
 // Feature 25: the New project form. Used in the chat (filled in by the model, it
 // replaces the approval box) and in the New project dialog (no model involved).
 // The server checks every value again; this only helps fill it in.
 // What each role in Usage → By role is (shown on hover)
 const ROLE_HELP = {
-    conductor: 'the small call per message that decides whether the Simple or the Complex model handles it.',
-    scout: 'the Simple model reading the project before a new Complex task, so the Complex model starts with a brief.',
-    simple: 'replies and tool steps by the Simple model (most everyday requests).',
-    complex: 'replies and tool steps by the Complex model: hard tasks, escalations (automatic or Escalate ↑) and /complex.',
-    override: 'requests where you picked a specific model in the chat instead of the Auto-Router.',
-    curator: 'automatic project memory updates when a chat ends (and "Update memory now").',
-    skill_draft: 'drafting a skill from a chat with "Save as skill".',
-    test: 'the Test button on a model in Dashboard → Models (one tiny call).',
-    planner: 'plan mode: the Complex model splitting a big task into steps before any work starts (one call per plan).',
-    commit_message: 'not a routing role, a job: the Simple model writing a commit message when you click "Write it for me" in Push….',
+    conductor: tk('the small call per message that decides whether the Simple or the Complex model handles it.'),
+    scout: tk('the Simple model reading the project before a new Complex task, so the Complex model starts with a brief.'),
+    simple: tk('replies and tool steps by the Simple model (most everyday requests).'),
+    complex: tk('replies and tool steps by the Complex model: hard tasks, escalations (automatic or Escalate ↑) and /complex.'),
+    override: tk('requests where you picked a specific model in the chat instead of the Auto-Router.'),
+    curator: tk('automatic project memory updates when a chat ends (and "Update memory now").'),
+    skill_draft: tk('drafting a skill from a chat with "Save as skill".'),
+    test: tk('the Test button on a model in Dashboard → Models (one tiny call).'),
+    planner: tk('plan mode: the Complex model splitting a big task into steps before any work starts (one call per plan).'),
+    commit_message: tk('not a routing role, a job: the Simple model writing a commit message when you click "Write it for me" in Push….'),
 };
 const PROJECT_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 // The logo while Optimux works: a green ball runs along the trunk and takes one of the
@@ -64,7 +64,7 @@ const BusyLogo = {
         },
     },
     template: `
-<svg :width="size" :height="size" viewBox="0 0 64 64" role="img" aria-label="Working">
+<svg :width="size" :height="size" viewBox="0 0 64 64" role="img" :aria-label="$t('Working')">
   <g fill="none" stroke="#3b82f6" stroke-linecap="round" :opacity="dim ? 0.45 : 1">
     <path d="M6 32 H22" stroke-width="6"/>
     <path d="M22 32 C32 32 32 17 42 17" stroke-width="4"/>
@@ -191,7 +191,7 @@ const RouteTrail = {
         this.timer = setInterval(go, TRAIL_CYCLE * 1000);
     },
     beforeUnmount() { clearInterval(this.timer); },
-    template: `<svg ref="svg" width="64" height="22" viewBox="0 0 64 22" overflow="visible" role="img" aria-label="Working"></svg>`,
+    template: `<svg ref="svg" width="64" height="22" viewBox="0 0 64 22" overflow="visible" role="img" :aria-label="$t('Working')"></svg>`,
 };
 
 // A mechanical counter. Each digit sits on a strip 0-9 (three times over) and
@@ -311,8 +311,8 @@ const ProjectForm = {
         nameProblem() {
             const n = this.f.name.trim();
             if (!n) return '';
-            if (!PROJECT_NAME_RE.test(n)) return 'Use letters, digits, . _ or - (not starting with . or -).';
-            if (this.existing.includes(n)) return 'A project with this name already exists.';
+            if (!PROJECT_NAME_RE.test(n)) return tr('Use letters, digits, . _ or - (not starting with . or -).');
+            if (this.existing.includes(n)) return tr('A project with this name already exists.');
             return '';
         },
         canSubmit() { return !!this.f.name.trim() && !this.nameProblem && !this.busy && !(this.f.github && !this.ghReady); },
@@ -339,23 +339,23 @@ const ProjectForm = {
  <div :class="compact ? 'grid md:grid-cols-2 gap-x-6 gap-y-4 items-start' : 'space-y-4'">
  <div class="space-y-4">
   <div>
-    <label class="block text-xs uppercase tracking-wider text-gray-400 mb-1">Name</label>
-    <input ref="name" v-model="f.name" maxlength="100" placeholder="my-project" spellcheck="false" autocomplete="off"
+    <label class="block text-xs uppercase tracking-wider text-gray-400 mb-1">{{ $t('Name') }}</label>
+    <input ref="name" v-model="f.name" maxlength="100" :placeholder="$t('my-project')" spellcheck="false" autocomplete="off"
            class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-gray-100 focus:outline-none focus:border-blue-500">
     <div class="mt-1 text-xs font-mono truncate" :class="nameProblem ? 'text-red-400' : 'text-gray-500'" :title="nameProblem ? '' : root">{{ nameProblem || where }}</div>
   </div>
   <div>
-    <label class="block text-xs uppercase tracking-wider text-gray-400 mb-1">Starter files</label>
+    <label class="block text-xs uppercase tracking-wider text-gray-400 mb-1">{{ $t('Starter files') }}</label>
     <div class="grid grid-cols-2 gap-2">
-      <button type="button" v-for="t in [['basic','Basic','README and .gitignore'],['python','Python','also src/ and tests/']]" :key="t[0]" @click="f.template = t[0]"
+      <button type="button" v-for="t in [['basic',$t('Basic'),$t('README and .gitignore')],['python','Python',$t('also src/ and tests/')]]" :key="t[0]" @click="f.template = t[0]"
               :class="['text-left rounded-lg border px-3 py-2 transition', f.template === t[0] ? 'border-blue-500 bg-blue-950/40' : 'border-gray-700 hover:border-gray-500']">
         <div class="font-bold text-gray-100">{{ t[1] }}</div><div class="text-xs text-gray-400">{{ t[2] }}</div>
       </button>
     </div>
   </div>
   <div class="flex items-center justify-between gap-3">
-    <span><span class="text-gray-100">Git repository</span><span class="block text-xs text-gray-500">git init and a first commit{{ f.github ? ' (needed for GitHub)' : '' }}</span></span>
-    <button type="button" @click="f.git_init = !f.git_init" role="switch" :aria-checked="f.git_init" aria-label="Git repository"
+    <span><span class="text-gray-100">{{ $t('Git repository') }}</span><span class="block text-xs text-gray-500">{{ $t('git init and a first commit{v}', { v: f.github ? $t(' (needed for GitHub)') : '' }) }}</span></span>
+    <button type="button" @click="f.git_init = !f.git_init" role="switch" :aria-checked="f.git_init" :aria-label="$t('Git repository')"
             :class="['relative w-10 h-6 rounded-full transition flex-shrink-0', f.git_init ? 'bg-blue-600' : 'bg-gray-700']">
       <span :class="['absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition', f.git_init ? 'translate-x-4' : '']"></span>
     </button>
@@ -364,17 +364,17 @@ const ProjectForm = {
   <div class="space-y-4">
   <div :class="['rounded-lg border p-3 transition', f.github ? 'border-blue-800 bg-blue-950/20' : 'border-gray-800']">
     <div class="flex items-center justify-between gap-3">
-      <span><span class="text-gray-100">Also on GitHub</span>
-        <span v-if="ghReady" class="block text-xs text-gray-500">{{ github.login ? 'as @' + github.login : (github.source === 'gh' ? "with gh's own sign-in" : 'with your saved token') }}, pushed after the first commit</span>
-        <span v-else class="block text-xs text-yellow-500/90">{{ github.reason || 'Checking GitHub…' }} <button v-if="github.reason" type="button" class="underline text-blue-400 hover:text-blue-300" @click="$emit('setup-github')">Set up GitHub</button></span>
+      <span><span class="text-gray-100">{{ $t('Also on GitHub') }}</span>
+        <span v-if="ghReady" class="block text-xs text-gray-500">{{ $t('{v}, pushed after the first commit', { v: github.login ? $t('as @') + github.login : (github.source === 'gh' ? $t("with gh's own sign-in") : $t('with your saved token')) }) }}</span>
+        <span v-else class="block text-xs text-yellow-500/90">{{ github.reason || $t('Checking GitHub…') }} <button v-if="github.reason" type="button" class="underline text-blue-400 hover:text-blue-300" @click="$emit('setup-github')">{{ $t('Set up GitHub') }}</button></span>
       </span>
-      <button type="button" :disabled="!ghReady" @click="setGithub(f.github ? '' : 'private')" role="switch" :aria-checked="!!f.github" aria-label="Also on GitHub"
+      <button type="button" :disabled="!ghReady" @click="setGithub(f.github ? '' : 'private')" role="switch" :aria-checked="!!f.github" :aria-label="$t('Also on GitHub')"
               :class="['relative w-10 h-6 rounded-full transition flex-shrink-0 disabled:opacity-40', f.github ? 'bg-blue-600' : 'bg-gray-700']">
         <span :class="['absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition', f.github ? 'translate-x-4' : '']"></span>
       </button>
     </div>
     <div v-if="f.github" class="grid grid-cols-2 gap-2 mt-3">
-      <label v-for="v in [['private','🔒 Private','Only you and people you invite'],['public','🌐 Public','Anyone can see it']]" :key="v[0]"
+      <label v-for="v in [['private',$t('🔒 Private'),$t('Only you and people you invite')],['public',$t('🌐 Public'),$t('Anyone can see it')]]" :key="v[0]"
              :class="['rounded-lg border px-3 py-2 cursor-pointer transition', f.github === v[0] ? 'border-blue-500 bg-blue-950/40' : 'border-gray-700 hover:border-gray-500']">
         <input type="radio" class="sr-only" :value="v[0]" v-model="f.github">
         <div class="font-bold text-gray-100">{{ v[1] }}</div><div class="text-xs text-gray-400">{{ v[2] }}</div>
@@ -382,22 +382,22 @@ const ProjectForm = {
     </div>
   </div>
   <div>
-    <label class="flex justify-between text-xs uppercase tracking-wider text-gray-400 mb-1"><span>Description <span class="normal-case tracking-normal text-gray-500">(optional, you can leave it empty for now)</span></span><span class="font-mono normal-case" :class="f.description.length > 350 ? 'text-red-400' : 'text-gray-600'">{{ f.description.length }}/350</span></label>
-    <input v-model="f.description" maxlength="350" placeholder="What is it for?"
+    <label class="flex justify-between text-xs uppercase tracking-wider text-gray-400 mb-1"><span><span v-html="$t('Description <span class=&quot;normal-case tracking-normal text-gray-500&quot;>(optional, you can leave it empty for now)</span>')"></span></span><span class="font-mono normal-case" :class="f.description.length > 350 ? 'text-red-400' : 'text-gray-600'">{{ f.description.length }}/350</span></label>
+    <input v-model="f.description" maxlength="350" :placeholder="$t('What is it for?')"
            class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 focus:outline-none focus:border-blue-500">
   </div>
   <label class="flex items-center gap-2 cursor-pointer text-gray-300">
     <input type="checkbox" v-model="f.switch" class="w-4 h-4 accent-blue-600">
-    <template v-if="compact">Offer to open it when it's ready<span class="text-xs text-gray-500">(a button under the reply; you stay in this chat until you click it)</span></template>
-    <template v-else>Open it when it's ready<span class="text-xs text-gray-500">{{ activeProject ? '(leaves ' + activeProject + '; that chat stays in History)' : '' }}</span></template>
+    <template v-if="compact"><span v-html="$t('Offer to open it when it’s ready<span class=&quot;text-xs text-gray-500&quot;>(a button under the reply; you stay in this chat until you click it)</span>')"></span></template>
+    <template v-else><span v-html="$th('Open it when it’s ready<span class=&quot;text-xs text-gray-500&quot;>{v}</span>', { v: activeProject ? $t('(leaves {project}; that chat stays in History)', { project: activeProject }) : '' })"></span></template>
   </label>
   </div>
  </div>
   <div v-if="error" class="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-red-300">{{ error }}</div>
   <div class="flex justify-end gap-3 pt-1">
-    <button type="button" @click="$emit('cancel')" class="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">Cancel</button>
+    <button type="button" @click="$emit('cancel')" class="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">{{ $t('Cancel') }}</button>
     <button type="submit" :disabled="!canSubmit" class="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold disabled:opacity-40 flex items-center gap-2">
-      <span v-if="busy" class="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin"></span>{{ busy ? 'Creating…' : 'Create project' }}
+      <span v-if="busy" class="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin"></span>{{ busy ? $t('Creating…') : $t('Create project') }}
     </button>
   </div>
 </form>`,
@@ -408,7 +408,7 @@ const ProjectForm = {
 // target; the details are in a tooltip. Days from the first one with data to today, with
 // the empty ones shown as zeros.
 const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const shortDay = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+const shortDay = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(appLocale(), { day: 'numeric', month: 'short' });
 // buckets: [{bucket: 'YYYY-MM-DD', total, parts: [[name, value]], note?}] -> from the first with data to `end`, gaps empty
 function fillDays(buckets, step = 1, end = isoDay(new Date())) {
     const got = new Map(buckets.map(b => [b.bucket, b]));
@@ -435,14 +435,14 @@ const boxWidth = {
 const TIP_PARTS = 5;
 const DayColumns = {
     props: { label: String, buckets: { type: Array, default: () => [] }, format: { type: Function, required: true },
-             per: { type: String, default: 'day' }, empty: { type: String, default: 'Nothing in this period' } },
+             per: { type: String, default: 'day' }, empty: { type: String, default: tk('Nothing in this period') } },
     data: () => ({ hover: null }),
     computed: {
         max() { return Math.max(0, ...this.buckets.map(b => b.total)); },
         shown() { return this.hover == null ? null : this.buckets[this.hover]; },
     },
     methods: {
-        when(b) { return (this.per === 'week' ? 'Week of ' : '') + shortDay(b.bucket); },
+        when(b) { return (this.per === 'week' ? tr('Week of ') : '') + shortDay(b.bucket); },
         tip(b) {
             const parts = (b.parts || []).filter(p => p[1] > 0).sort((x, y) => y[1] - x[1]);
             return { parts: parts.slice(0, TIP_PARTS), more: parts.length - TIP_PARTS };
@@ -451,7 +451,7 @@ const DayColumns = {
         height(b) { return `max(2px, ${100 * b.total / this.max}%)`; },
     },
     // Few days: columns no wider than 56 px, and the chart (with its dates) as wide as they are
-    template: `<div v-if="!buckets.length" class="text-[15px] text-gray-500 italic">{{ empty }}</div>
+    template: `<div v-if="!buckets.length" class="text-[15px] text-gray-500 italic">{{ $t(empty) }}</div>
     <div v-else class="cm-cols-wrap" :style="{ maxWidth: 'max(140px, ' + (buckets.length * 58) + 'px)' }">
         <div class="cm-cols" role="img" :aria-label="label">
             <span v-if="max > 0" class="cm-cols-peak">{{ format(max) }}</span>
@@ -462,7 +462,7 @@ const DayColumns = {
             <div v-if="shown" :class="['cm-col-tip', hover > buckets.length / 2 ? 'left' : '']" :style="{ '--at': (hover + 0.5) / buckets.length }" role="tooltip">
                 <b>{{ when(shown) }}</b><strong>{{ format(shown.total) }}</strong>
                 <span v-for="p in tip(shown).parts" :key="p[0]"><em>{{ p[0] }}</em>{{ format(p[1]) }}</span>
-                <small v-if="tip(shown).more > 0">and {{ tip(shown).more }} more</small>
+                <small v-if="tip(shown).more > 0">{{ $t('and {v} more', { v: tip(shown).more }) }}</small>
                 <small v-if="shown.note">{{ shown.note.replace(/^ /, '') }}</small>
             </div>
         </div>
@@ -514,7 +514,7 @@ const Treemap = {
         fill(i) { return this.hover === i ? CHART_BLUE_ON : CHART_BLUE; },
     },
     template: `<div ref="box" class="cm-chart-box" @mouseleave="hover = null">
-        <div v-if="!tiles.length" class="text-[15px] text-gray-500 italic">Nothing in this period</div>
+        <div v-if="!tiles.length" class="text-[15px] text-gray-500 italic">{{ $t('Nothing in this period') }}</div>
         <svg v-else :viewBox="'0 0 ' + boxW + ' ' + H" role="img" :aria-label="label" class="cm-svg">
             <g v-for="(t, i) in tiles" :key="t.item.name">
                 <rect :x="t.x + 1" :y="t.y + 1" :width="Math.max(0, t.w - 2)" :height="Math.max(0, t.h - 2)" rx="4" :fill="fill(i)" :fill-opacity="hover === i ? 1 : Math.max(0.45, 1 - i * 0.07)"></rect>
@@ -548,7 +548,7 @@ const ConnectedScatter = {
         shown() { return this.hover == null ? null : this.points[this.hover]; },
     },
     template: `<div ref="box" class="cm-chart-box" @mouseleave="hover = null">
-        <div v-if="!points.length" class="text-[15px] text-gray-500 italic">No calls in this period</div>
+        <div v-if="!points.length" class="text-[15px] text-gray-500 italic">{{ $t('No calls in this period') }}</div>
         <svg v-else :viewBox="'0 0 ' + g.W + ' ' + g.H" role="img" :aria-label="label" class="cm-svg">
             <line class="cm-grid" x1="0" :x2="g.W" :y1="g.top" :y2="g.top"></line>
             <text class="cm-chart-label" x="0" :y="g.top - 5">{{ format(g.max) }}</text>
@@ -584,7 +584,7 @@ const ScatterPlot = {
         shown() { return this.hover == null ? null : this.points[this.hover]; },
     },
     template: `<div ref="box" class="cm-chart-box" @mouseleave="hover = null">
-        <div v-if="!points.length" class="text-[15px] text-gray-500 italic">Nothing in this period</div>
+        <div v-if="!points.length" class="text-[15px] text-gray-500 italic">{{ $t('Nothing in this period') }}</div>
         <svg v-else :viewBox="'0 0 ' + g.W + ' ' + g.H" role="img" :aria-label="label" class="cm-svg">
             <line class="cm-axis" :x1="g.left" :x2="g.left" :y1="g.top" :y2="g.top + g.plotH"></line>
             <line class="cm-axis" :x1="g.left" :x2="g.W - g.right" :y1="g.top + g.plotH" :y2="g.top + g.plotH"></line>
@@ -634,7 +634,7 @@ async function chooseLanguage(code) {
     await window.OptimuxI18n.setLanguage(code);
     try {
         const r = await fetch('/api/language', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: code }) });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Not saved');
+        if (!r.ok) throw new Error((await r.json()).detail || tr('Not saved'));
     } catch (e) {
         console.error('Language not saved', e);
         await window.OptimuxI18n.setLanguage(prev);
@@ -669,12 +669,12 @@ const LangBadge = {
 
 let chartPickSeq = 0;
 const ChartPick = {
-    props: { modelValue: String, options: { type: Array, default: () => [] }, label: String, all: { type: String, default: 'All projects' } },
+    props: { modelValue: String, options: { type: Array, default: () => [] }, label: String, all: { type: String, default: tk('All projects') } },
     emits: ['update:modelValue'],
     data: () => ({ open: false, active: 0, q: '', pos: { top: 0, left: 0, width: 240, maxHeight: 320 }, up: false, id: 'cm-pick-' + (++chartPickSeq) }),
     computed: {
         items() {
-            const list = this.all ? [{ value: '', label: this.all }] : [];
+            const list = this.all ? [{ value: '', label: tr(this.all) }] : [];
             for (const o of this.options || []) list.push(o && o.value !== undefined ? { value: String(o.value), label: String(o.label === undefined ? o.value : o.label) } : { value: String(o), label: String(o) });
             return list;
         },
@@ -685,7 +685,7 @@ const ChartPick = {
         current() {
             const v = this.modelValue || '';
             const it = this.items.find(i => i.value === v);
-            return it ? it.label : (v || this.all || '');
+            return it ? it.label : (v || tr(this.all || ''));
         },
         searchable() { return this.items.length > 8; },
     },
@@ -779,17 +779,17 @@ const ChartPick = {
         <teleport to="body">
             <div v-if="open" ref="panel" :id="id" :class="['cm-pick-panel', up ? 'cm-pick-up' : '']" :style="style()" @keydown="key">
                 <div v-if="searchable" class="cm-pick-search">
-                    <input ref="search" v-model="q" type="search" placeholder="Filter…" :aria-label="'Filter ' + (label || 'the list')" autocomplete="off" spellcheck="false"
+                    <input ref="search" v-model="q" type="search" :placeholder="$t('Filter…')" :aria-label="$t('Filter ') + (label || $t('the list'))" autocomplete="off" spellcheck="false"
                            role="combobox" aria-autocomplete="list" :aria-controls="id + '-list'" :aria-activedescendant="shown[active] ? id + '-' + active : null">
                 </div>
-                <ul :id="id + '-list'" class="cm-pick-list" role="listbox" :aria-label="label || 'Choose'">
+                <ul :id="id + '-list'" class="cm-pick-list" role="listbox" :aria-label="label || $t('Choose')">
                     <li v-for="(it, i) in shown" :key="it.value" :id="id + '-' + i" role="option" :aria-selected="it.value === (modelValue || '') ? 'true' : 'false'"
                         :data-active="i === active ? 'true' : 'false'" :class="['cm-pick-item', i === active ? 'cm-pick-active' : '', it.value === (modelValue || '') ? 'cm-pick-chosen' : '']"
                         :title="it.label" @mousemove="active = i" @click="pick(it)">
                         <span class="cm-pick-check" aria-hidden="true">{{ it.value === (modelValue || '') ? '✓' : '' }}</span>
                         <span class="cm-pick-label">{{ it.label }}</span>
                     </li>
-                    <li v-if="!shown.length" class="cm-pick-none">Nothing matches.</li>
+                    <li v-if="!shown.length" class="cm-pick-none">{{ $t('Nothing matches.') }}</li>
                 </ul>
             </div>
         </teleport>
@@ -798,7 +798,7 @@ const ChartPick = {
 // fix25a: marks a deleted project whose chats, costs and memory were kept
 const DeletedTag = {
     props: { at: { type: Number, default: 0 } },
-    template: `<span v-if="at" class="ml-1.5 inline-block align-middle text-[10px] font-sans uppercase tracking-wider text-red-300/90 bg-red-950/50 border border-red-900/70 rounded px-1 py-px" :title="'Deleted on ' + new Date(at * 1000).toLocaleDateString() + '. Its folder is gone; its chats, costs and memory were kept.'">deleted</span>`,
+    template: `<span v-if="at" class="ml-1.5 inline-block align-middle text-[10px] font-sans uppercase tracking-wider text-red-300/90 bg-red-950/50 border border-red-900/70 rounded px-1 py-px" :title="$t('Deleted on {date}. Its folder is gone; its chats, costs and memory were kept.', { date: new Date(at * 1000).toLocaleDateString($locale()) })">{{ $t('deleted') }}</span>`,
 };
 // Getting started (v0.6.1): the checklist, used by the chat card and Dashboard -> Getting started (v0.8).
 // Steps tick themselves from the real settings; "Choose your features" has its controls inline.
@@ -806,8 +806,8 @@ const OnboardSteps = {
     // compact (the chat card): only the next step shows its explanation and controls
     props: { data: { type: Object, required: true }, settings: { type: Object, required: true }, compact: Boolean },
     emits: ['go', 'act', 'save'],
-    data: () => ({ opened: '', planModes: [['off', 'Off'], ['ask', 'Ask first'], ['auto', 'Automatic']],
-                   skillModes: [['off', 'Off'], ['manual', 'Manual only'], ['auto', 'Auto allowed']] }),
+    data: () => ({ opened: '', planModes: [['off', tr('Off')], ['ask', tr('Ask first')], ['auto', tr('Automatic')]],
+                   skillModes: [['off', tr('Off')], ['manual', tr('Manual only')], ['auto', tr('Auto allowed')]] }),
     methods: {
         set(field, value) { this.settings[field] = value; this.$emit('save'); },
         full(s) { return !this.compact || s.id === this.data.next || s.id === this.opened; },
@@ -818,26 +818,26 @@ const OnboardSteps = {
             :class="['rounded-lg border px-3 py-2', s.id === data.next ? 'border-blue-700 bg-blue-950/30' : 'border-gray-800 bg-gray-950/40']">
             <div class="flex items-start gap-2">
                 <span :class="['mt-0.5 flex-shrink-0 w-5 h-5 rounded-full text-[11px] flex items-center justify-center border', s.done ? 'bg-green-900/60 border-green-700 text-green-300' : (s.id === data.next ? 'border-blue-500 text-blue-300' : 'border-gray-700 text-gray-500')]"
-                      :aria-label="s.done ? 'done' : 'to do'">{{ s.done ? '✓' : (s.optional ? '·' : i + 1) }}</span>
+                      :aria-label="s.done ? $t('done') : $t('to do')">{{ s.done ? '✓' : (s.optional ? '·' : i + 1) }}</span>
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
                         <span :class="['text-[13px] font-semibold', s.done ? 'text-gray-400' : 'text-gray-100']">{{ s.title }}</span>
-                        <span v-if="s.optional" class="text-[10px] uppercase tracking-wider text-gray-500">optional</span>
+                        <span v-if="s.optional" class="text-[10px] uppercase tracking-wider text-gray-500">{{ $t('optional') }}</span>
                         <span class="flex-1"></span>
-                        <button v-if="!s.done && (s.id !== 'features' || !full(s))" @click="go(s)" :class="['text-[12px] px-2 py-0.5 rounded border flex-shrink-0', s.id === data.next ? 'border-blue-600 text-blue-200 hover:bg-blue-900/40' : 'border-gray-700 text-gray-400 hover:text-gray-200']">Go →</button>
+                        <button v-if="!s.done && (s.id !== 'features' || !full(s))" @click="go(s)" :class="['text-[12px] px-2 py-0.5 rounded border flex-shrink-0', s.id === data.next ? 'border-blue-600 text-blue-200 hover:bg-blue-900/40' : 'border-gray-700 text-gray-400 hover:text-gray-200']">{{ $t('Go →') }}</button>
                     </div>
                     <p v-if="s.check && full(s)" :class="['text-[11.5px] font-mono mt-0.5 truncate', s.done ? 'text-green-500/80' : 'text-gray-500']" :title="s.check">{{ s.check }}</p>
                     <p v-if="(!s.done && full(s)) || s.info" class="text-[12px] text-gray-400 mt-0.5 leading-snug">{{ s.info || s.why }}</p>
                     <div v-if="s.id === 'features' && !s.done && full(s)" class="mt-2 space-y-1.5 text-[12px]">
-                        <label class="flex items-center justify-between gap-2 text-gray-300">Update memory after each chat
+                        <label class="flex items-center justify-between gap-2 text-gray-300">{{ $t('Update memory after each chat') }}
                             <input type="checkbox" :checked="settings.memory_curator !== false" @change="set('memory_curator', $event.target.checked)" class="w-4 h-4"></label>
-                        <label class="flex items-center justify-between gap-2 text-gray-300">Plan big tasks
+                        <label class="flex items-center justify-between gap-2 text-gray-300">{{ $t('Plan big tasks') }}
                             <select :value="settings.plan_mode || 'off'" @change="set('plan_mode', $event.target.value)" class="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200">
                                 <option v-for="m in planModes" :key="m[0]" :value="m[0]" class="bg-gray-900">{{ m[1] }}</option></select></label>
-                        <label class="flex items-center justify-between gap-2 text-gray-300">Skills
+                        <label class="flex items-center justify-between gap-2 text-gray-300">{{ $t('Skills') }}
                             <select :value="settings.skills_mode || 'auto'" @change="set('skills_mode', $event.target.value)" class="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200">
                                 <option v-for="m in skillModes" :key="m[0]" :value="m[0]" class="bg-gray-900">{{ m[1] }}</option></select></label>
-                        <button @click="$emit('act', 'features_ok')" class="mt-1 w-full text-[12px] px-2 py-1 rounded border border-blue-600 text-blue-200 hover:bg-blue-900/40">These are fine</button>
+                        <button @click="$emit('act', 'features_ok')" class="mt-1 w-full text-[12px] px-2 py-1 rounded border border-blue-600 text-blue-200 hover:bg-blue-900/40">{{ $t('These are fine') }}</button>
                     </div>
                 </div>
             </div>
@@ -845,12 +845,12 @@ const OnboardSteps = {
     </ol>`,
 };
 
-createApp({
+const optimuxApp = createApp({
     setup() {
         const ws = ref(null);
         const userInput = ref('');
         const chatInputRef = ref(null);
-        const messages = ref([{ role: 'agent', content: 'Optimux initialized. Configuration loaded. New here? Open the **Guide** with the **?** in the header.', system_note: 'System', commands: [] }]);
+        const messages = ref([{ role: 'agent', content: tk('Optimux initialized. Configuration loaded. New here? Open the **Guide** with the **?** in the header.'), system_note: tk('System'), commands: [] }]);
         const isGenerating = ref(false);
         // The routing trail shows whenever Optimux waits for a model: before the first
         // output and between tool rounds (nothing arrived for TRAIL_QUIET_MS), v0.4-5k.
@@ -892,10 +892,10 @@ createApp({
             setTimeout(() => dismissToast(id), t.timeout || (t.kind === 'warn' ? 12000 : 6000));
         };
         // boot.js passes the server's 400 messages (a bad path, a bad key...) here
-        window.optimuxShowError = (msg) => pushToast({ kind: 'warn', title: "That didn't work", text: msg, timeout: 15000 });
+        window.optimuxShowError = (msg) => pushToast({ kind: 'warn', title: tr('That didn\'t work'), text: msg, timeout: 15000 });
         const projectCreatedToast = (name, ok, url) => pushToast(ok
-            ? { kind: 'success', title: `Project created · ${name}`, text: url ? 'Its GitHub repository is ready.' : '', link: url || '', linkLabel: 'Open on GitHub' }
-            : { kind: 'warn', title: `${name} created, with problems`, text: 'The folder is there, but some steps failed; the details are in the chat.' });
+            ? { kind: 'success', title: tr('Project created · {name}', { name: name }), text: url ? tr('Its GitHub repository is ready.') : '', link: url || '', linkLabel: tr('Open on GitHub') }
+            : { kind: 'warn', title: tr('{name} created, with problems', { name: name }), text: tr('The folder is there, but some steps failed; the details are in the chat.') });
 
         // ---- Feature 25: GitHub (Dashboard → GitHub) and the New project dialog
         const githubInfo = ref({});
@@ -914,7 +914,7 @@ createApp({
             const g = gitIdentity.value;
             try {
                 await postJson('/api/github/identity', { git_name: g.git_name, git_email: g.git_email });
-                g.msg = { ok: true, text: g.git_name ? `Commits are made as ${g.git_name} <${g.git_email}>.` : "Commits use git's own settings." };
+                g.msg = { ok: true, text: g.git_name ? tr('Commits are made as {git_name} <{git_email}>.', { git_name: g.git_name, git_email: g.git_email }) : tr('Commits use git\'s own settings.') };
             } catch (e) { g.msg = { ok: false, text: e.message }; }
         };
         const wsState = ref('connecting');  // connecting | connected | disconnected
@@ -967,7 +967,7 @@ createApp({
         const pendingRaiseTo = ref('');
         const autonomy = ref(null);              // GET /api/autonomy (Dashboard -> Execution)
         const autonomyMsg = ref(null);
-        const LEVEL_NAMES = { supervised: 'Supervised', checkpointed: 'Checkpointed', autonomous: 'Autonomous' };
+        const LEVEL_NAMES = { supervised: tk('Supervised'), checkpointed: tk('Checkpointed'), autonomous: tk('Autonomous') };
         const fetchAutonomy = async () => {
             try { autonomy.value = await (await fetch('/api/autonomy')).json(); } catch (e) { console.error('autonomy', e); }
         };
@@ -978,10 +978,10 @@ createApp({
                 const res = await fetch('/api/autonomy', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                            body: JSON.stringify({ project, level }) });
                 const data = await res.json().catch(() => ({}));
-                if (!res.ok) { autonomyMsg.value = { ok: false, text: data.detail || 'Not saved.' }; return; }
+                if (!res.ok) { autonomyMsg.value = { ok: false, text: data.detail || tr('Not saved.') }; return; }
                 autonomy.value = data;
-                autonomyMsg.value = { ok: true, text: 'Saved.' };
-            } catch (e) { autonomyMsg.value = { ok: false, text: 'Not saved: ' + e }; }
+                autonomyMsg.value = { ok: true, text: tr('Saved.') };
+            } catch (e) { autonomyMsg.value = { ok: false, text: tr('Not saved: ') + e }; }
         };
         const projectLevel = (name) => (autonomy.value && autonomy.value.projects[name]) || '';
         const pendingOutside = ref([]);
@@ -1053,12 +1053,12 @@ createApp({
         };
 
         // The projects root is shown as "Workspace" (the backend keeps '' / '(no project)')
-        const projectLabel = (p) => (!p || p === '(no project)') ? 'Workspace' : p;
+        const projectLabel = (p) => (!p || p === '(no project)') ? tr('Workspace') : p;
 
         // ---- Code viewer (side panel with syntax highlighting)
         const viewer = ref({ open: false, title: '', subtitle: '', lang: 'plaintext', wrap: false, sections: [] });
         const viewerLanguages = [
-            ['auto', 'Auto-detect'], ['plaintext', 'Plain text'], ['bash', 'Bash'], ['python', 'Python'],
+            ['auto', tk('Auto-detect')], ['plaintext', tk('Plain text')], ['bash', 'Bash'], ['python', 'Python'],
             ['javascript', 'JavaScript'], ['typescript', 'TypeScript'], ['json', 'JSON'], ['xml', 'HTML / XML / Vue'],
             ['css', 'CSS'], ['markdown', 'Markdown'], ['yaml', 'YAML'], ['ini', 'INI / TOML'], ['diff', 'Diff'],
             ['sql', 'SQL'], ['go', 'Go'], ['rust', 'Rust'], ['java', 'Java'], ['c', 'C'], ['cpp', 'C++'],
@@ -1120,10 +1120,10 @@ createApp({
         const closeViewer = () => { viewer.value.open = false; };
         const openCmdViewer = (c) => {
             const lang = guessOutputLang(c.command, c.output);
-            const status = c.exit_code === undefined ? 'still running (snapshot)' : `exit ${c.exit_code}`;
-            openViewer('Command', `${status} · ${projectLabel(appSettings.value.active_project)}`, lang, [
-                { label: 'Command', text: c.command || '', fixedLang: 'bash' },
-                { label: 'Output', text: c.output || '' },
+            const status = c.exit_code === undefined ? tr('still running (snapshot)') : `exit ${c.exit_code}`;
+            openViewer(tr('Command'), `${status} · ${projectLabel(appSettings.value.active_project)}`, lang, [
+                { label: tr('Command'), text: c.command || '', fixedLang: 'bash' },
+                { label: tr('Output'), text: c.output || '' },
             ]);
         };
         // Clicks on the View button of a code block inside a reply
@@ -1135,7 +1135,7 @@ createApp({
             const m = (code.className || '').match(/language-([\w+#-]+)/);
             let lang = m ? m[1].toLowerCase() : 'auto';
             lang = LANG_ALIAS[lang] || lang;
-            openViewer('Code block', m ? m[1] : 'no language given', lang, [{ label: 'Code', text: code.textContent.replace(/\n$/, '') }]);
+            openViewer(tr('Code block'), m ? m[1] : tr('no language given'), lang, [{ label: tr('Code'), text: code.textContent.replace(/\n$/, '') }]);
         };
         // Clicks on the Copy button of a code block outside chat (codeButtons: 'copy')
         const onCopyCodeClick = async (e) => {
@@ -1144,9 +1144,9 @@ createApp({
             const code = btn.closest('.cm-pre-bar')?.querySelector('code');
             if (!code) return;
             const ok = await writeClipboard(code.textContent.replace(/\n$/, ''));
-            btn.textContent = ok ? 'Copied ✓' : 'Copy failed';
+            btn.textContent = ok ? tr('Copied ✓') : tr('Copy failed');
             btn.classList.toggle('cm-copied', !!ok);
-            setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('cm-copied'); }, 2000);
+            setTimeout(() => { btn.textContent = tr('Copy'); btn.classList.remove('cm-copied'); }, 2000);
         };
         const copyViewerSection = async (sec) => {
             sec.copied = await writeClipboard(sec.text);
@@ -1199,16 +1199,16 @@ createApp({
         const headerCostTitle = Vue.computed(() => {
             const u = projectUsage.value;
             if (!u) return '';
-            const name = appSettings.value.active_project || '(no project)';
-            const lines = [`${appSettings.value.active_project ? 'Project ' + name : 'Workspace'}: ${fmtCost(u.month.cost)} this month, ${fmtCost(u.today.cost)} today, ${fmtCost(u.all.cost)} all time.`];
-            if (budgetStatus.value) lines.push(`Budget ${fmtCost(budgetStatus.value.monthly_usd)} (${budgetStatus.value.on_limit} at 100%).`);
-            if (sessionUsage.value.tokens) lines.push(`This browser session: ${fmtTokens(sessionUsage.value.tokens)} tokens, ${fmtCost(sessionUsage.value.cost)}.`);
+            const name = appSettings.value.active_project || tr('(no project)');
+            const lines = [tr('{v}: {v2} this month, {v3} today, {v4} all time.', { v: appSettings.value.active_project ? tr('Project ') + name : tr('Workspace'), v2: fmtCost(u.month.cost), v3: fmtCost(u.today.cost), v4: fmtCost(u.all.cost) })];
+            if (budgetStatus.value) lines.push(tr('Budget {v} ({on_limit} at 100%).', { v: fmtCost(budgetStatus.value.monthly_usd), on_limit: budgetStatus.value.on_limit }));
+            if (sessionUsage.value.tokens) lines.push(tr('This browser session: {v} tokens, {v2}.', { v: fmtTokens(sessionUsage.value.tokens), v2: fmtCost(sessionUsage.value.cost) }));
             return lines.join('\n');
         });
 
         const fetchProjectUsage = async () => {
             try {
-                const name = appSettings.value.active_project || '(no project)';
+                const name = appSettings.value.active_project || tr('(no project)');
                 const data = await (await fetch('/api/usage?project=' + encodeURIComponent(name))).json();
                 projectUsage.value = { today: data.today.total, all: data.all_time.total, month: data.this_month.total };
                 budgets.value = await (await fetch('/api/budgets')).json();
@@ -1222,8 +1222,8 @@ createApp({
         // ends: add the call at once, then ask the server for the exact totals.
         let headerSync = null;
         const countCallInHeader = (call) => {
-            const name = appSettings.value.active_project || '(no project)';
-            if ((call.project || '(no project)') !== name) return;
+            const name = appSettings.value.active_project || tr('(no project)');
+            if ((call.project || tr('(no project)')) !== name) return;
             const known = call.cost !== null && call.cost !== undefined;
             if (projectUsage.value && projectUsage.value.month) {
                 const m = projectUsage.value.month;
@@ -1239,7 +1239,7 @@ createApp({
 
         // Plan mode on the chat page: a chip next to New chat shows it; a click
         // moves to the next mode and saves it (the same setting as Dashboard → Routing).
-        const PLAN_MODES = [['off', 'Off'], ['ask', 'Ask first'], ['auto', 'Automatic']];
+        const PLAN_MODES = [['off', tk('Off')], ['ask', tk('Ask first')], ['auto', tk('Automatic')]];
         // v0.8: the active project's own plan mode, if it has one (Dashboard -> Project)
         const activeOwnPlan = ref('');
         const fetchActiveOwnPlan = async () => {
@@ -1253,15 +1253,16 @@ createApp({
         watch(() => appSettings.value.active_project, fetchActiveOwnPlan);
         const planModeNow = Vue.computed(() => {
             const id = activeOwnPlan.value || appSettings.value.plan_mode || 'off';
-            return PLAN_MODES.find((m) => m[0] === id) || PLAN_MODES[0];
+            const m = PLAN_MODES.find((x) => x[0] === id) || PLAN_MODES[0];
+            return [m[0], tr(m[1])];
         });
         const planModeTitle = Vue.computed(() => {
             const [id, label] = planModeNow.value;
-            const what = ({ off: 'never plans (/plan still works)', ask: 'shows a plan for big tasks; nothing runs until you press Run', auto: 'plans big tasks and starts them at once' })[id];
-            const next = PLAN_MODES[(PLAN_MODES.findIndex((m) => m[0] === id) + 1) % PLAN_MODES.length][1];
-            const idle = selectedModel.value !== 'auto' ? '\nNot used now: a hand-picked model never plans.' : '';
-            const where = activeOwnPlan.value ? `${appSettings.value.active_project}'s own setting (Dashboard → Project)` : 'Dashboard → Routing';
-            return `Plan big tasks: ${label}. Optimux ${what}.${idle}\nClick to switch to ${next}. Also in ${where}.`;
+            const what = ({ off: tr('never plans (/plan still works)'), ask: tr('shows a plan for big tasks; nothing runs until you press Run'), auto: tr('plans big tasks and starts them at once') })[id];
+            const next = tr(PLAN_MODES[(PLAN_MODES.findIndex((m) => m[0] === id) + 1) % PLAN_MODES.length][1]);
+            const idle = selectedModel.value !== 'auto' ? tr('\nNot used now: a hand-picked model never plans.') : '';
+            const where = activeOwnPlan.value ? tr('{active_project}\'s own setting (Dashboard → Project)', { active_project: appSettings.value.active_project }) : tr('Dashboard → Routing');
+            return tr('Plan big tasks: {label}. Optimux {what}.{idle}\nClick to switch to {next}. Also in {where}.', { label: label, what: what, idle: idle, next: next, where: where });
         });
         // Changes the setting that applies: the project's own one when it has it, else the global one
         const cyclePlanMode = async () => {
@@ -1292,7 +1293,7 @@ createApp({
                 if (data.note) {
                     // A new Workspace folder without the active project: the Workspace is active now
                     appSettings.value.active_project = data.active_project || '';
-                    pushToast({ kind: 'info', title: 'Workspace folder changed', text: data.note, timeout: 10000 });
+                    pushToast({ kind: 'info', title: tr('Workspace folder changed'), text: data.note, timeout: 10000 });
                     if (!isGenerating.value && !pendingApproval.value && ws.value) {
                         isGenerating.value = true;
                         ws.value.send(JSON.stringify({ type: 'open_session', id: 'latest' }));
@@ -1381,7 +1382,7 @@ createApp({
             const setupTarget = setupModels.value.find(m => m.id === targetId);
             
             if (setupTarget) {
-                modalInstructions.value = setupTarget.instructions || "This model requires an API key.";
+                modalInstructions.value = setupTarget.instructions || tr('This model requires an API key.');
                 setupEnvKey.value = setupTarget.env_key;
                 showSetupModal.value = true;
                 selectedModel.value = 'auto'; 
@@ -1407,8 +1408,8 @@ createApp({
                 
                 messages.value.push({
                     role: 'agent', 
-                    content: `Successfully configured and loaded credentials for ${setupEnvKey.value}.`, 
-                    system_note: 'Configuration Updated'
+                    content: tr('Successfully configured and loaded credentials for {value}.', { value: setupEnvKey.value }), 
+                    system_note: tr('Configuration Updated')
                 });
                 scrollToBottom();
                 closeModal();
@@ -1547,17 +1548,17 @@ createApp({
             : l.startsWith('@@') ? 'text-blue-300' : 'text-gray-400';
         // Changed-files summary (v0.4-5m): "+12 −1", "new, 23 lines", "285 → 0 lines"
         const changeLabel = (f) => {
-            if (f.status === 'deleted') return f.lines_before ? `deleted (${f.lines_before} lines)` : 'deleted';
-            if (f.added === null) return f.status === 'new' ? 'new, binary' : 'binary';
-            if (f.status === 'new') return `new, ${f.lines_after} line${f.lines_after === 1 ? '' : 's'}`;
-            if (f.warn) return `${f.lines_before} → ${f.lines_after} lines`;
+            if (f.status === 'deleted') return f.lines_before ? tr('deleted ({lines_before} lines)', { lines_before: f.lines_before }) : 'deleted';
+            if (f.added === null) return f.status === 'new' ? tr('new, binary') : 'binary';
+            if (f.status === 'new') return tr('new, {lines_after} line{v}', { lines_after: f.lines_after, v: f.lines_after === 1 ? '' : 's' });
+            if (f.warn) return tr('{lines_before} → {lines_after} lines', { lines_before: f.lines_before, lines_after: f.lines_after });
             return `+${f.added} −${f.removed}`;
         };
-        const changeTitle = (f) => f.secret ? 'This looks like a file of secrets, and git sees it now: a Push would include it. Delete it, or add it to .gitignore.'
-            : f.unignored ? 'This .gitignore lost rules in this reply, so git may now see files it ignored before.'
-            : f.warn ? (f.status === 'deleted' ? 'This file was deleted in this reply.'
-            : `This file lost ${f.lines_before - f.lines_after} of its ${f.lines_before} lines in this reply. Check it.`)
-            : (f.status === 'changed' && f.added !== null ? `${f.lines_before} → ${f.lines_after} lines` : '');
+        const changeTitle = (f) => f.secret ? tr('This looks like a file of secrets, and git sees it now: a Push would include it. Delete it, or add it to .gitignore.')
+            : f.unignored ? tr('This .gitignore lost rules in this reply, so git may now see files it ignored before.')
+            : f.warn ? (f.status === 'deleted' ? tr('This file was deleted in this reply.')
+            : tr('This file lost {v} of its {lines_before} lines in this reply. Check it.', { v: f.lines_before - f.lines_after, lines_before: f.lines_before }))
+            : (f.status === 'changed' && f.added !== null ? tr('{lines_before} → {lines_after} lines', { lines_before: f.lines_before, lines_after: f.lines_after }) : '');
         const gitBox = Vue.reactive({ project: '', kind: '', data: null, error: '', loading: false, ssh: false, copied: false });
         let savedSshHost = 'github.com';
         try { savedSshHost = localStorage.getItem('optimux.sshHost') || 'github.com'; } catch (_) {}
@@ -1570,8 +1571,8 @@ createApp({
                 const r = await fetch('/api/projects/' + encodeURIComponent(project) + '/git-commands');
                 const d = await r.json();
                 if (gitBox.project !== project) return;
-                if (!r.ok) gitBox.error = d.detail || 'Could not read the project.'; else gitBox.data = d;
-            } catch (_) { gitBox.error = 'Could not reach Optimux.'; }
+                if (!r.ok) gitBox.error = d.detail || tr('Could not read the project.'); else gitBox.data = d;
+            } catch (_) { gitBox.error = tr('Could not reach Optimux.'); }
             gitBox.loading = false;
         };
         const gitLine = Vue.computed(() => {
@@ -1599,9 +1600,9 @@ createApp({
                 const r = await fetch(`/api/projects/${encodeURIComponent(project)}/${kind}`);
                 const d = await r.json();
                 if (!syncBox.open || syncBox.project !== project) return;
-                if (!r.ok) syncBox.error = d.detail || 'Could not read the project.';
+                if (!r.ok) syncBox.error = d.detail || tr('Could not read the project.');
                 else { syncBox.data = d; if (kind === 'push') syncBox.message = d.default_message || ''; }
-            } catch (_) { syncBox.error = 'Could not reach Optimux.'; }
+            } catch (_) { syncBox.error = tr('Could not reach Optimux.'); }
             syncBox.loading = false;
         };
         const closeSync = () => { if (!syncBox.busy) syncBox.open = false; };
@@ -1618,7 +1619,7 @@ createApp({
                 const d = await postJson(`/api/projects/${encodeURIComponent(syncBox.project)}/commit-message`, {});
                 syncBox.message = d.message;
                 countCallInHeader({ project: syncBox.project, cost: d.cost });   // the header counter rolls like for a chat call
-                syncBox.writeNote = `Written by ${d.model}${d.template ? ', following the commit template' : ''} · ${d.cost != null ? fmtCost(d.cost) : 'cost unknown'}. Check it before pushing.`;
+                syncBox.writeNote = tr('Written by {model}{v} · {v2}. Check it before pushing.', { model: d.model, v: d.template ? tr(', following the commit template') : '', v2: d.cost != null ? fmtCost(d.cost) : tr('cost unknown') });
             } catch (e) { syncBox.writeNote = e.message; }
             syncBox.writing = false;
         };
@@ -1631,20 +1632,20 @@ createApp({
             try {
                 syncBox.result = await postJson(`/api/projects/${encodeURIComponent(syncBox.project)}/${syncBox.kind}`, body);
                 pushToast(syncBox.kind === 'push'
-                    ? { title: `Pushed · ${syncBox.project}`, text: `${syncBox.result.branch} · ${syncBox.result.commit}`, link: syncBox.result.url || '', linkLabel: 'Open on GitHub' }
-                    : { title: `Updated · ${syncBox.project}`, text: `${syncBox.result.commits} new commit${syncBox.result.commits === 1 ? '' : 's'}` });
+                    ? { title: tr('Pushed · {project}', { project: syncBox.project }), text: `${syncBox.result.branch} · ${syncBox.result.commit}`, link: syncBox.result.url || '', linkLabel: tr('Open on GitHub') }
+                    : { title: tr('Updated · {project}', { project: syncBox.project }), text: tr('{commits} new commit{v}', { commits: syncBox.result.commits, v: syncBox.result.commits === 1 ? '' : 's' }) });
                 if (showSettingsModal.value && settingsTab.value === 'projects') fetchProjectsOverview();
             } catch (e) { syncBox.error = e.message; }
             syncBox.busy = false;
         };
         const archiveFromDashboard = async (name) => {
-            if (!await askConfirm({ title: `Archive ${name}?`, text: "Its folder moves to the Workspace's .archive folder. Its chats, costs and memory are kept, and you can restore it from this page.", ok: 'Archive' })) return;
+            if (!await askConfirm({ title: tr('Archive {name}?', { name: name }), text: tr('Its folder moves to the Workspace\'s .archive folder. Its chats, costs and memory are kept, and you can restore it from this page.'), ok: tr('Archive') })) return;
             try {
                 const r = await postJson(`/api/projects/${encodeURIComponent(name)}/archive`);
-                pushToast({ kind: 'info', title: `Archived · ${name}`, text: `Moved to ${r.archived_to}. Restore it from Archived projects, below.`, timeout: 10000 });
+                pushToast({ kind: 'info', title: tr('Archived · {name}', { name: name }), text: tr('Moved to {archived_to}. Restore it from Archived projects, below.', { archived_to: r.archived_to }), timeout: 10000 });
                 // Open pages leave the project through the project_archived message; this is the fallback
                 if (r.was_active && appSettings.value.active_project === name) leaveArchived(name);
-            } catch (e) { pushToast({ kind: 'warn', title: `Couldn't archive ${name}`, text: e.message }); }
+            } catch (e) { pushToast({ kind: 'warn', title: tr('Couldn\'t archive {name}', { name: name }), text: e.message }); }
             refreshProjectLists();
         };
         // fix25b: where things are on disk, shown wherever projects are
@@ -1652,19 +1653,19 @@ createApp({
         const archivePath = Vue.computed(() => workspacePath.value ? workspacePath.value + '/.archive' : '');
         const projectPath = (name) => workspacePath.value ? (name ? workspacePath.value + '/' + name : workspacePath.value) : '';
         const copyPath = async (path) => {
-            if (path && await writeClipboard(path)) pushToast({ kind: 'info', title: 'Path copied', text: path, timeout: 3000 });
+            if (path && await writeClipboard(path)) pushToast({ kind: 'info', title: tr('Path copied'), text: path, timeout: 3000 });
         };
         const leaveArchived = (name) => {
             if (appSettings.value.active_project !== name) return;
             appSettings.value.active_project = '';
             changeProject();
-            pushToast({ kind: 'info', title: 'Now in the Workspace', text: `${name} was archived.` });
+            pushToast({ kind: 'info', title: tr('Now in the Workspace'), text: tr('{name} was archived.', { name: name }) });
         };
         const restoreArchived = async (a) => {
             try {
                 const r = await postJson(`/api/projects/archived/${encodeURIComponent(a.folder)}/restore`);
-                pushToast({ kind: 'success', title: `Restored · ${a.name}`, text: `Back in ${r.path}.` });
-            } catch (e) { pushToast({ kind: 'warn', title: `Couldn't restore ${a.name}`, text: e.message }); }
+                pushToast({ kind: 'success', title: tr('Restored · {name}', { name: a.name }), text: tr('Back in {path}.', { path: r.path }) });
+            } catch (e) { pushToast({ kind: 'warn', title: tr('Couldn\'t restore {name}', { name: a.name }), text: e.message }); }
             refreshProjectLists();
         };
         // ---- fix25e: deleted (and archived) projects in collapsible groups; open state kept per browser
@@ -1691,7 +1692,7 @@ createApp({
             if (!gone.length) return live;
             const total = Object.fromEntries(USAGE_SUM.map(k => [k, gone.reduce((a, r) => a + (r.b[k] || 0), 0)]));
             const key = 'usage-' + groupKey;
-            const rows = [...live, { kind: 'summary', name: `Deleted projects (${gone.length})`, b: total, key }];
+            const rows = [...live, { kind: 'summary', name: tr('Deleted projects ({length})', { length: gone.length }), b: total, key }];
             if (openGroups.value[key]) gone.forEach(r => rows.push({ ...r, kind: 'gone' }));
             return rows;
         };
@@ -1705,7 +1706,7 @@ createApp({
                 box.gh = { state: 'checking' };
                 fetch(`/api/projects/archived/${encodeURIComponent(a.folder)}/github`).then(r => r.json())
                     .then(d => { if (deleteBox.value) deleteBox.value.gh = d; })
-                    .catch(() => { if (deleteBox.value) deleteBox.value.gh = { state: 'unknown', reason: "Couldn't ask Optimux." }; });
+                    .catch(() => { if (deleteBox.value) deleteBox.value.gh = { state: 'unknown', reason: tr('Couldn\'t ask Optimux.') }; });
             }
         };
         // Same rule as the server: the words in any case and spacing, the name exactly
@@ -1723,11 +1724,11 @@ createApp({
             try {
                 const r = await postJson(`/api/projects/archived/${encodeURIComponent(b.item.folder)}/delete`, { confirm: b.typed, keep_records: b.keep });
                 deleteBox.value = null;
-                pushToast({ kind: 'success', title: `Deleted · ${r.project}`,
-                            text: r.records_kept ? 'Its chats, costs and memory are kept and marked as deleted.' : 'Its chats, costs and memory are gone too.' });
+                pushToast({ kind: 'success', title: tr('Deleted · {project}', { project: r.project }),
+                            text: r.records_kept ? tr('Its chats, costs and memory are kept and marked as deleted.') : tr('Its chats, costs and memory are gone too.') });
             } catch (e) {
                 b.error = e.message; b.busy = false;
-                if (deleteBox.value !== b) pushToast({ kind: 'warn', title: `Couldn't delete ${b.item.name}`, text: e.message });
+                if (deleteBox.value !== b) pushToast({ kind: 'warn', title: tr('Couldn\'t delete {name}', { name: b.item.name }), text: e.message });
             }
             refreshProjectLists();
         };
@@ -1745,7 +1746,7 @@ createApp({
         const historyProjects = Vue.computed(() => {
             const names = projectsList.value || [];
             const gone = Object.keys(deletedProjects.value || {}).filter(n => !names.includes(n)).sort();
-            return [{ value: NO_PROJECT, label: 'Workspace (no project)' }, ...names,
+            return [{ value: NO_PROJECT, label: tr('Workspace (no project)') }, ...names,
                     ...gone.map(n => ({ value: n, label: n + ' (deleted)' }))];
         });
         const setHistoryProject = (v) => { historyPage.value.project = v || ''; fetchHistoryPage(); };
@@ -1780,21 +1781,21 @@ createApp({
         const snapshotsInfo = ref({ snapshots: [], used_bytes: 0, limit_bytes: 0, free_bytes: 0, dir: '', running: false });
         const snapForm = ref({ kind: 'full', note: '', projects: [], skip_rebuildable: true });
         const snapKinds = [
-            { id: 'full', label: 'Everything', hint: 'Your data and all projects, at the same moment' },
-            { id: 'data', label: 'Data only', hint: 'Settings, models, memory, skills, chats, keys' },
-            { id: 'workspace', label: 'Workspace only', hint: 'Project folders (all or some) and their memory' },
+            { id: 'full', label: tk('Everything'), hint: tk('Your data and all projects, at the same moment') },
+            { id: 'data', label: tk('Data only'), hint: tk('Settings, models, memory, skills, chats, keys') },
+            { id: 'workspace', label: tk('Workspace only'), hint: tk('Project folders (all or some) and their memory') },
         ];
-        const snapKindLabel = (k) => ({ full: 'Everything', data: 'Data', workspace: 'Workspace' })[k] || k;
+        const snapKindLabel = (k) => ({ full: tr('Everything'), data: tr('Data'), workspace: tr('Workspace') })[k] || k;
         // Data only / Workspace only: Take first asks (Everything instead, or proceed)
         const snapConfirm = ref(false);
         const snapOpen = ref({});            // snapshot rows with their details open
         const snapLeftOutProjects = Vue.computed(() =>
             (projectsList.value || []).filter(p => !snapForm.value.projects.includes(p)));
         const snapProceedLabel = Vue.computed(() => {
-            if (snapForm.value.kind === 'data') return 'Proceed with only my data';
+            if (snapForm.value.kind === 'data') return tr('Proceed with only my data');
             const n = snapForm.value.projects.length;
-            if (!snapLeftOutProjects.value.length) return 'Proceed with only the projects';
-            return `Proceed with only the selected project${n === 1 ? '' : 's'}`;
+            if (!snapLeftOutProjects.value.length) return tr('Proceed with only the projects');
+            return tr('Proceed with only the selected project{v}', { v: n === 1 ? '' : 's' });
         });
         // Workspace only: every project starts ticked; All and None change the ticks
         let snapProjectsTouched = false;
@@ -1821,8 +1822,8 @@ createApp({
         const detailText = (d, fallback) => Array.isArray(d) ? d.map(x => x.msg).join('; ') : (d || fallback);
         const readJson = async (r) => { try { return await r.json(); } catch (_) { return {}; } };
         const snapProblems = (s) => [
-            s.unreadable_count ? `${s.unreadable_count} file(s) couldn't be read and are not inside: ${(s.unreadable || []).join(', ')}` : '',
-            s.changed_count ? `${s.changed_count} file(s) changed while they were copied (stored as they were when the copy began): ${(s.changed || []).join(', ')}` : '',
+            s.unreadable_count ? tr('{unreadable_count} file(s) couldn\'t be read and are not inside: {v}', { unreadable_count: s.unreadable_count, v: (s.unreadable || []).join(', ') }) : '',
+            s.changed_count ? tr('{changed_count} file(s) changed while they were copied (stored as they were when the copy began): {v}', { changed_count: s.changed_count, v: (s.changed || []).join(', ') }) : '',
         ].filter(Boolean).join('\n');
         // IM-06: "Optimux was updated — Reload"
         let pageBuild = '';
@@ -1853,14 +1854,14 @@ createApp({
             dailyBusy.value = true; dailyMsg.value = null;
             const { ok, body } = await dailyPost('/api/backups');
             dailyBusy.value = false;
-            dailyMsg.value = ok ? { ok: true, text: 'Backup taken and checked.' }
-                                : { ok: false, text: detailText(body.detail, 'The backup failed.') };
+            dailyMsg.value = ok ? { ok: true, text: tr('Backup taken and checked.') }
+                                : { ok: false, text: detailText(body.detail, tr('The backup failed.')) };
             fetchBackups();
         };
         const saveDailyKeep = async () => {
             const { ok, body } = await dailyPost('/api/backups/keep', { keep: Number(dailyKeep.value) });
-            dailyMsg.value = ok ? { ok: true, text: `Keeping the newest ${dailyKeep.value}; extra ones go at the next backup.` }
-                                : { ok: false, text: detailText(body.detail, 'Not saved.') };
+            dailyMsg.value = ok ? { ok: true, text: tr('Keeping the newest {value}; extra ones go at the next backup.', { value: dailyKeep.value }) }
+                                : { ok: false, text: detailText(body.detail, tr('Not saved.')) };
             if (ok) appSettings.value.backups_keep = Number(dailyKeep.value);
         };
         const checkDaily = async (b) => {
@@ -1868,12 +1869,12 @@ createApp({
             const { ok, body } = await dailyPost(`/api/backups/${encodeURIComponent(b.name)}/check`);
             b.checking = false;
             if (ok) { b.checked = body.ok; b.error = body.error; }
-            else dailyMsg.value = { ok: false, text: detailText(body.detail, 'The check failed to run.') };
+            else dailyMsg.value = { ok: false, text: detailText(body.detail, tr('The check failed to run.')) };
         };
         const deleteDaily = async (b) => {
             const { ok, body } = await dailyPost(`/api/backups/${encodeURIComponent(b.name)}/delete`);
             dailyDeleting.value = '';
-            if (!ok) dailyMsg.value = { ok: false, text: detailText(body.detail, 'Not deleted.') };
+            if (!ok) dailyMsg.value = { ok: false, text: detailText(body.detail, tr('Not deleted.')) };
             fetchBackups();
         };
         const toggleDailyRestore = (b) => {
@@ -1885,7 +1886,7 @@ createApp({
             st.busy = true; st.error = '';
             const { ok, body } = await dailyPost(`/api/backups/${encodeURIComponent(b.name)}/restore`, { confirm: st.confirm });
             st.busy = false;
-            if (!ok) { st.error = detailText(body.detail, 'The restore failed.'); return; }
+            if (!ok) { st.error = detailText(body.detail, tr('The restore failed.')); return; }
             delete dailyRestore.value[b.name];
             await fetchRestoreStatus();
             fetchSnapshots();                    // the snapshot of the current state taken first
@@ -1913,8 +1914,8 @@ createApp({
             try {
                 const r = await fetch('/api/snapshots/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snapPayload()) });
                 const d = await readJson(r);
-                if (r.ok) snapPreview.value = d; else snapError.value = detailText(d.detail, 'Preview failed.');
-            } catch (error) { snapError.value = 'Preview failed.'; }
+                if (r.ok) snapPreview.value = d; else snapError.value = detailText(d.detail, tr('Preview failed.'));
+            } catch (error) { snapError.value = tr('Preview failed.'); }
             finally { snapBusy.value = false; }
         };
         const takeSnapshot = async (confirmed = false) => {
@@ -1924,12 +1925,12 @@ createApp({
             try {
                 const r = await fetch('/api/snapshots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snapPayload()) });
                 const d = await readJson(r);
-                if (!r.ok) { snapError.value = detailText(d.detail, 'The snapshot could not be started.'); return; }
+                if (!r.ok) { snapError.value = detailText(d.detail, tr('The snapshot could not be started.')); return; }
                 const kind = snapForm.value.kind;
                 snapForm.value.note = ''; snapPreview.value = null;
-                pushToast({ title: `Taking a snapshot: ${snapKindLabel(kind)}`, text: 'It appears in the list below; you can keep working meanwhile.' });
+                pushToast({ title: tr('Taking a snapshot: {v}', { v: snapKindLabel(kind) }), text: tr('It appears in the list below; you can keep working meanwhile.') });
                 await fetchSnapshots();
-            } catch (error) { snapError.value = 'The snapshot could not be started.'; }
+            } catch (error) { snapError.value = tr('The snapshot could not be started.'); }
             finally { snapBusy.value = false; }
         };
         // Copy buttons on the paths: green "Copied ✓" for two seconds, like the README's
@@ -1958,11 +1959,11 @@ createApp({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ mode: d.mode, recipient: d.recipient, remember: d.remember }) });
                 const body = await readJson(r);
-                if (!r.ok) { d.error = detailText(body.detail, 'The download could not be prepared.'); return; }
+                if (!r.ok) { d.error = detailText(body.detail, tr('The download could not be prepared.')); return; }
                 if (d.mode === 'recipient' && d.remember) appSettings.value.snapshot_recipient = d.recipient.trim();
                 d.result = body;
                 if (body.mode === 'plain') clickDownload(body.url, body.filename);   // nothing to save first
-            } catch (error) { d.error = 'The download could not be prepared.'; }
+            } catch (error) { d.error = tr('The download could not be prepared.'); }
             finally { d.busy = false; }
         };
         const clickDownload = (url, name) => {
@@ -2007,16 +2008,16 @@ createApp({
                 const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/readme`);
                 const d = await readJson(r);
                 // Markdown (new snapshots) is rendered like chat replies; older .txt READMEs stay plain text
-                snapReadme.value[s.id] = !r.ok ? { error: detailText(d.detail, 'It could not be read.') }
+                snapReadme.value[s.id] = !r.ok ? { error: detailText(d.detail, tr('It could not be read.')) }
                     : d.format === 'md' ? { html: optimuxSafeHtml(marked.parse(d.text), { codeButtons: 'copy' }) } : { text: d.text };
-            } catch (error) { snapReadme.value[s.id] = { error: 'It could not be read.' }; }
+            } catch (error) { snapReadme.value[s.id] = { error: tr('It could not be read.') }; }
         };
         const deleteSnapshot = async (s) => {
             snapDeleting.value = '';
             try {
                 const r = await fetch(`/api/snapshots/${encodeURIComponent(s.id)}/delete`, { method: 'POST' });
-                if (!r.ok) pushToast({ kind: 'warn', title: 'Not deleted', text: detailText((await readJson(r)).detail, '') });
-                else pushToast({ title: 'Snapshot deleted', text: `${snapKindLabel(s.kind)} snapshot of ${new Date(s.created * 1000).toLocaleString()}${s.note ? ' (' + s.note + ')' : ''} was removed from the server.` });
+                if (!r.ok) pushToast({ kind: 'warn', title: tr('Not deleted'), text: detailText((await readJson(r)).detail, '') });
+                else pushToast({ title: tr('Snapshot deleted'), text: tr('{v} snapshot of {v2}{v3} was removed from the server.', { v: snapKindLabel(s.kind), v2: new Date(s.created * 1000).toLocaleString(appLocale()), v3: s.note ? ' (' + s.note + ')' : '' }) });
             } catch (error) { console.error('Delete failed', error); }
             await fetchSnapshots();
         };
@@ -2037,11 +2038,11 @@ createApp({
                 const d = await readJson(r);
                 const p = rsPanel.value[s.id];
                 if (!p) return;
-                if (!r.ok) { p.error = detailText(d.detail, 'This snapshot could not be read.'); p.loading = false; return; }
+                if (!r.ok) { p.error = detailText(d.detail, tr('This snapshot could not be read.')); p.loading = false; return; }
                 p.info = d;
                 for (const part of d.parts) p.chosen[part.path] = !!part.default && !part.blocked;
                 p.loading = false;
-            } catch (error) { if (rsPanel.value[s.id]) { rsPanel.value[s.id].error = 'This snapshot could not be read.'; rsPanel.value[s.id].loading = false; } }
+            } catch (error) { if (rsPanel.value[s.id]) { rsPanel.value[s.id].error = tr('This snapshot could not be read.'); rsPanel.value[s.id].loading = false; } }
         };
         const closeRestore = (s) => { delete rsPanel.value[s.id]; };
         const rsChosen = (s) => { const p = rsPanel.value[s.id]; return p && p.info ? p.info.parts.filter(x => p.chosen[x.path]) : []; };
@@ -2058,22 +2059,22 @@ createApp({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ parts: rsChosen(s).map(x => x.path), confirm: p.confirm }) });
                 const d = await readJson(r);
-                if (!r.ok) { p.error = detailText(d.detail, 'The restore failed.'); return; }
+                if (!r.ok) { p.error = detailText(d.detail, tr('The restore failed.')); return; }
                 closeRestore(s);
-                const projects = d.projects.length ? `Projects restored: ${d.projects.join(', ')}.` : '';
-                const archived = (d.archived.length ? ' Their previous folders are under Archived projects.' : '')
-                    + (d.skipped_links && d.skipped_links.length ? ` ${d.skipped_links.length} link(s) in Optimux's data were left out (links are never restored there).` : '');
+                const projects = d.projects.length ? tr('Projects restored: {v}.', { v: d.projects.join(', ') }) : '';
+                const archived = (d.archived.length ? tr(' Their previous folders are under Archived projects.') : '')
+                    + (d.skipped_links && d.skipped_links.length ? tr(' {length} link(s) in Optimux\'s data were left out (links are never restored there).', { length: d.skipped_links.length }) : '');
                 pushToast(d.restart_needed
-                    ? { title: 'Restore ready: restart Optimux to finish', text: `${projects}${archived} Your data is put back when Optimux restarts (see the top of Backups).` }
-                    : { title: 'Restored', text: `${projects}${archived}` });
+                    ? { title: tr('Restore ready: restart Optimux to finish'), text: tr('{projects}{archived} Your data is put back when Optimux restarts (see the top of Backups).', { projects: projects, archived: archived }) }
+                    : { title: tr('Restored'), text: `${projects}${archived}` });
                 if (d.projects.length) fetchProjectsList();
-            } catch (error) { p.error = 'The restore failed.'; }
+            } catch (error) { p.error = tr('The restore failed.'); }
             finally { p.busy = false; await Promise.all([fetchSnapshots(), fetchRestoreStatus()]); }
         };
         const restartForRestore = async () => {
             try {
                 const r = await fetch('/api/restore/restart', { method: 'POST' });
-                if (!r.ok) { pushToast({ kind: 'warn', title: 'Not restarted', text: detailText((await readJson(r)).detail, '') }); return; }
+                if (!r.ok) { pushToast({ kind: 'warn', title: tr('Not restarted'), text: detailText((await readJson(r)).detail, '') }); return; }
             } catch (_) { /* the server may already be going down */ }
             rsRestarting.value = true;
             // Wait until Optimux answers again, then reload the page with the restored data
@@ -2085,14 +2086,14 @@ createApp({
                 await new Promise(res => setTimeout(res, 1500));
             }
             rsRestarting.value = false;
-            pushToast({ kind: 'warn', title: 'Optimux is not back yet', text: 'Check it on the server: optimux status (sudo on a server).' });
+            pushToast({ kind: 'warn', title: tr('Optimux is not back yet'), text: tr('Check it on the server: optimux status (sudo on a server).') });
         };
         const cancelRestore = async () => {
             try {
                 const r = await fetch('/api/restore/cancel', { method: 'POST' });
                 const d = await readJson(r);
-                if (r.ok) pushToast({ title: 'Restore cancelled', text: `Nothing changed in your data. The prepared files were moved to ${d.moved_to}.` });
-                else pushToast({ kind: 'warn', title: 'Not cancelled', text: detailText(d.detail, '') });
+                if (r.ok) pushToast({ title: tr('Restore cancelled'), text: tr('Nothing changed in your data. The prepared files were moved to {moved_to}.', { moved_to: d.moved_to }) });
+                else pushToast({ kind: 'warn', title: tr('Not cancelled'), text: detailText(d.detail, '') });
             } catch (error) { console.error('Cancel failed', error); }
             await fetchRestoreStatus();
         };
@@ -2125,13 +2126,13 @@ createApp({
             xhr.onload = async () => {
                 let d = {};
                 try { d = JSON.parse(xhr.responseText); } catch (_) { /* keep {} */ }
-                if (xhr.status !== 200) { u.busy = false; u.error = detailText(d.detail, 'The upload failed.'); return resolve(); }
+                if (xhr.status !== 200) { u.busy = false; u.error = detailText(d.detail, tr('The upload failed.')); return resolve(); }
                 u.token = d.token; u.encrypted = d.encrypted; u.progress = 100;
                 u.busy = false;
                 if (!d.encrypted) await rsImport();             // nothing to ask: check it and add it
                 resolve();
             };
-            xhr.onerror = () => { u.busy = false; u.error = 'The upload failed (connection lost).'; resolve(); };
+            xhr.onerror = () => { u.busy = false; u.error = tr('The upload failed (connection lost).'); resolve(); };
             xhr.send(u.file);
         });
         const rsImport = async () => {
@@ -2142,7 +2143,7 @@ createApp({
                     body: JSON.stringify({ token: u.token, key: u.key, filename: u.file ? u.file.name : '' }) });
                 const d = await readJson(r);
                 if (!r.ok) {
-                    u.error = detailText(d.detail, 'The file could not be checked.');
+                    u.error = detailText(d.detail, tr('The file could not be checked.'));
                     // The server keeps an encrypted upload only after a wrong key: anything else needs a new upload
                     const keyProblem = u.encrypted && /key/i.test(u.error) && !/expired|Upload the file again/.test(u.error);
                     if (!keyProblem) u.token = '';
@@ -2152,23 +2153,23 @@ createApp({
                 const input = document.getElementById('rs-file');
                 if (input) input.value = '';
                 await fetchSnapshots();
-                pushToast({ title: 'Snapshot added to the list', text: 'The file was checked: every part matches its checksum. Choose what to restore below.' });
+                pushToast({ title: tr('Snapshot added to the list'), text: tr('The file was checked: every part matches its checksum. Choose what to restore below.') });
                 snapOpen.value[d.id] = true;
                 openRestore(d);
-            } catch (error) { u.error = 'The file could not be checked.'; }
+            } catch (error) { u.error = tr('The file could not be checked.'); }
             finally { u.busy = false; }
         };
         const saveSnapshotLimit = async () => {
             // Only the limit: other unsaved Dashboard edits stay unsaved
             const gb = Number(snapLimit.value);
             if (snapLimit.value === '' || !Number.isFinite(gb) || gb < 0.1) {
-                pushToast({ kind: 'warn', title: 'Not saved', text: 'The limit must be at least 0.1 GB.' });
+                pushToast({ kind: 'warn', title: tr('Not saved'), text: tr('The limit must be at least 0.1 GB.') });
                 return;
             }
             try {
                 const r = await fetch('/api/snapshots/limit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gb }) });
-                if (r.ok) { appSettings.value.snapshot_limit_gb = gb; pushToast({ title: 'Snapshot limit saved', text: `${gb} GB` }); }
-                else pushToast({ kind: 'warn', title: 'Not saved', text: detailText((await readJson(r)).detail, '') });
+                if (r.ok) { appSettings.value.snapshot_limit_gb = gb; pushToast({ title: tr('Snapshot limit saved'), text: `${gb} GB` }); }
+                else pushToast({ kind: 'warn', title: tr('Not saved'), text: detailText((await readJson(r)).detail, '') });
             } catch (error) { console.error('Saving the limit failed', error); }
             await fetchSnapshots();
         };
@@ -2177,7 +2178,7 @@ createApp({
             catch (error) { console.error('Failed to load system info', error); }
         };
         const rotateToken = async () => {
-            const current = window.prompt('Rotate the access token. Type the current token to confirm:');
+            const current = window.prompt(tr('Rotate the access token. Type the current token to confirm:'));
             if (!current) return;
             try {
                 const resp = await fetch('/api/system/rotate-token', {
@@ -2200,7 +2201,7 @@ createApp({
             try { data = await res.json(); } catch (_) {}
             if (!res.ok) {
                 const d = data.detail;
-                throw new Error(Array.isArray(d) ? d.map(x => x.msg).join('; ') : (d || 'Request failed.'));
+                throw new Error(Array.isArray(d) ? d.map(x => x.msg).join('; ') : (d || tr('Request failed.')));
             }
             return data;
         };
@@ -2210,7 +2211,7 @@ createApp({
             try {
                 const r = await postJson('/api/github', { token: githubToken.value });
                 githubToken.value = '';
-                githubMsg.value = { ok: true, warn: !!r.warning, text: `Signed in to GitHub as @${r.login}.` + (r.identity_set ? ' Commits will be made as this account (change it below).' : '') + (r.warning ? ' ' + r.warning : '') + (r.hint ? ' ' + r.hint : '') };
+                githubMsg.value = { ok: true, warn: !!r.warning, text: tr('Signed in to GitHub as @{login}.', { login: r.login }) + (r.identity_set ? tr(' Commits will be made as this account (change it below).') : '') + (r.warning ? ' ' + r.warning : '') + (r.hint ? ' ' + r.hint : '') };
                 await reloadSettings();
             } catch (e) { githubMsg.value = { ok: false, text: e.message }; }
             githubBusy.value = false;
@@ -2220,12 +2221,12 @@ createApp({
             githubBusy.value = true; githubMsg.value = null;
             try {
                 const r = await postJson('/api/github/check');
-                githubMsg.value = { ok: true, warn: !!r.warning, text: `The token works: @${r.login}.` + (r.warning ? ' ' + r.warning : '') + (r.hint ? ' ' + r.hint : '') };
+                githubMsg.value = { ok: true, warn: !!r.warning, text: tr('The token works: @{login}.', { login: r.login }) + (r.warning ? ' ' + r.warning : '') + (r.hint ? ' ' + r.hint : '') };
             } catch (e) { githubMsg.value = { ok: false, text: e.message }; }
             githubBusy.value = false;
         };
         const removeGithub = async () => {
-            if (!await askConfirm({ title: 'Remove the GitHub token?', text: 'Optimux can no longer create GitHub repositories until you add one again. Repositories already created are not touched.', ok: 'Remove', danger: true })) return;
+            if (!await askConfirm({ title: tr('Remove the GitHub token?'), text: tr('Optimux can no longer create GitHub repositories until you add one again. Repositories already created are not touched.'), ok: tr('Remove'), danger: true })) return;
             try { await fetch('/api/github', { method: 'DELETE' }); } catch (_) {}
             githubMsg.value = null;
             await reloadSettings();
@@ -2248,7 +2249,7 @@ createApp({
             try {
                 const res = await fetch('/api/github/repos');
                 const d = await res.json();
-                if (!res.ok) throw new Error(d.detail || 'Request failed.');
+                if (!res.ok) throw new Error(d.detail || tr('Request failed.'));
                 Object.assign(g, { repos: d.repos, truncated: d.truncated, fine_grained: d.fine_grained });
             } catch (e) { g.error = e.message; }
             g.loading = false;
@@ -2272,9 +2273,9 @@ createApp({
         };
         const importNameProblem = Vue.computed(() => {
             const n = ghImport.value.name.trim();
-            if (!n) return 'Choose a folder name.';
-            if (!PROJECT_NAME_RE.test(n)) return 'Use letters, digits, . _ or - (not starting with . or -).';
-            if ((projectsList.value || []).includes(n)) return 'A project with this name already exists.';
+            if (!n) return tr('Choose a folder name.');
+            if (!PROJECT_NAME_RE.test(n)) return tr('Use letters, digits, . _ or - (not starting with . or -).');
+            if ((projectsList.value || []).includes(n)) return tr('A project with this name already exists.');
             return '';
         });
         const pollClone = async (job, openWhenDone) => {
@@ -2284,13 +2285,13 @@ createApp({
                 let res;
                 try { res = await fetch(`/api/github/clone/${job.id}`); st = await res.json(); } catch (_) { continue; }
                 if (!res.ok || !st || !st.state) {      // the server restarted (job gone) or the sign-in ended
-                    st = { ...job, state: 'failed', error: 'Optimux lost track of this clone (it restarted, or you were signed out). Nothing was left behind; try again.' };
+                    st = { ...job, state: 'failed', error: tr('Optimux lost track of this clone (it restarted, or you were signed out). Nothing was left behind; try again.') };
                 }
                 Object.assign(job, st);
                 if (ghImport.value.job && ghImport.value.job.id === job.id) Object.assign(ghImport.value.job, st);
                 if (st.state === 'running') continue;
                 if (st.state === 'done') {
-                    pushToast({ kind: 'success', title: `Cloned · ${st.name}`, text: `${st.full_name} is in your Workspace.` });
+                    pushToast({ kind: 'success', title: tr('Cloned · {name}', { name: st.name }), text: tr('{full_name} is in your Workspace.', { full_name: st.full_name }) });
                     await fetchProjectsList();
                     // (compared by id: Vue keeps a proxy of the job, not the object itself)
                     const current = ghImport.value.job && ghImport.value.job.id === job.id;
@@ -2298,9 +2299,9 @@ createApp({
                     if (current && newProject.value.open && newProject.value.tab === 'github') newProject.value.open = false;
                     if (openWhenDone) await switchProject(st.name);
                 } else if (st.state === 'failed') {
-                    pushToast({ kind: 'warn', title: `Couldn't clone ${st.full_name}`, text: st.error, timeout: 20000 });
+                    pushToast({ kind: 'warn', title: tr('Couldn\'t clone {full_name}', { full_name: st.full_name }), text: st.error, timeout: 20000 });
                 } else {
-                    pushToast({ kind: 'info', title: 'Clone cancelled', text: 'Nothing was left behind.' });
+                    pushToast({ kind: 'info', title: tr('Clone cancelled'), text: tr('Nothing was left behind.') });
                 }
                 return;
             }
@@ -2327,7 +2328,7 @@ createApp({
                 const r = await postJson('/api/projects', form);
                 newProject.value.open = false;
                 projectCreatedToast(form.name, r.ok, r.github_url);
-                if (!r.ok) pushToast({ kind: 'warn', title: 'What failed', text: r.report, timeout: 20000 });
+                if (!r.ok) pushToast({ kind: 'warn', title: tr('What failed'), text: r.report, timeout: 20000 });
                 await fetchProjectsList();
                 if (showSettingsModal.value && settingsTab.value === 'projects') fetchProjectsOverview();
                 if (form.switch) await switchProject(form.name);
@@ -2348,11 +2349,11 @@ createApp({
         const signinNotice = ref(null);
         // "Firefox on Linux" from a user-agent string (good enough to recognise your own browsers)
         const browserLabel = (ua) => {
-            if (!ua) return 'Unknown browser';
-            const name = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox'
-                : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : /curl\//.test(ua) ? 'curl' : 'Browser';
-            const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows'
-                : /Mac OS X/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : '';
+            if (!ua) return tr('Unknown browser');
+            const name = /Edg\//.test(ua) ? tr('Edge') : /OPR\//.test(ua) ? tr('Opera') : /Firefox\//.test(ua) ? tr('Firefox')
+                : /Chrome\//.test(ua) ? tr('Chrome') : /Safari\//.test(ua) ? tr('Safari') : /curl\//.test(ua) ? 'curl' : tr('Browser');
+            const os = /Android/.test(ua) ? tr('Android') : /iPhone|iPad/.test(ua) ? 'iOS' : /Windows/.test(ua) ? tr('Windows')
+                : /Mac OS X/.test(ua) ? 'macOS' : /Linux/.test(ua) ? tr('Linux') : '';
             return os ? `${name} on ${os}` : name;
         };
         const signOutOthersFromNotice = async () => {
@@ -2368,18 +2369,18 @@ createApp({
             location.href = '/login';
         };
         const signOutOthers = async () => {
-            if (!await askConfirm({ title: 'Sign out other browsers?', text: 'Every other browser and device will need the password again. This one stays signed in.', ok: 'Sign them out' })) return;
+            if (!await askConfirm({ title: tr('Sign out other browsers?'), text: tr('Every other browser and device will need the password again. This one stays signed in.'), ok: tr('Sign them out') })) return;
             try { await postJson('/api/auth/signout-others'); } catch (_) {}
             fetchAuth();
         };
         const changePassword = async () => {
             const f = pwForm.value;
             f.msg = ''; f.ok = false;
-            if (f.next !== f.again) { f.msg = 'The two new passwords differ.'; return; }
+            if (f.next !== f.again) { f.msg = tr('The two new passwords differ.'); return; }
             try {
                 const r = await postJson('/api/auth/password', { current: f.current, new: f.next });
                 pwForm.value = { current: '', next: '', again: '', ok: true,
-                                 msg: 'Password changed.' + (r.ended ? ` ${r.ended} other sign-in${r.ended === 1 ? '' : 's'} ended.` : '') };
+                                 msg: tr('Password changed.') + (r.ended ? ` ${r.ended} other sign-in${r.ended === 1 ? '' : 's'} ended.` : '') };
                 fetchAuth();
             } catch (e) { f.msg = e.message; }
         };
@@ -2442,16 +2443,16 @@ createApp({
         const fmtAgo = (ts) => {
             if (!ts) return '—';
             const s = Math.max(0, Date.now() / 1000 - ts);
-            if (s < 60) return 'just now';
-            if (s < 3600) return Math.floor(s / 60) + ' min ago';
-            if (s < 86400) return Math.floor(s / 3600) + ' h ago';
-            if (s < 86400 * 30) return Math.floor(s / 86400) + ' d ago';
-            return new Date(ts * 1000).toLocaleDateString();
+            if (s < 60) return tr('just now');
+            if (s < 3600) return Math.floor(s / 60) + tr(' min ago');
+            if (s < 86400) return Math.floor(s / 3600) + tr(' h ago');
+            if (s < 86400 * 30) return Math.floor(s / 86400) + tr(' d ago');
+            return new Date(ts * 1000).toLocaleDateString(appLocale());
         };
 
         // v0.8: the data each Dashboard chart draws (see `charts`)
-        const callsLine = (n) => `${n} call${n === 1 ? '' : 's'}`;
-        const shareLine = (v, total) => (total ? `${Math.round(100 * v / total)}% of the cost` : '');
+        const callsLine = (n) => (n === 1 ? tr('1 call') : tr('{n} calls', { n }));
+        const shareLine = (v, total) => (total ? tr('{v}% of the cost', { v: Math.round(100 * v / total) }) : '');
         const sumBy = (rows, key) => {
             const m = new Map();
             (rows || []).forEach(r => { const x = m.get(r[key]) || { cost: 0, calls: 0 }; x.cost += r.cost || 0; x.calls += r.calls || 0; m.set(r[key], x); });
@@ -2489,26 +2490,26 @@ createApp({
             const tokModels = [...tokTotals].filter(([, t]) => t > 0).sort((a, b) => b[1] - a[1]).map(([n]) => n);
             const tokModel = tokModels.includes(charts.tok.model) ? charts.tok.model : (tokModels[0] || '');
             const tokDays = fillDays(tokRows.filter(r => r.model === tokModel).map(r => ({ bucket: r.day, total: (r.prompt_tokens || 0) + (r.completion_tokens || 0),
-                parts: [['Input', r.prompt_tokens || 0], ['Output', r.completion_tokens || 0], ['Cached', r.cached_tokens || 0]] }))
+                parts: [[tr('Input'), r.prompt_tokens || 0], [tr('Output'), r.completion_tokens || 0], [tr('Cached'), r.cached_tokens || 0]] }))
                 .sort((a, b) => a.bucket.localeCompare(b.bucket)), 1);
             return {
                 overview: perDay(charts.ov.daily),
                 timeline, per: perf && perf.weekly ? 'week' : 'day',
                 byModel: charts.model.daily ? treemap(sumBy(charts.model.daily, 'model'), modelName) : null,
                 byRole: charts.role.perf ? roles.map(r => ({ name: r.role, value: r.cost || 0,
-                    lines: [callsLine(r.calls), shareLine(r.cost || 0, roleTotal), ...(ROLE_HELP[r.role] ? [ROLE_HELP[r.role]] : [])].filter(Boolean) })) : null,
+                    lines: [callsLine(r.calls), shareLine(r.cost || 0, roleTotal), ...(ROLE_HELP[r.role] ? [tr(ROLE_HELP[r.role])] : [])].filter(Boolean) })) : null,
                 byProject: charts.proj.daily ? treemap(sumBy(charts.proj.daily, 'project'), projectLabel) : null,
                 tokModels: tokModels.map(m => ({ value: m, label: modelName(m) })), tokModel,
-                tokPoints: tokDays.map(b => ({ day: b.bucket, value: b.total, lines: b.parts.map(([n, v]) => `${n} ${v.toLocaleString()}`) })),
+                tokPoints: tokDays.map(b => ({ day: b.bucket, value: b.total, lines: b.parts.map(([n, v]) => `${n} ${v.toLocaleString(appLocale())}`) })),
             };
         });
-        const fmtCalls = (v) => `${v} call${v === 1 ? '' : 's'}`;
-        const fmtTok = (v) => `${Math.round(v).toLocaleString()} tokens`;
-        const fmtCount = (v) => Math.round(v).toLocaleString();
+        const fmtCalls = (v) => (v === 1 ? tr('1 call') : tr('{n} calls', { n: v }));
+        const fmtTok = (v) => `${Math.round(v).toLocaleString(appLocale())} tokens`;
+        const fmtCount = (v) => Math.round(v).toLocaleString(appLocale());
         // Model status (Overview): the roles each model plays, as badges that open Routing
         const roleBadges = (id) => {
             const r = routingConfig.value || {};
-            return [['conductor_model', 'Conductor'], ['simple_model', 'Simple'], ['complex_model', 'Complex']].filter(([k]) => r[k] === id).map(([, n]) => n);
+            return [['conductor_model', tr('Conductor')], ['simple_model', tr('Simple')], ['complex_model', tr('Complex')]].filter(([k]) => r[k] === id).map(([, n]) => n);
         };
 
         const overviewKpis = Vue.computed(() => {
@@ -2517,13 +2518,13 @@ createApp({
             const month = u.this_month ? u.this_month.total : u.today.total;
             const hit = month.prompt_tokens ? Math.round(100 * month.cached_tokens / month.prompt_tokens) : 0;
             return [
-                { label: 'Today', value: fmtCost(u.today.total.cost) + (u.today.total.calls_without_cost ? '+' : ''), sub: `${u.today.total.calls} calls` },
-                { label: 'This month', value: fmtCost(month.cost) + (month.calls_without_cost ? '+' : ''), sub: `${month.calls} calls` },
-                { label: 'Cache hit · month', value: hit + '%', sub: `${fmtTokens(month.cached_tokens)} of ${fmtTokens(month.prompt_tokens)} input tokens` },
-                { label: 'Output · month', value: fmtTokens(month.completion_tokens), sub: `${fmtTokens(month.reasoning_tokens || 0)} of it thinking` },
+                { label: tr('Today'), value: fmtCost(u.today.total.cost) + (u.today.total.calls_without_cost ? '+' : ''), sub: `${u.today.total.calls} calls` },
+                { label: tr('This month'), value: fmtCost(month.cost) + (month.calls_without_cost ? '+' : ''), sub: `${month.calls} calls` },
+                { label: tr('Cache hit · month'), value: hit + '%', sub: tr('{v} of {v2} input tokens', { v: fmtTokens(month.cached_tokens), v2: fmtTokens(month.prompt_tokens) }) },
+                { label: tr('Output · month'), value: fmtTokens(month.completion_tokens), sub: tr('{v} of it thinking', { v: fmtTokens(month.reasoning_tokens || 0) }) },
                 ...(monthSavings.value && monthSavings.value.calls ? [{
-                    label: 'Saved · month', value: fmtUsd(monthSavings.value.saved),
-                    sub: monthSavings.value.saved_share !== null ? `${fmtPct(monthSavings.value.saved_share)} less than all on Complex` : '' }] : []),
+                    label: tr('Saved · month'), value: fmtUsd(monthSavings.value.saved),
+                    sub: monthSavings.value.saved_share !== null ? tr('{v} less than all on Complex', { v: fmtPct(monthSavings.value.saved_share) }) : '' }] : []),
             ];
         });
         // Getting started (v0.6.1): the first-run checklist
@@ -2619,7 +2620,8 @@ createApp({
                 finally { if (perfPick[key] === want) perfBusy[key] = false; }
             }
         };
-        const perfProjects = Vue.computed(() => [...new Set([...(projectsList.value || []), ...((perfCache[''] && perfCache[''].projects) || [])])].sort());
+        const perfProjects = Vue.computed(() => [...new Set([...(projectsList.value || []), ...((perfCache[''] && perfCache[''].projects) || [])])].sort()
+            .map(p => (p === '(no project)' ? { value: p, label: tr('Workspace') } : p)));
         const fmtUsd = (c) => {
             if (c === null || c === undefined) return '—';
             if (c === 0) return '$0';
@@ -2689,8 +2691,8 @@ createApp({
             const sec = Math.round((ms || 0) / 1000);
             if (sec < 60) return `${sec} s`;
             const m = Math.floor(sec / 60), h = Math.floor(m / 60);
-            if (h) return `${h} h ${m % 60} min`;
-            return sec % 60 ? `${m} min ${sec % 60} s` : `${m} min`;
+            if (h) return tr('{h} h {v} min', { h: h, v: m % 60 });
+            return sec % 60 ? tr('{m} min {v} s', { m: m, v: sec % 60 }) : `${m} min`;
         };
 
         const buildPerf = (d) => {
@@ -2720,49 +2722,50 @@ createApp({
 
             // KPI tiles
             const kpis = [
-                { label: 'Spent', value: fmtUsd(t.cost) + (t.calls_without_cost ? '+' : ''), sub: t.calls_without_cost ? `${t.calls_without_cost} calls without a known price` : `${models.length} model${models.length === 1 ? '' : 's'}` },
-                { label: 'Calls', value: t.calls.toLocaleString(), sub: `${fmtTokens(t.prompt_tokens)} in · ${fmtTokens(t.completion_tokens)} out` },
-                { label: 'Average per call', value: t.calls - t.calls_without_cost ? fmtUsd(t.cost / (t.calls - t.calls_without_cost)) : '—', sub: t.prompt_tokens ? `${fmtPct(t.cached_tokens / t.prompt_tokens)} of input from cache` : 'no input yet' },
-                { label: 'Median latency', value: fmtSec(t.p50_ms), sub: 'request to last token' },
-                { label: 'Reliability', value: fmtPct(t.reliability, t.reliability !== null && t.reliability < 1 ? 1 : 0), sub: `${t.errors} failed · ${t.escalations} escalated`,
+                { label: tr('Spent'), value: fmtUsd(t.cost) + (t.calls_without_cost ? '+' : ''), sub: t.calls_without_cost ? tr('{calls_without_cost} calls without a known price', { calls_without_cost: t.calls_without_cost }) : (models.length === 1 ? tr('1 model') : tr('{n} models', { n: models.length })) },
+                { label: tr('Calls'), value: t.calls.toLocaleString(appLocale()), sub: tr('{v} in · {v2} out', { v: fmtTokens(t.prompt_tokens), v2: fmtTokens(t.completion_tokens) }) },
+                { label: tr('Average per call'), value: t.calls - t.calls_without_cost ? fmtUsd(t.cost / (t.calls - t.calls_without_cost)) : '—', sub: t.prompt_tokens ? tr('{v} of input from cache', { v: fmtPct(t.cached_tokens / t.prompt_tokens) }) : tr('no input yet') },
+                { label: tr('Median latency'), value: fmtSec(t.p50_ms), sub: tr('request to last token') },
+                { label: tr('Reliability'), value: fmtPct(t.reliability, t.reliability !== null && t.reliability < 1 ? 1 : 0), sub: tr('{errors} failed · {escalations} escalated', { errors: t.errors, escalations: t.escalations }),
                   status: t.reliability === null ? '' : t.reliability >= 0.99 ? 'good' : t.reliability >= 0.95 ? 'warning' : 'critical' },
             ];
 
             // Insights: plain sentences a reader can act on; small samples are said
             const insights = [];
-            const few = (m) => m.calls < 20 ? `, from only ${m.calls} call${m.calls === 1 ? '' : 's'}` : '';
+            const few = (m) => m.calls < 20 ? tr(', from only {calls} call{v}', { calls: m.calls, v: m.calls === 1 ? '' : 's' }) : '';
             if (models.length && t.cost > 0) {
                 const m = models[0];
-                insights.push(`${m.name} took ${fmtPct(m.share)} of the spending (${fmtUsd(m.cost)}) for ${fmtPct(m.calls / t.calls)} of the calls.`);
+                insights.push(tr('{name} took {v} of the spending ({v2}) for {v3} of the calls.', { name: m.name, v: fmtPct(m.share), v2: fmtUsd(m.cost), v3: fmtPct(m.calls / t.calls) }));
             }
             const paid = priced.filter(m => m.cost_per_call > 0);
             if (paid.length >= 2) {
                 const byCost = [...paid].sort((a, b) => a.cost_per_call - b.cost_per_call);
                 const lo = byCost[0], hi = byCost[byCost.length - 1];
-                if (lo.cost_per_call > 0) insights.push(`A call to ${hi.name} costs ${(hi.cost_per_call / lo.cost_per_call).toFixed(hi.cost_per_call / lo.cost_per_call >= 10 ? 0 : 1)}× a call to ${lo.name} (${fmtUsd(hi.cost_per_call)} vs ${fmtUsd(lo.cost_per_call)}).`);
+                if (lo.cost_per_call > 0) insights.push(tr('A call to {name} costs {v}× a call to {name2} ({v2} vs {v3}).', { name: hi.name, v: (hi.cost_per_call / lo.cost_per_call).toFixed(hi.cost_per_call / lo.cost_per_call >= 10 ? 0 : 1), name2: lo.name, v2: fmtUsd(hi.cost_per_call), v3: fmtUsd(lo.cost_per_call) }));
             }
             const timed = models.filter(m => m.p50_ms !== null && m.timed_calls >= 3);
             if (timed.length >= 2) {
                 const f = [...timed].sort((a, b) => a.p50_ms - b.p50_ms)[0];
-                insights.push(`Fastest typical answer: ${f.name}, half its calls finish within ${fmtSec(f.p50_ms)}.`);
+                insights.push(tr('Fastest typical answer: {name}, half its calls finish within {v}.', { name: f.name, v: fmtSec(f.p50_ms) }));
             }
             const stuck = models.filter(m => m.escalations > 0).sort((a, b) => b.escalations - a.escalations)[0];
-            if (stuck) insights.push(`${stuck.name} got stuck and handed over ${stuck.escalations} time${stuck.escalations === 1 ? '' : 's'} (${fmtPct(stuck.escalation_rate, 1)} of its calls${few(stuck)}).`);
+            if (stuck) insights.push(tr('{name} got stuck and handed over {escalations} time{v} ({v2} of its calls{v3}).', { name: stuck.name, escalations: stuck.escalations, v: stuck.escalations === 1 ? '' : 's', v2: fmtPct(stuck.escalation_rate, 1), v3: few(stuck) }));
             const failing = models.filter(m => m.errors > 0).sort((a, b) => b.errors - a.errors)[0];
             if (failing) {
-                const kind = Object.entries(failing.error_kinds).sort((a, b) => b[1] - a[1])[0][0];
-                insights.push(`${failing.name} failed ${failing.errors} time${failing.errors === 1 ? '' : 's'} (mostly ${kind}); reliability ${fmtPct(failing.reliability, 1)}${few(failing)}.`);
+                tk('quota'); tk('transient'); tk('fatal');   // the kinds of provider error, translated here
+                const kind = tr(Object.entries(failing.error_kinds).sort((a, b) => b[1] - a[1])[0][0]);
+                insights.push(tr('{name} failed {errors} time{v} (mostly {kind}); reliability {v2}{v3}.', { name: failing.name, errors: failing.errors, v: failing.errors === 1 ? '' : 's', kind: kind, v2: fmtPct(failing.reliability, 1), v3: few(failing) }));
             }
             const simple = (d.roles || []).find(r => r.role === 'simple');
             const allCalls = (d.roles || []).reduce((a, r) => a + r.calls, 0);
             if (simple && allCalls && t.cost > 0)
-                insights.push(`The Simple tier made ${fmtPct(simple.calls / allCalls)} of the calls for ${fmtPct(simple.cost / t.cost)} of the spending.`);
-            if (t.calls_without_cost) insights.push(`${t.calls_without_cost} calls have no known price, so the totals are a lower bound. Add prices in Models.`);
+                insights.push(tr('The Simple tier made {v} of the calls for {v2} of the spending.', { v: fmtPct(simple.calls / allCalls), v2: fmtPct(simple.cost / t.cost) }));
+            if (t.calls_without_cost) insights.push(tr('{calls_without_cost} calls have no known price, so the totals are a lower bound. Add prices in Models.', { calls_without_cost: t.calls_without_cost }));
 
             // Series for the stacked charts: up to `top` named models, the rest folded into "Other"
             const inView = models.map(m => m.model);
             const series = order.filter(id => named(id) && inView.includes(id)).map(id => ({ id, name: labelOf(id), title: (byId[id] || {}).title, color: colorOf(id) }));
-            if (inView.some(id => !named(id))) series.push({ id: '__other', name: 'Other', color: PERF_OTHER });
+            if (inView.some(id => !named(id))) series.push({ id: '__other', name: tr('Other'), color: PERF_OTHER });
             const sid = (id) => named(id) ? id : '__other';
 
             // 1. Spending (or calls) over time: stacked columns
@@ -2792,13 +2795,13 @@ createApp({
                         base = yTop;
                         return seg;
                     });
-                    const label = d.weekly ? 'Week of ' + b.key : new Date(b.key + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                    const label = d.weekly ? tr('Week of ') + b.key : new Date(b.key + 'T00:00:00').toLocaleDateString(appLocale(), { weekday: 'short', month: 'short', day: 'numeric' });
                     const rows = parts.map(s => ({ color: s.color, label: s.name, value: metric === 'cost' ? fmtUsd(b.vals[s.id]) : String(b.vals[s.id]) }));
                     return { x, band: left + i * step, segs, tip: { title: label, total: metric === 'cost' ? fmtUsd(b.total) : `${b.total} calls`, rows: rows.reverse() } };
                 });
                 const every = Math.max(1, Math.ceil(64 / step));
                 const xlabels = buckets.map((b, i) => ({ i, b })).filter(({ i }) => (buckets.length - 1 - i) % every === 0)
-                    .map(({ i, b }) => ({ x: left + i * step + step / 2, text: new Date(b.key + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) }));
+                    .map(({ i, b }) => ({ x: left + i * step + step / 2, text: new Date(b.key + 'T00:00:00').toLocaleDateString(appLocale(), { month: 'short', day: 'numeric' }) }));
                 return { W, H, left, plotW, plotH, topPad, step, cols, xlabels, empty: !max,
                          grid: ticks.map(v => ({ y: y(v), text: metric === 'cost' ? fmtUsd(v) : String(v) })) };
             })();
@@ -2820,9 +2823,9 @@ createApp({
                 const dots = pts.map(m => ({
                     m, cx: X(m.cost_per_call), cy: Y(m.p50_ms / 1000), r: 5 + 11 * Math.sqrt(m.calls / maxCalls), color: m.color,
                     tip: { title: m.name, rows: [
-                        { label: 'Provider', value: m.who },
-                        { label: 'Cost per call', value: fmtUsd(m.cost_per_call) }, { label: 'Median latency', value: fmtSec(m.p50_ms) },
-                        { label: 'Calls', value: String(m.calls) }, { label: 'Spent', value: fmtUsd(m.cost) }] },
+                        { label: tr('Provider'), value: m.who },
+                        { label: tr('Cost per call'), value: fmtUsd(m.cost_per_call) }, { label: tr('Median latency'), value: fmtSec(m.p50_ms) },
+                        { label: tr('Calls'), value: String(m.calls) }, { label: tr('Spent'), value: fmtUsd(m.cost) }] },
                 }));
                 // Direct labels: right of the dot, moved left or down when they would collide
                 const placed = [];
@@ -2860,11 +2863,11 @@ createApp({
                     name: clip(m.name, nameW - 8), title: m.title,
                     speed: m.speed_tps !== null ? Math.round(m.speed_tps) + ' tok/s' : '—',
                     tip: { title: m.name, rows: [
-                        { label: 'Provider', value: m.who },
-                        { label: 'Fast calls (p10)', value: fmtSec(m.p10_ms) }, { label: 'Typical (median)', value: fmtSec(m.p50_ms) },
-                        { label: 'Slow calls (p90)', value: fmtSec(m.p90_ms) },
-                        { label: 'Output speed', value: m.speed_tps !== null ? `${Math.round(m.speed_tps)} tokens/s, over ${m.speed_calls} calls` : 'not enough long answers' },
-                        { label: 'Timed calls', value: String(m.timed_calls) }] },
+                        { label: tr('Provider'), value: m.who },
+                        { label: tr('Fast calls (p10)'), value: fmtSec(m.p10_ms) }, { label: tr('Typical (median)'), value: fmtSec(m.p50_ms) },
+                        { label: tr('Slow calls (p90)'), value: fmtSec(m.p90_ms) },
+                        { label: tr('Output speed'), value: m.speed_tps !== null ? tr('{v} tokens/s, over {speed_calls} calls', { v: Math.round(m.speed_tps), speed_calls: m.speed_calls }) : tr('not enough long answers') },
+                        { label: tr('Timed calls'), value: String(m.timed_calls) }] },
                 }));
                 return { W, H, nameW, plotW, rowH, topPad, rows, grid: ticks.map(v => ({ x: nameW + plotW * v / xmax, text: fmtSec(v * 1000) })), bottom };
             })();
@@ -2874,7 +2877,7 @@ createApp({
                 const list = models.filter(m => m.prompt_tokens + m.completion_tokens > 0);
                 const nameW = fitW(list.map(m => m.name), 110, 260), right = 64, rowH = 28, topPad = 4;
                 const plotW = Math.max(80, W - nameW - right);
-                const kinds = [['Cached input', PERF_TOKENS[0]], ['New input', PERF_TOKENS[1]], ['Output', PERF_TOKENS[2]], ['Thinking', PERF_TOKENS[3]]];
+                const kinds = [[tr('Cached input'), PERF_TOKENS[0]], [tr('New input'), PERF_TOKENS[1]], [tr('Output'), PERF_TOKENS[2]], [tr('Thinking'), PERF_TOKENS[3]]];
                 const rows = list.map((m, i) => {
                     const thinking = Math.min(m.reasoning_tokens, m.completion_tokens);
                     const vals = [m.cached_tokens, Math.max(0, m.prompt_tokens - m.cached_tokens), m.completion_tokens - thinking, thinking];
@@ -2905,7 +2908,7 @@ createApp({
                 const projects = [...d.matrix.projects].sort((a, b) => (projCost[b] || 0) - (projCost[a] || 0) || a.localeCompare(b));
                 const cols = models.filter(m => modelCalls[m.model]);
                 const max = Math.max(0, ...d.matrix.cells.map(c => c.cost));
-                const nameW = fitW([...projects, 'All projects'], 100, 240), rowH = 30, totW = 92;
+                const nameW = fitW([...projects, tr('All projects')], 100, 240), rowH = 30, totW = 92;
                 // A header takes two lines when it must: broken after " · ", "-" or "/"
                 const wrap2 = (t, w) => {
                     const n = Math.floor(w / 6.2);
@@ -2942,17 +2945,17 @@ createApp({
                         key: p + '|' + m.model, x: xs[c] + 1, y: headH + r * rowH + 1, w: colWs[c] - 2, h: rowH - 2,
                         fill: v ? heatColor(tt) : '#161e2e', ink: v && tt > 0.55 ? '#0b1220' : '#e5e7eb', has: !!v,
                         text: v ? fmtUsd(v.cost) : '',
-                        tip: v ? { title: `${m.name} · ${p}`, rows: [{ label: 'Provider', value: m.who }, { label: 'Spent', value: fmtUsd(v.cost) },
-                            { label: 'Calls', value: String(v.calls) }, { label: 'Share of the project', value: fmtPct(projCost[p] ? v.cost / projCost[p] : 0) },
-                            { label: 'Share of the model', value: fmtPct(modelCost[m.model] ? v.cost / modelCost[m.model] : 0) }] } : null,
+                        tip: v ? { title: `${m.name} · ${projectLabel(p)}`, rows: [{ label: tr('Provider'), value: m.who }, { label: tr('Spent'), value: fmtUsd(v.cost) },
+                            { label: tr('Calls'), value: String(v.calls) }, { label: tr('Share of the project'), value: fmtPct(projCost[p] ? v.cost / projCost[p] : 0) },
+                            { label: tr('Share of the model'), value: fmtPct(modelCost[m.model] ? v.cost / modelCost[m.model] : 0) }] } : null,
                     });
                 }));
                 const footY = headH + projects.length * rowH + 4;
                 return {
                     W: totX + totW, H: footY + rowH, nameW, headH, rowH, cells, totX, totW, footY, gridW,
                     heads: cols.map((m, c) => ({ x: xs[c] + colWs[c] / 2, lines: lines[c], title: m.title })),
-                    rows: projects.map((p, r) => ({ y: headH + r * rowH + rowH / 2 + 4, name: clip(p, nameW - 6), full: p,
-                        total: fmtUsd(projCost[p] || 0), tip: { title: p, rows: [{ label: 'Spent', value: fmtUsd(projCost[p] || 0) }, { label: 'Calls', value: String(projCalls[p] || 0) }, { label: 'Share of all spending', value: fmtPct(all ? (projCost[p] || 0) / all : 0) }] } })),
+                    rows: projects.map((p, r) => ({ y: headH + r * rowH + rowH / 2 + 4, name: clip(projectLabel(p), nameW - 6), full: p,
+                        total: fmtUsd(projCost[p] || 0), tip: { title: projectLabel(p), rows: [{ label: tr('Spent'), value: fmtUsd(projCost[p] || 0) }, { label: tr('Calls'), value: String(projCalls[p] || 0) }, { label: tr('Share of all spending'), value: fmtPct(all ? (projCost[p] || 0) / all : 0) }] } })),
                     foot: cols.map((m, c) => ({ x: xs[c] + colWs[c] / 2, text: fmtUsd(modelCost[m.model] || 0) })),
                     all: fmtUsd(all),
                     scale: [0, 0.25, 0.5, 0.75, 1].map(f => ({ color: heatColor(Math.sqrt(f)), text: fmtUsd(max * f) })),
@@ -2978,10 +2981,10 @@ createApp({
                         callsW: Math.max(cs > 0 ? 2 : 0, plotW * cs), costW: Math.max(ms > 0 ? 2 : 0, plotW * ms),
                         callsText: fmtPct(cs), costText: fmtPct(ms) + (r.calls_without_cost ? '+' : ''),
                         tip: { title: labels[i], rows: [
-                            { color: PERF_TOKENS[0], label: 'Calls', value: `${r.calls} · ${fmtPct(cs, 1)}` },
-                            { color: PERF_TOKENS[3], label: 'Spent', value: `${fmtUsd(r.cost)} · ${fmtPct(ms, 1)}` },
-                            { label: 'Per call', value: r.calls - r.calls_without_cost ? fmtUsd(r.cost / (r.calls - r.calls_without_cost)) : '—' },
-                            { label: 'Models', value: usedBy }] } };
+                            { color: PERF_TOKENS[0], label: tr('Calls'), value: `${r.calls} · ${fmtPct(cs, 1)}` },
+                            { color: PERF_TOKENS[3], label: tr('Spent'), value: `${fmtUsd(r.cost)} · ${fmtPct(ms, 1)}` },
+                            { label: tr('Per call'), value: r.calls - r.calls_without_cost ? fmtUsd(r.cost / (r.calls - r.calls_without_cost)) : '—' },
+                            { label: tr('Models'), value: usedBy }] } };
                 });
                 return { W: half, H: topPad + rows.length * rowH + bottom, nameW, plotW, rowH, barH, rows, bottom,
                          grid: [0, 0.25, 0.5, 0.75, 1].map(f => ({ x: nameW + plotW * f, text: fmtPct(f) })) };
@@ -2996,7 +2999,7 @@ createApp({
                 if (vb === null || vb === undefined) return -1;
                 return (va < vb ? -1 : 1) * dir;
             });
-            const sinceEvents = d.events_since && d.events_since > d.since ? new Date(d.events_since * 1000).toLocaleDateString() : '';
+            const sinceEvents = d.events_since && d.events_since > d.since ? new Date(d.events_since * 1000).toLocaleDateString(appLocale()) : '';
             // 0. Savings (IM-08): spent against the reference model, per day (or week)
             const sv = (() => {
                 const v = d.savings;
@@ -3029,10 +3032,10 @@ createApp({
                     + [...buckets].reverse().map((k, j) => `L${X(buckets.length - 1 - j).toFixed(1)},${Y(per[k].spent).toFixed(1)}`).join('') + 'Z';
                 const points = buckets.map((k, i) => ({
                     x: X(i), ySpent: Y(per[k].spent), yRef: Y(per[k].reference), band: X(i) - step / 2,
-                    tip: { title: d.weekly ? 'Week of ' + k : new Date(k + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
-                           rows: [{ color: '#86b6ef', label: 'Would have cost', value: fmtUsd(per[k].reference) },
-                                  { color: '#2a78d6', label: 'Spent', value: fmtUsd(per[k].spent) },
-                                  { label: 'Saved', value: fmtUsd(per[k].reference - per[k].spent) }] } }));
+                    tip: { title: d.weekly ? tr('Week of ') + k : new Date(k + 'T00:00:00').toLocaleDateString(appLocale(), { weekday: 'short', month: 'short', day: 'numeric' }),
+                           rows: [{ color: '#86b6ef', label: tr('Would have cost'), value: fmtUsd(per[k].reference) },
+                                  { color: '#2a78d6', label: tr('Spent'), value: fmtUsd(per[k].spent) },
+                                  { label: tr('Saved'), value: fmtUsd(per[k].reference - per[k].spent) }] } }));
                 const rowsOf = (obj, label) => Object.entries(obj).map(([k, x]) => ({ key: k, label: label(k), ...x }));
                 const maxRef = Math.max(0.000001, ...Object.values(v.by_role).map(x => x.reference), ...Object.values(v.by_project).map(x => x.reference));
                 const refs = Object.keys(v.reference_models || {});
@@ -3040,10 +3043,10 @@ createApp({
                     W, H, left, topPad, plotH, step: Math.max(step, 8), points, spentPath: line('spent'), refPath: line('reference'), gapPath: gap,
                     grid: [{ y: Y(ymax), text: fmtUsd(max) }],
                     xlabels: [...new Set([0, buckets.length - 1])].map(i => ({ x: X(i), anchor: buckets.length === 1 ? 'middle' : (i === 0 ? 'start' : 'end'),
-                        text: new Date(buckets[i] + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })),
+                        text: new Date(buckets[i] + 'T00:00:00').toLocaleDateString(appLocale(), { month: 'short', day: 'numeric' }) })),
                     v, maxRef, roles: rowsOf(v.by_role, perfRole), projects: rowsOf(v.by_project, (k) => k),
-                    refName: refs.length === 1 ? (byId[refs[0]] || {}).name || base(refs[0]) : (refs.length ? refs.length + ' reference models' : base(v.today_reference || '')),
-                    refTitle: refs.map(r => `${r}: ${v.reference_models[r]} calls`).join('\n'),
+                    refName: refs.length === 1 ? (byId[refs[0]] || {}).name || base(refs[0]) : (refs.length ? refs.length + tr(' reference models') : base(v.today_reference || '')),
+                    refTitle: refs.map(r => tr('{r}: {v} calls', { r: r, v: v.reference_models[r] })).join('\n'),
                 };
             })();
             // v0.8: working time per request (approvals count 2 s each; the real wait is shown apart).
@@ -3054,8 +3057,8 @@ createApp({
                 const secs = Math.round(tm.approval_ms / 1000);
                 const buckets = fillDays(tm.timeline.map(b => ({
                     bucket: b.bucket, total: b.counted_ms,
-                    parts: [['Models', b.model_ms], ['Commands and tools', b.other_ms], [`Approvals (${secs} s each)`, b.approval_ms]],
-                    note: b.requests ? ` in ${b.requests} request${b.requests === 1 ? '' : 's'}` + (b.waits ? `, you waited ${fmtDur(b.wait_ms)}` : '') : '',
+                    parts: [[tr('Models'), b.model_ms], [tr('Commands and tools'), b.other_ms], [tr('Approvals ({secs} s each)', { secs: secs }), b.approval_ms]],
+                    note: b.requests ? tr(' in {requests} request{v}', { requests: b.requests, v: b.requests === 1 ? '' : 's' }) + (b.waits ? tr(', you waited {v}', { v: fmtDur(b.wait_ms) }) : '') : '',
                 })), d.weekly ? 7 : 1);
                 return { tm, buckets, per: d.weekly ? 'week' : 'day' };
             })();
@@ -3064,9 +3067,9 @@ createApp({
             const tokensOf = (m) => (m.prompt_tokens || 0) + (m.completion_tokens || 0);
             const withTokens = used.filter(m => tokensOf(m) > 0);
             const scatters = {
-                callsCost: used.map(m => ({ name: m.name, x: m.calls, y: m.cost || 0, lines: [m.cost_per_call !== null ? fmtUsd(m.cost_per_call) + ' per call' : 'no known price'] })),
-                tokensCost: withTokens.map(m => ({ name: m.name, x: tokensOf(m), y: m.cost || 0, lines: [m.cost ? fmtUsd(m.cost / tokensOf(m) * 1000) + ' per 1K tokens' : 'no known price'] })),
-                callsTokens: withTokens.map(m => ({ name: m.name, x: m.calls, y: tokensOf(m), lines: [Math.round(tokensOf(m) / m.calls).toLocaleString() + ' tokens per call'] })),
+                callsCost: used.map(m => ({ name: m.name, x: m.calls, y: m.cost || 0, lines: [m.cost_per_call !== null ? fmtUsd(m.cost_per_call) + tr(' per call') : tr('no known price')] })),
+                tokensCost: withTokens.map(m => ({ name: m.name, x: tokensOf(m), y: m.cost || 0, lines: [m.cost ? fmtUsd(m.cost / tokensOf(m) * 1000) + tr(' per 1K tokens') : tr('no known price')] })),
+                callsTokens: withTokens.map(m => ({ name: m.name, x: m.calls, y: tokensOf(m), lines: [Math.round(tokensOf(m) / m.calls).toLocaleString(appLocale()) + tr(' tokens per call')] })),
             };
             return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, sv, wt, scatters, empty: !models.length,
                      maxShare: Math.max(0.0001, ...models.map(m => m.share)), data: d };
@@ -3082,30 +3085,31 @@ createApp({
             if (v) { perfShown[key] = v; return v; }
             return perfShown[key] || null;
         };
-        const PERF_ROLES = { conductor: 'Conductor', scout: 'Scout', simple: 'Simple', complex: 'Complex', override: 'Chosen by you', curator: 'Memory',
-                             skill_draft: 'Skill drafts', test: 'Tests', commit_message: 'Commit messages', planner: 'Planner' };
-        const perfRole = (r) => PERF_ROLES[r] || r;
-        const PERF_PROVIDERS = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini', vertex_ai: 'Google Vertex AI',
-                                 ollama: 'Ollama (this machine)', ollama_chat: 'Ollama (this machine)', deepseek: 'DeepSeek', mistral: 'Mistral',
-                                 groq: 'Groq', openrouter: 'OpenRouter', xai: 'xAI', together_ai: 'Together AI', bedrock: 'AWS Bedrock',
-                                 azure: 'Azure OpenAI', cohere: 'Cohere', perplexity: 'Perplexity', fireworks_ai: 'Fireworks AI', cerebras: 'Cerebras' };
-        const perfProvider = (p) => PERF_PROVIDERS[p] || p || 'unknown provider';
+        const PERF_ROLES = { conductor: tk('Conductor'), scout: tk('Scout'), simple: tk('Simple'), complex: tk('Complex'), override: tk('Chosen by you'), curator: tk('Memory'),
+                             skill_draft: tk('Skill drafts'), test: tk('Tests'), commit_message: tk('Commit messages'), planner: tk('Planner') };
+        const perfRole = (r) => (PERF_ROLES[r] ? tr(PERF_ROLES[r]) : r);
+        const PERF_PROVIDERS = { anthropic: tk('Anthropic'), openai: tk('OpenAI'), gemini: tk('Google Gemini'), vertex_ai: tk('Google Vertex AI'),
+                                 ollama: tk('Ollama (this machine)'), ollama_chat: tk('Ollama (this machine)'), deepseek: tk('DeepSeek'), mistral: tk('Mistral'),
+                                 groq: tk('Groq'), openrouter: tk('OpenRouter'), xai: 'xAI', together_ai: tk('Together AI'), bedrock: tk('AWS Bedrock'),
+                                 azure: tk('Azure OpenAI'), cohere: tk('Cohere'), perplexity: tk('Perplexity'), fireworks_ai: tk('Fireworks AI'), cerebras: tk('Cerebras') };
+        const perfProvider = (p) => (PERF_PROVIDERS[p] ? tr(PERF_PROVIDERS[p]) : (p || tr('unknown provider')));
         const sortPerf = (key) => {
             const s = perfSort.value;
             perfSort.value = s.key === key ? { key, desc: !s.desc } : { key, desc: key !== 'model' };
         };
-        const perfCols = [
-            ['model', 'Model', 'Which model; the roles it played are listed under its name.'],
-            ['calls', 'Calls', 'Metered calls in the period.'],
-            ['cost', 'Spent', 'What these calls cost. A + means some calls have no known price.'],
-            ['share', 'Share', 'Part of all spending in the view.'],
-            ['cost_per_call', '$ / call', 'Average cost of one call.'],
-            ['cost_per_1k_out', '$ / 1K out', 'Cost for every 1,000 tokens the model wrote (its input included): what its work costs.'],
-            ['p50_ms', 'Latency', 'Median time from request to last token; p90 (slow calls) below.'],
-            ['speed_tps', 'Speed', 'Median output tokens per second, over answers of 20 tokens or more.'],
-            ['cache_share', 'Cache', 'Part of the input tokens read from the provider\'s cache (cheaper).'],
-            ['reliability', 'Reliable', 'Calls that worked / all attempts, failed ones included.'],
-            ['escalations', 'Stuck', 'Times this model got stuck and the task moved to the Complex model.'],
+        // Kept as data (tk); the templates get them translated through the computed views below
+        const PERF_COLS = [
+            ['model', tk('Model'), tk('Which model; the roles it played are listed under its name.')],
+            ['calls', tk('Calls'), tk('Metered calls in the period.')],
+            ['cost', tk('Spent'), tk('What these calls cost. A + means some calls have no known price.')],
+            ['share', tk('Share'), tk('Part of all spending in the view.')],
+            ['cost_per_call', tk('$ / call'), tk('Average cost of one call.')],
+            ['cost_per_1k_out', tk('$ / 1K out'), tk('Cost for every 1,000 tokens the model wrote (its input included): what its work costs.')],
+            ['p50_ms', tk('Latency'), tk('Median time from request to last token; p90 (slow calls) below.')],
+            ['speed_tps', tk('Speed'), tk('Median output tokens per second, over answers of 20 tokens or more.')],
+            ['cache_share', tk('Cache'), tk('Part of the input tokens read from the provider\'s cache (cheaper).')],
+            ['reliability', tk('Reliable'), tk('Calls that worked / all attempts, failed ones included.')],
+            ['escalations', tk('Stuck'), tk('Times this model got stuck and the task moved to the Complex model.')],
         ];
 
         // ---- Project memory history and curator (Feature 17)
@@ -3133,8 +3137,8 @@ createApp({
             catch (error) { console.error('Failed to load cost estimates', error); }
         };
         const estimateText = (est, what) => est
-            ? `≈ ${fmtCost(est.avg)} ${what} (average of your last ${est.n}, ${modelName(est.model)})`
-            : 'No priced call of this kind yet, so no estimate.';
+            ? tr('≈ {v} {what} (average of your last {n}, {v2})', { v: fmtCost(est.avg), what: what, n: est.n, v2: modelName(est.model) })
+            : tr('No priced call of this kind yet, so no estimate.');
         const memoryStatus = ref(null);   // { state: running|updated|unchanged, text, title }
         let memoryStatusTimer = null;
         const setMemoryStatus = (status, hideAfterMs = 0) => {
@@ -3154,8 +3158,8 @@ createApp({
             } catch (error) { console.error('Failed to load memory history', error); }
         };
         const undoMemoryVersion = async (v) => {
-            if (!await askConfirm({ title: 'Undo this memory change?', detail: v.summary, ok: 'Undo',
-                text: 'The project memory goes back to how it was before this change. The undo is recorded too, so it can be undone.' })) return;
+            if (!await askConfirm({ title: tr('Undo this memory change?'), detail: v.summary, ok: tr('Undo'),
+                text: tr('The project memory goes back to how it was before this change. The undo is recorded too, so it can be undone.') })) return;
             await fetch(`/api/memory/versions/${v.id}/undo`, { method: 'POST' });
             await fetchMemory();
         };
@@ -3163,17 +3167,17 @@ createApp({
             if (curating.value) return;
             if (appSettings.value.confirm_update_memory !== false) {
                 await fetchCostEstimates();
-                if (!await askConfirm({ title: 'Update memory now?', ok: 'Update',
-                    text: 'The Simple model reads the whole latest chat of this project and rewrites its memory. This is one paid model call.',
-                    cost: estimateText(costEstimates.value.memory_update, 'per update'),
-                    skipLabel: "Don't warn me again (turn it back on in Dashboard → Budgets → Cost warnings)",
+                if (!await askConfirm({ title: tr('Update memory now?'), ok: tr('Update'),
+                    text: tr('The Simple model reads the whole latest chat of this project and rewrites its memory. This is one paid model call.'),
+                    cost: estimateText(costEstimates.value.memory_update, tr('per update')),
+                    skipLabel: tr('Don\'t warn me again (turn it back on in Dashboard → Budgets → Cost warnings)'),
                     onSkip: () => { appSettings.value.confirm_update_memory = false; saveSettings(); } })) return;
             }
             curating.value = true; curateResult.value = null;
             try {
                 curateResult.value = await (await fetch(`/api/memory/project/${encodeURIComponent(memoryProject.value)}/curate`, { method: 'POST' })).json();
                 await fetchMemory();
-            } catch (error) { curateResult.value = { changed: false, reason: 'request failed' }; }
+            } catch (error) { curateResult.value = { changed: false, reason: tr('request failed') }; }
             finally { curating.value = false; fetchCostEstimates(); }
         };
         const viewMemoryFromToast = () => {
@@ -3213,12 +3217,17 @@ createApp({
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) });
             fetchSkills();
         };
+        const perfCols = Vue.computed(() => PERF_COLS.map(([k, label, help]) => [k, tr(label), tr(help)]));
+        const levelNames = Vue.computed(() => Object.fromEntries(Object.entries(LEVEL_NAMES).map(([k, v]) => [k, tr(v)])));
+        const roleHelp = Vue.computed(() => Object.fromEntries(Object.entries(ROLE_HELP).map(([k, v]) => [k, tr(v)])));
+        const snapKindsShown = Vue.computed(() => snapKinds.map(k => ({ ...k, label: tr(k.label), hint: tr(k.hint) })));
+        const viewerLanguagesShown = Vue.computed(() => viewerLanguages.map(([k, v]) => [k, tr(v)]));
         const SLASH_COMMANDS = [
-            { cmd: '/new', hint: 'Start a new chat' },
-            { cmd: '/simple', hint: 'Use the Simple model for this chat' },
-            { cmd: '/complex', hint: 'Use the Complex model for this chat' },
-            { cmd: '/plan', hint: 'Split this task into steps for the cheaper model' },
-            { cmd: '/noplan', hint: 'Do this task without a plan' },
+            { cmd: '/new', hint: tk('Start a new chat') },
+            { cmd: '/simple', hint: tk('Use the Simple model for this chat') },
+            { cmd: '/complex', hint: tk('Use the Complex model for this chat') },
+            { cmd: '/plan', hint: tk('Split this task into steps for the cheaper model') },
+            { cmd: '/noplan', hint: tk('Do this task without a plan') },
         ];
         const slashIndex = ref(0);
         const slashSuggestions = Vue.computed(() => {
@@ -3228,7 +3237,7 @@ createApp({
             const skills = appSettings.value.skills_mode === 'off' ? [] : (skillsInfo.value.skills || [])
                 .filter(sk => sk.usable && sk.active)
                 .map(sk => ({ cmd: '/' + sk.name, hint: sk.description, mode: sk.mode || 'manual' }));
-            return [...SLASH_COMMANDS, ...skills].filter(c => c.cmd.slice(1).startsWith(q) && c.cmd !== t).slice(0, 8);
+            return [...SLASH_COMMANDS.map(c => ({ ...c, hint: tr(c.hint) })), ...skills].filter(c => c.cmd.slice(1).startsWith(q) && c.cmd !== t).slice(0, 8);
         });
         watch(slashSuggestions, () => { slashIndex.value = 0; });
         // Slash suggestions need the active project's skills
@@ -3253,11 +3262,11 @@ createApp({
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: e.content })
             });
             if (resp.status === 200) { skillEditor.value = null; fetchSkills(); }
-            else { const d = await resp.json(); e.error = d.detail || 'Could not save.'; }
+            else { const d = await resp.json(); e.error = d.detail || tr('Could not save.'); }
         };
         const removeSkill = async (sk) => {
-            if (!await askConfirm({ title: `Remove the skill "${sk.name}"?`, ok: 'Remove', danger: true,
-                text: `This ${sk.scope} skill's folder is moved to ~/.optimux/legacy/skills/, not deleted.` })) return;
+            if (!await askConfirm({ title: tr('Remove the skill "{name}"?', { name: sk.name }), ok: tr('Remove'), danger: true,
+                text: tr('This {scope} skill\'s folder is moved to ~/.optimux/legacy/skills/, not deleted.', { scope: sk.scope }) })) return;
             await fetch(`/api/skills/${sk.scope}/${sk.name}/remove`, { method: 'POST' });
             fetchSkills();
         };
@@ -3270,7 +3279,7 @@ createApp({
             const d = skillDialog.value;
             if (!d || d.busy) return;
             d.name = (d.name || '').trim();
-            if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(d.name)) { d.error = 'Use lowercase letters, digits and dashes (e.g. release-notes).'; return; }
+            if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(d.name)) { d.error = tr('Use lowercase letters, digits and dashes (e.g. release-notes).'); return; }
             if (d.mode === 'new') {
                 const t = await (await fetch('/api/skills/template?name=' + encodeURIComponent(d.name))).json();
                 skillEditor.value = { name: d.name, scope: d.scope, content: t.content, isNew: true, draft: false, error: '' };
@@ -3285,11 +3294,11 @@ createApp({
                     body: JSON.stringify({ session_id: currentSession.value.id, name: d.name })
                 });
                 const r = await resp.json();
-                if (resp.status !== 200) { d.error = r.detail || 'Drafting failed.'; return; }
+                if (resp.status !== 200) { d.error = r.detail || tr('Drafting failed.'); return; }
                 skillEditor.value = { name: d.name, scope: d.scope, content: r.content, isNew: true, draft: true, error: '' };
                 skillDialog.value = null;
                 openSettings('skills');
-            } catch (error) { d.error = 'Drafting failed.'; console.error(error); }
+            } catch (error) { d.error = tr('Drafting failed.'); console.error(error); }
             finally { if (skillDialog.value) skillDialog.value.busy = false; skillDrafting.value = false; fetchCostEstimates(); }
         };
 
@@ -3359,9 +3368,9 @@ createApp({
             try {
                 const r = await fetch('/api/guide');
                 const d = await r.json();
-                if (r.status !== 200) { guide.value = { ...guide.value, error: d.detail || 'The guide could not be loaded.' }; return; }
+                if (r.status !== 200) { guide.value = { ...guide.value, error: d.detail || tr('The guide could not be loaded.') }; return; }
                 guide.value = { ...parseGuide(d.content || ''), error: '' };
-            } catch (error) { guide.value = { ...guide.value, error: 'The guide could not be loaded.' }; }
+            } catch (error) { guide.value = { ...guide.value, error: tr('The guide could not be loaded.') }; }
         };
         const escapeHtml = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const guideResults = Vue.computed(() => {
@@ -3482,8 +3491,8 @@ createApp({
                 });
                 const result = await resp.json();
                 const cleared = (result.cooldowns_cleared || []).length
-                    ? ` Cooldown cleared for ${result.cooldowns_cleared.map(modelName).join(', ')}.` : '';
-                modelNotices.value[modelId] = { ok: true, text: 'Key saved. Use Test to check it.' + cleared };
+                    ? tr(' Cooldown cleared for {v}.', { v: result.cooldowns_cleared.map(modelName).join(', ') }) : '';
+                modelNotices.value[modelId] = { ok: true, text: tr('Key saved. Use Test to check it.') + cleared };
                 inputField.value = '';
                 editingKeys.value[modelId] = false;
                 await fetchConfig();
@@ -3620,16 +3629,16 @@ createApp({
         const fmtPrice = (v) => v == null ? '?' : String(+Number(v).toPrecision(4));
         const fmtMtok = (v) => v == null ? '—' : v === 0 ? 'free' : '$' + (v < 0.1 ? v.toFixed(3) : v < 10 ? v.toFixed(2) : v.toFixed(1));
         const fmtCtx = (n) => !n ? '—' : n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`;
-        const fmtWhen = (ts) => ts ? new Date(ts * 1000).toLocaleString() : 'never';
+        const fmtWhen = (ts) => ts ? new Date(ts * 1000).toLocaleString(appLocale()) : 'never';
         // Rate limits learned from replies: "500 requests/min · 200k tokens/min"
         const PER = { minute: 'min', second: 's', hour: 'h', day: 'day', month: 'month' };
-        const fmtNum = (n) => n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${Math.round(n / 1000)}k` : n.toLocaleString('en-US');
+        const fmtNum = (n) => n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${Math.round(n / 1000)}k` : n.toLocaleString(appLocale() || 'en-US');
         const fmtLimits = (l) => !(l && l.items && l.items.length) ? '' :
             l.items.map(i => `${fmtNum(i.limit)} ${i.what}/${PER[i.per] || i.per}`).join(' · ');
         const fmtLimitsTitle = (l) => {
             if (!(l && l.items && l.items.length)) return '';
             const hit = l.items.filter(i => i.hit);
-            const free = l.items.some(i => i.free_tier) ? ', free tier' : '';
+            const free = l.items.some(i => i.free_tier) ? tr(', free tier') : '';
             return hit.length ? `reached ${fmtWhen(l.hit_at || l.seen)}${free}` : `seen ${fmtWhen(l.seen)}`;
         };
         const catChoose = (id) => {
@@ -3648,7 +3657,7 @@ createApp({
             if (!p || !catModel.value) return;
             catMsg.value = null;
             if (catNeedsKey.value && !catKey.value.trim()) {
-                catMsg.value = { ok: false, text: `Paste your ${p.label} API key: Optimux can't call ${p.label} without it.` };
+                catMsg.value = { ok: false, text: tr('Paste your {label} API key: Optimux can\'t call {label2} without it.', { label: p.label, label2: p.label }) };
                 return;
             }
             catBusy.value = 'add';
@@ -3656,18 +3665,18 @@ createApp({
                 if (catNeedsKey.value) {
                     const k = await fetch('/api/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ env_key: p.env, api_key: catKey.value.trim() }) });
-                    if (!k.ok) { catMsg.value = { ok: false, text: detailText((await readJson(k)).detail, 'The key was not saved.') }; return; }
+                    if (!k.ok) { catMsg.value = { ok: false, text: detailText((await readJson(k)).detail, tr('The key was not saved.')) }; return; }
                 }
                 const r = await fetch('/api/models', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id: catModel.value, name: catName.value.trim() || catModel.value,
                         env_key: p.env || '', ...(catOwnPrices.value || (catSelected.value && catSelected.value.new)
                             ? pricePayload(newModelPrices.value) : pricePayload({})) }) });
-                if (!r.ok) { catMsg.value = { ok: false, text: detailText((await readJson(r)).detail, 'The model was not added.') }; return; }
-                pushToast({ title: 'Model added', text: `${catName.value || catModel.value}: assign it in Routing to use it.` });
+                if (!r.ok) { catMsg.value = { ok: false, text: detailText((await readJson(r)).detail, tr('The model was not added.')) }; return; }
+                pushToast({ title: tr('Model added'), text: tr('{v}: assign it in Routing to use it.', { v: catName.value || catModel.value }) });
                 catKey.value = ''; catReplaceKey.value = false; catModel.value = ''; catName.value = '';
                 newModelPrices.value = { input_cost_per_mtok: '', output_cost_per_mtok: '', cached_input_cost_per_mtok: '' };
                 await fetchConfig(); await fetchCatalog(); await loadProviderModels();
-            } catch (error) { catMsg.value = { ok: false, text: 'The model was not added.' }; }
+            } catch (error) { catMsg.value = { ok: false, text: tr('The model was not added.') }; }
             finally { catBusy.value = ''; }
         };
         const setCatalogOnline = async (on) => {
@@ -3683,13 +3692,13 @@ createApp({
                 const r = await fetch('/api/catalog/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ what, provider: catPid.value }) });
                 const d = await readJson(r);
-                if (!r.ok) { catRefreshMsg.value = { ok: false, text: detailText(d.detail, 'The refresh failed.') }; return; }
+                if (!r.ok) { catRefreshMsg.value = { ok: false, text: detailText(d.detail, tr('The refresh failed.')) }; return; }
                 catRefreshMsg.value = { ok: true, text: what === 'prices'
-                    ? `Prices updated: ${d.count} models. Costs in Usage use them from now on.`
-                    : `${catProvider.value ? catProvider.value.label : 'The provider'} lists ${d.count} models for your key.` };
+                    ? tr('Prices updated: {count} models. Costs in Usage use them from now on.', { count: d.count })
+                    : tr('{v} lists {count} models for your key.', { v: catProvider.value ? catProvider.value.label : tr('The provider'), count: d.count }) };
                 await fetchCatalog(); await loadProviderModels();
                 if (what === 'prices') await fetchConfig();     // configured models' "price known" follows
-            } catch (error) { catRefreshMsg.value = { ok: false, text: 'The refresh failed.' }; }
+            } catch (error) { catRefreshMsg.value = { ok: false, text: tr('The refresh failed.') }; }
             finally { catBusy.value = ''; }
         };
         const addCustomModel = async () => {
@@ -3728,7 +3737,7 @@ createApp({
                 newModelBase.value = '';
                 newModelAck.value = false;
                 envKeyTouched = false;
-                newModelMsg.value = { ok: true, text: 'Model added.' };
+                newModelMsg.value = { ok: true, text: tr('Model added.') };
                 await fetchConfig();
             } catch (error) {
                 console.error("Failed to add model", error);
@@ -3736,8 +3745,8 @@ createApp({
         };
 
         const deleteCustomModel = async (modelId) => {
-            if (!await askConfirm({ title: 'Delete this model?', detail: modelId, ok: 'Delete', danger: true,
-                text: 'It will be removed from the model list. Its API key stays in secrets.env.' })) return;
+            if (!await askConfirm({ title: tr('Delete this model?'), detail: modelId, ok: 'Delete', danger: true,
+                text: tr('It will be removed from the model list. Its API key stays in secrets.env.') })) return;
             try {
                 await fetch(`/api/models/${encodeURIComponent(modelId)}`, {
                     method: 'DELETE'
@@ -3768,10 +3777,10 @@ createApp({
             const f = modelEdit.form, oldId = modelEdit.id;
             if (!f || modelEdit.busy) return;
             const id = f.id.trim(), name = f.name.trim(), envKey = f.env_key.trim().toUpperCase();
-            if (!id || !name) { modelEdit.error = 'The model ID and the name are needed.'; return; }
+            if (!id || !name) { modelEdit.error = tr('The model ID and the name are needed.'); return; }
             const all = [...availableModels.value, ...setupModels.value];
             if (modelEdit.mode === 'duplicate' && all.some(m => m.id === id)) {
-                modelEdit.error = `${id} is already configured: give the copy another model ID (for example another model of the same provider).`;
+                modelEdit.error = tr('{id} is already configured: give the copy another model ID (for example another model of the same provider).', { id: id });
                 return;
             }
             const model = { id, name, env_key: envKey, api_base: f.api_base.trim(), ...pricePayload(f),
@@ -3782,7 +3791,7 @@ createApp({
                     ? await fetch('/api/models/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ old_id: oldId, model }) })
                     : await fetch('/api/models', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(model) });
                 const d = await readJson(r);
-                if (!r.ok) { modelEdit.error = detailText(d.detail, 'Not saved.'); return; }
+                if (!r.ok) { modelEdit.error = detailText(d.detail, tr('Not saved.')); return; }
                 if (envKey && f.api_key.trim()) {
                     await fetch('/api/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                body: JSON.stringify({ env_key: envKey, api_key: f.api_key.trim() }) });
@@ -3790,10 +3799,10 @@ createApp({
                 const moved = [...(d.roles || []).map(x => x[0].toUpperCase() + x.slice(1)), ...(d.projects || []).map(x => `project ${x}`)];
                 cancelModelEdit();
                 await fetchConfig();
-                modelNotices.value[id] = { ok: true, text: modelEdit.mode === 'duplicate' || !oldId ? 'Saved.'
-                    : (d.renamed ? `Saved as ${id}.` + (moved.length ? ` ${moved.join(', ')} use${moved.length === 1 ? 's' : ''} it now.` : '') : 'Saved.') + ' Use Test to check it.' };
+                modelNotices.value[id] = { ok: true, text: modelEdit.mode === 'duplicate' || !oldId ? tr('Saved.')
+                    : (d.renamed ? tr('Saved as {id}.', { id: id }) + (moved.length ? tr(' {v} use{v2} it now.', { v: moved.join(', '), v2: moved.length === 1 ? 's' : '' }) : '') : tr('Saved.')) + tr(' Use Test to check it.') };
                 if (oldId !== id && modelEdit.mode === 'edit') delete modelNotices.value[oldId];
-            } catch (e) { modelEdit.error = 'Not saved: ' + e; }
+            } catch (e) { modelEdit.error = tr('Not saved: ') + e; }
             finally { modelEdit.busy = false; }
         };
         const pricePayload = (p) => {
@@ -3815,7 +3824,7 @@ createApp({
         const savePrices = async (model) => {
             const prices = pricePayload(editingPrices.value[model.id]);
             if ((prices.input_cost_per_mtok == null) !== (prices.output_cost_per_mtok == null)) {
-                alert('Set both input and output prices, or leave both empty.');
+                alert(tr('Set both input and output prices, or leave both empty.'));
                 return;
             }
             try {
@@ -3825,7 +3834,7 @@ createApp({
                     body: JSON.stringify({ id: model.id, name: model.name, env_key: model.env_key || '', instructions: model.instructions || '', ...prices })
                 });
                 delete editingPrices.value[model.id];
-                modelNotices.value[model.id] = { ok: true, text: 'Prices saved.' };
+                modelNotices.value[model.id] = { ok: true, text: tr('Prices saved.') };
                 await fetchConfig();
             } catch (error) {
                 console.error('Failed to save prices', error);
@@ -3838,7 +3847,7 @@ createApp({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id: model.id, thinking: level })
                 });
-                modelNotices.value[model.id] = { ok: true, text: `Thinking set to ${level}.` };
+                modelNotices.value[model.id] = { ok: true, text: tr('Thinking set to {level}.', { level: level }) };
                 await fetchConfig();
             } catch (error) {
                 console.error('Failed to set thinking', error);
@@ -3934,7 +3943,7 @@ createApp({
             if (window.OptimuxEditor) return Promise.resolve();
             if (!editorLoading) editorLoading = new Promise((resolve, reject) => {
                 const el = document.createElement('script');
-                el.src = EDITOR_SCRIPT; el.onload = resolve; el.onerror = () => reject(new Error('The code editor could not be loaded.'));
+                el.src = EDITOR_SCRIPT; el.onload = resolve; el.onerror = () => reject(new Error(tr('The code editor could not be loaded.')));
                 document.head.appendChild(el);
             });
             return editorLoading;
@@ -3946,7 +3955,7 @@ createApp({
             if (!editorHost.value) return false;
             const meta = document.querySelector('meta[name="optimux-style-nonce"]');
             editor = window.OptimuxEditor.create(editorHost.value, {
-                label: 'Code editor', nonce: meta ? meta.content : '',
+                label: tr('Code editor'), nonce: meta ? meta.content : '',
                 onChange: (text) => { studio.live = text; studio.dirty = !!studio.file && text !== studio.file.text; },
                 onSave: () => saveStudioFile(),
                 onGoto: (target, at) => followDefinition(target, at),
@@ -3956,7 +3965,7 @@ createApp({
         const studioFetch = async (url, opts) => {
             const res = await fetch(url, opts);
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw Object.assign(new Error(data.detail || `Request failed (${res.status})`), { status: res.status });
+            if (!res.ok) throw Object.assign(new Error(data.detail || tr('Request failed ({status})', { status: res.status })), { status: res.status });
             return data;
         };
         const loadStudioDir = async (path) => {
@@ -4000,7 +4009,7 @@ createApp({
             if (editor) { editor.show('(none)', '', ''); editor.forget([]); }
         };
         const closeStudio = (fromHash = false) => {
-            if (studio.dirty && !confirm(`${studio.file.path} has unsaved changes. Close the Studio anyway? (They stay in the editor until you open another file.)`)) {
+            if (studio.dirty && !confirm(tr('{path} has unsaved changes. Close the Studio anyway? (They stay in the editor until you open another file.)', { path: studio.file.path }))) {
                 if (fromHash) location.hash = '#/studio';
                 return;
             }
@@ -4026,7 +4035,7 @@ createApp({
                     rows.push(ed && ed.mode === 'rename' && ed.path === e.path ? { e: { ...e, type: 'edit', path: '\u0000edit', was: e.type } , depth } : { e, depth });
                     if (e.type === 'dir' && studio.opened[e.path]) walk(e.path, depth + 1);
                 }
-                if (d.truncated) rows.push({ e: { name: `… ${d.total - d.entries.length} more`, path: path + '/…more', type: 'more' }, depth });
+                if (d.truncated) rows.push({ e: { name: tr('… {v} more', { v: d.total - d.entries.length }), path: path + '/…more', type: 'more' }, depth });
             };
             walk('', 0);
             return rows;
@@ -4042,7 +4051,7 @@ createApp({
         const previewKind = (path) => (/\.(md|markdown)$/i.test(path || '') ? 'markdown' : (PREVIEW_PAGE.test(path || '') ? 'page' : ''));
         const openStudioFile = async (path, opts = {}) => {
             if (studio.dirty && studio.file && studio.file.path !== path
-                && !confirm(`${studio.file.path} has unsaved changes. Open ${path} and drop them?`)) return;
+                && !confirm(tr('{path} has unsaved changes. Open {path2} and drop them?', { path: studio.file.path, path2: path }))) return;
             studio.msg = null; studio.conflict = false;
             try {
                 const f = await studioFetch(`/api/files/read?path=${encodeURIComponent(path)}`);
@@ -4067,7 +4076,7 @@ createApp({
                 const r = await studioFetch('/api/files/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: f.path, text, digest: f.digest, project: studio.project }) });
                 f.digest = r.digest; f.text = text; studio.dirty = false; studio.conflict = false;
-                studio.msg = { ok: true, text: r.changed ? `Saved ${r.path} (+${r.added} −${r.removed})` : 'No changes to save.' };
+                studio.msg = { ok: true, text: r.changed ? tr('Saved {path} (+{added} −{removed})', { path: r.path, added: r.added, removed: r.removed }) : tr('No changes to save.') };
                 studio.preview.stamp++;                // the preview shows the new version
                 loadStudioStatus();
             } catch (e) {
@@ -4236,7 +4245,7 @@ createApp({
                 const r = await studioFetch('/api/files/expand');
                 studio.dirs = { ...studio.dirs, ...r.folders };
                 for (const p of r.expanded) studio.opened[p] = true;
-                if (r.truncated) studio.msg = { ok: true, text: `Opened the first ${r.expanded.length} folders.` };
+                if (r.truncated) studio.msg = { ok: true, text: tr('Opened the first {length} folders.', { length: r.expanded.length }) };
             } catch (e) { studio.msg = { ok: false, text: e.message }; }
         };
         const collapseAllStudio = () => { studio.opened = { '': true }; };
@@ -4268,7 +4277,7 @@ createApp({
                 else if (ed.mode === 'new-file') await studioPost('/api/files/save', { path: target, text: '', digest: null });
                 else {
                     if (studio.file && (studio.file.path === ed.path || studio.file.path.startsWith(ed.path + '/')) && studio.dirty) {
-                        throw new Error(`Save or close ${studio.file.path} first: it has unsaved changes.`);
+                        throw new Error(tr('Save or close {path} first: it has unsaved changes.', { path: studio.file.path }));
                     }
                     await studioPost('/api/files/rename', { path: ed.path, to: target });
                     // The open file follows its new name
@@ -4298,23 +4307,23 @@ createApp({
             try { info = await studioFetch(`/api/files/delete?path=${encodeURIComponent(entry.path)}`); }
             catch (e) { studio.msg = { ok: false, text: e.message }; return; }
             if (!info.trash) {
-                await askConfirm({ title: `Can't move ${info.path} aside`, ok: 'OK', cancel: false,
-                                   detail: 'It is on another disk than the Trash and the Workspace\'s .trash folder. Optimux never deletes files for good: delete it yourself if you are sure.' });
+                await askConfirm({ title: tr('Can\'t move {path} aside', { path: info.path }), ok: 'OK', cancel: false,
+                                   detail: tr('It is on another disk than the Trash and the Workspace\'s .trash folder. Optimux never deletes files for good: delete it yourself if you are sure.') });
                 return;
             }
             const what = info.kind === 'folder'
-                ? `${info.files.toLocaleString()}${info.truncated ? '+' : ''} file${info.files === 1 ? '' : 's'} in ${info.folders.toLocaleString()} folder${info.folders === 1 ? '' : 's'}, ${fmtBytes(info.size)}`
-                : (info.kind === 'link' ? 'A link (what it points to stays)' : (info.size ? fmtBytes(info.size) : 'An empty file'));
-            const where = info.trash === 'home' ? 'the Trash (restore it from your file manager)' : "the Workspace's .trash folder";
-            const ok = await askConfirm({ title: `Delete ${info.path}?`, ok: 'Move to Trash', danger: true,
-                detail: `${what}. It goes to ${where}.` + (info.tracked ? ` Git tracks ${info.tracked} of these files: the deletion shows in git status until you commit it.` : '') });
+                ? tr('{v}{v2} file{v3} in {v4} folder{v5}, {v6}', { v: info.files.toLocaleString(appLocale()), v2: info.truncated ? '+' : '', v3: info.files === 1 ? '' : 's', v4: info.folders.toLocaleString(appLocale()), v5: info.folders === 1 ? '' : 's', v6: fmtBytes(info.size) })
+                : (info.kind === 'link' ? tr('A link (what it points to stays)') : (info.size ? fmtBytes(info.size) : tr('An empty file')));
+            const where = info.trash === 'home' ? tr('the Trash (restore it from your file manager)') : tr('the Workspace\'s .trash folder');
+            const ok = await askConfirm({ title: tr('Delete {path}?', { path: info.path }), ok: tr('Move to Trash'), danger: true,
+                detail: tr('{what}. It goes to {where}.', { what: what, where: where }) + (info.tracked ? tr(' Git tracks {tracked} of these files: the deletion shows in git status until you commit it.', { tracked: info.tracked }) : '') });
             if (!ok) return;
             const open = studio.file && (studio.file.path === info.path || studio.file.path.startsWith(info.path + '/'));
-            if (open && studio.dirty && !confirm(`${studio.file.path} has unsaved changes. Delete it anyway?`)) return;
+            if (open && studio.dirty && !confirm(tr('{path} has unsaved changes. Delete it anyway?', { path: studio.file.path }))) return;
             try {
                 await studioPost('/api/files/delete', { path: info.path });
                 if (open) { studio.file = null; studio.dirty = false; }
-                studio.msg = { ok: true, text: `${info.path} moved to ${info.trash === 'home' ? 'the Trash' : 'the Workspace\'s .trash'}.` };
+                studio.msg = { ok: true, text: tr('{path} moved to {v}.', { path: info.path, v: info.trash === 'home' ? tr('the Trash') : tr('the Workspace\'s .trash') }) };
                 await reloadStudioTree();
                 studio.preview.stamp++;
             } catch (e) { studio.msg = { ok: false, text: e.message }; }
@@ -4325,33 +4334,33 @@ createApp({
             if (studio.edit) cancelStudioEdit();
             const items = [];
             if (entry && entry.type === 'file') {
-                items.push({ icon: '↗', label: 'Open', run: () => openStudioFile(entry.path) });
-                if (previewKind(entry.path)) items.push({ icon: '◩', label: 'Show in the preview', run: () => { studio.preview.path = entry.path; studio.preview.stamp++; studio.showPreview = true; } });
+                items.push({ icon: '↗', label: tr('Open'), run: () => openStudioFile(entry.path) });
+                if (previewKind(entry.path)) items.push({ icon: '◩', label: tr('Show in the preview'), run: () => { studio.preview.path = entry.path; studio.preview.stamp++; studio.showPreview = true; } });
             }
             if (entry && entry.type !== 'outside') {
-                items.push({ icon: '＠', label: 'Mention in chat', hint: 'its path only',
+                items.push({ icon: '＠', label: tr('Mention in chat'), hint: tr('its path only'),
                              run: () => addChatContext({ kind: 'file', label: entry.name, detail: entry.path,
-                                                         text: `${entry.type === 'dir' ? 'Folder' : 'File'}: ${entry.path} (in the project; read it if you need it)` }) });
+                                                         text: tr('{v}: {path} (in the project; read it if you need it)', { v: entry.type === 'dir' ? tr('Folder') : tr('File'), path: entry.path }) }) });
                 items.push({ sep: true });
             }
-            const inDir = entry && entry.type === 'dir' ? entry.name + '/' : (entry ? (parentOf(entry.path) || 'the project') : 'the project');
-            items.push({ icon: '＋', label: 'New file…', hint: entry ? 'in ' + inDir : '', run: () => startStudioEdit('new-file', entry && entry.type !== 'outside' ? entry : null) });
-            items.push({ icon: '▤', label: 'New folder…', hint: entry ? 'in ' + inDir : '', run: () => startStudioEdit('new-folder', entry && entry.type !== 'outside' ? entry : null) });
+            const inDir = entry && entry.type === 'dir' ? entry.name + '/' : (entry ? (parentOf(entry.path) || tr('the project')) : tr('the project'));
+            items.push({ icon: '＋', label: tr('New file…'), hint: entry ? 'in ' + inDir : '', run: () => startStudioEdit('new-file', entry && entry.type !== 'outside' ? entry : null) });
+            items.push({ icon: '▤', label: tr('New folder…'), hint: entry ? 'in ' + inDir : '', run: () => startStudioEdit('new-folder', entry && entry.type !== 'outside' ? entry : null) });
             if (entry) {
                 items.push({ sep: true });
-                items.push({ icon: '✎', label: 'Rename…', hint: 'F2', run: () => startStudioEdit('rename', entry) });
-                items.push({ icon: '⌫', label: 'Delete…', hint: 'to the Trash', danger: true, run: () => deleteStudioEntry(entry) });
+                items.push({ icon: '✎', label: tr('Rename…'), hint: 'F2', run: () => startStudioEdit('rename', entry) });
+                items.push({ icon: '⌫', label: tr('Delete…'), hint: tr('to the Trash'), danger: true, run: () => deleteStudioEntry(entry) });
                 items.push({ sep: true });
-                items.push({ icon: '⧉', label: 'Copy path', run: () => writeClipboard(absPath(entry.path)) });
-                items.push({ icon: '⌁', label: 'Copy relative path', run: () => writeClipboard(entry.path) });
+                items.push({ icon: '⧉', label: tr('Copy path'), run: () => writeClipboard(absPath(entry.path)) });
+                items.push({ icon: '⌁', label: tr('Copy relative path'), run: () => writeClipboard(entry.path) });
             } else {
                 items.push({ sep: true });
-                items.push({ icon: '⊞', label: 'Expand all', run: expandAllStudio });
-                items.push({ icon: '⊟', label: 'Collapse all', run: collapseAllStudio });
-                items.push({ icon: '⧉', label: 'Copy the project\'s path', run: () => writeClipboard(absPath('')) });
+                items.push({ icon: '⊞', label: tr('Expand all'), run: expandAllStudio });
+                items.push({ icon: '⊟', label: tr('Collapse all'), run: collapseAllStudio });
+                items.push({ icon: '⧉', label: tr('Copy the project\'s path'), run: () => writeClipboard(absPath('')) });
             }
             studio.menuPath = entry ? entry.path : '';
-            openCtxMenu(e.clientX, e.clientY, entry ? entry.path : (studio.project || 'Project'), items);
+            openCtxMenu(e.clientX, e.clientY, entry ? entry.path : (studio.project || tr('Project')), items);
         };
         const treeKey = (e, entry) => {
             if (e.key === 'F2') { e.preventDefault(); startStudioEdit('rename', entry); }
@@ -4382,7 +4391,7 @@ createApp({
         const styleLine = (st) => Object.entries(st || {}).map(([k, v]) => `${k}: ${v}`).join('; ');
         const addChatContext = (item) => {
             if (chatContext.value.length >= MAX_CONTEXT) {
-                pushToast({ kind: 'warn', title: 'Too many selections', text: `Up to ${MAX_CONTEXT} at a time: send them or remove some first.`, timeout: 5000 });
+                pushToast({ kind: 'warn', title: tr('Too many selections'), text: tr('Up to {MAX_CONTEXT} at a time: send them or remove some first.', { MAX_CONTEXT: MAX_CONTEXT }), timeout: 5000 });
                 return;
             }
             chatContext.value.push({ id: ++contextSeq, ...item });
@@ -4391,37 +4400,37 @@ createApp({
         };
         const removeChatContext = (id) => { chatContext.value = chatContext.value.filter(c => c.id !== id); };
         const contextFromCode = (path, sel) => {
-            const lines = sel.fromLine === sel.toLine ? `line ${sel.fromLine}` : `lines ${sel.fromLine}-${sel.toLine}`;
+            const lines = sel.fromLine === sel.toLine ? `line ${sel.fromLine}` : tr('lines {fromLine}-{toLine}', { fromLine: sel.fromLine, toLine: sel.toLine });
             return { kind: 'code', label: `${path.split('/').pop()} · ${sel.fromLine === sel.toLine ? 'L' + sel.fromLine : 'L' + sel.fromLine + '-' + sel.toLine}`,
                      detail: `${path}, ${lines}\n${clip(sel.text, 160)}`,
-                     text: `Code from ${path}, ${lines}:\n${fence(sel.text, fenceLang(path))}` };
+                     text: tr('Code from {path}, {lines}:\n{v}', { path: path, lines: lines, v: fence(sel.text, fenceLang(path)) }) };
         };
         const contextFromPage = (d) => {
             const page = String(d.page || 'index.html').slice(0, 300);
             if (d.kind === 'area') {
                 const r = d.rect || {}, v = d.viewport || {};
-                const parts = [`Area of the page ${page} (in the Studio preview): ${r.w}×${r.h} px at x ${r.x}, y ${r.y} of the page (the preview window is ${v.w}×${v.h}).`];
+                const parts = [tr('Area of the page {page} (in the Studio preview): {w}×{h} px at x {x}, y {y} of the page (the preview window is {w2}×{h2}).', { page: page, w: r.w, h: r.h, x: r.x, y: r.y, w2: v.w, h2: v.h })];
                 const list = (d.elements || []).slice(0, 25);
                 if (list.length) {
-                    parts.push(`Elements inside it (${list.length}${d.more ? ` of ${list.length + d.more}` : ''}):`);
+                    parts.push(tr('Elements inside it ({length}{v}):', { length: list.length, v: d.more ? ` of ${list.length + d.more}` : '' }));
                     list.forEach((e, i) => {
                         parts.push(`${i + 1}. ${e.selector}${e.text ? ` · "${clip(e.text, 300)}"` : ''}`);
                         if (e.html) parts.push(fence(String(e.html).slice(0, 4200), 'html'));
                     });
                 } else if (d.inside) {
-                    parts.push(`It lies inside ${d.inside.selector}${d.inside.text ? ` · "${clip(d.inside.text, 300)}"` : ''}.`);
+                    parts.push(tr('It lies inside {selector}{v}.', { selector: d.inside.selector, v: d.inside.text ? ` · "${clip(d.inside.text, 300)}"` : '' }));
                 }
-                return { kind: 'area', label: `${page.split('/').pop()} · area ${r.w}×${r.h}`,
-                         detail: `${page}: area ${r.w}×${r.h} at ${r.x}, ${r.y}\n${list.length} element${list.length === 1 ? '' : 's'} inside`,
+                return { kind: 'area', label: tr('{v} · area {w}×{h}', { v: page.split('/').pop(), w: r.w, h: r.h }),
+                         detail: tr('{page}: area {w}×{h} at {x}, {y}\n{length} element{v} inside', { page: page, w: r.w, h: r.h, x: r.x, y: r.y, length: list.length, v: list.length === 1 ? '' : 's' }),
                          text: parts.join('\n') };
             }
             const r = d.rect || {};
-            const parts = [`Element on the page ${page} (in the Studio preview): ${d.selector}`,
-                           `Size ${r.w}×${r.h} px at x ${r.x}, y ${r.y} of the page.`];
-            if (d.text) parts.push(`Text: "${clip(d.text, 1500)}"`);
-            if (d.image) parts.push(`Image: ${d.image.src} (alt "${d.image.alt}", ${d.image.natural})`);
-            if (d.styles && Object.keys(d.styles).length) parts.push(`Computed styles: ${styleLine(d.styles)}`);
-            if (d.html) parts.push('HTML:\n' + fence(String(d.html).slice(0, 4200), 'html'));
+            const parts = [tr('Element on the page {page} (in the Studio preview): {selector}', { page: page, selector: d.selector }),
+                           tr('Size {w}×{h} px at x {x}, y {y} of the page.', { w: r.w, h: r.h, x: r.x, y: r.y })];
+            if (d.text) parts.push(tr('Text: "{v}"', { v: clip(d.text, 1500) }));
+            if (d.image) parts.push(tr('Image: {src} (alt "{alt}", {natural})', { src: d.image.src, alt: d.image.alt, natural: d.image.natural }));
+            if (d.styles && Object.keys(d.styles).length) parts.push(tr('Computed styles: {v}', { v: styleLine(d.styles) }));
+            if (d.html) parts.push(tr('HTML:\n') + fence(String(d.html).slice(0, 4200), 'html'));
             return { kind: 'element', label: `${page.split('/').pop()} · <${d.tag}>`,
                      detail: `${page}: ${d.selector}${d.text ? '\n' + clip(d.text, 160) : ''}`, text: parts.join('\n') };
         };
@@ -4463,19 +4472,19 @@ createApp({
             const path = studio.file.path, sel = editor.selection();
             const items = [];
             if (!sel.empty && sel.text.trim()) {
-                items.push({ icon: '↗', label: 'Send selection to chat', hint: sel.fromLine === sel.toLine ? `line ${sel.fromLine}` : `lines ${sel.fromLine}-${sel.toLine}`,
+                items.push({ icon: '↗', label: tr('Send selection to chat'), hint: sel.fromLine === sel.toLine ? `line ${sel.fromLine}` : tr('lines {fromLine}-{toLine}', { fromLine: sel.fromLine, toLine: sel.toLine }),
                              run: () => addChatContext(contextFromCode(path, sel)) });
             } else {
-                items.push({ icon: '↗', label: `Send line ${sel.fromLine} to chat`, disabled: !sel.lineText.trim(),
+                items.push({ icon: '↗', label: tr('Send line {fromLine} to chat', { fromLine: sel.fromLine }), disabled: !sel.lineText.trim(),
                              run: () => addChatContext(contextFromCode(path, { text: sel.lineText, fromLine: sel.fromLine, toLine: sel.fromLine })) });
             }
-            items.push({ icon: '＠', label: 'Mention this file in chat', hint: 'its path only',
+            items.push({ icon: '＠', label: tr('Mention this file in chat'), hint: tr('its path only'),
                          run: () => addChatContext({ kind: 'file', label: path.split('/').pop(), detail: path,
-                                                     text: `File: ${path} (in the project; read it if you need it)` }) });
+                                                     text: tr('File: {path} (in the project; read it if you need it)', { path: path }) }) });
             items.push({ sep: true });
-            items.push({ icon: '⧉', label: 'Copy', disabled: sel.empty, run: () => writeClipboard(sel.text) });
-            items.push({ icon: '▣', label: 'Select all', run: () => editor.selectAll() });
-            items.push({ icon: '⌁', label: 'Copy path', run: () => writeClipboard(path) });
+            items.push({ icon: '⧉', label: tr('Copy'), disabled: sel.empty, run: () => writeClipboard(sel.text) });
+            items.push({ icon: '▣', label: tr('Select all'), run: () => editor.selectAll() });
+            items.push({ icon: '⌁', label: tr('Copy path'), run: () => writeClipboard(path) });
             openCtxMenu(e.clientX, e.clientY, path, items);
         };
 
@@ -4500,18 +4509,18 @@ createApp({
                 const x = Number(d.x) || 0, y = Number(d.y) || 0;
                 studio.lastMenuAt = { x, y };
                 const what = clip(d.what, 48);
-                openCtxMenu(r.left + x, r.top + y, studio.preview.path || 'Preview', [
-                    ...(what ? [{ icon: '◎', label: 'Select this', hint: what, run: () => pickCmd('at', { x, y }) },
+                openCtxMenu(r.left + x, r.top + y, studio.preview.path || tr('Preview'), [
+                    ...(what ? [{ icon: '◎', label: tr('Select this'), hint: what, run: () => pickCmd('at', { x, y }) },
                                 { sep: true },
-                                { icon: '‹›', label: 'Open the HTML', hint: 'where the element is', run: () => askCode('html', x, y) },
-                                { icon: '#', label: 'Open the CSS', hint: 'the rules that style it', run: () => askCode('css', x, y) },
-                                { icon: 'ƒ', label: 'Open the script', hint: 'code that names it', run: () => askCode('script', x, y) },
+                                { icon: '‹›', label: tr('Open the HTML'), hint: tr('where the element is'), run: () => askCode('html', x, y) },
+                                { icon: '#', label: tr('Open the CSS'), hint: tr('the rules that style it'), run: () => askCode('css', x, y) },
+                                { icon: 'ƒ', label: tr('Open the script'), hint: tr('code that names it'), run: () => askCode('script', x, y) },
                                 { sep: true }] : []),
-                    { icon: '⌖', label: 'Select an element…', hint: 'a title, text or image', run: () => pickCmd('element') },
-                    { icon: '⬚', label: 'Select an area…', hint: 'drag a box', run: () => pickCmd('area') },
+                    { icon: '⌖', label: tr('Select an element…'), hint: tr('a title, text or image'), run: () => pickCmd('element') },
+                    { icon: '⬚', label: tr('Select an area…'), hint: tr('drag a box'), run: () => pickCmd('area') },
                     { sep: true },
-                    { icon: '↻', label: 'Reload the preview', run: () => { studio.preview.stamp++; } },
-                    { icon: '↗', label: 'Open in a new tab', run: studioOpenInTab },
+                    { icon: '↻', label: tr('Reload the preview'), run: () => { studio.preview.stamp++; } },
+                    { icon: '↗', label: tr('Open in a new tab'), run: studioOpenInTab },
                 ]);
                 return;
             }
@@ -4544,9 +4553,9 @@ createApp({
                 r = await studioFetch('/api/files/locate', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                              body: JSON.stringify({ page, element: el }) });
             } catch (e) { studio.msg = { ok: false, text: e.message }; return; }
-            if (!r.found) { studio.msg = { ok: false, text: `Couldn't find the code of this <${el.tag}> in ${page} or the project's files.` }; return; }
+            if (!r.found) { studio.msg = { ok: false, text: tr('Couldn\'t find the code of this <{tag}> in {page} or the project\'s files.', { tag: el.tag, page: page }) }; return; }
             if (!await openRange(r)) return;
-            if (r.how !== 'page') studio.msg = { ok: true, text: `Found ${r.how === 'text' ? 'its text' : 'its name'} in ${r.path} (made by a script, or not matched in the page).` };
+            if (r.how !== 'page') studio.msg = { ok: true, text: tr('Found {v} in {path} (made by a script, or not matched in the page).', { v: r.how === 'text' ? tr('its text') : tr('its name'), path: r.path }) };
         };
         // Open a file with a range selected: {path, from: {line, col}, to: {line, col}}
         const openRange = async (r) => {
@@ -4556,7 +4565,7 @@ createApp({
                 return true;
             }
             if (studio.dirty && studio.file && studio.file.path !== r.path
-                && !confirm(`${studio.file.path} has unsaved changes. Open ${r.path} and drop them?`)) return false;
+                && !confirm(tr('{path} has unsaved changes. Open {path2} and drop them?', { path: studio.file.path, path2: r.path }))) return false;
             studio.showEditor = true;
             studio.find = '';
             const parent = r.path.includes('/') ? r.path.slice(0, r.path.lastIndexOf('/')) : '';
@@ -4564,7 +4573,7 @@ createApp({
             if (!studio.file || studio.file.path !== r.path || studio.dirty) { studio.dirty = false; await openStudioFile(r.path, { noFollow: true }); }
             if (editor && studio.file && studio.file.path === r.path) editor.select(r.from, r.to);
             nextTick(() => {
-                const row = document.querySelector(`nav[aria-label="Project files"] [data-path="${CSS.escape(r.path)}"]`);
+                const row = document.querySelector(`nav[data-files-tree] [data-path="${CSS.escape(r.path)}"]`);
                 if (row) row.scrollIntoView({ block: 'nearest' });
             });
             return true;
@@ -4582,8 +4591,8 @@ createApp({
             } catch (e) { studio.msg = { ok: false, text: e.message }; return; }
             const label = (GOTO_WHAT[target.kind] || ((n) => n))(target.name);
             if (!r.results.length) {
-                studio.msg = { ok: false, text: target.kind === 'file' ? `${target.name} isn't a file of the project.`
-                    : `No definition of ${label} found in ${target.kind === 'symbol' ? 'the scripts' : 'the stylesheets'} of ${f.path} or the project.` };
+                studio.msg = { ok: false, text: target.kind === 'file' ? tr('{name} isn\'t a file of the project.', { name: target.name })
+                    : tr('No definition of {label} found in {v} of {path} or the project.', { label: label, v: target.kind === 'symbol' ? tr('the scripts') : tr('the stylesheets'), path: f.path }) };
                 return;
             }
             const go = (x) => {
@@ -4591,7 +4600,7 @@ createApp({
                 openRange(x);
             };
             if (r.results.length === 1) { go(r.results[0]); return; }
-            openCtxMenu(at.x, at.y + 12, `${r.results.length} definitions of ${clip(label, 40)}${r.where === 'project' ? ' (in other files)' : ''}`,
+            openCtxMenu(at.x, at.y + 12, tr('{length} definitions of {v}{v2}', { length: r.results.length, v: clip(label, 40), v2: r.where === 'project' ? tr(' (in other files)') : '' }),
                 r.results.map(x => ({ icon: target.kind === 'symbol' ? 'ƒ' : '#', label: x.text || x.path, hint: where(x),
                                       title: `${where(x)}\n${x.text}`, run: () => go(x) })));
         };
@@ -4612,7 +4621,7 @@ createApp({
                 const r = await studioFetch(`/api/files/styles?page=${encodeURIComponent(page)}`);
                 if (!r.rules.length) {
                     studio.locating = null;
-                    studio.msg = { ok: false, text: `${page} has no stylesheet of its own in the project${r.sheets.length ? ' with rules' : ''} (CSS from other sites or added by a script isn't listed).` };
+                    studio.msg = { ok: false, text: tr('{page} has no stylesheet of its own in the project{v} (CSS from other sites or added by a script isn\'t listed).', { page: page, v: r.sheets.length ? tr(' with rules') : '' }) };
                     return;
                 }
                 asked.rules = r.rules; asked.step = 'match'; asked.at = Date.now();
@@ -4623,12 +4632,12 @@ createApp({
         const showCss = (asked, matches) => {
             const rules = matches.map(m => ({ ...asked.rules[m.i], selector: m.selector, state: m.state })).filter(r => r.path);
             if (!rules.length) {
-                studio.msg = { ok: false, text: `No rule of the page's own stylesheets applies to this ${asked.what || 'element'} (inherited styles, CSS from other sites or added by a script aren't listed).` };
+                studio.msg = { ok: false, text: tr('No rule of the page\'s own stylesheets applies to this {v} (inherited styles, CSS from other sites or added by a script aren\'t listed).', { v: asked.what || 'element' }) };
                 return;
             }
             if (rules.length === 1) { openRange(rules[0]); return; }
-            codeMenu(asked, `${rules.length} CSS rules for ${clip(asked.what || 'it', 28)} (later ones win)`,
-                rules.map(r => ({ icon: '#', label: r.selector, hint: where(r) + (r.media ? ' · @media' : '') + (r.state ? ' · state' : ''),
+            codeMenu(asked, tr('{length} CSS rules for {v} (later ones win)', { length: rules.length, v: clip(asked.what || 'it', 28) }),
+                rules.map(r => ({ icon: '#', label: r.selector, hint: where(r) + (r.media ? tr(' · @media') : '') + (r.state ? tr(' · state') : ''),
                                   title: `${r.selectors}${r.media ? '\n' + r.media : ''}\n${where(r)}`, run: () => openRange(r) })));
         };
         const findScript = async (el, what) => {
@@ -4639,15 +4648,15 @@ createApp({
                                                               body: JSON.stringify({ page, element: el }) });
             } catch (e) { studio.msg = { ok: false, text: e.message }; return; }
             if (!r.matches.length) {
-                studio.msg = { ok: false, text: `No script names this ${what || 'element'} (by its id, a class or a data- attribute)${el.id || (el.classes || []).length ? '' : ': it has none of them'}.` };
+                studio.msg = { ok: false, text: tr('No script names this {v} (by its id, a class or a data- attribute){v2}.', { v: what || 'element', v2: el.id || (el.classes || []).length ? '' : tr(': it has none of them') }) };
                 return;
             }
             const asked = { x: 0, y: 0 };
             const last = studio.lastMenuAt || {};
             asked.x = last.x || 0; asked.y = last.y || 0;
             if (r.matches.length === 1) { openRange(r.matches[0]); return; }
-            codeMenu(asked, `Scripts naming ${clip(what || 'it', 28)}${r.where === 'project' ? ' (other files)' : ''}`,
-                r.matches.map(m => ({ icon: 'ƒ', label: m.text || '(empty line)', hint: where(m) + ' · ' + m.why, title: `${where(m)} · ${m.why}\n${m.text}`,
+            codeMenu(asked, tr('Scripts naming {v}{v2}', { v: clip(what || 'it', 28), v2: r.where === 'project' ? tr(' (other files)') : '' }),
+                r.matches.map(m => ({ icon: 'ƒ', label: m.text || tr('(empty line)'), hint: where(m) + ' · ' + m.why, title: `${where(m)} · ${m.why}\n${m.text}`,
                                       run: () => openRange(m) })));
         };
 
@@ -4702,7 +4711,7 @@ createApp({
                 const own = (b || {})[name];
                 projectPage.budget = { amount: own ? String(own.monthly_usd) : '', on_limit: own ? own.on_limit : 'block', status: own || null };
                 projectPage.mem.content = mem.content || ''; projectPage.mem.saved = mem.content || ''; projectPage.mem.exists = !!mem.exists;
-            } catch (error) { projectPage.msg = { ok: false, text: 'Could not load this project: ' + error }; }
+            } catch (error) { projectPage.msg = { ok: false, text: tr('Could not load this project: ') + error }; }
         };
         watch(() => projectPage.name, (n, old) => { if (old !== undefined && n !== old && settingsTab.value === 'project') loadProjectPage(); });
         // v0.8: Status, a terminal-like window with git fetch, git status and the last commits
@@ -4715,9 +4724,9 @@ createApp({
                 const r = await fetch(`/api/projects/${encodeURIComponent(project)}/${kind}`);
                 const d = await readJson(r);
                 if (gitTerm.project !== project || gitTerm.kind !== kind) return;   // closed or changed meanwhile
-                if (r.ok) { gitTerm.data = d; gitTerm.at = new Date().toLocaleTimeString(); }
-                else { gitTerm.data = null; gitTerm.error = (d && d.detail) || ('Status failed (' + r.status + ')'); }
-            } catch (error) { gitTerm.error = 'Status failed: ' + error; }
+                if (r.ok) { gitTerm.data = d; gitTerm.at = new Date().toLocaleTimeString(appLocale()); }
+                else { gitTerm.data = null; gitTerm.error = (d && d.detail) || (tr('Status failed (') + r.status + ')'); }
+            } catch (error) { gitTerm.error = tr('Status failed: ') + error; }
             finally { if (gitTerm.project === project && gitTerm.kind === kind) gitTerm.loading = false; }
         };
         const closeGitTerm = () => Object.assign(gitTerm, { project: '', loading: false, data: null, error: '' });
@@ -4744,7 +4753,7 @@ createApp({
             for (const n of d.notes || []) out.push({ text: '# ' + n, cls: 'cm-term-note' });
             if (gitTerm.kind !== 'status') return out;
             if (d.ahead !== null && d.ahead !== undefined)
-                out.push({ text: `# GitHub (origin/${d.target}): ${d.ahead} commit${d.ahead === 1 ? '' : 's'} to push, ${d.behind} to pull`, cls: 'cm-term-note' });
+                out.push({ text: '# ' + tr('GitHub (origin/{target}): {ahead} commits to push, {behind} to pull', { target: d.target, ahead: d.ahead, behind: d.behind }), cls: 'cm-term-note' });
             else if (!d.remote) out.push({ text: '# No GitHub remote (origin): nothing to compare with.', cls: 'cm-term-note' });
             return out;
         });
@@ -4761,42 +4770,42 @@ createApp({
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ [key]: value === '' || value === undefined ? null : value }) });
                 const data = await res.json().catch(() => ({}));
-                if (!res.ok) { projectPage.msg = { ok: false, text: data.detail || 'Not saved.' }; return; }
+                if (!res.ok) { projectPage.msg = { ok: false, text: data.detail || tr('Not saved.') }; return; }
                 projectPage.view = data;
-                projectPage.msg = { ok: true, text: 'Saved.' };
+                projectPage.msg = { ok: true, text: tr('Saved.') };
                 if (projectPage.name === appSettings.value.active_project) fetchActiveOwnPlan();
-            } catch (error) { projectPage.msg = { ok: false, text: 'Not saved: ' + error }; }
+            } catch (error) { projectPage.msg = { ok: false, text: tr('Not saved: ') + error }; }
         };
         // A choice of the project's own value: '' follows the global one (shown in its label)
         const ownValue = (key) => { const o = (projectPage.view || {}).overrides || {}; return key in o ? o[key] : ''; };
         const globalValue = (key) => ((projectPage.view || {}).global || {})[key];
         const boolOf = (v) => (v === '' ? null : v === 'true');
-        const onOff = (v) => (v ? 'On' : 'Off');
+        const onOff = (v) => (v ? tr('On') : tr('Off'));
         const numberOf = (v) => (String(v).trim() === '' ? null : Number(v));
         const saveProjectBudget = async () => {
             const b = projectPage.budget;
             const amount = String(b.amount).trim() === '' ? null : Number(b.amount);
-            if (amount !== null && !(amount > 0)) { projectPage.msg = { ok: false, text: 'The budget must be a positive amount, or empty for none.' }; return; }
+            if (amount !== null && !(amount > 0)) { projectPage.msg = { ok: false, text: tr('The budget must be a positive amount, or empty for none.') }; return; }
             try {
                 const res = await fetch('/api/budgets', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                            body: JSON.stringify({ project: projectPage.name, monthly_usd: amount, on_limit: b.on_limit }) });
                 const data = await res.json().catch(() => ({}));
-                if (!res.ok) { projectPage.msg = { ok: false, text: data.detail || 'Not saved.' }; return; }
+                if (!res.ok) { projectPage.msg = { ok: false, text: data.detail || tr('Not saved.') }; return; }
                 b.status = data.budget || null;
-                projectPage.msg = { ok: true, text: amount === null ? 'Budget removed.' : 'Budget saved.' };
+                projectPage.msg = { ok: true, text: amount === null ? tr('Budget removed.') : tr('Budget saved.') };
                 fetchUsage();
-            } catch (error) { projectPage.msg = { ok: false, text: 'Not saved: ' + error }; }
+            } catch (error) { projectPage.msg = { ok: false, text: tr('Not saved: ') + error }; }
         };
         const saveProjectMemory = async () => {
             const m = projectPage.mem;
-            if (m.content.length > MEMORY_MAX_CHARS) { m.msg = { ok: false, text: `Too long: at most ${MEMORY_MAX_CHARS.toLocaleString()} characters.` }; return; }
+            if (m.content.length > MEMORY_MAX_CHARS) { m.msg = { ok: false, text: tr('Too long: at most {v} characters.', { v: MEMORY_MAX_CHARS.toLocaleString(appLocale()) }) }; return; }
             try {
                 const res = await fetch(`/api/memory/project/${encodeURIComponent(projectPage.name)}`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: m.content }) });
                 const data = await res.json().catch(() => ({}));
-                if (!res.ok) { m.msg = { ok: false, text: data.detail || 'Not saved.' }; return; }
-                m.saved = m.content; m.exists = true; m.msg = { ok: true, text: 'Saved.' };
-            } catch (error) { m.msg = { ok: false, text: 'Not saved: ' + error }; }
+                if (!res.ok) { m.msg = { ok: false, text: data.detail || tr('Not saved.') }; return; }
+                m.saved = m.content; m.exists = true; m.msg = { ok: true, text: tr('Saved.') };
+            } catch (error) { m.msg = { ok: false, text: tr('Not saved: ') + error }; }
         };
         const curateProjectNow = async () => {
             const m = projectPage.mem;
@@ -4866,7 +4875,7 @@ createApp({
             const entries = Object.entries(u.byModel || {});
             if (entries.length <= 1) {
                 const name = entries.length ? modelName(entries[0][0]) + ' · ' : '';
-                return `${name}${u.calls} call${u.calls === 1 ? '' : 's'}`;
+                return name + (u.calls === 1 ? tr('1 call') : tr('{n} calls', { n: u.calls }));
             }
             return entries.map(([m, n]) => `${modelName(m)} ${n}`).join(' + ') + ' calls';
         };
@@ -4876,7 +4885,7 @@ createApp({
         };
 
         // ---- Chat controls
-        const welcomeMessage = (text) => ({ role: 'agent', content: text, system_note: 'System', commands: [] });
+        const welcomeMessage = (text) => ({ role: 'agent', content: text, system_note: tk('System'), commands: [] });
         const newChat = () => {
             if (isGenerating.value || pendingApproval.value) return;
             currentSession.value = null;
@@ -4892,10 +4901,10 @@ createApp({
             if (appSettings.value.confirm_escalate !== false) {
                 await fetchCostEstimates();
                 const model = modelName(routingConfig.value.complex_model);
-                if (!await askConfirm({ title: `Re-run on ${model}?`, ok: 'Escalate',
-                    text: 'Your last request runs again on the Complex model with the chat so far. It usually takes several calls, each costing more than on the Simple model.',
-                    cost: estimateText(costEstimates.value.complex_call, 'per call'),
-                    skipLabel: "Don't warn me again (turn it back on in Dashboard → Budgets → Cost warnings)",
+                if (!await askConfirm({ title: tr('Re-run on {model}?', { model: model }), ok: tr('Escalate'),
+                    text: tr('Your last request runs again on the Complex model with the chat so far. It usually takes several calls, each costing more than on the Simple model.'),
+                    cost: estimateText(costEstimates.value.complex_call, tr('per call')),
+                    skipLabel: tr('Don\'t warn me again (turn it back on in Dashboard → Budgets → Cost warnings)'),
                     onSkip: () => { appSettings.value.confirm_escalate = false; saveSettings(); } })) return;
                 if (!canEscalate(messages.value[messages.value.length - 1], messages.value.length - 1)) return;
             }
@@ -4987,7 +4996,7 @@ createApp({
             openSession('latest');
         };
         const renameSession = async (s) => {
-            const title = window.prompt('New title for this chat:', s.title || '');
+            const title = window.prompt(tr('New title for this chat:'), s.title || '');
             if (title === null || !title.trim()) return;
             try {
                 await fetch(`/api/sessions/${s.id}/rename`, {
@@ -5007,9 +5016,9 @@ createApp({
         };
         const deleteSession = async (s) => {
             const expected = s.title || s.id;
-            const typed = window.prompt(`Delete this chat permanently? Its messages can't be recovered (cost records are kept).\n\nType the title to confirm:\n${expected}`);
+            const typed = window.prompt(tr('Delete this chat permanently? Its messages can\'t be recovered (cost records are kept).\n\nType the title to confirm:\n{expected}', { expected: expected }));
             if (typed === null) return;
-            if (typed.trim() !== expected.trim()) { alert('The title didn\'t match; nothing was deleted.'); return; }
+            if (typed.trim() !== expected.trim()) { alert(tr('The title didn\'t match; nothing was deleted.')); return; }
             try {
                 await fetch(`/api/sessions/${s.id}/delete`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: typed })
@@ -5022,7 +5031,7 @@ createApp({
         const lastPromptBefore = (index) => {
             for (let i = index - 1; i >= 0; i--) {
                 const m = messages.value[i];
-                if (m.role === 'user') return m.content === 'Continue from where you stopped.' ? lastPromptBefore(i) : m.content;
+                if (m.role === 'user') return [tk('Continue from where you stopped.'), tr('Continue from where you stopped.')].includes(m.content) ? lastPromptBefore(i) : m.content;
             }
             return '';
         };
@@ -5034,11 +5043,11 @@ createApp({
             sendMessage();
         };
         const interruptionLabel = (kind) => ({
-            stopped: 'Stopped by you.', step_limit: 'Paused at the step limit.', paused: 'Paused: budget reached.',
-            blocked: 'Not sent: budget reached.', error: 'Failed.', aborted: 'The model repeated itself and was stopped.',
+            stopped: tr('Stopped by you.'), step_limit: tr('Paused at the step limit.'), paused: tr('Paused: budget reached.'),
+            blocked: tr('Not sent: budget reached.'), error: tr('Failed.'), aborted: tr('The model repeated itself and was stopped.'),
         }[kind] || '');
         const continueTurn = () => {
-            userInput.value = 'Continue from where you stopped.';
+            userInput.value = tr('Continue from where you stopped.');
             sendMessage();
         };
         const addEvent = (msg, text, kind, detail) => {
@@ -5102,13 +5111,13 @@ createApp({
                 }
                 if (data.type === 'session_started') { currentSession.value = data.session; return; }
                 if (data.type === 'memory_updating') {
-                    if (!replay) setMemoryStatus({ state: 'running', text: 'Updating memory…',
-                        title: `Reading the finished chat to update ${projectLabel(data.project)}'s memory in the background` });
+                    if (!replay) setMemoryStatus({ state: 'running', text: tr('Updating memory…'),
+                        title: tr('Reading the finished chat to update {v}\'s memory in the background', { v: projectLabel(data.project) }) });
                     return;
                 }
                 if (data.type === 'memory_unchanged') {
-                    if (!replay) setMemoryStatus({ state: 'unchanged', text: 'Memory: nothing new',
-                        title: data.reason + (data.cost != null ? ` (cost ${fmtCost(data.cost)})` : '') }, 4000);
+                    if (!replay) setMemoryStatus({ state: 'unchanged', text: tr('Memory: nothing new'),
+                        title: data.reason + (data.cost != null ? tr(' (cost {v})', { v: fmtCost(data.cost) }) : '') }, 4000);
                     return;
                 }
                 if (data.type === 'project_archived') {
@@ -5126,8 +5135,8 @@ createApp({
                 }
                 if (data.type === 'memory_updated') {
                     if (!replay) {
-                        setMemoryStatus({ state: 'updated', text: '✓ Memory updated',
-                            title: data.summary + (data.cost != null ? ` (cost ${fmtCost(data.cost)})` : '') }, 4000);
+                        setMemoryStatus({ state: 'updated', text: tr('✓ Memory updated'),
+                            title: data.summary + (data.cost != null ? tr(' (cost {v})', { v: fmtCost(data.cost) }) : '') }, 4000);
                         memoryToast.value = data;
                         setTimeout(() => { if (memoryToast.value === data) memoryToast.value = null; }, 20000);
                         if (showSettingsModal.value && settingsTab.value === 'memory') { fetchMemory(); fetchCostEstimates(); }
@@ -5220,7 +5229,7 @@ createApp({
                     lastMsg.interrupted = 'step_limit';
                 }
                 else if (data.type === "chat_reset") {
-                    messages.value = [welcomeMessage('New chat started. The model no longer sees the previous conversation.')];
+                    messages.value = [welcomeMessage(tr('New chat started. The model no longer sees the previous conversation.'))];
                     currentSession.value = null;
                 }
                 else if (data.type === "approval_request") {
@@ -5267,10 +5276,10 @@ createApp({
                     // no blank box is left above the error
                     const blank = lastMsg && lastMsg.role === 'agent' && !lastMsg.content && !lastMsg.usage
                         && !(lastMsg.blocks || []).length && !(lastMsg.commands || []).length && !(lastMsg.events || []).length;
-                    if (blank) Object.assign(lastMsg, { system_note: 'System Error', blocks: [], commands: [] });
-                    else messages.value.push({ role: 'agent', content: '', system_note: 'System Error', commands: [] });
+                    if (blank) Object.assign(lastMsg, { system_note: tr('System Error'), blocks: [], commands: [] });
+                    else messages.value.push({ role: 'agent', content: '', system_note: tr('System Error'), commands: [] });
                     const errorMsg = messages.value[messages.value.length - 1];
-                    errorMsg.content = `❌ **Error:** ${data.content}`;
+                    errorMsg.content = tr('❌ **Error:** {content}', { content: data.content });
                     errorMsg.interrupted = 'error';
                     isGenerating.value = false;
                     scrollToBottom();
@@ -5334,7 +5343,7 @@ createApp({
                         moveChatTo = null;
                         isGenerating.value = true;
                         ws.value.send(JSON.stringify({ type: 'open_session', id: 'latest' }));
-                        pushToast({ kind: 'info', title: `Now in ${to || 'the Workspace'}`, text: 'The previous chat is in History.' });
+                        pushToast({ kind: 'info', title: tr('Now in {v}', { v: to || tr('the Workspace') }), text: tr('The previous chat is in History.') });
                     }
                 }
             };
@@ -5347,15 +5356,15 @@ createApp({
                 if (!data.session) {
                     currentSession.value = null;
                     if (messages.value.length > 1) {
-                        messages.value = [welcomeMessage('No previous chat in this project. Start one below.')];
+                        messages.value = [welcomeMessage(tr('No previous chat in this project. Start one below.'))];
                     }
                     return;
                 }
                 currentSession.value = data.session;
-                const when = new Date(data.session.updated * 1000).toLocaleString();
+                const when = new Date(data.session.updated * 1000).toLocaleString(appLocale());
                 const rebuilt = [welcomeMessage(readOnlyChat.value
-                    ? `Viewing "${data.session.title || 'Untitled chat'}" from ${when}, read only: its project ${data.session.project} is ${readOnlyChat.value.reason === 'archived' ? 'archived' : 'no longer in the Workspace'}.`
-                    : `Reopened "${data.session.title || 'Untitled chat'}" from ${when}.`)];
+                    ? tr('Viewing "{v}" from {when}, read only: its project {project} is {v2}.', { v: data.session.title || tr('Untitled chat'), when: when, project: data.session.project, v2: readOnlyChat.value.reason === 'archived' ? 'archived' : tr('no longer in the Workspace') })
+                    : tr('Reopened "{v}" from {when}.', { v: data.session.title || tr('Untitled chat'), when: when }))];
                 messages.value = rebuilt;
                 replayRatings = data.ratings || {};
                 for (const ev of data.events) {
@@ -5431,7 +5440,7 @@ createApp({
 
             // v0.8: what was picked in the Studio goes after the prompt, as plain text
             const prompt = chatContext.value.length
-                ? userInput.value.trimEnd() + '\n\n---\nSelected in the Studio (project ' + (studio.project || appSettings.value.active_project || 'Workspace') + '):\n\n'
+                ? userInput.value.trimEnd() + '\n\n---\nSelected in the Studio (project ' + (studio.project || appSettings.value.active_project || tr('Workspace')) + '):\n\n'
                   + chatContext.value.map((c, i) => `[${i + 1}] ${c.text}`).join('\n\n')
                 : userInput.value;
             messages.value.push({ role: 'user', content: prompt });
@@ -5459,7 +5468,7 @@ createApp({
         });
 
         // ---- Copy session as Markdown
-        const copyLabel = ref('Copy session as Markdown');
+        const copyLabel = ref(tk('Copy session as Markdown'));
 
         // A code fence longer than any backtick run inside the text
         const fenceFor = (text) => {
@@ -5491,35 +5500,35 @@ createApp({
                 if (b.kind === 'text') { lines.push(b.text, ''); return; }
                 if (b.kind === 'note') { lines.push(`*↪ ${b.text}*`, ''); return; }
                 if (b.kind === 'plan') { lines.push(...planLines(b.plan), ''); return; }
-                if (b.kind === 'stephead') { lines.push(`#### ${b.step ? 'Step ' + b.step + ': ' + b.title : 'Final check'}${b.model ? ' (' + b.model + ')' : ''}`, ''); return; }
-                if (b.kind === 'thinking' && !b.text) { lines.push(`*Thinking: ${b.tokens} tokens (text not shared by the model)*`, ''); return; }
+                if (b.kind === 'stephead') { lines.push(`#### ${b.step ? tr('Step ') + b.step + ': ' + b.title : tr('Final check')}${b.model ? ' (' + b.model + ')' : ''}`, ''); return; }
+                if (b.kind === 'thinking' && !b.text) { lines.push(tr('*Thinking: {tokens} tokens (text not shared by the model)*', { tokens: b.tokens }), ''); return; }
                 if (b.kind === 'thinking') { lines.push('<details><summary>Thinking</summary>', '', b.text.trim(), '', '</details>', ''); return; }
                 const output = (b.output || '').replace(/\n+$/, '');
                 const fence = fenceFor(b.command + '\n' + output);
                 if (b.file) {      // write_file / edit_file: the label, then the diff
                     lines.push(`**${b.command}**`, '');
                     if (output) lines.push(fence + (b.exit_code === 0 ? 'diff' : ''), output, fence);
-                    lines.push(b.exit_code !== undefined ? `_exit ${b.exit_code}_` : '_not finished_', '');
+                    lines.push(b.exit_code !== undefined ? tr('_exit {exit_code}_', { exit_code: b.exit_code }) : tr('_not finished_'), '');
                     return;
                 }
                 lines.push(fence + 'bash', `$ ${b.command}`);
                 if (output) lines.push(output);
-                lines.push(fence, b.exit_code !== undefined ? `_exit ${b.exit_code}_` : '_not finished_', '');
+                lines.push(fence, b.exit_code !== undefined ? tr('_exit {exit_code}_', { exit_code: b.exit_code }) : tr('_not finished_'), '');
             });
             if (m.changes) {
                 const c = m.changes;
-                lines.push('**Files changed**', '');
-                if (c.git === false) lines.push('- (no git in this project, so changed files can\'t be listed)');
-                else if (c.error) lines.push('- (couldn\'t list the changed files: git failed)');
+                lines.push(tr('**Files changed**'), '');
+                if (c.git === false) lines.push(tr('- (no git in this project, so changed files can\'t be listed)'));
+                else if (c.error) lines.push(tr('- (couldn\'t list the changed files: git failed)'));
                 else (c.files || []).forEach(f => lines.push(`- \`${f.path}\`: ${changeLabel(f)}${f.warn ? ' ⚠' : ''}`
-                    + (f.secret ? ' (a file of secrets git now sees)' : '')
-                    + (f.unignored ? ` (no longer ignored: ${f.unignored.join(', ')}${f.unignored_more ? ` and ${f.unignored_more} more` : ''})` : '')));
-                if (c.more) lines.push(`- and ${c.more} more`);
+                    + (f.secret ? tr(' (a file of secrets git now sees)') : '')
+                    + (f.unignored ? tr(' (no longer ignored: {v}{v2})', { v: f.unignored.join(', '), v2: f.unignored_more ? tr(' and {unignored_more} more', { unignored_more: f.unignored_more }) : '' }) : '')));
+                if (c.more) lines.push(tr('- and {more} more', { more: c.more }));
                 lines.push('');
             }
             if (m.usage) {
                 const u = m.usage;
-                lines.push(`_${callsLabel(u)} · ${u.estimated ? '≈' : ''}${fmtTokens(u.tokens)} tokens${u.reasoning ? ' (' + fmtTokens(u.reasoning) + ' thinking)' : ''} · ${u.costKnown ? fmtCost(u.cost) : (u.cost > 0 ? fmtCost(u.cost) + '+' : 'cost unknown')} · ${fmtMs(u.ms)}_`, '');
+                lines.push(tr('_{v} · {v2}{v3} tokens{v4} · {v5} · {v6}_', { v: callsLabel(u), v2: u.estimated ? '≈' : '', v3: fmtTokens(u.tokens), v4: u.reasoning ? ' (' + fmtTokens(u.reasoning) + ' thinking)' : '', v5: u.costKnown ? fmtCost(u.cost) : (u.cost > 0 ? fmtCost(u.cost) + '+' : tr('cost unknown')), v6: fmtMs(u.ms) }), '');
             }
             return lines;
         };
@@ -5564,22 +5573,22 @@ createApp({
 
         // A plan card as Markdown (chat export)
         const planLines = (p) => {
-            const out = [`**Plan: ${p.goal}** (${p.status})`, ''];
+            const out = [tr('**Plan: {goal}** ({status})', { goal: p.goal, status: p.status }), ''];
             (p.steps || []).forEach(s => {
                 const ran = s.status !== 'pending' ? `, ${s.status}${s.model ? ', ' + s.model : ''}${s.cost ? ', ' + fmtCost(s.cost) : ''}` : '';
-                out.push(`${s.id}. **${s.title}** [${s.tier}${ran}]`, `   - Do: ${s.do}`, `   - Done when: ${s.done_when}`);
-                if (s.result) out.push(`   - Result: ${s.result}`);
-                if (s.files && s.files.length) out.push(`   - Files: ${s.files.map(f => '`' + f + '`').join(', ')}`);
+                out.push(`${s.id}. **${s.title}** [${s.tier}${ran}]`, tr('   - Do: {do}', { do: s.do }), tr('   - Done when: {done_when}', { done_when: s.done_when }));
+                if (s.result) out.push(tr('   - Result: {result}', { result: s.result }));
+                if (s.files && s.files.length) out.push(tr('   - Files: {v}', { v: s.files.map(f => '`' + f + '`').join(', ') }));
             });
-            if (p.check) out.push('', `Final check: ${p.check}`);
+            if (p.check) out.push('', tr('Final check: {check}', { check: p.check }));
             if (p.note) out.push('', `_${p.note}_`);
-            if (p.total_cost) out.push('', `Plan cost so far: ${fmtCost(p.total_cost)}`);
+            if (p.total_cost) out.push('', tr('Plan cost so far: {v}', { v: fmtCost(p.total_cost) }));
             return out;
         };
 
         const sessionMarkdown = () => {
-            const lines = ['# Optimux session', '', `- Exported: ${new Date().toLocaleString()}`];
-            if (appSettings.value.active_project) lines.push(`- Project: ${appSettings.value.active_project}`);
+            const lines = ['# Optimux session', '', tr('- Exported: {v}', { v: new Date().toLocaleString(appLocale()) })];
+            if (appSettings.value.active_project) lines.push(tr('- Project: {active_project}', { active_project: appSettings.value.active_project }));
             lines.push('');
             messages.value.forEach((m, i) => {
                 // Skip the local "Optimux initialized" greeting
@@ -5620,8 +5629,8 @@ createApp({
 
         const copySession = async () => {
             const ok = await writeClipboard(sessionMarkdown());
-            copyLabel.value = ok ? 'Copied!' : 'Copy failed';
-            setTimeout(() => { copyLabel.value = 'Copy session as Markdown'; }, 2000);
+            copyLabel.value = ok ? tr('Copied!') : tr('Copy failed');
+            setTimeout(() => { copyLabel.value = tr('Copy session as Markdown'); }, 2000);
         };
 
         const copyThinking = async (blk) => {
@@ -5652,7 +5661,7 @@ createApp({
 
         return { 
             userInput, chatInputRef, messages, sendMessage, handleEnter, isGenerating,
-            pendingStillAsking, pendingAskReason, pendingRaiseTo, autonomy, autonomyMsg, setAutonomy, projectLevel, LEVEL_NAMES,
+            pendingStillAsking, pendingAskReason, pendingRaiseTo, autonomy, autonomyMsg, setAutonomy, projectLevel, LEVEL_NAMES: levelNames,
             selectedModel, availableModels, setupModels, handleModelChange,
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
@@ -5693,7 +5702,7 @@ createApp({
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, charts, chartData, fmtCalls, fmtTok, fmtCount, roleBadges, recentChats, projectsOverview,
-            snapshotsInfo, snapForm, snapKinds, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
+            snapshotsInfo, snapForm, snapKinds: snapKindsShown, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             monthSavings, onboard, onboardSmall, onboardAct, onboardGo, onboardSave, rateReply, taskStats, taskDeleteAsk, deleteTasks, pageUpdated, reloadPage, dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
             rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
             historyPage, historySorted, fetchHistoryPage, sortHistory, historyProjects, setHistoryProject,
@@ -5705,7 +5714,7 @@ createApp({
             historyFiltered, resetHistoryFilters, lastPromptBefore, retryFrom, interruptionLabel, wsState, headerCostTitle,
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
-            ROLE_HELP, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
+            ROLE_HELP: roleHelp, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
             syncBox, chatProject, openSync, closeSync, syncReady, writeCommitMessage, runSync,
             startClone, cancelClone, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, copyPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,
@@ -5718,14 +5727,16 @@ createApp({
             sandboxInfo, sandboxPathsText, fetchSandbox, saveSandboxPaths, pendingSandboxed, toggleSandbox,
             pendingSandboxProblem, sandboxProblem,
             langs, uiLang, pickLanguage,
-            projectLabel, viewer, viewerLanguages, openCmdViewer, onChatClick, closeViewer, rehighlightViewer, copyViewerSection
+            projectLabel, viewer, viewerLanguages: viewerLanguagesShown, openCmdViewer, onChatClick, closeViewer, rehighlightViewer, copyViewerSection
         };
     }
 }).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).component('onboard-steps', OnboardSteps)
   .component('day-columns', DayColumns).component('tree-map', Treemap).component('connected-dots', ConnectedScatter)
   .component('scatter-plot', ScatterPlot).component('chart-pick', ChartPick)
   .component('lang-flag', LangFlag).component('lang-badge', LangBadge)
-  .use({ install(app) { app.config.globalProperties.$t = window.tr; app.config.globalProperties.$th = window.trh; } }).mount('#app');
+  .use({ install(app) { app.config.globalProperties.$t = window.tr; app.config.globalProperties.$th = window.trh; app.config.globalProperties.$locale = window.appLocale; } });
+// v0.8: start once the remembered language is loaded, so texts made at start are translated
+window.OptimuxI18n.ready.finally(() => optimuxApp.mount('#app'));
 
 // v0.8: the app's own tooltips instead of the browser's. Any element with a
 // title shows it in a themed box after a short hover, or at once when reached

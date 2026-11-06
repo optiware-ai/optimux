@@ -134,7 +134,7 @@
             </div>
             <div class="flex-1 flex min-h-0">
                 <!-- The file tree -->
-                <nav v-show="studio.showTree" class="flex-shrink-0 flex flex-col min-h-0" :style="{ width: studioLayout.tree + 'px' }" :aria-label="$t('Project files')">
+                <nav v-show="studio.showTree" class="flex-shrink-0 flex flex-col min-h-0" :style="{ width: studioLayout.tree + 'px' }" :aria-label="$t('Project files')" data-files-tree>
                     <div class="flex items-center gap-1 px-3 py-1.5 border-b border-gray-800 text-[13px] flex-shrink-0 min-h-[38px]">
                         <span class="text-gray-500 flex-1">{{ $t('Files') }}</span>
                         <button @click="startStudioEdit('new-file', null)" class="cm-icon-btn" :title="$t('New file in the project\'s top folder (right-click a folder for one inside it)')" :aria-label="$t('New file')">
@@ -212,8 +212,8 @@
                         <div class="flex-1 min-h-0 relative">
                             <div ref="editorHost" v-show="studio.file && studio.file.text !== undefined" @contextmenu="onEditorMenu" class="absolute inset-0"></div>
                             <div v-if="studio.editorError" class="p-4 text-red-400 text-[13px]">{{ studio.editorError }}</div>
-                            <div v-else-if="studio.file && studio.file.binary" class="p-4 text-gray-500 text-[13px]">{{ $t('A binary file ({v} bytes): nothing to edit here. Images show in the preview.', { v: studio.file.size.toLocaleString() }) }}</div>
-                            <div v-else-if="studio.file && studio.file.too_large" class="p-4 text-gray-500 text-[13px]">{{ $t('Too large to open here ({v} bytes; up to 1 MB).', { v: studio.file.size.toLocaleString() }) }}</div>
+                            <div v-else-if="studio.file && studio.file.binary" class="p-4 text-gray-500 text-[13px]">{{ $t('A binary file ({v} bytes): nothing to edit here. Images show in the preview.', { v: studio.file.size.toLocaleString($locale()) }) }}</div>
+                            <div v-else-if="studio.file && studio.file.too_large" class="p-4 text-gray-500 text-[13px]">{{ $t('Too large to open here ({v} bytes; up to 1 MB).', { v: studio.file.size.toLocaleString($locale()) }) }}</div>
                         </div>
                     </section>
                     <div v-show="studio.showEditor && studio.showPreview" class="cm-split" role="separator" aria-orientation="vertical" :aria-label="$t('Resize the editor and the preview')" tabindex="0"
@@ -301,7 +301,7 @@
                     </div>
                     <!-- v0.8: Usage and Performance show their charts or their tables -->
                     <div v-if="settingsTab in dashView" class="inline-flex rounded-lg overflow-hidden border border-gray-700 text-[15px] mr-auto ml-6" role="radiogroup" :aria-label="$t('Show')">
-                        <button v-for="o in [['charts', 'Charts'], ['details', 'Details']]" :key="o[0]" type="button" role="radio" :aria-checked="dashView[settingsTab] === o[0]" @click="setDashView(o[0])" :class="['px-4 py-1.5', dashView[settingsTab] === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[0] === 'charts' ? $t('Charts') : $t('Details') }}</button>
+                        <button v-for="o in [['charts', $t('Charts')], ['details', $t('Details')]]" :key="o[0]" type="button" role="radio" :aria-checked="dashView[settingsTab] === o[0]" @click="setDashView(o[0])" :class="['px-4 py-1.5', dashView[settingsTab] === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[0] === 'charts' ? $t('Charts') : $t('Details') }}</button>
                     </div>
                     <span class="flex items-center gap-3"><span class="text-[13px] font-mono text-gray-500">{{ $t(projectLabel(appSettings.active_project)) }}</span><lang-badge></lang-badge></span>
                 </div>
@@ -346,7 +346,7 @@
                 <div v-if="settingsTab === 'performance'" ref="perfBox" class="space-y-6">
                     <div class="flex flex-wrap items-center gap-3">
                         <div class="flex gap-1 bg-gray-900 border border-gray-800 rounded-lg p-1" role="group" :aria-label="$t('Period')">
-                            <button v-for="p in [[7, '7 days'], [30, '30 days'], [90, '90 days'], [0, 'All time']]" :key="p[0]" @click="setPerfDays(p[0])"
+                            <button v-for="p in [[7, $t('7 days')], [30, $t('30 days')], [90, $t('90 days')], [0, $t('All time')]]" :key="p[0]" @click="setPerfDays(p[0])"
                                     :class="['text-[13px] px-3 py-1 rounded-md', perfDays === p[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ p[1] }}</button>
                         </div>
                         <span v-if="perfLoading" class="text-xs text-gray-500">{{ $t('Loading…') }}</span>
@@ -387,7 +387,7 @@
                                 <div>
                                     <div class="text-xs uppercase tracking-wider text-gray-500">{{ $t('Spent') }}</div>
                                     <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtUsd(P.sv.v.spent) }}</div>
-                                    <div class="text-xs text-gray-500 mt-1">{{ $t('{v} calls', { v: P.sv.v.calls.toLocaleString() }) }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">{{ $t('{v} calls', { v: P.sv.v.calls.toLocaleString($locale()) }) }}</div>
                                 </div>
                                 <div>
                                     <div class="text-xs uppercase tracking-wider text-gray-500">{{ $t('Would have cost') }}</div>
@@ -417,7 +417,7 @@
                                 <text v-for="l in P.sv.xlabels" :key="'x' + l.x" :x="l.x" :y="P.sv.H - 6" :text-anchor="l.anchor" class="cm-pf-axis">{{ l.text }}</text>
                             </svg>
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-                                <div v-for="t in [['By role', P.sv.roles], ['By project', P.sv.projects]]" :key="t[0]" class="overflow-x-auto">
+                                <div v-for="t in [[$t('By role'), P.sv.roles], [$t('By project'), P.sv.projects]]" :key="t[0]" class="overflow-x-auto">
                                     <table class="w-full text-[13px]">
                                         <thead><tr class="text-xs text-gray-500 text-left">
                                             <th class="font-normal py-1 pr-3">{{ t[0] }}</th><th class="font-normal py-1 pr-3 text-right">{{ $t('Calls') }}</th>
@@ -427,7 +427,7 @@
                                         <tbody>
                                             <tr v-for="r in t[1]" :key="r.key" class="border-t border-gray-800 text-gray-300">
                                                 <td class="py-1 pr-3 truncate max-w-[12rem]" :title="r.key">{{ r.label }}</td>
-                                                <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString() }}</td>
+                                                <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString($locale()) }}</td>
                                                 <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.spent) }}</td>
                                                 <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.reference) }}</td>
                                                 <td :class="['py-1 text-right font-mono', r.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(r.saved) }}<span class="text-gray-500"> · {{ r.saved_share === null ? 'extra' : fmtPct(r.saved_share) }}</span></td>
@@ -437,9 +437,9 @@
                                 </div>
                             </div>
                             <p class="text-xs text-gray-500 mt-3">
-                                <span v-if="P.sv.v.estimated_calls">{{ $t('{v} older calls are estimated with today\'s prices.', { v: P.sv.v.estimated_calls.toLocaleString() }) }} </span>
-                                <span v-if="P.sv.v.not_measured_calls">{{ $t('{v} calls are not measured (unknown price).', { v: P.sv.v.not_measured_calls.toLocaleString() }) }} </span>
-                                <span v-if="P.sv.v.escalations">{{ $t('{v} escalations from before task records: the stuck model\'s work on those is not subtracted.', { v: P.sv.v.escalations.toLocaleString() }) }}</span>
+                                <span v-if="P.sv.v.estimated_calls">{{ $t('{v} older calls are estimated with today\'s prices.', { v: P.sv.v.estimated_calls.toLocaleString($locale()) }) }} </span>
+                                <span v-if="P.sv.v.not_measured_calls">{{ $t('{v} calls are not measured (unknown price).', { v: P.sv.v.not_measured_calls.toLocaleString($locale()) }) }} </span>
+                                <span v-if="P.sv.v.escalations">{{ $t('{v} escalations from before task records: the stuck model\'s work on those is not subtracted.', { v: P.sv.v.escalations.toLocaleString($locale()) }) }}</span>
                             </p>
                             </template>
                         </div>
@@ -486,17 +486,17 @@
                                     <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtDur(P.wt.tm.totals.counted_ms) }}</div>
                                     <div class="text-xs text-gray-500 mt-1">{{ perfPick.wt ? 'on ' + projectLabel(perfPick.wt) : $t('all projects') }}</div></div>
                                 <div><div class="text-xs uppercase tracking-wider text-gray-500">{{ $t('Requests') }}</div>
-                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ P.wt.tm.totals.requests.toLocaleString() }}</div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ P.wt.tm.totals.requests.toLocaleString($locale()) }}</div>
                                     <div class="text-xs text-gray-500 mt-1">{{ P.wt.tm.avg_request_ms === null ? '—' : fmtDur(P.wt.tm.avg_request_ms) + $t(' each on average') }}</div></div>
                                 <div><div class="text-xs uppercase tracking-wider text-gray-500">{{ $t('Model calls') }}</div>
                                     <div class="text-2xl font-mono text-gray-100 mt-1">{{ fmtDur(P.wt.tm.model_calls_ms) }}</div>
                                     <div class="text-xs text-gray-500 mt-1">{{ $t('every call in the period') }}</div></div>
                                 <div><div class="text-xs uppercase tracking-wider text-gray-500">{{ $t('Approvals') }}</div>
-                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ P.wt.tm.totals.waits.toLocaleString() }}</div>
+                                    <div class="text-2xl font-mono text-gray-100 mt-1">{{ P.wt.tm.totals.waits.toLocaleString($locale()) }}</div>
                                     <div class="text-xs text-gray-500 mt-1">{{ $t('counted {v}; you waited {v2}', { v: fmtDur(P.wt.tm.totals.approval_ms), v2: fmtDur(P.wt.tm.totals.wait_ms) }) }}</div></div>
                             </div>
                             <day-columns :label="P.wt.per === 'week' ? $t('Working time per week') : $t('Working time per day')" :buckets="P.wt.buckets" :per="P.wt.per" :format="fmtDur" :empty="$t('No timed requests in this period yet.')"></day-columns>
-                            <p class="text-xs text-gray-500 mt-3">{{ P.wt.tm.recorded_since ? $t('Request times are recorded since {date}; model call time covers older calls too.', { date: new Date(P.wt.tm.recorded_since * 1000).toLocaleDateString() }) : $t('Request times are recorded from now on; model call time covers older calls too.') }}</p>
+                            <p class="text-xs text-gray-500 mt-3">{{ P.wt.tm.recorded_since ? $t('Request times are recorded since {date}; model call time covers older calls too.', { date: new Date(P.wt.tm.recorded_since * 1000).toLocaleDateString($locale()) }) : $t('Request times are recorded from now on; model call time covers older calls too.') }}</p>
                             </template>
                         </div>
                         </template>
@@ -508,7 +508,7 @@
                             <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
                                 <h3 class="text-[15px] font-bold text-gray-200">{{ $t('{v} per {v2}, by model', { v: perfMetric === 'cost' ? $t('Spending') : $t('Calls'), v2: P.data.weekly ? $t('week') : $t('day') }) }}</h3>
                                 <div class="flex items-center gap-3"><div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="group" :aria-label="$t('Measure')">
-                                    <button v-for="m in [['cost', 'Cost'], ['calls', 'Calls']]" :key="m[0]" @click="perfMetric = m[0]"
+                                    <button v-for="m in [['cost', $t('Cost')], ['calls', $t('Calls')]]" :key="m[0]" @click="perfMetric = m[0]"
                                             :class="['text-xs px-2.5 py-0.5 rounded-md', perfMetric === m[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ m[1] }}</button>
                                 </div><chart-pick :model-value="perfPick.tl" @update:model-value="setPerfPick('tl', $event)" :options="perfProjects" :label="$t('Spending per day: project')"></chart-pick></div>
                             </div>
@@ -527,7 +527,7 @@
                                     <path v-for="(s, j) in c.segs" :key="j" :d="s.d" :fill="s.color"></path>
                                 </g>
                                 <text v-for="l in P.tl.xlabels" :key="'x' + l.x" :x="l.x" :y="P.tl.H - 6" text-anchor="middle" class="cm-pf-axis">{{ l.text }}</text>
-                                <text v-if="P.tl.empty" :x="P.tl.W / 2" :y="P.tl.H / 2" text-anchor="middle" class="cm-pf-note">Nothing in this period</text>
+                                <text v-if="P.tl.empty" :x="P.tl.W / 2" :y="P.tl.H / 2" text-anchor="middle" class="cm-pf-note">{{ $t('Nothing in this period') }}</text>
                             </svg>
                             </template>
                         </div>
@@ -550,8 +550,8 @@
                                         <line :x1="g.x" :x2="g.x" :y1="P.sc.topPad" :y2="P.sc.topPad + P.sc.plotH" class="cm-pf-grid"></line>
                                         <text :x="g.x" :y="P.sc.topPad + P.sc.plotH + 16" text-anchor="middle" class="cm-pf-axis">{{ g.text }}</text>
                                     </g>
-                                    <text :x="P.sc.left + P.sc.plotW" :y="P.sc.H - 4" text-anchor="end" class="cm-pf-axis">cost per call → (log scale)</text>
-                                    <text :x="4" :y="P.sc.topPad - 2" class="cm-pf-axis">↑ median latency</text>
+                                    <text :x="P.sc.left + P.sc.plotW" :y="P.sc.H - 4" text-anchor="end" class="cm-pf-axis">{{ $t('cost per call → (log scale)') }}</text>
+                                    <text :x="4" :y="P.sc.topPad - 2" class="cm-pf-axis">{{ $t('↑ median latency') }}</text>
                                     <g v-for="p in P.sc.dots" :key="p.m.model" @mousemove="showTip($event, p.tip)" class="cm-pf-col">
                                         <circle :cx="p.cx" :cy="p.cy" :r="Math.max(p.r, 12)" fill="transparent"></circle>
                                         <circle :cx="p.cx" :cy="p.cy" :r="p.r" :fill="p.color" fill-opacity="0.85" class="cm-pf-ring"></circle>
@@ -605,7 +605,7 @@
                                     <line :x1="g.x" :x2="g.x" :y1="P.lat.topPad" :y2="P.lat.H - P.lat.bottom" class="cm-pf-grid"></line>
                                     <text :x="g.x" :y="P.lat.H - 8" text-anchor="middle" class="cm-pf-axis">{{ g.text }}</text>
                                 </g>
-                                <text :x="P.lat.W - 2" :y="P.lat.H - 8" text-anchor="end" class="cm-pf-axis">speed</text>
+                                <text :x="P.lat.W - 2" :y="P.lat.H - 8" text-anchor="end" class="cm-pf-axis">{{ $t('speed') }}</text>
                                 <g v-for="r in P.lat.rows" :key="r.m.model" @mousemove="showTip($event, r.tip)" class="cm-pf-col">
                                     <rect x="0" :y="r.y - P.lat.rowH / 2" :width="P.lat.W" :height="P.lat.rowH" class="cm-pf-band"></rect>
                                     <text :x="P.lat.nameW - 10" :y="r.y + 4" text-anchor="end" class="cm-pf-label"><title>{{ r.title }}</title>{{ r.name }}</text>
@@ -651,7 +651,7 @@
                             <div class="overflow-x-auto">
                                 <svg :width="perf.heat.W" :height="perf.heat.H" class="cm-pf-svg" role="img" :aria-label="$t('Spending per project and model')" @mouseleave="hideTip">
                                     <text v-for="h in perf.heat.heads" :key="h.x" :x="h.x" :y="perf.heat.headH - 10 - 14 * (h.lines.length - 1)" text-anchor="middle" class="cm-pf-label"><title>{{ h.title }}</title><tspan v-for="(l, i) in h.lines" :key="i" :x="h.x" :dy="i ? 14 : 0">{{ l }}</tspan></text>
-                                    <text :x="perf.heat.totX + perf.heat.totW - 6" :y="perf.heat.headH - 10" text-anchor="end" class="cm-pf-head">Total</text>
+                                    <text :x="perf.heat.totX + perf.heat.totW - 6" :y="perf.heat.headH - 10" text-anchor="end" class="cm-pf-head">{{ $t('Total') }}</text>
                                     <g v-for="r in perf.heat.rows" :key="r.full" class="cm-pf-col" @mousemove="showTip($event, r.tip)">
                                         <text x="0" :y="r.y" class="cm-pf-label"><title>{{ r.full }}</title>{{ r.name }}</text>
                                         <text :x="perf.heat.totX + perf.heat.totW - 6" :y="r.y" text-anchor="end" class="cm-pf-total">{{ r.total }}</text>
@@ -661,7 +661,7 @@
                                         <text v-if="c.has" :x="c.x + c.w / 2" :y="c.y + c.h / 2 + 4" text-anchor="middle" class="cm-pf-cell" :fill="c.ink">{{ c.text }}</text>
                                     </g>
                                     <line x1="0" :x2="perf.heat.W" :y1="perf.heat.footY" :y2="perf.heat.footY" class="cm-pf-grid"></line>
-                                    <text x="0" :y="perf.heat.footY + perf.heat.rowH / 2 + 4" class="cm-pf-head">All projects</text>
+                                    <text x="0" :y="perf.heat.footY + perf.heat.rowH / 2 + 4" class="cm-pf-head">{{ $t('All projects') }}</text>
                                     <text v-for="f in perf.heat.foot" :key="'f' + f.x" :x="f.x" :y="perf.heat.footY + perf.heat.rowH / 2 + 4" text-anchor="middle" class="cm-pf-total">{{ f.text }}</text>
                                     <text :x="perf.heat.totX + perf.heat.totW - 6" :y="perf.heat.footY + perf.heat.rowH / 2 + 4" text-anchor="end" class="cm-pf-total cm-pf-strong">{{ perf.heat.all }}</text>
                                 </svg>
@@ -716,12 +716,12 @@
                                 </tr></thead>
                                 <tbody><tr v-for="p in perf.wt.tm.projects" :key="p.project" class="border-t border-gray-800 text-gray-300">
                                     <td class="py-1 pr-3 truncate max-w-[12rem]" :title="p.project">{{ projectLabel(p.project) }}</td>
-                                    <td class="py-1 pr-3 text-right font-mono">{{ p.requests.toLocaleString() }}</td>
+                                    <td class="py-1 pr-3 text-right font-mono">{{ p.requests.toLocaleString($locale()) }}</td>
                                     <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.counted_ms) }}</td>
                                     <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.model_ms) }}</td>
                                     <td class="py-1 pr-3 text-right font-mono">{{ fmtDur(p.other_ms) }}</td>
-                                    <td class="py-1 pr-3 text-right font-mono">{{ p.waits.toLocaleString() }}</td>
-                                    <td class="py-1 text-right font-mono">{{ new Date(p.first * 1000).toLocaleDateString() }}</td>
+                                    <td class="py-1 pr-3 text-right font-mono">{{ p.waits.toLocaleString($locale()) }}</td>
+                                    <td class="py-1 text-right font-mono">{{ new Date(p.first * 1000).toLocaleDateString($locale()) }}</td>
                                 </tr></tbody>
                             </table></div>
                         </div>
@@ -746,7 +746,7 @@
                                                 <div class="flex items-center gap-2 text-gray-200"><span class="cm-pf-key" :style="{ background: m.color }"></span><span class="truncate" :title="m.title">{{ m.name }}</span></div>
                                                 <div class="text-xs text-gray-500 pl-5">{{ Object.entries(m.roles).sort((a, b) => b[1] - a[1]).map(r => perfRole(r[0]) + ' ' + r[1]).join(' · ') }}</div>
                                             </td>
-                                            <td class="py-2 px-2 text-right font-mono text-gray-300">{{ m.calls.toLocaleString() }}</td>
+                                            <td class="py-2 px-2 text-right font-mono text-gray-300">{{ m.calls.toLocaleString($locale()) }}</td>
                                             <td class="py-2 px-2 text-right font-mono text-gray-100">{{ fmtUsd(m.cost) }}{{ m.calls_without_cost ? '+' : '' }}</td>
                                             <td class="py-2 px-2 text-right">
                                                 <div class="flex items-center justify-end gap-2"><span class="cm-pf-bar"><span :style="{ width: (100 * m.share / P.maxShare) + '%', background: m.color }"></span></span><span class="font-mono text-gray-300 w-10">{{ fmtPct(m.share) }}</span></div>
@@ -781,7 +781,7 @@
                                 </tr></thead>
                                 <tbody><tr v-for="r in P.data.roles" :key="r.role" class="border-t border-gray-800 text-gray-300">
                                     <td class="py-1 pr-3" :title="ROLE_HELP[r.role] ? perfRole(r.role) + ': ' + ROLE_HELP[r.role] : r.role"><span :class="ROLE_HELP[r.role] ? 'cursor-help underline decoration-dotted decoration-gray-600 underline-offset-4' : ''">{{ perfRole(r.role) }}</span></td>
-                                    <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString() }}</td>
+                                    <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString($locale()) }}</td>
                                     <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.cost) }}{{ r.calls_without_cost ? '+' : '' }}</td>
                                     <td class="py-1 text-xs text-gray-400 whitespace-normal">{{ Object.entries(r.models).sort((a, b) => b[1] - a[1]).map(([m, n]) => modelName(m) + ' ' + n).join(' · ') }}</td>
                                 </tr></tbody>
@@ -905,7 +905,7 @@
                             <p><span v-html="$t('The models this project\'s requests use, instead of the ones in <b>Routing</b>: for example a cheaper Simple model for a small site, or a stronger Complex model for a hard codebase. <b>Follow global</b> uses Routing\'s choice, so changing Routing changes this project too.')"></span></p>
                             <p><span v-html="$t('Everything that runs in the project follows them: chat requests, escalations, plans and their steps, the scout, memory updates and commit messages. The <b>savings</b> of this project are compared with its own Complex model.')"></span></p>
                         </help-tip></h3>
-                        <div v-for="r in [['conductor_model', 'Conductor'], ['simple_model', 'Simple'], ['complex_model', 'Complex']]" :key="r[0]" class="flex flex-wrap items-center gap-3">
+                        <div v-for="r in [['conductor_model', $t('Conductor')], ['simple_model', $t('Simple')], ['complex_model', $t('Complex')]]" :key="r[0]" class="flex flex-wrap items-center gap-3">
                             <span class="text-[14px] text-gray-300 w-44">{{ r[1] }}</span>
                             <select :value="ownValue(r[0])" @change="setProjectSetting(r[0], $event.target.value || null)" :aria-label="r[1] + ' model'" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200 max-w-full">
                                 <option value="" class="bg-gray-900">{{ $t('Follow global ({v})', { v: globalValue(r[0]) === 'off' ? $t('Off') : (globalValue(r[0]) ? modelName(globalValue(r[0])) : 'none') }) }}</option>
@@ -940,7 +940,7 @@
                         <textarea v-model="projectPage.mem.content" rows="10" :aria-label="$t('Project memory')" class="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 font-mono text-[13px] text-gray-200 resize-y"></textarea>
                         <div class="flex flex-wrap items-center gap-3 text-[13px]">
                             <button @click="saveProjectMemory" :disabled="projectPage.mem.content === projectPage.mem.saved" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg text-[14px] font-bold">{{ $t('Save') }}</button>
-                            <span :class="['font-mono', projectPage.mem.content.length > MEMORY_MAX_CHARS ? 'text-red-400' : 'text-gray-500']">{{ projectPage.mem.content.length.toLocaleString() }} / {{ MEMORY_MAX_CHARS.toLocaleString() }}</span>
+                            <span :class="['font-mono', projectPage.mem.content.length > MEMORY_MAX_CHARS ? 'text-red-400' : 'text-gray-500']">{{ projectPage.mem.content.length.toLocaleString($locale()) }} / {{ MEMORY_MAX_CHARS.toLocaleString($locale()) }}</span>
                             <span v-if="!projectPage.mem.exists" class="text-gray-500">{{ $t('not saved yet') }}</span>
                             <span v-if="projectPage.mem.msg" :class="projectPage.mem.msg.ok ? 'text-green-400' : 'text-red-400'">{{ projectPage.mem.msg.text }}</span>
                         </div>
@@ -964,7 +964,7 @@
                     <!-- Execution -->
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
                         <h3 class="text-[15px] font-bold text-gray-200 flex items-center">{{ $t('Execution') }}</h3>
-                        <div v-for="f in [['max_steps_simple', 'Steps per turn: Simple', 1, 100], ['max_steps_complex', 'Steps per turn: Complex', 1, 100], ['command_timeout', 'Command timeout (s)', 10, 1800]]" :key="f[0]" class="flex flex-wrap items-center gap-3">
+                        <div v-for="f in [['max_steps_simple', $t('Steps per turn: Simple'), 1, 100], ['max_steps_complex', $t('Steps per turn: Complex'), 1, 100], ['command_timeout', $t('Command timeout (s)'), 10, 1800]]" :key="f[0]" class="flex flex-wrap items-center gap-3">
                             <span class="text-[14px] text-gray-300 w-44">{{ f[1] }}</span>
                             <input type="number" :min="f[2]" :max="f[3]" :value="ownValue(f[0])" :placeholder="'global ' + globalValue(f[0])" @change="setProjectSetting(f[0], numberOf($event.target.value))" :aria-label="f[1]" class="w-28 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200 font-mono">
                         </div>
@@ -1117,7 +1117,7 @@
                                 <div class="min-w-0 flex-1">
                                     <div class="text-gray-100 font-bold truncate">{{ a.name }}</div>
                                     <div class="text-xs text-gray-500 font-mono truncate" :title="archivePath + '/' + a.folder">.archive/{{ a.folder }} <button @click="copyPath(archivePath + '/' + a.folder)" class="hover:text-gray-200" :title="$t('Copy the full path')">⧉</button></div>
-                                    <div class="text-xs text-gray-500 font-mono truncate">{{ $t('archived {v} · {chats} chat{v2} · {v3}{v4}', { v: new Date(a.archived * 1000).toLocaleString(), chats: a.records.chats, v2: a.records.chats === 1 ? '' : 's', v3: fmtCost(a.records.cost), v4: a.remote ? ' · ' + a.remote : '' }) }}</div>
+                                    <div class="text-xs text-gray-500 font-mono truncate">{{ $t('archived {v} · {chats} chat{v2} · {v3}{v4}', { v: new Date(a.archived * 1000).toLocaleString($locale()), chats: a.records.chats, v2: a.records.chats === 1 ? '' : 's', v3: fmtCost(a.records.cost), v4: a.remote ? ' · ' + a.remote : '' }) }}</div>
                                 </div>
                                 <button @click="historyPage.project = a.name; openSettings('history')" class="px-3 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">{{ $t('Chats') }}</button>
                                 <button @click="restoreArchived(a)" class="px-3 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500 text-[13px]">{{ $t('Restore') }}</button>
@@ -1153,13 +1153,13 @@
                         <div>
                             <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">{{ $t('Updated') }}</label>
                             <div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="radiogroup" :aria-label="$t('Updated')">
-                                <button v-for="o in [['1','Today'],['7','7 days'],['30','30 days'],['all','Any time']]" :key="o[0]" @click="historyPage.period = o[0]" role="radio" :aria-checked="historyPage.period === o[0]" :class="['text-[13px] px-2.5 py-1 rounded-md', historyPage.period === o[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                                <button v-for="o in [['1',$t('Today')],['7',$t('7 days')],['30',$t('30 days')],['all',$t('Any time')]]" :key="o[0]" @click="historyPage.period = o[0]" role="radio" :aria-checked="historyPage.period === o[0]" :class="['text-[13px] px-2.5 py-1 rounded-md', historyPage.period === o[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
                             </div>
                         </div>
                         <div>
                             <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">{{ $t('Status') }}</label>
                             <div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="radiogroup" :aria-label="$t('Status')">
-                                <button v-for="o in [[false,'Active'],[true,'Archived']]" :key="String(o[0])" @click="historyPage.archived = o[0]; fetchHistoryPage()" role="radio" :aria-checked="historyPage.archived === o[0]" :class="['text-[13px] px-2.5 py-1 rounded-md', historyPage.archived === o[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                                <button v-for="o in [[false,$t('Active')],[true,$t('Archived')]]" :key="String(o[0])" @click="historyPage.archived = o[0]; fetchHistoryPage()" role="radio" :aria-checked="historyPage.archived === o[0]" :class="['text-[13px] px-2.5 py-1 rounded-md', historyPage.archived === o[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
                             </div>
                         </div>
                         <div class="flex-1 min-w-[180px]">
@@ -1172,14 +1172,14 @@
                     <div class="overflow-x-auto bg-gray-900 border border-gray-800 rounded-xl">
                         <table class="w-full text-[15px]">
                             <thead><tr class="text-left text-xs uppercase tracking-wider text-gray-500 border-b border-gray-800">
-                                <th v-for="col in [['title','Title'],['project','Project'],['updated','Updated'],['turns','Turns'],['cost','Cost']]" :key="col[0]" class="px-4 py-2 font-normal cursor-pointer select-none hover:text-gray-300" @click="sortHistory(col[0])">{{ col[1] }}{{ historyPage.sort === col[0] ? (historyPage.desc ? ' ▾' : ' ▴') : '' }}</th>
+                                <th v-for="col in [['title',$t('Title')],['project',$t('Project')],['updated',$t('Updated')],['turns',$t('Turns')],['cost',$t('Cost')]]" :key="col[0]" class="px-4 py-2 font-normal cursor-pointer select-none hover:text-gray-300" @click="sortHistory(col[0])">{{ col[1] }}{{ historyPage.sort === col[0] ? (historyPage.desc ? ' ▾' : ' ▴') : '' }}</th>
                                 <th class="px-4 py-2"></th>
                             </tr></thead>
                             <tbody>
                                 <tr v-for="c in historySorted" :key="c.id" :class="['border-b border-gray-800/60 hover:bg-gray-800/30', currentSession && currentSession.id === c.id ? 'bg-blue-950/20' : '']">
                                     <td class="px-4 py-2 max-w-[280px]"><button @click="openChatFromDashboard(c.id)" class="text-gray-100 hover:text-blue-300 truncate block max-w-full text-left" :title="c.title">{{ c.title || $t('Untitled chat') }}</button></td>
                                     <td class="px-4 py-2 font-mono text-[13px] text-gray-400">{{ projectLabel(c.project) }}<deleted-tag :at="deletedProjects[c.project] || 0"></deleted-tag></td>
-                                    <td class="px-4 py-2 font-mono text-[13px] text-gray-400" :title="new Date(c.updated * 1000).toLocaleString()">{{ fmtAgo(c.updated) }}</td>
+                                    <td class="px-4 py-2 font-mono text-[13px] text-gray-400" :title="new Date(c.updated * 1000).toLocaleString($locale())">{{ fmtAgo(c.updated) }}</td>
                                     <td class="px-4 py-2 font-mono text-[13px] text-gray-400">{{ c.turns }}</td>
                                     <td class="px-4 py-2 font-mono text-[13px] text-gray-300">{{ fmtCost(c.cost) }}{{ c.calls_without_cost ? '+' : '' }}</td>
                                     <td class="px-4 py-2 text-[13px] whitespace-nowrap text-right">
@@ -1217,7 +1217,7 @@
                                 <p><span v-html="$t('<b>Auto allowed:</b> skills set to Auto are also listed in every request (name and description, about 30 tokens each, on every model call), so the Conductor or the model can pick them by themselves. Manual skills still run only on /name.')"></span></p>
                             </help-tip></span>
                             <div class="flex rounded-lg border border-gray-700 overflow-hidden text-[15px]">
-                                <button v-for="o in [['off','Off'],['manual','Manual only'],['auto','Auto allowed']]" :key="o[0]" @click="setSkillsMode(o[0])" :class="['px-3 py-1.5', (appSettings.skills_mode || 'auto') === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                                <button v-for="o in [['off',$t('Off')],['manual',$t('Manual only')],['auto',$t('Auto allowed')]]" :key="o[0]" @click="setSkillsMode(o[0])" :class="['px-3 py-1.5', (appSettings.skills_mode || 'auto') === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
                             </div>
                             <span :class="['text-xs font-mono', skillsInfo.catalog_tokens ? 'text-purple-300' : 'text-green-400']">{{ skillsInfo.catalog_tokens ? `${(skillsInfo.listed || []).length} skill${(skillsInfo.listed || []).length === 1 ? '' : 's'} listed in every request: ≈ ${skillsInfo.catalog_tokens} tokens per model call` : $t('Nothing listed: skills cost nothing until you call one') }}</span>
                         </div>
@@ -1319,7 +1319,7 @@
                         </help-tip></h3>
                         <p class="text-[14px] text-gray-400 mb-3">{{ $t('Splits big tasks into steps so routine work runs on the cheaper model.') }}</p>
                         <div class="inline-flex rounded-lg overflow-hidden border border-gray-700 text-[14px]" role="radiogroup" :aria-label="$t('Plan big tasks')">
-                            <button v-for="o in [['off','Off'],['ask','Ask first'],['auto','Automatic']]" :key="o[0]" role="radio" :aria-checked="(appSettings.plan_mode || 'off') === o[0]" @click="appSettings.plan_mode = o[0]; saveSettings()" :class="['px-3 py-1.5', (appSettings.plan_mode || 'off') === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                            <button v-for="o in [['off',$t('Off')],['ask',$t('Ask first')],['auto',$t('Automatic')]]" :key="o[0]" role="radio" :aria-checked="(appSettings.plan_mode || 'off') === o[0]" @click="appSettings.plan_mode = o[0]; saveSettings()" :class="['px-3 py-1.5', (appSettings.plan_mode || 'off') === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
                         </div>
                         <p class="text-[13px] text-gray-500 mt-2">{{ ({ off: $t('Never plan; /plan still works.'), ask: $t('Show each plan and its estimate; nothing runs until you press Run.'), auto: $t('Show each plan and start it at once; you can still stop it.') })[appSettings.plan_mode || 'off'] }}</p>
                     </div>
@@ -1331,7 +1331,7 @@
                         </help-tip></h3>
                         <p class="text-[14px] text-gray-400 mb-3">{{ $t('The cheap model reads the project first, so the Complex model starts with a brief.') }}</p>
                         <div class="inline-flex rounded-lg overflow-hidden border border-gray-700 text-[14px]" role="radiogroup" :aria-label="$t('Scout before Complex')">
-                            <button v-for="o in [[true,'On'],[false,'Off']]" :key="String(o[0])" role="radio" :aria-checked="(appSettings.scout !== false) === o[0]" @click="appSettings.scout = o[0]; saveSettings()" :class="['px-3 py-1.5', (appSettings.scout !== false) === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                            <button v-for="o in [[true,$t('On')],[false,$t('Off')]]" :key="String(o[0])" role="radio" :aria-checked="(appSettings.scout !== false) === o[0]" @click="appSettings.scout = o[0]; saveSettings()" :class="['px-3 py-1.5', (appSettings.scout !== false) === o[0] ? 'bg-blue-600 text-white' : 'bg-gray-950 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
                         </div>
                     </div>
                 </div>
@@ -1495,7 +1495,7 @@
                             <table class="w-full text-[13px]">
                                 <thead class="sticky top-0 bg-gray-900 text-gray-400">
                                     <tr>
-                                        <th v-for="c in [['id','Model'],['input','Input'],['output','Output'],['cached','Cached'],['context','Context']]" :key="c[0]" @click="catSortBy(c[0])"
+                                        <th v-for="c in [['id',$t('Model')],['input',$t('Input')],['output',$t('Output')],['cached',$t('Cached')],['context',$t('Context')]]" :key="c[0]" @click="catSortBy(c[0])"
                                             :class="['px-3 py-2 font-semibold cursor-pointer select-none hover:text-gray-200 whitespace-nowrap', c[0] === 'id' ? 'text-left' : 'text-right']">{{ c[1] }}<span v-if="catSort.key === c[0]">{{ catSort.desc ? ' ▼' : ' ▲' }}</span></th>
                                         <th class="px-3 py-2 font-semibold text-center">{{ $t('Tools') }}</th>
                                         <th class="px-3 py-2 font-semibold text-center">{{ $t('Reasoning') }}</th>
@@ -1678,7 +1678,7 @@
                         <span class="text-2xl leading-none text-yellow-400" aria-hidden="true">⚠</span>
                         <div class="flex-1 min-w-0 space-y-2">
                             <div class="font-bold text-yellow-300">{{ $t('Restart Optimux to finish the restore') }}</div>
-                            <p class="text-[14px] text-yellow-100"><span v-html="$th('Ready to put back: <b>{v}</b>, {v2}', { v: rsStatus.pending.parts.join(', '), v2: rsStatus.pending.daily ? $t('from the {source} (chosen {date})', { source: rsStatus.pending.source, date: new Date(rsStatus.pending.created * 1000).toLocaleString() }) : $t('from the snapshot of {date}', { date: new Date(rsStatus.pending.created * 1000).toLocaleString() }) })"></span><template v-if="rsStatus.pending.projects && rsStatus.pending.projects.length"> {{ $t('(projects already restored: {v})', { v: rsStatus.pending.projects.join(', ') }) }}</template>{{ $t('. Chat replies wait until then, so nothing new is lost.') }}</p>
+                            <p class="text-[14px] text-yellow-100"><span v-html="$th('Ready to put back: <b>{v}</b>, {v2}', { v: rsStatus.pending.parts.join(', '), v2: rsStatus.pending.daily ? $t('from the {source} (chosen {date})', { source: rsStatus.pending.source, date: new Date(rsStatus.pending.created * 1000).toLocaleString($locale()) }) : $t('from the snapshot of {date}', { date: new Date(rsStatus.pending.created * 1000).toLocaleString($locale()) }) })"></span><template v-if="rsStatus.pending.projects && rsStatus.pending.projects.length"> {{ $t('(projects already restored: {v})', { v: rsStatus.pending.projects.join(', ') }) }}</template>{{ $t('. Chat replies wait until then, so nothing new is lost.') }}</p>
                             <p v-if="rsStatus.pending.before_snapshot" class="text-[13px] text-yellow-200/80"><span v-html="$th('Your current data was saved first, in the snapshot <code>{before_snapshot}</code>.', { before_snapshot: rsStatus.pending.before_snapshot })"></span></p>
                             <div class="flex flex-wrap items-center gap-2">
                                 <button v-if="rsStatus.can_restart" @click="restartForRestore" :disabled="rsRestarting" class="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-3 py-1.5 rounded-lg font-bold text-[14px] disabled:opacity-60">{{ rsRestarting ? $t('Restarting… the page reloads by itself') : $t('Restart now') }}</button>
@@ -1695,7 +1695,7 @@
                         <div class="flex-1 min-w-0 text-[14px] space-y-1">
                             <template v-if="rsStatus.last.ok">
                                 <div class="font-bold text-green-300">{{ $t('Restore finished') }}</div>
-                                <div class="text-gray-300"><span v-html="$th('Put back: <b>{v}</b> ({v2}). It was merged with your data: nothing recorded on either side was lost.', { v: rsStatus.last.parts.join(', '), v2: new Date(rsStatus.last.ts * 1000).toLocaleString() })"></span></div>
+                                <div class="text-gray-300"><span v-html="$th('Put back: <b>{v}</b> ({v2}). It was merged with your data: nothing recorded on either side was lost.', { v: rsStatus.last.parts.join(', '), v2: new Date(rsStatus.last.ts * 1000).toLocaleString($locale()) })"></span></div>
                                 <div class="text-gray-400 flex flex-wrap items-center gap-2">{{ $t('The files they replaced are in') }}
                                     <span class="cm-path-box"><code>{{ rsStatus.last.aside }}</code>
                                         <button type="button" @click="snapCopy('rs-aside', rsStatus.last.aside)" :class="['cm-copy-btn', snapCopied['rs-aside'] ? 'cm-copied' : '']">{{ snapCopied['rs-aside'] ? $t('Copied ✓') : $t('Copy') }}</button></span></div>
@@ -1811,7 +1811,7 @@
                         <div v-else class="divide-y divide-gray-800">
                             <div v-for="s in snapshotsInfo.snapshots" :key="s.id" class="py-2 text-[14px]">
                             <div class="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1">
-                                <span class="text-gray-300 sm:w-40 shrink-0">{{ new Date(s.created * 1000).toLocaleString() }}</span>
+                                <span class="text-gray-300 sm:w-40 shrink-0">{{ new Date(s.created * 1000).toLocaleString($locale()) }}</span>
                                 <span class="sm:w-48 shrink-0">
                                     <span class="text-gray-200">{{ snapKindLabel(s.kind) }}</span>
                                     <span v-if="s.kind !== 'data' && s.projects" class="text-gray-500"> ({{ s.projects.length && s.projects.length <= 3 ? s.projects.join(', ') : s.projects.length + ' project' + (s.projects.length === 1 ? '' : 's') }})</span>
@@ -2016,9 +2016,9 @@
                             <div v-for="b in dailyInfo.backups" :key="b.name" class="py-2 text-[14px]">
                                 <div class="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1">
                                     <span class="text-gray-200 sm:w-28 shrink-0 font-mono">{{ b.date }}</span>
-                                    <span class="text-gray-500 sm:w-44 shrink-0" :title="$t('When the copy was written')">{{ new Date(b.mtime * 1000).toLocaleTimeString() }}</span>
+                                    <span class="text-gray-500 sm:w-44 shrink-0" :title="$t('When the copy was written')">{{ new Date(b.mtime * 1000).toLocaleTimeString($locale()) }}</span>
                                     <span class="flex-1 min-w-0">
-                                        <span v-if="b.checked === true" class="text-[12px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400" :title="b.checked_at ? $t('Checked ') + new Date(b.checked_at * 1000).toLocaleString() : ''">{{ $t('✓ checked') }}</span>
+                                        <span v-if="b.checked === true" class="text-[12px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400" :title="b.checked_at ? $t('Checked ') + new Date(b.checked_at * 1000).toLocaleString($locale()) : ''">{{ $t('✓ checked') }}</span>
                                         <span v-else-if="b.checked === false" class="text-[12px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400" :title="b.error">{{ $t('✕ damaged') }}</span>
                                         <button v-else @click="checkDaily(b)" :disabled="b.checking" class="text-[12px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-400 hover:border-gray-500" :title="$t('Made before checks existed (v0.5.2): check it now')">{{ b.checking ? $t('checking…') : $t('not checked: check now') }}</button>
                                     </span>
@@ -2355,7 +2355,7 @@
                             
                             <div class="mt-4 flex justify-between items-center">
                                 <span v-if="showMemorySaved" class="text-green-400 font-bold text-[15px] flex items-center gap-1">{{ $t('Saved!') }}</span>
-                                <span v-else :class="['text-[13px] font-mono', memoryContent.length > MEMORY_MAX_CHARS ? 'text-red-400' : 'text-gray-500']" :title="$t('Memory is sent with every request. The limit is ') + MEMORY_MAX_CHARS.toLocaleString() + $t(' characters per file.')">{{ $t('{v} / {v2} characters · ≈{v3} tokens per request', { v: memoryContent.length.toLocaleString(), v2: MEMORY_MAX_CHARS.toLocaleString(), v3: Math.round(memoryContent.length / 4).toLocaleString() }) }}</span>
+                                <span v-else :class="['text-[13px] font-mono', memoryContent.length > MEMORY_MAX_CHARS ? 'text-red-400' : 'text-gray-500']" :title="$t('Memory is sent with every request. The limit is ') + MEMORY_MAX_CHARS.toLocaleString($locale()) + $t(' characters per file.')">{{ $t('{v} / {v2} characters · ≈{v3} tokens per request', { v: memoryContent.length.toLocaleString($locale()), v2: MEMORY_MAX_CHARS.toLocaleString($locale()), v3: Math.round(memoryContent.length / 4).toLocaleString($locale()) }) }}</span>
                                 <button @click="saveMemory" :disabled="memoryContent.length > MEMORY_MAX_CHARS" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white px-6 py-2 rounded-lg font-bold transition">{{ $t('Save Memory') }}</button>
                             </div>
                         </div>
@@ -2395,7 +2395,7 @@
                                         <span :title="{ curator: $t('Automatic update (the curator) from a chat'), user: $t('Edited in the dashboard'), model: $t('Saved by the assistant during a chat'), undo: $t('An undo') }[v.source] || ''" :class="['px-2 py-0.5 rounded font-mono', { curator: 'bg-purple-950 text-purple-300', user: 'bg-gray-800 text-gray-300', model: 'bg-blue-950 text-blue-300', undo: 'bg-yellow-950 text-yellow-300' }[v.source] || 'bg-gray-800 text-gray-300']">{{ { curator: 'auto', user: 'you', model: 'model', undo: 'undo' }[v.source] || v.source }}</span>
                                         <span class="text-gray-300 flex-1 truncate" :title="v.summary">{{ v.summary }}</span>
                                         <span v-if="v.cost != null" class="text-gray-500 font-mono" :title="$t('Cost of the model call that made this update')">{{ fmtCost(v.cost) }}</span>
-                                        <span class="text-gray-500 font-mono" :title="new Date(v.ts * 1000).toLocaleString()">{{ fmtAgo(v.ts) }}</span>
+                                        <span class="text-gray-500 font-mono" :title="new Date(v.ts * 1000).toLocaleString($locale())">{{ fmtAgo(v.ts) }}</span>
                                         <button @click="v.open = !v.open" class="text-gray-400 hover:text-gray-200">{{ v.open ? $t('Hide') : $t('Changes') }}</button>
                                         <button @click="undoMemoryVersion(v)" class="text-yellow-500/80 hover:text-yellow-400">{{ $t('Undo') }}</button>
                                     </div>
@@ -2413,15 +2413,15 @@
                     <div v-if="settingsTab === 'usage' && dashView.usage === 'charts'" class="space-y-6 mb-6">
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                             <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-                                <h3 class="text-[15px] font-bold text-gray-200">{{ $t('{v} per {per}', { v: charts.cost.metric === 'cost' ? $t('Cost') : $t('Calls'), per: chartData.per }) }}</h3>
+                                <h3 class="text-[15px] font-bold text-gray-200">{{ $t('{v} per {per}', { v: charts.cost.metric === 'cost' ? $t('Cost') : $t('Calls'), per: $t(chartData.per) }) }}</h3>
                                 <div class="flex items-center gap-3">
                                     <div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="radiogroup" :aria-label="$t('Chart shows')">
-                                        <button v-for="o in [['cost', 'Cost'], ['calls', 'Calls']]" :key="o[0]" type="button" role="radio" :aria-checked="charts.cost.metric === o[0]" @click="charts.cost.metric = o[0]" :class="['text-xs px-2.5 py-0.5 rounded-md', charts.cost.metric === o[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                                        <button v-for="o in [['cost', $t('Cost')], ['calls', $t('Calls')]]" :key="o[0]" type="button" role="radio" :aria-checked="charts.cost.metric === o[0]" @click="charts.cost.metric = o[0]" :class="['text-xs px-2.5 py-0.5 rounded-md', charts.cost.metric === o[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
                                     </div>
                                     <chart-pick v-model="charts.cost.project" :options="projectsList" :label="$t('Cost per day: project')"></chart-pick>
                                 </div>
                             </div>
-                            <day-columns v-if="charts.cost.perf" :label="(charts.cost.metric === 'cost' ? $t('Cost') : $t('Calls')) + ' per ' + chartData.per" :buckets="chartData.timeline" :per="chartData.per"
+                            <day-columns v-if="charts.cost.perf" :label="$t('{v} per {per}', { v: charts.cost.metric === 'cost' ? $t('Cost') : $t('Calls'), per: $t(chartData.per) })" :buckets="chartData.timeline" :per="chartData.per"
                                          :format="charts.cost.metric === 'cost' ? fmtUsd : fmtCalls" :empty="$t('No usage in the last 30 days')"></day-columns>
                         </div>
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
@@ -2449,7 +2449,7 @@
                     </div>
                     <div v-if="settingsTab === 'usage' && dashView.usage === 'details'" class="flex items-center justify-between mb-4">
                         <div class="flex gap-1 bg-gray-900 border border-gray-800 rounded-lg p-1" role="group" :aria-label="$t('Period')">
-                            <button v-for="p in [['today','Today'],['last_7_days','7 days'],['this_month','This month'],['all_time','All time']]" :key="p[0]" @click="usagePeriod = p[0]" :aria-pressed="usagePeriod === p[0]"
+                            <button v-for="p in [['today',$t('Today')],['last_7_days',$t('7 days')],['this_month',$t('This month')],['all_time',$t('All time')]]" :key="p[0]" @click="usagePeriod = p[0]" :aria-pressed="usagePeriod === p[0]"
                                     :class="['text-[13px] px-3 py-1 rounded-md', usagePeriod === p[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ p[1] }}</button>
                         </div>
                         <button @click="fetchUsage" class="text-[13px] text-gray-400 hover:text-gray-200">{{ $t('Refresh') }}</button>
@@ -2461,7 +2461,7 @@
                             <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">{{ $t('Input / cached') }}</div><div class="text-lg font-mono text-gray-100">{{ fmtTokens(usageData[usagePeriod].total.prompt_tokens) }} <span class="text-[15px] text-gray-400">/ {{ fmtTokens(usageData[usagePeriod].total.cached_tokens) }}</span></div></div>
                             <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3"><div class="text-[11px] uppercase text-gray-500">{{ $t('Output') }}</div><div class="text-lg font-mono text-gray-100">{{ fmtTokens(usageData[usagePeriod].total.completion_tokens) }}</div></div>
                         </div>
-                        <div v-for="group in [['by_project','By project'],['by_role','By role'],['by_model','By model'],['by_skill','By skill (using)'],['skill_drafts','Skill drafting (Save as skill)'],['memory_updates','Memory updates (automatic, per project)']]" v-show="settingsTab === 'usage' && dashView.usage === 'details'" :key="group[0]">
+                        <div v-for="group in [['by_project',$t('By project')],['by_role',$t('By role')],['by_model',$t('By model')],['by_skill',$t('By skill (using)')],['skill_drafts',$t('Skill drafting (Save as skill)')],['memory_updates',$t('Memory updates (automatic, per project)')]]" v-show="settingsTab === 'usage' && dashView.usage === 'details'" :key="group[0]">
                             <h3 class="font-bold text-gray-200 mb-2 text-[15px]">{{ group[1] }}</h3>
                             <div class="overflow-x-auto">
                                 <table class="w-full text-[13px] font-mono">
@@ -2496,13 +2496,13 @@
                                 <p>{{ $t('One row per request: the tier and model, what the Conductor decided, whether it escalated and why, how it ended, steps, calls, cost, time, files and lines changed, commands approved and rejected, and your 👍 / 👎.') }}</p>
                                 <p><span v-html="$t('No message text: the chat keeps that, and the <b>session</b> column links the two. Nothing is sent anywhere; the records are for routing that learns from outcomes later.')"></span></p>
                             </help-tip></h3>
-                            <p class="text-[13px] text-gray-400 mb-3">{{ $t('{v} {v2} recorded', { v: taskStats.count.toLocaleString(), v2: taskStats.count === 1 ? 'request' : 'requests' }) }}<template v-if="taskStats.first"> {{ $t('since {v}', { v: new Date(taskStats.first * 1000).toLocaleDateString() }) }}</template> · 👍 {{ taskStats.thumbs_up }} · 👎 {{ taskStats.thumbs_down }}</p>
+                            <p class="text-[13px] text-gray-400 mb-3">{{ $t('{v} {v2} recorded', { v: taskStats.count.toLocaleString($locale()), v2: taskStats.count === 1 ? 'request' : 'requests' }) }}<template v-if="taskStats.first"> {{ $t('since {v}', { v: new Date(taskStats.first * 1000).toLocaleDateString($locale()) }) }}</template> · 👍 {{ taskStats.thumbs_up }} · 👎 {{ taskStats.thumbs_down }}</p>
                             <div class="flex flex-wrap items-center gap-2 text-[13px]">
                                 <a href="/api/tasks.csv" download :class="['px-3 py-1 rounded-lg border', taskStats.count ? 'border-gray-700 text-gray-200 hover:border-gray-500' : 'border-gray-800 text-gray-600 pointer-events-none']">{{ $t('Download CSV') }}</a>
                                 <template v-if="taskStats.count">
                                     <button v-if="!taskDeleteAsk" @click="taskDeleteAsk = true" class="px-3 py-1 rounded-lg border border-gray-700 text-gray-400 hover:text-red-300 hover:border-red-800">{{ $t('Delete all…') }}</button>
                                     <template v-else>
-                                        <span class="text-gray-400">{{ $t('Delete all {v} records? Chats and usage stay.', { v: taskStats.count.toLocaleString() }) }}</span>
+                                        <span class="text-gray-400">{{ $t('Delete all {v} records? Chats and usage stay.', { v: taskStats.count.toLocaleString($locale()) }) }}</span>
                                         <button @click="deleteTasks" class="px-3 py-1 rounded-lg border border-red-800 text-red-300 hover:border-red-600">{{ $t('Delete') }}</button>
                                         <button @click="taskDeleteAsk = false" class="px-3 py-1 rounded-lg border border-gray-700 text-gray-400 hover:text-gray-200">{{ $t('Keep') }}</button>
                                     </template>
@@ -2661,12 +2661,12 @@
                         <div v-if="settingsTab === 'system' && storageInfo && storageInfo.path">
                             <h3 class="font-bold text-gray-200 text-[15px] mb-1">{{ $t('Storage') }}</h3>
                             <div class="text-xs text-gray-400 font-mono space-y-0.5">
-                                <div>{{ $t('Database: {path} · {v} · {v2} usage rows', { path: storageInfo.path, v: fmtBytes(storageInfo.size_bytes), v2: (storageInfo.usage_rows || 0).toLocaleString() }) }}</div>
-                                <div v-if="storageInfo.latest_backup">{{ $t('Latest backup: {latest_backup} ({v}) · {backups} kept', { latest_backup: storageInfo.latest_backup, v: new Date(storageInfo.latest_backup_time * 1000).toLocaleString(), backups: storageInfo.backups }) }}<span v-if="storageInfo.backup_check && storageInfo.backup_check.ok" class="text-green-400" :title="$t('The last backup passed SQLite\'s quick_check before it replaced anything.')"> {{ $t('· ✓ checked') }}</span> · <button @click="openSettings('backups')" class="text-blue-400 hover:underline font-sans">{{ $t('manage in Backups') }}</button></div>
+                                <div>{{ $t('Database: {path} · {v} · {v2} usage rows', { path: storageInfo.path, v: fmtBytes(storageInfo.size_bytes), v2: (storageInfo.usage_rows || 0).toLocaleString($locale()) }) }}</div>
+                                <div v-if="storageInfo.latest_backup">{{ $t('Latest backup: {latest_backup} ({v}) · {backups} kept', { latest_backup: storageInfo.latest_backup, v: new Date(storageInfo.latest_backup_time * 1000).toLocaleString($locale()), backups: storageInfo.backups }) }}<span v-if="storageInfo.backup_check && storageInfo.backup_check.ok" class="text-green-400" :title="$t('The last backup passed SQLite\'s quick_check before it replaced anything.')"> {{ $t('· ✓ checked') }}</span> · <button @click="openSettings('backups')" class="text-blue-400 hover:underline font-sans">{{ $t('manage in Backups') }}</button></div>
                                 <div v-else class="text-yellow-400">{{ $t('No backup yet; one is made on every server start.') }}</div>
                             </div>
                             <div v-if="storageInfo.backup_check && !storageInfo.backup_check.ok" role="alert" class="mt-2 rounded-lg border border-red-800 bg-red-950/40 p-3 text-[13px] text-red-200">
-                                <span v-html="$th('<b class=&quot;text-red-300&quot;>✕ The last backup failed its check</b> ({v}): <span class=&quot;font-mono&quot;>{error}</span>. It was kept aside as <span class=&quot;font-mono break-all&quot;>{file}</span>, and the older backups were kept. The database itself may be damaged: take a snapshot in Dashboard → Backups, then see <i>Backing up, starting over, moving</i> in the Guide.', { v: new Date(storageInfo.backup_check.time * 1000).toLocaleString(), error: storageInfo.backup_check.error, file: storageInfo.backup_check.file })"></span>
+                                <span v-html="$th('<b class=&quot;text-red-300&quot;>✕ The last backup failed its check</b> ({v}): <span class=&quot;font-mono&quot;>{error}</span>. It was kept aside as <span class=&quot;font-mono break-all&quot;>{file}</span>, and the older backups were kept. The database itself may be damaged: take a snapshot in Dashboard → Backups, then see <i>Backing up, starting over, moving</i> in the Guide.', { v: new Date(storageInfo.backup_check.time * 1000).toLocaleString($locale()), error: storageInfo.backup_check.error, file: storageInfo.backup_check.file })"></span>
                             </div>
                         </div>
                         <div v-if="settingsTab === 'system'">
@@ -2890,7 +2890,7 @@
             <div class="flex-1 overflow-y-auto p-4 space-y-4">
                 <section v-for="(sec, sIdx) in viewer.sections" :key="sIdx">
                     <div class="flex items-center justify-between mb-1.5 text-[11px] font-mono text-gray-500">
-                        <span class="uppercase tracking-wider">{{ $t('{label} · {v} line{v2}', { label: sec.label, v: sec.lines.toLocaleString(), v2: sec.lines === 1 ? '' : 's' }) }}</span>
+                        <span class="uppercase tracking-wider">{{ $t('{label} · {v} line{v2}', { label: sec.label, v: sec.lines.toLocaleString($locale()), v2: sec.lines === 1 ? '' : 's' }) }}</span>
                         <button @click="copyViewerSection(sec)" class="hover:text-gray-200 border border-gray-700 hover:border-gray-500 rounded px-2 py-0.5">{{ sec.copied ? $t('Copied!') : $t('Copy') }}</button>
                     </div>
                     <div v-if="!sec.text" class="text-xs text-gray-600 italic">{{ $t('(empty)') }}</div>
@@ -2982,7 +2982,7 @@
         <div v-if="signinNotice" role="alert" class="fixed top-16 left-1/2 -translate-x-1/2 z-[60] w-[min(28rem,calc(100vw-2rem))] bg-gray-900 border border-yellow-700 rounded-xl p-4 shadow-2xl text-sm">
             <div class="text-yellow-300 font-bold mb-1">{{ $t('New sign-in to Optimux') }}</div>
             <div class="text-gray-200">{{ browserLabel(signinNotice.agent) }} · {{ signinNotice.ip }}</div>
-            <div class="text-[11px] font-mono text-gray-500 mt-0.5">{{ new Date(signinNotice.time * 1000).toLocaleString() }}</div>
+            <div class="text-[11px] font-mono text-gray-500 mt-0.5">{{ new Date(signinNotice.time * 1000).toLocaleString($locale()) }}</div>
             <div class="text-gray-400 text-xs mt-2">{{ $t('If this wasn\'t you, sign out the other browsers and change your password in Dashboard → System.') }}</div>
             <div class="flex gap-3 mt-3 text-xs">
                 <button @click="signOutOthersFromNotice" class="text-red-300 hover:text-red-200">{{ $t('Not me: sign out the others') }}</button>
@@ -3010,7 +3010,7 @@
                 </div>
                 <div class="p-4 space-y-3 border-b border-gray-800">
                     <div class="flex gap-2 text-xs">
-                        <button v-for="o in [['project','This project'],['all','All projects'],['archived','Archived']]" :key="o[0]" @click="historyScope = o[0]; fetchSessions()" :class="['px-3 py-1 rounded-lg border', historyScope === o[0] ? 'bg-blue-600 border-blue-500 text-white' : 'border-gray-700 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
+                        <button v-for="o in [['project',$t('This project')],['all',$t('All projects')],['archived',$t('Archived')]]" :key="o[0]" @click="historyScope = o[0]; fetchSessions()" :class="['px-3 py-1 rounded-lg border', historyScope === o[0] ? 'bg-blue-600 border-blue-500 text-white' : 'border-gray-700 text-gray-400 hover:text-gray-200']">{{ o[1] }}</button>
                     </div>
                     <input v-model="historyQuery" @input="fetchSessions" type="text" :placeholder="$t('Search titles')" class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500">
                 </div>
@@ -3020,7 +3020,7 @@
                         <button @click="openSession(s.id)" class="w-full text-left" :disabled="isGenerating || pendingApproval">
                             <div class="text-sm text-gray-100 truncate">{{ s.title || $t('Untitled chat') }}</div>
                             <div class="text-[11px] font-mono text-gray-500 mt-0.5">
-                                {{ projectLabel(s.project) }}<deleted-tag :at="deletedProjects[s.project] || 0"></deleted-tag> {{ $t('· {v} · {turns} turn{v2} · {v3}{v4}', { v: new Date(s.updated * 1000).toLocaleString(), turns: s.turns, v2: s.turns === 1 ? '' : 's', v3: fmtCost(s.cost), v4: s.calls_without_cost ? '+' : '' }) }}
+                                {{ projectLabel(s.project) }}<deleted-tag :at="deletedProjects[s.project] || 0"></deleted-tag> {{ $t('· {v} · {turns} turn{v2} · {v3}{v4}', { v: new Date(s.updated * 1000).toLocaleString($locale()), turns: s.turns, v2: s.turns === 1 ? '' : 's', v3: fmtCost(s.cost), v4: s.calls_without_cost ? '+' : '' }) }}
                             </div>
                         </button>
                         <div class="flex gap-3 mt-1 text-[11px]">
@@ -3064,7 +3064,7 @@
                     </div>
                     <div v-else-if="msg.role === 'agent' && msg.system_note" class="text-xs text-blue-400 font-mono mb-3 pb-2 border-b border-gray-800 flex items-center gap-2">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
-                        {{ msg.system_note }}
+                        {{ $t(msg.system_note) }}
                     </div>
 
                     <!-- Replies with blocks: text, commands and notes in the order they happened -->
@@ -3083,7 +3083,7 @@
                                     <div class="flex items-start gap-2 min-w-0 flex-1"><span class="text-green-400 font-bold flex-shrink-0">{{ blk.file ? '✎' : '$' }}</span><span class="whitespace-pre-wrap break-all max-h-40 overflow-y-auto min-w-0">{{ blk.file ? blk.command.replace(/^✎ /, '') : blk.command }}</span></div>
                                     <span v-if="blk.auto" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-blue-300 border-blue-900/60 bg-blue-950/40" :title="$t('Ran without asking: the project is ') + (LEVEL_NAMES[blk.auto] || blk.auto) + $t(' (Dashboard → Execution)')">{{ $t('auto · {v}', { v: LEVEL_NAMES[blk.auto] || blk.auto }) }}</span>
                                     <span v-if="blk.hidden" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-green-300 border-green-800 bg-green-950/40" :title="$t('The output had ') + (blk.hidden === 1 ? $t('a key') : $t('{n} keys', { n: blk.hidden })) + $t(' saved in Optimux. Shown as ••••(NAME): the chat, the history and the model never see the value.')">{{ (blk.hidden === 1 ? $t('🔒 1 key hidden') : $t('🔒 {n} keys hidden', { n: blk.hidden })) }}</span>
-                                    <span v-if="blk.cut" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-amber-300 border-amber-900/60 bg-amber-950/40" :title="$t('The output was too long: ') + blk.cut.toLocaleString() + $t(' bytes from its middle were cut, so they don\'t cost tokens at every step. The model was told how to see a part.')">{{ $t('output cut') }}</span>
+                                    <span v-if="blk.cut" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-amber-300 border-amber-900/60 bg-amber-950/40" :title="$t('The output was too long: ') + blk.cut.toLocaleString($locale()) + $t(' bytes from its middle were cut, so they don\'t cost tokens at every step. The model was told how to see a part.')">{{ $t('output cut') }}</span>
                                     <span v-if="blk.exit_code !== undefined" :class="['flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border', blk.exit_code === 0 ? 'text-green-400 border-green-900/60 bg-green-950/40' : 'text-red-400 border-red-900/60 bg-red-950/40']">{{ $t('exit {exit_code}', { exit_code: blk.exit_code }) }}</span>
                                     <span v-else class="flex-shrink-0 whitespace-nowrap text-yellow-400"><span class="animate-pulse">{{ $t('running') }}</span><span v-if="blk.started" class="ml-1.5 font-mono text-gray-400" :title="blk.limit ? $t('Running time / time limit. At the limit Optimux asks whether to keep waiting.') : $t('Running time (no time limit for this command)')">⏱ {{ fmtClock(clockNow - blk.started) }}<template v-if="blk.limit"> / {{ fmtClock(blk.limit * 1000) }}</template></span></span>
                                 </div>
@@ -3157,7 +3157,7 @@
                                     <button @click="blk.open = !blk.open" class="flex items-center gap-2 hover:text-gray-300" :title="blk.open ? $t('Hide the model\'s thinking') : $t('Show the model\'s thinking')">
                                         <span>{{ blk.open ? '▾' : '▸' }}</span>
                                         <span>{{ isGenerating && index === messages.length - 1 && bIdx === msg.blocks.length - 1 ? $t('Thinking…') : $t('Thinking') }}</span>
-                                        <span class="text-gray-600">{{ $t('({v} chars)', { v: blk.text.length.toLocaleString() }) }}</span>
+                                        <span class="text-gray-600">{{ $t('({v} chars)', { v: blk.text.length.toLocaleString($locale()) }) }}</span>
                                     </button>
                                     <button @click="copyThinking(blk)" class="hover:text-gray-300" :title="$t('Copy the thinking')">{{ blk.copied ? $t('Copied!') : $t('Copy') }}</button>
                                 </div>
@@ -3173,7 +3173,7 @@
                                     <div class="flex items-start gap-2 min-w-0 flex-1"><span class="text-green-400 font-bold flex-shrink-0">$</span><span class="whitespace-pre-wrap break-all max-h-40 overflow-y-auto min-w-0">{{ cmdItem.command }}</span></div>
                                     <span v-if="cmdItem.auto" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-blue-300 border-blue-900/60 bg-blue-950/40" :title="$t('Ran without asking: the project is ') + (LEVEL_NAMES[cmdItem.auto] || cmdItem.auto) + $t(' (Dashboard → Execution)')">{{ $t('auto · {v}', { v: LEVEL_NAMES[cmdItem.auto] || cmdItem.auto }) }}</span>
                                     <span v-if="cmdItem.hidden" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-green-300 border-green-800 bg-green-950/40" :title="$t('The output had ') + (cmdItem.hidden === 1 ? $t('a key') : $t('{n} keys', { n: cmdItem.hidden })) + $t(' saved in Optimux. Shown as ••••(NAME): the chat, the history and the model never see the value.')">{{ (cmdItem.hidden === 1 ? $t('🔒 1 key hidden') : $t('🔒 {n} keys hidden', { n: cmdItem.hidden })) }}</span>
-                                    <span v-if="cmdItem.cut" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-amber-300 border-amber-900/60 bg-amber-950/40" :title="$t('The output was too long: ') + cmdItem.cut.toLocaleString() + $t(' bytes from its middle were cut, so they don\'t cost tokens at every step. The model was told how to see a part.')">{{ $t('output cut') }}</span>
+                                    <span v-if="cmdItem.cut" class="flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border text-amber-300 border-amber-900/60 bg-amber-950/40" :title="$t('The output was too long: ') + cmdItem.cut.toLocaleString($locale()) + $t(' bytes from its middle were cut, so they don\'t cost tokens at every step. The model was told how to see a part.')">{{ $t('output cut') }}</span>
                                     <span v-if="cmdItem.exit_code !== undefined" :class="['flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] border', cmdItem.exit_code === 0 ? 'text-green-400 border-green-900/60 bg-green-950/40' : 'text-red-400 border-red-900/60 bg-red-950/40']">{{ $t('exit {exit_code}', { exit_code: cmdItem.exit_code }) }}</span>
                                     <span v-else class="flex-shrink-0 whitespace-nowrap text-yellow-400"><span class="animate-pulse">{{ $t('running') }}</span><span v-if="cmdItem.started" class="ml-1.5 font-mono text-gray-400" :title="cmdItem.limit ? $t('Running time / time limit. At the limit Optimux asks whether to keep waiting.') : $t('Running time (no time limit for this command)')">⏱ {{ fmtClock(clockNow - cmdItem.started) }}<template v-if="cmdItem.limit"> / {{ fmtClock(cmdItem.limit * 1000) }}</template></span></span>
                                 </div>
@@ -3187,7 +3187,7 @@
                             </div>
                             </div>
                         </div>
-                        <div v-if="msg.content" class="prose prose-invert prose-blue max-w-none leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
+                        <div v-if="msg.content" class="prose prose-invert prose-blue max-w-none leading-relaxed" v-html="renderMarkdown(index === 0 && msg.system_note === 'System' ? $t(msg.content) : msg.content)"></div>
                     </template>
 
                     <!-- After an interruption (stop, step limit, budget, error): pick up again -->
@@ -3252,7 +3252,7 @@
             <div v-if="messages.length > 1 && !isGenerating" class="flex justify-center pt-2">
                 <button @click="copySession" class="text-xs font-mono text-gray-400 hover:text-gray-100 bg-gray-900 hover:bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 transition flex items-center gap-2" :title="$t('Copy the whole session as Markdown')">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                    {{ copyLabel }}
+                    {{ $t(copyLabel) }}
                 </button>
             </div>
         </div>
@@ -3322,7 +3322,7 @@
                             <span>{{ $t('⏱ Time limit') }}</span>
                             <select v-model="pendingTimeLimit" :aria-label="$t('Time limit for this command')" class="bg-gray-950 border border-gray-700 rounded px-2 py-1 text-[13px] text-gray-200">
                                 <option value="" class="bg-gray-900">{{ $t('{v} (your setting)', { v: fmtSpan(pendingDefaultLimit) }) }}</option>
-                                <option v-for="o in [[600, '10 min'], [1800, '30 min'], [0, 'No limit']]" :key="o[0]" :value="o[0]" class="bg-gray-900">{{ o[1] }}</option>
+                                <option v-for="o in [[600, $t('10 min')], [1800, $t('30 min')], [0, $t('No limit')]]" :key="o[0]" :value="o[0]" class="bg-gray-900">{{ o[1] }}</option>
                             </select>
                             <span class="text-gray-500">{{ pendingTimeLimit === 0 ? $t('It runs until it ends; Stop ends it at any time.') : $t('At the limit it keeps running and Optimux asks whether to keep waiting.') }}</span>
                         </div>

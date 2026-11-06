@@ -45,10 +45,21 @@
         try { localStorage.setItem(KEY, code); } catch (_) { /* private mode: only for this visit */ }
         return code;
     }
-    let early = 'en';
-    try { early = localStorage.getItem(KEY) || 'en'; } catch (_) { /* no storage */ }
-    if (early !== 'en') setLanguage(early);
+    // The page waits for this before it starts, so texts made at start are translated too
+    // (a browser that hasn't chosen yet asks the server, which knows the saved choice)
+    const ready = (async () => {
+        let code = null;
+        try { code = localStorage.getItem(KEY); } catch (_) { /* no storage */ }
+        if (!code) {
+            try { code = (await (await fetch('/auth/status', { credentials: 'same-origin' })).json()).language; }
+            catch (_) { code = 'en'; }
+        }
+        return code && code !== 'en' ? setLanguage(code) : 'en';
+    })();
 
+    // The locale for dates and numbers: the browser's own in English, else the language's
+    const LOCALES = { it: 'it-IT' };
+    const locale = () => LOCALES[lang.value];
     // A translated text with inline markup (<b>, <code>…), for v-html. The values are
     // escaped, so a project name or path can never inject markup: $th('In <code>{p}</code>', { p }).
     const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -59,7 +70,8 @@
     }
     // tk marks a text kept as data and translated where it is shown ($t(item.label))
     const tk = (text) => text;
-    window.OptimuxI18n = { LANGS, lang, tr, trh, setLanguage };
+    window.OptimuxI18n = { LANGS, lang, tr, trh, setLanguage, locale, ready };
+    window.appLocale = locale;
     window.tr = tr;
     window.trh = trh;
     window.tk = tk;
