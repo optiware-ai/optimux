@@ -280,3 +280,17 @@ body.cm-resizing iframe { pointer-events: none; }
 .cm-dev-bad { border-color: #b91c1c; }
 /* v0.8: a Performance card loading another project keeps its old view, dimmed */
 .cm-pf-loading { opacity: .55; transition: opacity .15s ease; }
+
+/* v0.8: the language flag at the top of the page and its menu */
+.cm-flag { display: block; width: 20px; height: 14px; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .15); flex-shrink: 0; }
+.cm-lang { position: relative; display: inline-flex; flex-shrink: 0; }
+.cm-lang-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; transition: background-color .12s; }
+.cm-lang-btn:hover, .cm-lang-btn[aria-expanded="true"] { background: #1f2937; }
+.cm-lang-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, .5); }
+.cm-lang-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 10rem; padding: 4px; background: #111827;
+  border: 1px solid #2b3646; border-radius: 12px; box-shadow: 0 18px 44px rgba(0, 0, 0, .6); animation: cm-pick-in .12s ease-out; transform-origin: top right; }
+.cm-lang-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 10px; border-radius: 8px; color: #d1d5db; font-size: 13px; text-align: left; }
+.cm-lang-item:hover, .cm-lang-item:focus-visible { background: #1f2937; color: #f3f4f6; outline: none; }
+.cm-lang-on { color: #93c5fd; }
+.cm-lang-check { margin-left: auto; color: #60a5fa; }
+.cm-lang-row { display: inline-flex; align-items: center; gap: 8px; }

@@ -24,18 +24,41 @@
     };
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 
+    // v0.8: the page's language: the server's choice, else this browser's last one.
+    // Texts are English in the page (elements marked data-i18n) and in the tr calls below;
+    // web/i18n/<code>.json maps them to the translation.
+    let messages = {};
+    const tr = (text) => messages[text] || text;
+    const norm = (html) => html.replace(/\s+/g, ' ').trim();
+    async function translate(code) {
+        if (!code || code === 'en') return;
+        try {
+            const res = await fetch('/static/i18n/' + code + '.json');
+            if (!res.ok) return;
+            messages = await res.json();
+        } catch (_) { return; }
+        document.documentElement.lang = code;
+        for (const el of document.querySelectorAll('[data-i18n]')) {
+            const out = messages[norm(el.innerHTML)];
+            if (out) el.innerHTML = out;     // our own file, same origin: never user text
+        }
+    }
+    let early = 'en';
+    try { early = localStorage.getItem('optimux.lang') || 'en'; } catch (_) { /* no storage */ }
+
     async function init() {
         let st;
         try { st = await (await fetch('/auth/status', { credentials: 'same-origin' })).json(); }
-        catch (_) { $('subtitle').textContent = 'The server is not reachable.'; return; }
+        catch (_) { await translate(early); $('subtitle').textContent = tr('The server is not reachable.'); return; }
+        await translate(st.language || early);
         if (st.signed_in) { location.replace(next()); return; }
         show($('http-warning'), location.protocol !== 'https:' && !local);
         if (st.setup_needed) {
-            $('subtitle').textContent = 'Set up your password';
+            $('subtitle').textContent = tr('Set up your password');
             show($('setup-form'), true);
             $('setup-token').focus();
         } else {
-            $('subtitle').textContent = 'Sign in';
+            $('subtitle').textContent = tr('Sign in');
             show($('login-form'), true);
             show($('code-row'), !!st.totp);
             $('login-password').focus();
@@ -45,10 +68,10 @@
     $('setup-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         show($('error'), false);
-        if ($('setup-password').value !== $('setup-password2').value) { fail('The two passwords differ.'); return; }
+        if ($('setup-password').value !== $('setup-password2').value) { fail(tr('The two passwords differ.')); return; }
         const { res, data } = await post('/auth/setup', { token: $('setup-token').value.trim(), password: $('setup-password').value });
         if (res.ok) location.replace(next());
-        else fail(data.detail || 'Setup failed.');
+        else fail(data.detail || tr('Setup failed.'));
     });
 
     $('login-form').addEventListener('submit', async (e) => {
@@ -59,10 +82,10 @@
         if (data.need_code) {
             show($('code-row'), true);
             $('login-code').focus();
-            fail('Enter the 6-digit code from your authenticator app.');
+            fail(tr('Enter the 6-digit code from your authenticator app.'));
             return;
         }
-        fail(data.detail || 'Sign-in failed.');
+        fail(data.detail || tr('Sign-in failed.'));
         $('login-code').value = '';
     });
 

@@ -159,6 +159,29 @@ class SettingsPayload(BaseModel):
     plan_mode: str = "off"
     # v0.8: before a new Complex task, the Simple model reads the project and writes a brief
     scout: bool = True
+    # v0.8: the language of the page (LANGUAGES); saved only through POST /api/language
+    language: str = "en"
+
+
+# v0.8: the page's languages (web/i18n/<code>.json holds the translations; English is the source)
+LANGUAGES = ("en", "it")
+
+
+def language() -> str:
+    """The page's language, a code from LANGUAGES ("en" when unset or unknown)."""
+    code = _read_settings().get("language") or "en"
+    return code if code in LANGUAGES else "en"
+
+
+def set_language(code: str) -> str:
+    if code not in LANGUAGES:
+        raise ValidationError(f"Unknown language: {code}. Choose one of {', '.join(LANGUAGES)}.")
+    data = _read_settings()
+    data["language"] = code
+    os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+    return code
 
 
 DEFAULT_MAX_STEPS = {"simple": 8, "complex": 25}

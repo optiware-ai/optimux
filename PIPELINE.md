@@ -21,7 +21,7 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 ├── .github/ISSUE_TEMPLATE/      (bug report and feature request forms; config.yml links Q&A, Ideas and private security reporting)
 ├── index.html                   (Vue 3 SPA page and templates)
 ├── index.html_AGENT.md
-├── web/                         (app.js, boot.js, login page, styles, logo.svg, preview-pick.js (the Studio preview's picker, inlined into previewed pages), pinned libraries in vendor/)
+├── web/                         (app.js, boot.js, i18n.js and i18n/<code>.json (the page's languages), login page, styles, logo.svg, preview-pick.js (the Studio preview's picker, inlined into previewed pages), pinned libraries in vendor/)
 ├── deploy/                      (server kit: systemd unit, Caddyfile, env example, AppArmor profile)
 ├── install.sh                   (one-line installer, local or server; library of the optimux command)
 ├── install.sh_AGENT.md
@@ -138,6 +138,7 @@ If you create a new module, you must scaffold its `_AGENT.md` file alongside it 
 ## 4. Optimux Style Guide
 - **Backend:** Python 3.10+ using `FastAPI`. All shell executions must go through `executor.py` asynchronously. State must never be saved to the active Git directory: every file Optimux keeps lives under `~/.optimux` (`OPTIMUX_HOME`), with its location taken from `paths.py`. Secrets go only in `~/.optimux/secrets.env`.
 - **Frontend:** Vue 3 (pinned copy in `web/vendor/`), styled with TailwindCSS compiled to `web/app.css` by `scripts/build-css.sh`. No bundler (Vite/Webpack). Templates live in `index.html`, logic in `web/app.js`. No inline scripts or styles and no CDNs: the Content Security Policy forbids them. The one exception (v0.8): the Studio's code editor adds `<style>` elements carrying the page's per-load style nonce.
+- **Languages (v0.8):** every text a user sees is written in English and marked: `$t('…')` in templates (`$th('…', vars)` for text with inline markup, through `v-html`; its values are escaped), `tr('…')` in scripts, `tk('…')` for texts kept as data and translated where shown. Each other language is `web/i18n/<code>.json` (English text → translation). `tests/test_i18n.py` fails when a marked text has no translation, so add the Italian with the English. Instructions sent to models stay in English.
 
 ## 5. Feature Documentation (TODOs)
 For every major feature implementation, the process is documented in a local `todos/` directory (git-ignored: it is the maintainer's working notes and isn't published) using three sequential files:

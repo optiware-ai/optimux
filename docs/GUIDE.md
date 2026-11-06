@@ -122,6 +122,10 @@ The first time you open Optimux, the sign-in page asks for this token **once**, 
 
 The token stays useful for scripts: they can call the API with the header `Authorization: Bearer <token>`. You can always find it in `~/.optimux/secrets.env` and replace it in **Dashboard → System**.
 
+### Language
+
+Optimux speaks **English** and **Italian**. Click the **flag** at the top right of any page (or open **Dashboard → System → Language**) and pick one. The choice is saved on the server, so every browser, and the sign-in page, uses it. It changes the pages, menus, buttons and tooltips; the instructions sent to the models stay in English (that keeps their behaviour and cost the same), and the models answer in the language you write in.
+
 ### First-time setup (5 minutes)
 
 A new install shows a **Getting started** card in the chat with these same steps. Each step ticks itself when it's really done, and **Go →** opens the right page; **–** makes the card small, **Don't show again** hides it, and it always stays in **Dashboard → Getting started** (under Help, with **Show in the chat** to bring it back). An install that already had requests before this card existed doesn't get the pop-up, only that list. The card never calls a model. Under each step, a short line says what Optimux found (for example *2 models ready.* or *Active: notes-api.*), green when the step is done.

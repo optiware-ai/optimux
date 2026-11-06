@@ -608,6 +608,65 @@ const ScatterPlot = {
 // v0.8: a chart's own filter. The button keeps one size whatever is chosen (a long
 // name is cut, the whole name in its tooltip), and the list opens over the page with
 // rounded corners, the app's scrollbar, a filter box when it is long, and the keyboard.
+// v0.8: a language's flag, drawn (emoji flags don't show on every system)
+let langFlagSeq = 0;
+const LangFlag = {
+    props: { code: { type: String, default: 'en' } },
+    data: () => ({ uid: 'cm-flag-' + (++langFlagSeq) }),
+    template: `<svg class="cm-flag" viewBox="0 0 60 40" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <template v-if="code === 'it'">
+            <rect width="20" height="40" fill="#009246"/><rect x="20" width="20" height="40" fill="#fff"/><rect x="40" width="20" height="40" fill="#ce2b37"/>
+        </template>
+        <template v-else>
+            <clipPath :id="uid"><path d="M30,20 h30 v20 z v20 h-30 z h-30 v-20 z v-20 h30 z"/></clipPath>
+            <rect width="60" height="40" fill="#012169"/>
+            <path d="M0,0 L60,40 M60,0 L0,40" stroke="#fff" stroke-width="8"/>
+            <path d="M0,0 L60,40 M60,0 L0,40" :clip-path="'url(#' + uid + ')'" stroke="#c8102e" stroke-width="5"/>
+            <path d="M30,0 v40 M0,20 h60" stroke="#fff" stroke-width="12"/>
+            <path d="M30,0 v40 M0,20 h60" stroke="#c8102e" stroke-width="7"/>
+        </template>
+    </svg>`,
+};
+// v0.8: the flag at the top of the page; a click opens the languages. The choice is
+// saved on the server (POST /api/language), so it follows you to every browser.
+async function chooseLanguage(code) {
+    const prev = window.OptimuxI18n.lang.value;
+    await window.OptimuxI18n.setLanguage(code);
+    try {
+        const r = await fetch('/api/language', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: code }) });
+        if (!r.ok) throw new Error((await r.json()).detail || 'Not saved');
+    } catch (e) {
+        console.error('Language not saved', e);
+        await window.OptimuxI18n.setLanguage(prev);
+    }
+}
+const LangBadge = {
+    data: () => ({ open: false, langs: window.OptimuxI18n.LANGS }),
+    computed: {
+        code() { return window.OptimuxI18n.lang.value; },
+        name() { return (this.langs.find(l => l.code === this.code) || this.langs[0]).name; },
+    },
+    methods: {
+        toggle() { this.open ? this.close() : this.show(); },
+        show() { this.open = true; document.addEventListener('mousedown', this.outside, true); document.addEventListener('keydown', this.onKey, true); },
+        close() { this.open = false; document.removeEventListener('mousedown', this.outside, true); document.removeEventListener('keydown', this.onKey, true); },
+        outside(e) { if (!this.$el.contains(e.target)) this.close(); },
+        onKey(e) { if (e.key === 'Escape') { this.close(); this.$refs.button && this.$refs.button.focus(); } },
+        async pick(code) { this.close(); if (code !== this.code) await chooseLanguage(code); },
+    },
+    beforeUnmount() { this.close(); },
+    template: `<span class="cm-lang">
+        <button ref="button" type="button" class="cm-lang-btn" @click="toggle" :aria-expanded="open ? 'true' : 'false'" aria-haspopup="menu"
+                :aria-label="$t('Language: {name}', { name })" :title="$t('Language: {name}', { name })"><lang-flag :code="code"></lang-flag></button>
+        <div v-if="open" class="cm-lang-menu" role="menu">
+            <button v-for="l in langs" :key="l.code" type="button" role="menuitemradio" :aria-checked="l.code === code ? 'true' : 'false'"
+                    :class="['cm-lang-item', l.code === code ? 'cm-lang-on' : '']" @click="pick(l.code)">
+                <lang-flag :code="l.code"></lang-flag><span>{{ l.name }}</span><span class="cm-lang-check" aria-hidden="true">{{ l.code === code ? '✓' : '' }}</span>
+            </button>
+        </div>
+    </span>`,
+};
+
 let chartPickSeq = 0;
 const ChartPick = {
     props: { modelValue: String, options: { type: Array, default: () => [] }, label: String, all: { type: String, default: 'All projects' } },
@@ -1105,7 +1164,8 @@ createApp({
                 routingConfig.value = await routingResponse.json();
 
                 const settingsResponse = await fetch('/api/settings');
-                appSettings.value = { max_steps_simple: 8, max_steps_complex: 25, memory_curator: true, curator_idle_minutes: 10, skills_mode: 'auto', confirm_update_memory: true, confirm_escalate: true, sandbox: false, sandbox_network: true, sandbox_ro_paths: [], command_env: [], limit_memory_mb: 0, limit_file_mb: 1024, limit_processes: 0, command_timeout: 120, ...(await settingsResponse.json()) };
+                appSettings.value = { language: 'en', max_steps_simple: 8, max_steps_complex: 25, memory_curator: true, curator_idle_minutes: 10, skills_mode: 'auto', confirm_update_memory: true, confirm_escalate: true, sandbox: false, sandbox_network: true, sandbox_ro_paths: [], command_env: [], limit_memory_mb: 0, limit_file_mb: 1024, limit_processes: 0, command_timeout: 120, ...(await settingsResponse.json()) };
+                if (appSettings.value.language !== window.OptimuxI18n.lang.value) window.OptimuxI18n.setLanguage(appSettings.value.language);
                 fetchProjectUsage();
                 fetchSkills();   // for /name suggestions in the chat input
 
@@ -3235,26 +3295,30 @@ createApp({
 
         // ---- Dashboard navigation: each section has an address (#/dashboard/<id>)
         const dashboardSections = [
-            { id: 'overview', label: 'Overview', icon: '◎', group: 'Activity', hint: 'Spending, budgets, models and recent chats at a glance.' },
-            { id: 'usage', label: 'Usage', icon: '▤', group: 'Activity', hint: 'Tokens, cost and time per project, role and model.' },
-            { id: 'performance', label: 'Performance', icon: '◔', group: 'Activity', hint: 'Cost, speed and reliability of every model, per project: which model gives you the most for your money.' },
-            { id: 'budgets', label: 'Budgets', icon: '$', group: 'Activity', hint: 'Monthly spending limits per project.' },
-            { id: 'projects', label: 'Projects', icon: '▦', group: 'Activity', hint: 'Cost, budget, chats and memory per project.' },
-            { id: 'history', label: 'History', icon: '◷', group: 'Activity', hint: 'Every stored chat; open one to continue it.' },
-            { id: 'project', label: 'Project', icon: '◫', group: 'Configuration', hint: 'Every setting of one project in one place: autonomy, budget, planning, memory, execution and GitHub.' },
-            { id: 'routing', label: 'Routing', icon: '⇄', group: 'Configuration', hint: 'Which model handles which tier.' },
-            { id: 'models', label: 'Models', icon: '◆', group: 'Configuration', hint: 'Providers, keys, prices and thinking.' },
-            { id: 'memory', label: 'Memory', icon: '✎', group: 'Configuration', hint: 'What every model is told about you and your work.' },
-            { id: 'skills', label: 'Skills', icon: '✦', group: 'Configuration', hint: 'Reusable instructions loaded only when a task needs them.' },
-            { id: 'execution', label: 'Execution', icon: '›', group: 'Configuration', hint: 'Command approval and how many steps a request may take.' },
-            { id: 'github', label: 'GitHub', icon: '⑂', group: 'Configuration', hint: 'A token so Optimux can create GitHub repositories for new projects, and who commits.' },
-            { id: 'scope', label: 'Scope', icon: '▣', group: 'Configuration', hint: 'The Workspace folder: the folder that holds your projects.' },
-            { id: 'backups', label: 'Backups', icon: '⧉', group: 'Configuration', hint: 'Snapshots of your data and projects, kept on this machine.' },
-            { id: 'system', label: 'System', icon: '≡', group: 'Configuration', hint: 'Files, storage, backups, access token and model cooldowns.' },
-            { id: 'start', label: 'Getting started', icon: '✓', group: 'Help', hint: 'The setup steps in order; each one ticks itself when it is done.' },
-            { id: 'guide', label: 'Guide', icon: '?', group: 'Help', hint: 'Everything about Optimux: getting started, routing, memory, skills, costs, and how to spend less.' },
+            { id: 'overview', label: tk('Overview'), icon: '◎', group: tk('Activity'), hint: tk('Spending, budgets, models and recent chats at a glance.') },
+            { id: 'usage', label: tk('Usage'), icon: '▤', group: tk('Activity'), hint: tk('Tokens, cost and time per project, role and model.') },
+            { id: 'performance', label: tk('Performance'), icon: '◔', group: tk('Activity'), hint: tk('Cost, speed and reliability of every model, per project: which model gives you the most for your money.') },
+            { id: 'budgets', label: tk('Budgets'), icon: '$', group: tk('Activity'), hint: tk('Monthly spending limits per project.') },
+            { id: 'projects', label: tk('Projects'), icon: '▦', group: tk('Activity'), hint: tk('Cost, budget, chats and memory per project.') },
+            { id: 'history', label: tk('History'), icon: '◷', group: tk('Activity'), hint: tk('Every stored chat; open one to continue it.') },
+            { id: 'project', label: tk('Project'), icon: '◫', group: tk('Configuration'), hint: tk('Every setting of one project in one place: autonomy, budget, planning, memory, execution and GitHub.') },
+            { id: 'routing', label: tk('Routing'), icon: '⇄', group: tk('Configuration'), hint: tk('Which model handles which tier.') },
+            { id: 'models', label: tk('Models'), icon: '◆', group: tk('Configuration'), hint: tk('Providers, keys, prices and thinking.') },
+            { id: 'memory', label: tk('Memory'), icon: '✎', group: tk('Configuration'), hint: tk('What every model is told about you and your work.') },
+            { id: 'skills', label: tk('Skills'), icon: '✦', group: tk('Configuration'), hint: tk('Reusable instructions loaded only when a task needs them.') },
+            { id: 'execution', label: tk('Execution'), icon: '›', group: tk('Configuration'), hint: tk('Command approval and how many steps a request may take.') },
+            { id: 'github', label: tk('GitHub'), icon: '⑂', group: tk('Configuration'), hint: tk('A token so Optimux can create GitHub repositories for new projects, and who commits.') },
+            { id: 'scope', label: tk('Scope'), icon: '▣', group: tk('Configuration'), hint: tk('The Workspace folder: the folder that holds your projects.') },
+            { id: 'backups', label: tk('Backups'), icon: '⧉', group: tk('Configuration'), hint: tk('Snapshots of your data and projects, kept on this machine.') },
+            { id: 'system', label: tk('System'), icon: '≡', group: tk('Configuration'), hint: tk('Files, storage, backups, access token and model cooldowns.') },
+            { id: 'start', label: tk('Getting started'), icon: '✓', group: tk('Help'), hint: tk('The setup steps in order; each one ticks itself when it is done.') },
+            { id: 'guide', label: tk('Guide'), icon: '?', group: tk('Help'), hint: tk('Everything about Optimux: getting started, routing, memory, skills, costs, and how to spend less.') },
         ];
         const dashboardGroups = [...new Set(dashboardSections.map(x => x.group))];
+        // v0.8: the page's language (Dashboard -> System, and the flag at the top)
+        const langs = window.OptimuxI18n.LANGS;
+        const uiLang = Vue.computed(() => window.OptimuxI18n.lang.value);
+        const pickLanguage = (code) => chooseLanguage(code);
 
         // ---- Feature 20: the Guide (docs/GUIDE.md, rendered with a contents list and search)
         const guide = ref({ html: '', toc: [], chunks: [], error: '' });
@@ -5653,12 +5717,15 @@ createApp({
             guide, guideQuery, guideActive, guideResults, goGuide, onDashScroll, loadGuide,
             sandboxInfo, sandboxPathsText, fetchSandbox, saveSandboxPaths, pendingSandboxed, toggleSandbox,
             pendingSandboxProblem, sandboxProblem,
+            langs, uiLang, pickLanguage,
             projectLabel, viewer, viewerLanguages, openCmdViewer, onChatClick, closeViewer, rehighlightViewer, copyViewerSection
         };
     }
 }).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).component('onboard-steps', OnboardSteps)
   .component('day-columns', DayColumns).component('tree-map', Treemap).component('connected-dots', ConnectedScatter)
-  .component('scatter-plot', ScatterPlot).component('chart-pick', ChartPick).mount('#app');
+  .component('scatter-plot', ScatterPlot).component('chart-pick', ChartPick)
+  .component('lang-flag', LangFlag).component('lang-badge', LangBadge)
+  .use({ install(app) { app.config.globalProperties.$t = window.tr; app.config.globalProperties.$th = window.trh; } }).mount('#app');
 
 // v0.8: the app's own tooltips instead of the browser's. Any element with a
 // title shows it in a themed box after a short hover, or at once when reached

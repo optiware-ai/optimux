@@ -58,3 +58,5 @@
 
 ## update_model (v0.8, OmniLatch p134)
 - `update_model(old_id, payload)`: every field of a configured model, its ID too. A new ID can't be another model's. The old entry is removed, `save_model` checks and saves the new one (thinking and instructions kept unless given; an emptied price removed); a renamed model keeps its place in models.json. Anything refused restores models.json as it was. A new ID moves Routing's roles and the projects' own models (`project_settings.rename_model`). Returns `{renamed, roles, projects}`.
+
+- **Languages (v0.8):** `LANGUAGES = ("en", "it")` (must match `web/i18n.js`), `language()` (the saved code, "en" when unset or unknown) and `set_language(code)` (`ValidationError` for an unknown code). `language` is in `SettingsPayload`, but only `POST /api/language` changes it: `save_app_settings` copies the stored value back, so a page with stale settings can't undo it.

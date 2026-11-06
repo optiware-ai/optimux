@@ -30,6 +30,7 @@ from optimux_backend.core.config_manager import (
     litellm_key_kwargs, max_steps_for, thinking_kwargs, set_thinking, _read_settings, GITHUB_FIELDS,
     set_github_fields, update_settings, PLAN_MODES, command_timeout_for, backups_keep_for, BACKUPS_KEEP_RANGE,
 )
+from optimux_backend.core import config_manager
 from optimux_backend.core.executor import run_shell_command, get_active_cwd
 from optimux_backend.core import executor as executor_lib
 import litellm
@@ -1713,7 +1714,8 @@ async def favicon():
 async def auth_status(request: Request):
     return {"setup_needed": not auth.password_set(), "totp": auth.totp_enabled(),
             "signed_in": bool(auth.check_session(request.cookies.get(auth.COOKIE))),
-            "server_mode": auth.server_mode(), "https": is_https(request)}
+            "server_mode": auth.server_mode(), "https": is_https(request),
+            "language": config_manager.language()}       # v0.8: the sign-in page's language
 
 
 @app.post("/auth/setup")
@@ -2073,6 +2075,7 @@ async def save_app_settings(payload: SettingsPayload):
     stored = _read_settings()
     for field in GITHUB_FIELDS:
         setattr(payload, field, stored.get(field, "") or "")
+    payload.language = config_manager.language()               # set only through /api/language
     asked = payload.active_project
     save_settings(payload)
     onboarding.note_settings_change(stored, get_settings())     # memory, plan mode, skills chosen
@@ -2081,6 +2084,19 @@ async def save_app_settings(payload: SettingsPayload):
         return {"status": "success", "active_project": "",
                 "note": f"{asked} isn't in the new Workspace folder, so no project is selected now."}
     return {"status": "success", "active_project": payload.active_project}
+
+class LanguagePayload(BaseModel):
+    language: str
+
+
+@app.post("/api/language")
+async def save_language(payload: LanguagePayload):
+    """v0.8: the page's language (Dashboard -> System, or the flag at the top)."""
+    try:
+        return {"language": config_manager.set_language(payload.language)}
+    except config_manager.ValidationError as e:
+        raise HTTPException(422, str(e))
+
 
 class OnboardingPayload(BaseModel):
     action: str
