@@ -199,8 +199,8 @@ NETWORK_ERRORS = re.compile(
     r"unable to resolve host|ENETUNREACH|Resolving timed out|failed: Temporary failure", re.IGNORECASE)
 NETWORK_HINT = ("[Optimux sandbox: commands have no network here, so downloads, installs (pip, npm, apt) "
                 "and git fetch, pull or push from a command fail. Don't retry them. Tell the user: they can turn "
-                "the network on in Dashboard → Execution → Sandbox, run the command themselves, or use Push and "
-                "Update on the project for git.]")
+                "the network on in Dashboard → Execution → Sandbox, or run the command themselves. For git, call "
+                "project_status, push_project or update_project instead: Optimux runs those itself.]")
 
 
 def network_hint(output: str, exit_code: int, sandboxed: bool, network: bool) -> str:

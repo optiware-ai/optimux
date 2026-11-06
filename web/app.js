@@ -1591,21 +1591,39 @@ const optimuxApp = createApp({
         };
         // ---- Push / Update from GitHub (v0.4-5t): prepare (nothing changes), then run on confirm
         const syncBox = Vue.reactive({ open: false, kind: '', project: '', loading: false, data: null, error: '',
-            message: '', confirmed: false, busy: false, writing: false, writeNote: '', result: null });
+            message: '', confirmed: false, busy: false, writing: false, writeNote: '', result: null,
+            tool: false });   // v0.8: opened by the model (push_project / update_project); the chat waits for it
         const chatProject = Vue.computed(() => (currentSession.value && currentSession.value.project) || appSettings.value.active_project || '');
-        const openSync = async (project, kind) => {
+        const openSync = async (project, kind, fromTool = null) => {
+            if (syncBox.tool && !fromTool) answerSyncTool(false);   // the button replaces a window the model opened
             Object.assign(syncBox, { open: true, kind, project, loading: true, data: null, error: '', message: '',
-                confirmed: false, busy: false, writing: false, writeNote: '', result: null });
+                confirmed: false, busy: false, writing: false, writeNote: '', result: null, tool: !!fromTool });
             try {
                 const r = await fetch(`/api/projects/${encodeURIComponent(project)}/${kind}`);
                 const d = await r.json();
                 if (!syncBox.open || syncBox.project !== project) return;
                 if (!r.ok) syncBox.error = d.detail || tr('Could not read the project.');
-                else { syncBox.data = d; if (kind === 'push') syncBox.message = d.default_message || ''; }
+                else { syncBox.data = d; if (kind === 'push') syncBox.message = (fromTool && fromTool.message) || d.default_message || ''; }
             } catch (_) { syncBox.error = tr('Could not reach Optimux.'); }
             syncBox.loading = false;
         };
-        const closeSync = () => { if (!syncBox.busy) syncBox.open = false; };
+        // The model's request waits for this window: a push or update done = yes (with what
+        // happened), closed without one = no. Answered once.
+        const answerSyncTool = (done) => {
+            if (!syncBox.tool) return;
+            syncBox.tool = false;
+            if (!pendingApproval.value || pendingAction.value !== 'push_project' && pendingAction.value !== 'update_project') return;
+            const result = done && syncBox.result ? syncBox.result : null;
+            ws.value.send(JSON.stringify(result ? { type: 'approval_response', approved: true, result }
+                                                : { type: 'approval_response', approved: false }));
+            pendingApproval.value = false;
+            pendingCommand.value = ''; pendingAction.value = '';
+        };
+        const closeSync = () => {
+            if (syncBox.busy) return;
+            syncBox.open = false;
+            answerSyncTool(false);
+        };
         const syncReady = Vue.computed(() => {
             const d = syncBox.data;
             if (!d || d.problems.length) return false;
@@ -1631,6 +1649,7 @@ const optimuxApp = createApp({
                 : { sha: syncBox.data.sha };
             try {
                 syncBox.result = await postJson(`/api/projects/${encodeURIComponent(syncBox.project)}/${syncBox.kind}`, body);
+                answerSyncTool(true);
                 pushToast(syncBox.kind === 'push'
                     ? { title: tr('Pushed · {project}', { project: syncBox.project }), text: `${syncBox.result.branch} · ${syncBox.result.commit}`, link: syncBox.result.url || '', linkLabel: tr('Open on GitHub') }
                     : { title: tr('Updated · {project}', { project: syncBox.project }), text: tr('{commits} new commit{v}', { commits: syncBox.result.commits, v: syncBox.result.commits === 1 ? '' : 's' }) });
@@ -5246,6 +5265,7 @@ const optimuxApp = createApp({
                     pendingRaiseTo.value = data.raise_to || '';
                     pendingForm.value = data.form ? { form: data.form, error: data.error || '', github: data.github || {},
                                                       active_project: data.active_project || '', key: ++formSeq } : null;
+                    if (data.sync && !replay) openSync(data.sync.project, data.sync.kind, data.sync);   // v0.8: push_project / update_project
                     pendingCommand.value = data.command;
                     rejectReason.value = '';
                     pendingApproval.value = true;

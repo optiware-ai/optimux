@@ -16,6 +16,7 @@ GitHub, with gh as the credential helper (never in a URL or a git config).
 run_* re-checks what prepare_* showed (the files' tree, the upstream commit),
 so a confirmation never applies to something else.
 """
+import json
 import os
 import re
 import tempfile
@@ -85,6 +86,39 @@ def _ok(r: dict) -> str:
 def _github_url(remote: str) -> str | None:
     m = _GITHUB_REMOTE.match(remote or "")
     return f"https://github.com/{m.group(1)}/{m.group(2)}" if m else None
+
+
+# v0.8: where each project last pushed from Optimux. A command the model runs can
+# change origin (git remote set-url); Push then warns before sending the code there.
+REMOTES_FILE = os.path.join(paths.CONFIG_DIR, "git_remotes.json")
+
+
+def _known_remotes() -> dict:
+    try:
+        with open(REMOTES_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def remember_remote(name: str, remote: str) -> None:
+    data = _known_remotes()
+    if data.get(name) == remote:
+        return
+    data[name] = remote
+    os.makedirs(os.path.dirname(REMOTES_FILE), exist_ok=True)
+    tmp = REMOTES_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=1, sort_keys=True)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, REMOTES_FILE)
+
+
+def changed_remote(name: str, remote: str | None) -> str | None:
+    """The remote of the last push from Optimux when origin points elsewhere now."""
+    before = _known_remotes().get(name)
+    return before if before and remote and before != remote else None
 
 
 def _basics(name: str, path: str, fetch: bool) -> dict:
@@ -314,6 +348,11 @@ def push_prepare(name: str) -> dict:
     problems, warnings = _scan(path, out["files"])
     out["problems"] += problems
     out["warnings"] += warnings
+    before = changed_remote(name, out["remote"])
+    if before:
+        out["warnings"].insert(0, tr("origin changed since the last push from Optimux: it was {before}, now it is "
+                                     "{now}. Check that this is where this code should go.",
+                                     before=security.mask_secrets(before)[0], now=security.mask_secrets(out["remote"])[0]))
     if out["fetch_error"]:
         out["warnings"].append("Couldn't check GitHub for new commits: " + out["fetch_error"].splitlines()[-1])
     if out["behind"]:
@@ -363,6 +402,7 @@ def push_run(name: str, message: str, tree: str | None, confirmed: bool) -> dict
         if not p["ok"]:
             note = " The commit was made here; Push again sends it." if prep["files"] else ""
             raise GitSyncError(tr("GitHub refused the push: {v}{note}", v=p["output"][-500:], note=note))
+        remember_remote(name, prep["remote"])
         return {"ok": True, "project": name, "commit": commit, "branch": prep["target"],
                 "files": len(prep["files"]) + prep["more"], "commits": prep["ahead"] + (1 if prep["files"] else 0),
                 "url": f"{prep['github']}/commit/{full}" if prep["github"] and full else None}

@@ -324,6 +324,8 @@ The model has dedicated project actions; it never uses shell commands (`mkdir`, 
 - **create** a project, through the form above, from the Workspace or from inside another project;
 - **switch** to a project (doesn't change anything on disk, so it doesn't ask);
 - **archive** a project, from the Workspace: its folder moves to `<Workspace folder>/.archive/`; its chats, costs and memory are kept. Archiving always asks for your approval.
+- **check the git state** of the open project (**project_status**): Optimux itself runs `git fetch`, `git status` and the last commits, with the network, and shows them in the reply like a command. It asks nothing, since it changes no file. The model is told to call it before saying anything about commits or pushes, instead of guessing or repeating an older state.
+- **push** or **update** the open project (**push_project**, **update_project**): the same **Push…** and **Update…** windows as the buttons open in front of the chat, with the model's commit message filled in. Nothing is sent until you confirm there, at every autonomy level; closing the window means no, and the model is told what you did. A `git push` the model runs as a command fails anyway: commands have no network or GitHub sign-in.
 
 Projects are **never deleted from the chat**: the model can archive, but it can't restore or delete. Those are buttons in Dashboard → Projects (see below), so a manipulated model can never destroy a project.
 
@@ -342,7 +344,7 @@ The token is kept in `secrets.env` with the other keys, and only the two steps t
 
 ### Push and Update from GitHub
 
-On each project's card in **Dashboard → Projects**, **Push…** and **Update…** do the git work for you, after you check it. Under a reply that changed files, the *Files changed* box has a **Push…** link too. The model never gets these: only your click pushes.
+On each project's card in **Dashboard → Projects**, **Push…** and **Update…** do the git work for you, after you check it. Under a reply that changed files, the *Files changed* box has a **Push…** link too, and the model can open the same windows when you ask it to push (see *Managing projects from the chat*). Either way only your click pushes.
 
 **Push…** opens a window that shows, before anything changes: the branch and repository it pushes to (a copy uses its own branch, see below), every file it will commit with its +/− counts (a deleted or halved file in red), and a box for the commit message. **✨ Write it** asks the Simple model to write the message (its cost is counted in the header like any other call): it reads the project's commit template if there is one (`commit-template.txt`, `.gitmessage`, or git's `commit.template` inside the project), the last few commit titles and the changes, and fills the box. It's one small paid call, shown with its cost, and you can edit the result. **Commit and push** then commits everything shown (`git add -A`) and pushes. It stops, with the reason, when:
 
@@ -351,7 +353,7 @@ On each project's card in **Dashboard → Projects**, **Push…** and **Update�
 - Git has **no name and email** to commit with (Dashboard → GitHub).
 - A **request is running** in the project, or the files changed after the window opened (open it again).
 
-Files named like secrets (`.env`, `*.pem`) and files over 50 MB are warnings: you tick "I checked the warnings" to go on.
+Files named like secrets (`.env`, `*.pem`) and files over 50 MB are warnings: you tick "I checked the warnings" to go on. So is a **changed origin**: Optimux remembers where each project last pushed from Optimux, and if `origin` points somewhere else now (a command can run `git remote set-url`), the window shows the old and the new address before anything is sent there.
 
 **Update…** fetches from GitHub and shows the new commits (title, author) and the files they change. **Update** then moves the project to them, **fast-forward only**: if you changed a file the update also changes, or this project has commits GitHub doesn't (the histories went apart), it stops and tells you what to do. It never merges, resets or stashes your work. A copy updates from its own branch.
 

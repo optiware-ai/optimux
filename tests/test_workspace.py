@@ -241,7 +241,8 @@ def test_switch_and_archive_checks(root):
 def test_tool_sets_and_prompt():
     assert {t["function"]["name"] for t in ws.tools_for("")} == {"list_projects", "create_project", "switch_project", "archive_project"}
     # Inside a project: projects can still be created (always with approval); archiving stays at the Workspace
-    assert {t["function"]["name"] for t in ws.tools_for("alpha")} == {"list_projects", "create_project", "switch_project"}
+    assert {t["function"]["name"] for t in ws.tools_for("alpha")} == {"list_projects", "create_project", "switch_project",
+                                                                     "project_status", "push_project", "update_project"}
     assert "workspace mode" in get_executor_prompt("", "/p", workspace=True)
     inside = get_executor_prompt("", "/p/alpha")
     assert "switch_project" in inside and "create_project" in inside and "workspace mode" not in inside
@@ -1136,3 +1137,89 @@ def test_workspace_watcher_tells_open_pages(root, mocker):
     finally:
         main.LIVE_SOCKETS.pop("watch-test", None)
     assert {"type": "projects_changed"} in sent
+
+
+# ---------- v0.8: git for the active project, from the chat
+
+def _git_project(r, tmp_path):
+    """alpha as a clone of a bare 'GitHub' repository, with one commit pushed."""
+    import subprocess
+    bare = tmp_path / "gh" / "alpha.git"
+    bare.mkdir(parents=True)
+    run = lambda *a, cwd: subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True, text=True)
+    run("init", "-q", "--bare", "-b", "main", cwd=bare)
+    run("init", "-q", "-b", "main", cwd=r / "alpha")
+    (r / "alpha" / "index.html").write_text("<p>hi</p>\n")
+    run("add", "-A", cwd=r / "alpha")
+    run("commit", "-qm", "start", cwd=r / "alpha")
+    run("remote", "add", "origin", str(bare), cwd=r / "alpha")
+    run("push", "-q", "-u", "origin", "main", cwd=r / "alpha")
+    return bare
+
+
+def test_git_tools_are_offered_only_in_a_project(root):
+    names = lambda p: {t["function"]["name"] for t in ws.tools_for(p)}
+    assert {"project_status", "push_project", "update_project"} <= names("alpha")
+    assert not {"project_status", "push_project", "update_project"} & names("")
+
+
+def test_project_status_reads_the_real_state(mocker, client, root, tmp_path):
+    """The model checks instead of guessing: Optimux runs fetch, status and log
+    itself, shows them in the chat, and the model gets ahead/behind."""
+    from optimux_backend.core import gitsync
+    r, settings = root
+    settings["active_project"] = "alpha"
+    _git_project(r, tmp_path)
+    mocker.patch.object(gitsync, "projects_root", return_value=str(r))
+    rec = tool_turn("project_status", {})
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    msgs = Conversation(client).prompt("is everything pushed?")
+    assert not any(m["type"] == "approval_request" for m in msgs)      # read-only: no approval
+    out = next(m for m in msgs if m["type"] == "command_output")
+    assert "$ git status" in out["output"] and "0 to push, 0 to pull" in out["output"]
+    result = tool_result(rec)
+    assert result["ok"] and result["ahead"] == 0 and result["behind"] == 0 and result["branch"] == "main"
+
+
+def test_push_project_waits_for_the_push_window(mocker, client, root, tmp_path):
+    """push_project never pushes by itself: the page opens the Push window, and the
+    model learns what the user did there (pushed, or closed it)."""
+    r, settings = root
+    settings["active_project"] = "alpha"
+    rec = tool_turn("push_project", {"message": "Add the menu"})
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    chat = Conversation(client)
+    chat.ws.send_text(json.dumps({"prompt": "push it", "model": "auto"}))
+    while True:
+        m = json.loads(chat.ws.receive_text())
+        if m["type"] == "approval_request":
+            break
+    assert m["action"] == "push_project" and m["always_ask"] is True
+    assert m["sync"] == {"project": "alpha", "kind": "push", "message": "Add the menu"}
+    chat.ws.send_text(json.dumps({"type": "approval_response", "approved": True,
+                                  "result": {"ok": True, "commit": "abc1234", "branch": "main", "files": 2,
+                                             "commits": 1, "url": None, "token": "never-passed-on"}}))
+    collect(chat.ws)
+    result = tool_result(rec)
+    assert result["ok"] and result["commit"] == "abc1234" and "token" not in result
+    chat.close()
+
+
+def test_closing_the_push_window_is_a_no(mocker, client, root):
+    r, settings = root
+    settings["active_project"] = "alpha"
+    rec = tool_turn("push_project", {})
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    chat = Conversation(client)
+    msgs = run_with_approval(chat, "push it", approve=False)
+    assert any("nothing was sent" in (m.get("content") or "") for m in msgs if m["type"] == "system")
+    result = tool_result(rec)
+    assert not result["ok"] and result["declined"]
+    chat.close()
+
+
+def test_git_tools_need_an_open_project(mocker, client, root):
+    rec = tool_turn("project_status", {})
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    Conversation(client).prompt("status?")
+    assert "No project is open" in tool_result(rec)["error"]

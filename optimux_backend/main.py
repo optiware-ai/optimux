@@ -3662,7 +3662,7 @@ def create_report(result: dict) -> str:
 
 
 def workspace_tool_names() -> set:
-    return {t["function"]["name"] for t in workspace.WORKSPACE_TOOLS}
+    return {t["function"]["name"] for t in workspace.WORKSPACE_TOOLS + workspace.GIT_TOOLS}
 
 
 async def set_active_project(websocket: WebSocket, name: str) -> None:
@@ -3731,6 +3731,9 @@ async def run_workspace_tool(websocket: WebSocket, session: dict, name: str, arg
                                   f"'{previous or 'the Workspace'}'; don't offer to switch.")
             return result
 
+        if name in workspace.GIT_TOOL_NAMES:
+            return await run_git_tool(websocket, session, name, args, tc_id)
+
         if name == "archive_project":
             pname = workspace.check_archive(str(args.get("name", "")))
             label = f"Archive project '{pname}' (move its folder to .archive/; chats and costs are kept)"
@@ -3749,6 +3752,55 @@ async def run_workspace_tool(websocket: WebSocket, session: dict, name: str, arg
     except workspace.WorkspaceError as e:
         return {"ok": False, "error": str(e)}
     return {"ok": False, "error": f"Unknown workspace tool {name}"}
+
+
+GIT_TOOL_CHARS = 4000     # the status the model reads: enough for status and the last commits
+
+
+async def run_git_tool(websocket: WebSocket, session: dict, name: str, args: dict, tc_id: str) -> dict:
+    """v0.8: project_status / push_project / update_project for the active project.
+    Optimux runs git itself, outside the sandbox (network, its own GitHub sign-in).
+    Status changes nothing in the files (git fetch moves only the remote branches).
+    Push and Update open the same windows as the buttons on the Project page; the
+    user checks and confirms there (always, at every autonomy level), and the page
+    reports what happened. Closing the window is a No."""
+    pname = active_project()
+    if not pname:
+        return {"ok": False, "error": "No project is open. Ask the user to open one, or call switch_project."}
+    if name == "project_status":
+        label = tr("git status of {project} (with the network: fetch, status, last commits)", project=pname)
+        await send(websocket, "command_start", command=label)
+        try:
+            rep = await asyncio.to_thread(gitsync.status_report, pname)
+        except (workspace.WorkspaceError, gitsync.GitSyncError) as e:
+            await send(websocket, "command_output", command=label, output=f"✗ {e}", exit_code=1)
+            return {"ok": False, "error": str(e)}
+        text = "\n".join(f"$ {s['command']}\n{s['output']}".rstrip() for s in rep["steps"])
+        if rep["upstream"]:
+            text += f"\n# GitHub ({rep['upstream'].removeprefix('refs/remotes/')}): {rep['ahead']} to push, {rep['behind']} to pull"
+        await send(websocket, "command_output", command=label, output=text, exit_code=0)
+        return {"ok": True, "project": pname, "remote": rep["remote"], "branch": rep["branch"],
+                "pushes_to": rep["target"], "ahead": rep["ahead"], "behind": rep["behind"],
+                "output": text[-GIT_TOOL_CHARS:],
+                "note": "This is the state right now. ahead = commits GitHub doesn't have; behind = commits on "
+                        "GitHub this project doesn't have; ahead and behind are None without a GitHub branch."}
+    kind = "push" if name == "push_project" else "update"
+    message = str(args.get("message") or "").strip()[:2000] if kind == "push" else ""
+    label = (tr("Push {project} to GitHub: check it in the Push window", project=pname) if kind == "push" else
+             tr("Update {project} from GitHub: check it in the Update window", project=pname))
+    answer = await wait_for_answer(websocket, session, tc_id, label, action=name, always_ask=True,
+                                   sync={"project": pname, "kind": kind, "message": message})
+    if not answer["approved"]:
+        await send(websocket, "system", tr("Push window closed: nothing was sent.") if kind == "push"
+                   else tr("Update window closed: nothing changed."))
+        return {"ok": False, "declined": True,
+                "note": "The user closed the window: nothing was sent or changed. Don't call it again unless the "
+                        "user asks; call project_status if they want to know the state."}
+    result = answer.get("result") if isinstance(answer.get("result"), dict) else {}
+    keep = ("commit", "branch", "files", "commits", "url", "head")
+    return {"ok": True, **{k: result.get(k) for k in keep if k in result},
+            "note": ("Pushed by the user from the Push window." if kind == "push" else
+                     "Updated by the user from the Update window.") + " Say it briefly; don't repeat the details."}
 
 
 def with_thinking(message: dict, r: StreamResult) -> dict:
@@ -4478,7 +4530,7 @@ async def handle_escalate(websocket: WebSocket, session: dict) -> None:
     await run_with_fallback(websocket, session, routing, model, "complex", user_message, prior=prior)
 
 
-KNOWN_TOOLS = {t["function"]["name"] for t in TOOLS + files_lib.FILE_TOOLS + workspace.WORKSPACE_TOOLS + [skills_lib.LOAD_SKILL_TOOL,
+KNOWN_TOOLS = {t["function"]["name"] for t in TOOLS + files_lib.FILE_TOOLS + workspace.WORKSPACE_TOOLS + workspace.GIT_TOOLS + [skills_lib.LOAD_SKILL_TOOL,
                                                                                     FINISH_STEP_TOOL, FINISH_CHECK_TOOL]}
 
 

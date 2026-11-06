@@ -901,6 +901,30 @@ WORKSPACE_TOOLS = [
         "description": "Move a project's folder to the projects root's .archive/ folder. Its chats and costs are kept. The user approves before it runs. Deleting projects is not possible from chat.",
         "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}},
 ]
+# v0.8: git for the active project, run by Optimux itself (outside the sandbox, with
+# the network and its own GitHub sign-in): the real state, and Push / Update in the
+# same windows as the buttons, which the user confirms. The model never pushes.
+GIT_TOOLS = [
+    {"type": "function", "function": {
+        "name": "project_status",
+        "description": ("The active project's real git state, read now by Optimux with the network: git fetch, git "
+                        "status, the last commits, and commits to push and to pull. Call it before saying anything "
+                        "about commits, pushes or changes; never guess or repeat an older state."),
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "push_project",
+        "description": ("Commit the project's changes and push them to GitHub. It opens the Push window for the "
+                        "user, who checks the files, remote, branch and message, and confirms. You can't push "
+                        "otherwise (commands have no network or GitHub sign-in)."),
+        "parameters": {"type": "object", "properties": {
+            "message": {"type": "string", "description": "Commit message for the changes (optional)"}}}}},
+    {"type": "function", "function": {
+        "name": "update_project",
+        "description": "Bring GitHub's new commits into the project (fast-forward only), after the user confirms.",
+        "parameters": {"type": "object", "properties": {}}}},
+]
+GIT_TOOL_NAMES = tuple(t["function"]["name"] for t in GIT_TOOLS)
+
 # Inside a project the model can still list, create (always with approval) and switch
 # projects; archiving stays a Workspace-level action.
 IN_PROJECT_TOOLS = ("list_projects", "create_project", "switch_project")
@@ -908,5 +932,5 @@ IN_PROJECT_TOOLS = ("list_projects", "create_project", "switch_project")
 
 def tools_for(active_project: str) -> list[dict]:
     if active_project:
-        return [t for t in WORKSPACE_TOOLS if t["function"]["name"] in IN_PROJECT_TOOLS]
+        return [t for t in WORKSPACE_TOOLS if t["function"]["name"] in IN_PROJECT_TOOLS] + GIT_TOOLS
     return WORKSPACE_TOOLS

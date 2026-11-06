@@ -372,3 +372,22 @@ def test_identity_of_a_local_remote_and_the_api(ws, mocker, tmp_path, monkeypatc
     client = make_client(mocker, tmp_path)
     r = client.get("/api/projects/site/identity", headers={"Authorization": "Bearer test-token"}).json()
     assert r["steps"][0]["command"] == "git var GIT_AUTHOR_IDENT"
+
+
+def test_push_warns_when_origin_changed_since_the_last_push(ws, tmp_path):
+    """v0.8: a command can change origin; Push names the old and new remote and
+    needs the warning confirmed before sending the code elsewhere."""
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    prep = gitsync.push_prepare("site")
+    assert not prep["warnings"]
+    gitsync.push_run("site", "first", prep["tree"], False)
+    assert gitsync._known_remotes()["site"] == str(ws["remote"])
+    other = tmp_path / "github" / "elsewhere.git"
+    other.mkdir()
+    git("init", "-q", "--bare", "-b", "main", cwd=other)
+    git("remote", "set-url", "origin", str(other), cwd=ws["proj"])
+    (ws["proj"] / "index.html").write_text("<p>2027</p>\n")
+    prep = gitsync.push_prepare("site")
+    assert "origin changed since the last push" in prep["warnings"][0] and str(other) in prep["warnings"][0]
+    with pytest.raises(gitsync.GitSyncError, match="Confirm the warnings"):
+        gitsync.push_run("site", "second", prep["tree"], False)

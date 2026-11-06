@@ -3304,7 +3304,12 @@
                 </div>
             </div>
             <!-- Approval Widget -->
-            <div v-if="pendingApproval && !pendingForm" class="mb-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 flex flex-col gap-3">
+            <!-- v0.8: the model asked to push or update; the window is where the user decides -->
+            <div v-if="pendingApproval && (pendingAction === 'push_project' || pendingAction === 'update_project')" class="mb-4 bg-blue-950/30 border border-blue-800/70 rounded-lg p-4 flex flex-wrap items-center gap-3">
+                <span class="flex-1 min-w-[16rem] text-[14px] text-blue-100">{{ pendingAction === 'push_project' ? $t('The model asks to push this project. Check the Push window and confirm there; closing it means no.') : $t('The model asks to update this project from GitHub. Check the Update window and confirm there; closing it means no.') }}</span>
+                <button v-if="!syncBox.open" @click="openSync(chatProject, pendingAction === 'push_project' ? 'push' : 'update', { message: '' })" class="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500">{{ pendingAction === 'push_project' ? $t('Open the Push window') : $t('Open the Update window') }}</button>
+            </div>
+            <div v-if="pendingApproval && !pendingForm && pendingAction !== 'push_project' && pendingAction !== 'update_project'" class="mb-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 flex flex-col gap-3">
                 <div class="flex items-start gap-3">
                     <svg class="w-6 h-6 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                     <div>
