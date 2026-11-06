@@ -14,5 +14,5 @@
 ## Links & Dependencies
 - Uses `store` (meta, usage), `config_manager`, `sandbox`, `budgets`, `auth`, `autonomy`, `snapshots`, `workspace`.
 - `main.py`: `GET /api/onboarding`, `POST /api/onboarding {action}`, and the hook in `save_app_settings`.
-- Page: `OnboardSteps` component (`onboard-steps`, `compact` on the chat card: only the next step shows its text) in web/app.js; `onboard*` state; the chat card and the Getting started page (`settingsTab === 'start'`) in index.html. The page refreshes it on connect, after each reply until ready, when the Dashboard closes and when the active project changes.
+- Page: `OnboardSteps` component (`onboard-steps`, `compact` on the chat card: only the next step shows its text) in web/app.js; `onboard*` state; the chat card and the Getting started page (`settingsTab === 'start'`) in index.html. The chat card is hidden while the Studio is open (it covered the docked chat and its approval buttons). The page refreshes it on connect, after each reply until ready, when the Dashboard closes and when the active project changes.
 - Tests: `tests/test_onboarding.py`. Guide: *First-time setup*.

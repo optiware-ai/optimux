@@ -612,18 +612,19 @@ const ScatterPlot = {
 let langFlagSeq = 0;
 const LangFlag = {
     props: { code: { type: String, default: 'en' } },
-    data: () => ({ uid: 'cm-flag-' + (++langFlagSeq) }),
+    data: () => ({ uid: 'cm-flag-' + (++langFlagSeq),
+        // the US flag's 50 stars in their 9 rows (6 and 5), drawn small; the canton is 26 × 21.5
+        stars: Array.from({ length: 9 }, (_, r) => Array.from({ length: r % 2 ? 5 : 6 }, (_, c) =>
+            [(r % 2 ? 4.33 : 2.17) + c * 4.33, 1.2 + r * 2.4])).flat() }),
     template: `<svg class="cm-flag" viewBox="0 0 60 40" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <template v-if="code === 'it'">
             <rect width="20" height="40" fill="#009246"/><rect x="20" width="20" height="40" fill="#fff"/><rect x="40" width="20" height="40" fill="#ce2b37"/>
         </template>
         <template v-else>
-            <clipPath :id="uid"><path d="M30,20 h30 v20 z v20 h-30 z h-30 v-20 z v-20 h30 z"/></clipPath>
-            <rect width="60" height="40" fill="#012169"/>
-            <path d="M0,0 L60,40 M60,0 L0,40" stroke="#fff" stroke-width="8"/>
-            <path d="M0,0 L60,40 M60,0 L0,40" :clip-path="'url(#' + uid + ')'" stroke="#c8102e" stroke-width="5"/>
-            <path d="M30,0 v40 M0,20 h60" stroke="#fff" stroke-width="12"/>
-            <path d="M30,0 v40 M0,20 h60" stroke="#c8102e" stroke-width="7"/>
+            <rect width="60" height="40" fill="#fff"/>
+            <rect v-for="i in 7" :key="i" x="0" :y="(i - 1) * 40 / 6.5" width="60" :height="40 / 13" fill="#b22234"/>
+            <rect width="26" height="21.54" fill="#3c3b6e"/>
+            <circle v-for="s in stars" :key="s[0] + '-' + s[1]" :cx="s[0]" :cy="s[1]" r="0.9" fill="#fff"/>
         </template>
     </svg>`,
 };
