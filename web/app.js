@@ -985,6 +985,15 @@ const optimuxApp = createApp({
             } catch (e) { autonomyMsg.value = { ok: false, text: tr('Not saved: ') + e }; }
         };
         const projectLevel = (name) => (autonomy.value && autonomy.value.projects[name]) || '';
+        // Execution page: only the projects with their own level are listed; the rest follow the default
+        const autonomyOwn = Vue.computed(() => projectsList.value.filter(p => projectLevel(p)));
+        const autonomyFree = Vue.computed(() => projectsList.value.filter(p => !projectLevel(p)));
+        // A new exception starts at the first level that differs from the default; the row's toggle changes it
+        const addAutonomyException = (p) => {
+            if (!p || !autonomy.value) return;
+            const other = autonomy.value.levels.find(l => l.id !== autonomy.value.default);
+            if (other) setAutonomy(p, other.id);
+        };
         const pendingOutside = ref([]);
         const pendingWorkdir = ref('');
         const pendingSandboxed = ref(false);
@@ -5691,7 +5700,7 @@ const optimuxApp = createApp({
 
         return { 
             userInput, chatInputRef, messages, sendMessage, handleEnter, isGenerating,
-            pendingStillAsking, pendingAskReason, pendingRaiseTo, autonomy, autonomyMsg, setAutonomy, projectLevel, LEVEL_NAMES: levelNames,
+            pendingStillAsking, pendingAskReason, pendingRaiseTo, autonomy, autonomyMsg, setAutonomy, projectLevel, autonomyOwn, autonomyFree, addAutonomyException, LEVEL_NAMES: levelNames,
             selectedModel, availableModels, setupModels, handleModelChange,
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,

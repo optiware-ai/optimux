@@ -747,6 +747,7 @@ Either way the sandbox is always on, and nobody can turn it off from the Dashboa
 The **hard limits** ask at every level: publishing (`git push`, `gh`), deleting or discarding files (`rm`, `git clean`, `git checkout -- .`…), installing or removing software (`pip install`, `npm i`, `apt`…), using the network (`curl`, `git clone`…), changing the system (`sudo`, services, `kill`), paths outside the project, and commands Optimux can't read before they run (`eval`). Creating and archiving projects always ask too, and budgets still block.
 
 - A command or change that ran without asking is marked **auto · Checkpointed** (or Autonomous) in the chat, with its output or diff as usual, and counts as approved in the task records.
+- **Projects with their own level** lists only the projects that don't follow the default. **+ Add a project…** gives one its own level; **Use default** puts it back. A project's level can also be set on its **Project** page.
 - With **no project open** (the Workspace), everything asks.
 - The check reads the command's words before it runs. It is a guard against a model doing these things by accident, **not a sandbox**: a script the model writes and runs can still do whatever its code does. Combine a freer level with the **sandbox**, and use it on projects you can restore from git.
 - **On a server** (`OPTIMUX_SERVER=1`), Checkpointed and Autonomous apply only while the sandbox works; if it doesn't, every project is Supervised and Execution says why.

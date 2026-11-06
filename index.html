@@ -2252,13 +2252,23 @@
                                 </div>
                             </div>
                             <p class="text-[13px] text-gray-500 mt-2">{{ (autonomy.levels.find(l => l.id === autonomy.default) || {}).text }}<template v-if="!autonomy.default_saved && autonomy.default === 'checkpointed'">{{ ' ' + $t('(from the old Auto-approve setting)') }}</template></p>
-                            <div v-if="projectsList.length" class="mt-4 border-t border-gray-800 pt-3 space-y-2">
-                                <div v-for="p in projectsList" :key="p" class="flex flex-wrap items-center gap-3">
-                                    <span class="text-[14px] text-gray-300 font-mono w-32 truncate" :title="p">{{ p }}</span>
-                                    <select :value="projectLevel(p)" @change="setAutonomy(p, $event.target.value || null)" :aria-label="$t('Autonomy level of ') + p" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-[14px] text-gray-200">
-                                        <option value="" class="bg-gray-900">{{ $t('Default ({v})', { v: LEVEL_NAMES[autonomy.default] }) }}</option>
-                                        <option v-for="lv in autonomy.levels" :key="lv.id" :value="lv.id" :disabled="!!autonomy.blocked && lv.id !== 'supervised'" class="bg-gray-900">{{ LEVEL_NAMES[lv.id] }}</option>
+                            <div v-if="projectsList.length" class="mt-4 border-t border-gray-800 pt-3">
+                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                    <span class="text-[14px] text-gray-300">{{ $t('Projects with their own level') }}</span>
+                                    <select v-if="!autonomy.blocked && autonomyFree.length" value="" @change="addAutonomyException($event.target.value); $event.target.value = ''" :aria-label="$t('Give a project its own level')" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1 text-[13px] text-gray-300">
+                                        <option value="" class="bg-gray-900">{{ $t('+ Add a project…') }}</option>
+                                        <option v-for="p in autonomyFree" :key="p" :value="p" class="bg-gray-900">{{ p }}</option>
                                     </select>
+                                </div>
+                                <p v-if="!autonomyOwn.length" class="text-[13px] text-gray-500 mt-2">{{ $t('None: all {n} projects follow the default.', { n: projectsList.length }) }}</p>
+                                <div v-else class="mt-2 divide-y divide-gray-800/70">
+                                    <div v-for="p in autonomyOwn" :key="p" class="flex flex-wrap items-center gap-3 py-1.5">
+                                        <span class="text-[14px] text-gray-300 font-mono w-40 truncate" :title="p">{{ p }}</span>
+                                        <div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="radiogroup" :aria-label="$t('Autonomy level of ') + p">
+                                            <button v-for="lv in autonomy.levels" :key="lv.id" type="button" role="radio" :aria-checked="projectLevel(p) === lv.id" :disabled="!!autonomy.blocked && lv.id !== 'supervised'" :title="lv.text" @click="setAutonomy(p, lv.id)" :class="['text-xs px-2.5 py-0.5 rounded-md disabled:opacity-40', projectLevel(p) === lv.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ LEVEL_NAMES[lv.id] }}</button>
+                                        </div>
+                                        <button type="button" @click="setAutonomy(p, null)" :title="$t('Follow the default again')" class="text-xs text-gray-500 hover:text-gray-200">{{ $t('Use default') }}</button>
+                                    </div>
                                 </div>
                             </div>
                             <details class="mt-4 text-[13px] text-gray-400">

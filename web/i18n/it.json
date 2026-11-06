@@ -571,7 +571,6 @@
  "DeepSeek": "DeepSeek",
  "Default": "Predefinito",
  "Default (provider decides)": "Predefinito (decide il provider)",
- "Default ({v})": "Predefinito ({v})",
  "Default autonomy level": "Livello di autonomia predefinito",
  "Default: {level} (not chosen yet).": "Predefinito: {level} (non ancora scelto).",
  "Default: {level}, 1 project with its own level.": "Predefinito: {level}, 1 progetto con un suo livello.",
@@ -2352,5 +2351,11 @@
  "🔒 Private": "🔒 Privato",
  "🔒 sandboxed": "🔒 nella sandbox",
  "🔒 {name} (needs a key)": "🔒 {name} (serve una chiave)",
- "🔒 {n} keys hidden": "🔒 {n} chiavi nascoste"
+ "🔒 {n} keys hidden": "🔒 {n} chiavi nascoste",
+ "Projects with their own level": "Progetti con un livello proprio",
+ "Give a project its own level": "Dai a un progetto un livello proprio",
+ "+ Add a project…": "+ Aggiungi un progetto…",
+ "None: all {n} projects follow the default.": "Nessuno: tutti i {n} progetti seguono il predefinito.",
+ "Follow the default again": "Torna a seguire il predefinito",
+ "Use default": "Usa il predefinito"
 }
