@@ -22,9 +22,15 @@ It isn't limited to code: you can ask it anything you would ask a chat AI, and i
 
 <br>
 
-<img src="docs/images/demo.gif" alt="Optimux in action: the Conductor routes a request to the cheap Simple model; a sandboxed test run, a file edit with its diff (Approve all edits in this reply) and a second test run each wait for approval; the reply lists the files it changed and gets a thumbs up; then the Dashboard shows what routing saved against the Complex model" width="900">
+<img src="docs/images/demo.gif" alt="Optimux in action: the Conductor routes a request to the cheap Simple model; a sandboxed test run, a file edit with its diff (Approve all edits in this reply) and a second test run each wait for approval; the reply lists the files it changed and gets a thumbs up; then the Dashboard menu: Overview, Usage and Performance with what routing saved, spending per day by model, price and speed, who does the work and where the money goes" width="900">
 
-<sub>The cheap model takes the request, every command and file edit waits for your approval, and every call is metered against what the Complex model would have cost.</sub>
+<sub>The cheap model takes the request, every command and file edit waits for your approval, and the Dashboard shows where every dollar went and what routing saved.</sub>
+
+<br><br>
+
+<img src="docs/images/studio.gif" alt="The Studio: the project's files with their git status, the code editor and a live preview; Ctrl+click on a class opens its CSS rule; an element picked in the preview goes to the chat with a request, the model changes the CSS, and the editor, the preview and the file list update" width="900">
+
+<sub><b>The Studio</b>: files, editor and live preview side by side. Ctrl+click a name to open its definition, pick an element of the page and send it to the chat, and see the model's change at once.</sub>
 
 </div>
 
