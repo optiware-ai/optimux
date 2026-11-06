@@ -15,6 +15,7 @@ import os
 import re
 
 from optimux_backend.core import paths
+from optimux_backend.core.i18n import tr
 
 PROJECT_SETTINGS_FILE = paths.PROJECT_SETTINGS_FILE
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
@@ -26,14 +27,14 @@ class ProjectSettingsError(ValueError):
 
 def _bool(v):
     if not isinstance(v, bool):
-        raise ProjectSettingsError("must be true or false")
+        raise ProjectSettingsError(tr("must be true or false"))
     return v
 
 
 def _int(lo: int, hi: int):
     def check(v):
         if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
-            raise ProjectSettingsError(f"must be a whole number from {lo} to {hi}")
+            raise ProjectSettingsError(tr("must be a whole number from {lo} to {hi}", lo=lo, hi=hi))
         return v
     return check
 
@@ -41,7 +42,7 @@ def _int(lo: int, hi: int):
 def _plan(v):
     from optimux_backend.core.config_manager import PLAN_MODES
     if v not in PLAN_MODES:
-        raise ProjectSettingsError("must be off, ask or auto")
+        raise ProjectSettingsError(tr("must be off, ask or auto"))
     return v
 
 
@@ -52,7 +53,7 @@ def _model(field: str):
         if field == "conductor_model" and v == "off":
             return v
         if not isinstance(v, str) or v not in get_all_models():
-            raise ProjectSettingsError("must be a model configured in Dashboard → Models")
+            raise ProjectSettingsError(tr("must be a model configured in Dashboard → Models"))
         return v
     return check
 
@@ -157,7 +158,7 @@ def rename_model(old: str, new: str) -> list[str]:
 
 def check_name(project: str) -> str:
     if not isinstance(project, str) or not NAME_RE.match(project) or project in (".", ".."):
-        raise ProjectSettingsError("Invalid project name.")
+        raise ProjectSettingsError(tr("Invalid project name."))
     return project
 
 
@@ -169,7 +170,7 @@ def update(project: str, changes: dict) -> dict:
     clean = {}
     for k, v in (changes or {}).items():
         if k not in checks:
-            raise ProjectSettingsError(f"{k} can't be set per project.")
+            raise ProjectSettingsError(tr("{k} can't be set per project.", k=k))
         try:
             clean[k] = None if v is None else checks[k](v)
         except ProjectSettingsError as e:

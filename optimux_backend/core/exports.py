@@ -27,6 +27,7 @@ import time
 import pyrage
 
 from optimux_backend.core import paths, snapshots
+from optimux_backend.core.i18n import tr
 
 MODES = ("key", "recipient", "plain")
 EXPORT_TTL = 3600                       # an encrypted download is kept for an hour
@@ -55,16 +56,14 @@ def parse_recipient(text: str):
     a clear message (the most likely mistake)."""
     key = (text or "").strip()
     if not key:
-        raise ExportError("Paste a public key: age1... or ssh-ed25519 ... / ssh-rsa ...")
+        raise ExportError(tr("Paste a public key: age1... or ssh-ed25519 ... / ssh-rsa ..."))
     if key.upper().startswith("AGE-SECRET-KEY") or "PRIVATE KEY" in key.upper():
-        raise ExportError("That is a secret key. Paste the PUBLIC key instead (age1... or ssh-ed25519 ...), "
-                          "and keep the secret one to yourself.")
+        raise ExportError(tr("That is a secret key. Paste the PUBLIC key instead (age1... or ssh-ed25519 ...), and keep the secret one to yourself."))
     if "\n" in key or len(key) > 4096:
-        raise ExportError("Paste one public key, on one line.")
+        raise ExportError(tr("Paste one public key, on one line."))
     words = key.split()
     if any(w.startswith("sk-") for w in words[:3]):
-        raise ExportError("Keys kept in a hardware token (sk-ssh-...) don't work with age. Use an ordinary "
-                          "ssh-ed25519 key or an age key (age-keygen).")
+        raise ExportError(tr("Keys kept in a hardware token (sk-ssh-...) don't work with age. Use an ordinary ssh-ed25519 key or an age key (age-keygen)."))
     try:
         if words[0].startswith("age1") and len(words) == 1:
             return pyrage.x25519.Recipient.from_str(words[0])
@@ -75,9 +74,9 @@ def parse_recipient(text: str):
             return pyrage.ssh.Recipient.from_str(f"{words[found]} {words[found + 1]}")
     except Exception:
         if words and "ssh-rsa" in words:
-            raise ExportError("This public key is not valid: copy it whole. RSA keys must have at least 2048 bits.")
-        raise ExportError("This public key is not valid. Check that it was copied whole.")
-    raise ExportError("Not a public key Optimux can use: it must start with age1, ssh-ed25519 or ssh-rsa.")
+            raise ExportError(tr("This public key is not valid: copy it whole. RSA keys must have at least 2048 bits."))
+        raise ExportError(tr("This public key is not valid. Check that it was copied whole."))
+    raise ExportError(tr("Not a public key Optimux can use: it must start with age1, ssh-ed25519 or ssh-rsa."))
 
 
 def download_name(sid: str, encrypted: bool) -> str:
@@ -86,7 +85,7 @@ def download_name(sid: str, encrypted: bool) -> str:
 
 def _token_path(token: str, ext: str) -> str:
     if not TOKEN_RE.fullmatch(token or ""):
-        raise ExportError("This download link is not valid.")
+        raise ExportError(tr("This download link is not valid."))
     return os.path.join(exports_dir(), f"{token}{ext}")
 
 
@@ -144,22 +143,20 @@ def prepare(sid: str, mode: str, recipient: str = "") -> dict:
     """Get a snapshot ready to download. Returns the link, the file name, the size
     and, in "key" mode, the secret key (returned here once, kept nowhere)."""
     if mode not in MODES:
-        raise ExportError(f"Unknown download mode '{mode}'.")
+        raise ExportError(tr("Unknown download mode '{mode}'.", mode=mode))
     try:
         meta = snapshots.get(sid)
     except snapshots.SnapshotError as e:
         raise ExportError(str(e))
     if meta.get("status") != "ready":
-        raise ExportError("This snapshot is not ready.")
+        raise ExportError(tr("This snapshot is not ready."))
     archive = snapshots.archive_path(sid)
     if mode == "plain":
         if meta.get("includes_secrets") or meta.get("kind") != "workspace" or not sid.endswith("-workspace"):
-            raise ExportError("This snapshot contains your API keys and sign-in data, so it can only be "
-                              "downloaded encrypted.")
+            raise ExportError(tr("This snapshot contains your API keys and sign-in data, so it can only be downloaded encrypted."))
         if not meta.get("home_excluded"):
             # Taken before projects were checked for Optimux's own data folder inside them
-            raise ExportError("This snapshot was taken by an older Optimux that didn't check projects for its "
-                              "own data folder (with your keys) inside them. Download it encrypted, or take a new one.")
+            raise ExportError(tr("This snapshot was taken by an older Optimux that didn't check projects for its own data folder (with your keys) inside them. Download it encrypted, or take a new one."))
         return {"mode": "plain", "url": f"/api/snapshots/{sid}/download", "filename": download_name(sid, False),
                 "size": os.path.getsize(archive), "key": None}
 
@@ -171,9 +168,9 @@ def prepare_file(owner: str, path: str, filename: str, mode: str, recipient: str
     backup). owner identifies it, for replacing an earlier download; only "key"
     and "recipient" modes: these files hold your chats, never sent in the clear."""
     if mode not in ("key", "recipient"):
-        raise ExportError("This file can only be downloaded encrypted.")
+        raise ExportError(tr("This file can only be downloaded encrypted."))
     if not os.path.isfile(path):
-        raise ExportError("This file doesn't exist anymore.")
+        raise ExportError(tr("This file doesn't exist anymore."))
     return _encrypt(owner, path, filename + ".age", mode, recipient)
 
 
@@ -187,14 +184,14 @@ def _encrypt(sid: str, archive: str, filename: str, mode: str, recipient: str) -
         recipients = [parse_recipient(recipient)]
 
     if not _lock.acquire(blocking=False):
-        raise ExportError("Another download is being prepared. Wait for it to finish.")
+        raise ExportError(tr("Another download is being prepared. Wait for it to finish."))
     try:
         sweep()
         earlier = [(t, i) for t, i in _infos() if i.get("sid") == sid]
         size = os.path.getsize(archive)
         # The earlier download of this snapshot is replaced, so its space counts as free
         if snapshots.free_bytes() + sum(i.get("size", 0) for _, i in earlier) < size + FREE_MARGIN:
-            raise ExportError("Not enough free disk space to prepare the encrypted download.")
+            raise ExportError(tr("Not enough free disk space to prepare the encrypted download."))
         token = secrets.token_urlsafe(24)           # 32 characters
         out, partial = _token_path(token, ".age"), _token_path(token, ".age.partial")
         try:
@@ -207,11 +204,11 @@ def _encrypt(sid: str, archive: str, filename: str, mode: str, recipient: str) -
                 os.unlink(partial)
             except FileNotFoundError:
                 pass
-            raise ExportError(f"The download could not be prepared: {e}")
+            raise ExportError(tr("The download could not be prepared: {e}", e=e))
         if not os.path.exists(archive):
             # The snapshot was deleted while this was encrypted: its download goes too
             remove(token)
-            raise ExportError("This snapshot was deleted while the download was being prepared.")
+            raise ExportError(tr("This snapshot was deleted while the download was being prepared."))
         info = {"sid": sid, "created": time.time(), "filename": filename,
                 "mode": mode, "size": os.path.getsize(out)}
         paths.write_private(_token_path(token, ".json"), json.dumps(info))
@@ -230,7 +227,7 @@ def export_file(token: str) -> tuple[str, str]:
         with open(info_path) as f:
             info = json.load(f)
     except (OSError, ValueError):
-        raise ExportError("This download has expired or doesn't exist. Prepare it again.")
+        raise ExportError(tr("This download has expired or doesn't exist. Prepare it again."))
     if time.time() - info.get("created", 0) > EXPORT_TTL or not os.path.exists(path):
-        raise ExportError("This download has expired or doesn't exist. Prepare it again.")
+        raise ExportError(tr("This download has expired or doesn't exist. Prepare it again."))
     return path, info["filename"]

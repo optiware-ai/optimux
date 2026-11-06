@@ -38,6 +38,7 @@ import threading
 import time
 
 from optimux_backend.core import paths
+from optimux_backend.core.i18n import tk, tr
 
 CONFIRM_PHRASE = "yes I am sure I want to restore the backup"
 PENDING_NAME = "restore-pending"
@@ -59,8 +60,8 @@ FREE_MARGIN = 200 * 1024 * 1024
 # Parts of the data folder, in the order they are put back (paths under OPTIMUX_HOME)
 DATA_PARTS = ("config", "memory", "skills", "data/optimux.db", "secrets.env", "auth.json")
 # Off by default: an older copy would bring back keys or a password that were changed
-SENSITIVE = {"secrets.env": "API keys, the access token and the GitHub token",
-             "auth.json": "the sign-in password and two-step codes"}
+SENSITIVE = {"secrets.env": tk("API keys, the access token and the GitHub token"),
+             "auth.json": tk("the sign-in password and two-step codes")}
 
 _lock = threading.Lock()
 _busy = False
@@ -149,25 +150,25 @@ def _part_ok(path: str) -> bool:
 def _clean_name(name: str) -> str:
     """The member's path, or an error for anything that could escape the folder."""
     if not name or "\x00" in name or name.startswith("/") or len(name) > 4096:
-        raise RestoreError(f"The archive holds an unsafe path: {name[:200]!r}.")
+        raise RestoreError(tr("The archive holds an unsafe path: {v}.", v=f'{name[:200]!r}'))
     name = name.rstrip("/")
     parts = name.split("/")
     if any(p in ("", ".", "..") for p in parts):
-        raise RestoreError(f"The archive holds an unsafe path: {name[:200]!r}.")
+        raise RestoreError(tr("The archive holds an unsafe path: {v}.", v=f'{name[:200]!r}'))
     return name
 
 
 def _check_manifest(manifest) -> dict:
     from optimux_backend.core import snapshots
     if not isinstance(manifest, dict) or manifest.get("format") != snapshots.FORMAT:
-        raise RestoreError("This is not an Optimux snapshot (manifest.json is missing or of another kind).")
+        raise RestoreError(tr("This is not an Optimux snapshot (manifest.json is missing or of another kind)."))
     if not isinstance(manifest.get("format_version"), int) or manifest["format_version"] > snapshots.FORMAT_VERSION:
-        raise RestoreError("This snapshot was made by a newer Optimux. Update Optimux, then restore it.")
+        raise RestoreError(tr("This snapshot was made by a newer Optimux. Update Optimux, then restore it."))
     if manifest.get("kind") not in snapshots.KINDS or not isinstance(manifest.get("items"), list):
-        raise RestoreError("The snapshot's manifest is damaged.")
+        raise RestoreError(tr("The snapshot's manifest is damaged."))
     for item in manifest["items"]:
         if not isinstance(item, dict) or not isinstance(item.get("path"), str) or not _part_ok(item["path"]):
-            raise RestoreError("The snapshot's manifest lists an unknown part.")
+            raise RestoreError(tr("The snapshot's manifest lists an unknown part."))
     return manifest
 
 
@@ -184,7 +185,7 @@ def _ensure_parents(root: str, rel: str) -> None:
             os.mkdir(full, 0o700)
             continue
         if not stat.S_ISDIR(st.st_mode):
-            raise RestoreError(f"The archive writes through a link or file: {rel[:200]!r}.")
+            raise RestoreError(tr("The archive writes through a link or file: {v}.", v=f'{rel[:200]!r}'))
 
 
 class _SafeInfo(tarfile.TarInfo):
@@ -193,12 +194,12 @@ class _SafeInfo(tarfile.TarInfo):
 
     def _proc_gnulong(self, tarfile_):
         if self.size > MAX_EXTENDED_HEADER:
-            raise tarfile.HeaderError("an oversized long-name header")
+            raise tarfile.HeaderError(tr("an oversized long-name header"))
         return super()._proc_gnulong(tarfile_)
 
     def _proc_pax(self, tarfile_):
         if self.size > MAX_EXTENDED_HEADER:
-            raise tarfile.HeaderError("an oversized pax header")
+            raise tarfile.HeaderError(tr("an oversized pax header"))
         return super()._proc_pax(tarfile_)
 
 
@@ -226,42 +227,41 @@ def scan(archive: str, extract_to: str | None = None, select=None, free: int | N
         with tarfile.open(archive, mode="r|gz", tarinfo=_SafeInfo) as tar:
             for n, member in enumerate(tar):
                 if n >= MAX_MEMBERS:
-                    raise RestoreError("The archive holds too many files.")
+                    raise RestoreError(tr("The archive holds too many files."))
                 if listed is not None:
-                    raise RestoreError("The archive has data after its checksums (SHA256SUMS must come last).")
+                    raise RestoreError(tr("The archive has data after its checksums (SHA256SUMS must come last)."))
                 name = _clean_name(member.name)
                 if name in seen:
-                    raise RestoreError(f"The archive holds {name[:200]!r} twice.")
+                    raise RestoreError(tr("The archive holds {v} twice.", v=f'{name[:200]!r}'))
                 seen.add(name)
                 if n == 0:
                     if name != "manifest.json" or not member.isreg() or member.size > MAX_HEAD:
-                        raise RestoreError("This is not an Optimux snapshot (manifest.json must come first).")
+                        raise RestoreError(tr("This is not an Optimux snapshot (manifest.json must come first)."))
                     try:
                         manifest = _check_manifest(json.loads(tar.extractfile(member).read()))
                     except ValueError:
-                        raise RestoreError("The snapshot's manifest is damaged.")
+                        raise RestoreError(tr("The snapshot's manifest is damaged."))
                     item_paths = [i["path"] for i in manifest["items"]]
                     continue
                 if name in HEAD_FILES:
                     if not member.isreg() or member.size > MAX_HEAD:
-                        raise RestoreError("The archive's README is damaged.")
+                        raise RestoreError(tr("The archive's README is damaged."))
                     continue
                 if name == SUMS:
                     if not member.isreg() or member.size > MAX_SUMS:
-                        raise RestoreError("The archive's checksums are damaged.")
+                        raise RestoreError(tr("The archive's checksums are damaged."))
                     listed = {}
                     for raw in tar.extractfile(member):       # line by line: never the whole file at once
                         line = raw.decode("utf-8", "replace").rstrip("\n")
                         h, sep, fname = line.partition("  ")
                         if not sep or not re.fullmatch(r"[0-9a-f]{64}", h):
-                            raise RestoreError("The archive's checksums are damaged.")
+                            raise RestoreError(tr("The archive's checksums are damaged."))
                         listed[fname] = h
                     continue
                 if not any(name == p or name.startswith(p + "/") for p in item_paths):
-                    raise RestoreError(f"The archive holds a file outside the parts it lists: {name[:200]!r}.")
+                    raise RestoreError(tr("The archive holds a file outside the parts it lists: {v}.", v=f'{name[:200]!r}'))
                 if not (member.isreg() or member.isdir() or member.issym()) or member.issparse():
-                    raise RestoreError(f"The archive holds a special file (only folders, files and links are "
-                                       f"allowed): {name[:200]!r}.")
+                    raise RestoreError(tr("The archive holds a special file (only folders, files and links are allowed): {v}.", v=f'{name[:200]!r}'))
                 if member.issym() and _is_data(name):
                     skipped_links.append(name)       # never created: see the docstring
                     continue
@@ -271,7 +271,7 @@ def scan(archive: str, extract_to: str | None = None, select=None, free: int | N
                     _ensure_parents(extract_to, name)
                     if os.path.lexists(dest):
                         if not (member.isdir() and os.path.isdir(dest) and not os.path.islink(dest)):
-                            raise RestoreError(f"The archive writes {name[:200]!r} twice.")
+                            raise RestoreError(tr("The archive writes {v} twice.", v=f'{name[:200]!r}'))
                 if member.isdir():
                     if take and not os.path.lexists(dest):
                         os.mkdir(dest, 0o700)
@@ -286,7 +286,7 @@ def scan(archive: str, extract_to: str | None = None, select=None, free: int | N
                 files += 1
                 total += member.size
                 if take and free is not None and total > free:
-                    raise RestoreError("Not enough free disk space to restore these parts.")
+                    raise RestoreError(tr("Not enough free disk space to restore these parts."))
                 src = tar.extractfile(member)
                 sha = hashlib.sha256()
                 out = None
@@ -315,17 +315,16 @@ def scan(archive: str, extract_to: str | None = None, select=None, free: int | N
     except RestoreError:
         raise
     except (OSError, tarfile.TarError, EOFError, UnicodeError) as e:
-        raise RestoreError(f"The snapshot file is damaged or incomplete: {e}")
+        raise RestoreError(tr("The snapshot file is damaged or incomplete: {e}", e=e))
     if manifest is None:
-        raise RestoreError("This is not an Optimux snapshot (manifest.json is missing).")
+        raise RestoreError(tr("This is not an Optimux snapshot (manifest.json is missing)."))
     if listed is None:
-        raise RestoreError("The snapshot is incomplete: its checksums (SHA256SUMS) are missing.")
+        raise RestoreError(tr("The snapshot is incomplete: its checksums (SHA256SUMS) are missing."))
     bad = [n for n, h in sums.items() if listed.get(n) != h]
     missing = [n for n in listed if n not in sums]
     if bad or missing:
         example = (bad or missing)[0]
-        raise RestoreError(f"The snapshot doesn't match its checksums ({len(bad) + len(missing)} files, "
-                           f"for example {example[:200]!r}). It may be damaged: nothing was restored.")
+        raise RestoreError(tr("The snapshot doesn't match its checksums ({v} files, for example {v2}). It may be damaged: nothing was restored.", v=len(bad) + len(missing), v2=f'{example[:200]!r}'))
     for path, mode in reversed(dirs):       # folders last, so their files could be written
         try:
             os.chmod(path, (mode & 0o777) | 0o700)
@@ -342,14 +341,14 @@ def check_database(path: str) -> None:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         try:
             if conn.execute("PRAGMA quick_check").fetchone()[0] != "ok":
-                raise RestoreError("The database in the snapshot is damaged.")
+                raise RestoreError(tr("The database in the snapshot is damaged."))
             row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
         finally:
             conn.close()
     except sqlite3.Error as e:
-        raise RestoreError(f"The database in the snapshot can't be read: {e}")
+        raise RestoreError(tr("The database in the snapshot can't be read: {e}", e=e))
     if row and int(row[0]) > len(store.MIGRATIONS):
-        raise RestoreError("The database in the snapshot is from a newer Optimux. Update Optimux, then restore it.")
+        raise RestoreError(tr("The database in the snapshot is from a newer Optimux. Update Optimux, then restore it."))
 
 
 # ------------------------------------------------------------------ what can be restored
@@ -359,11 +358,11 @@ def inspect(sid: str) -> dict:
     from optimux_backend.core import snapshots, workspace
     meta = snapshots.get(sid)
     if meta.get("status") != "ready":
-        raise RestoreError("This snapshot is not ready.")
+        raise RestoreError(tr("This snapshot is not ready."))
     try:
         manifest = _check_manifest(json.loads(snapshots.read_head_member(sid, "manifest.json")))
     except (snapshots.SnapshotError, ValueError) as e:
-        raise RestoreError(f"This snapshot can't be read: {e}")
+        raise RestoreError(tr("This snapshot can't be read: {e}", e=e))
     try:
         root = workspace.projects_root()
     except workspace.WorkspaceError:
@@ -384,18 +383,15 @@ def inspect(sid: str) -> dict:
                            default=False)
             elif not root:
                 row.update(blocked="Set the Workspace folder first (Dashboard → Scope).", default=False)
-            row["effect"] = ("The current folder moves to Archived projects first." if row["exists"]
-                             else "A new project folder.")
+            row["effect"] = (tr("The current folder moves to Archived projects first.") if row["exists"]
+                             else tr("A new project folder."))
         else:
             row.update(kind="data", exists=os.path.lexists(_home(path)), default=path not in SENSITIVE)
             if path in SENSITIVE:
-                row["note"] = (f"Off by default: this brings back {SENSITIVE[path]} as they were in the snapshot "
-                               "(turn it on for a new server, or if you lost them).")
+                row["note"] = (tr("Off by default: this brings back {v} as they were in the snapshot (turn it on for a new server, or if you lost them).", v=tr(SENSITIVE[path])))
             if path == "data/optimux.db":
-                row["note"] = ("Merged with your current data: chats missing here come back, and a chat on "
-                               "both sides keeps its newer copy. All history is kept from both. "
-                               "Your current sign-ins stay.")
-            row["effect"] = "The current copy moves to the legacy folder when Optimux restarts."
+                row["note"] = (tr("Merged with your current data: chats missing here come back, and a chat on both sides keeps its newer copy. All history is kept from both. Your current sign-ins stay."))
+            row["effect"] = tr("The current copy moves to the legacy folder when Optimux restarts.")
         parts.append(row)
     return {"id": sid, "kind": manifest["kind"], "created": manifest.get("created"),
             "optimux_version": manifest.get("optimux_version"), "note": manifest.get("note", ""),
@@ -419,16 +415,16 @@ def _put_project(staging: str, root: str, name: str, archived: list[str]) -> Non
     from optimux_backend.core import workspace
     src = os.path.join(staging, "workspace", name)
     if not os.path.isdir(src) or os.path.islink(src):
-        raise RestoreError(f"The snapshot's copy of {name} is not a folder.")
+        raise RestoreError(tr("The snapshot's copy of {name} is not a folder.", name=name))
     target = os.path.join(root, name)
     if os.path.islink(target):
-        raise RestoreError(f"The current project {name} is a link to another folder; Optimux doesn't replace it.")
+        raise RestoreError(tr("The current project {name} is a link to another folder; Optimux doesn't replace it.", name=name))
     tmp = os.path.join(root, f".restore-{name}-{secrets.token_hex(4)}")
     try:
         shutil.move(src, tmp)
     except OSError as e:
         _rmtree(tmp)                        # a partial copy of the snapshot, never the user's folder
-        raise RestoreError(f"Couldn't copy {name} into the Workspace: {e.strerror or e}.")
+        raise RestoreError(tr("Couldn't copy {name} into the Workspace: {v}.", name=name, v=e.strerror or e))
     try:
         if os.path.lexists(target):
             archived.append(workspace.archive_project(name)["archived_to"])
@@ -444,19 +440,19 @@ def restore(sid: str, parts: list[str], confirm: str, replies_running=False) -> 
     global _busy
     from optimux_backend.core import snapshots, workspace
     if (confirm or "").strip() != CONFIRM_PHRASE:
-        raise RestoreError(f'Type "{CONFIRM_PHRASE}" to confirm.')
+        raise RestoreError(tr('Type "{CONFIRM_PHRASE}" to confirm.', CONFIRM_PHRASE=CONFIRM_PHRASE))
     if pending():
-        raise RestoreError("Another restore is waiting for the restart. Restart Optimux, or cancel it first.")
+        raise RestoreError(tr("Another restore is waiting for the restart. Restart Optimux, or cancel it first."))
     if snapshots.summary()["running"]:
-        raise RestoreError("A snapshot is being taken. Wait for it to finish.")
+        raise RestoreError(tr("A snapshot is being taken. Wait for it to finish."))
     info = inspect(sid)
     available = {p["path"]: p for p in info["parts"]}
     chosen = [p for p in dict.fromkeys(parts or []) if p in available]
     unknown = [p for p in parts or [] if p not in available]
     if unknown:
-        raise RestoreError(f"Not in this snapshot: {', '.join(unknown)}")
+        raise RestoreError(tr("Not in this snapshot: {v}", v=', '.join(unknown)))
     if not chosen:
-        raise RestoreError("Choose at least one part to restore.")
+        raise RestoreError(tr("Choose at least one part to restore."))
     blocked = [available[p] for p in chosen if available[p].get("blocked")]
     if blocked:
         raise RestoreError(blocked[0]["blocked"])
@@ -464,21 +460,21 @@ def restore(sid: str, parts: list[str], confirm: str, replies_running=False) -> 
     projects = [available[p]["name"] for p in chosen if available[p]["kind"] == "project"]
     need = sum(available[p].get("bytes") or 0 for p in chosen)
     if snapshots.free_bytes() < need + FREE_MARGIN:
-        raise RestoreError("Not enough free disk space to restore these parts.")
+        raise RestoreError(tr("Not enough free disk space to restore these parts."))
     root = workspace.projects_root() if projects else ""
     project_bytes = sum(available[f"workspace/{n}"].get("bytes") or 0 for n in projects)
     if projects and _workspace_free(root) < project_bytes + FREE_MARGIN:
-        raise RestoreError("Not enough free disk space in the Workspace to restore these projects.")
+        raise RestoreError(tr("Not enough free disk space in the Workspace to restore these projects."))
 
     with _lock:
         if _busy:
-            raise RestoreError("A restore is already running.")
+            raise RestoreError(tr("A restore is already running."))
         _busy = True                        # from here on no chat turn starts
     snapshots.hold(sid)                     # never removed to make room, nor deleted, meanwhile
     staging = _home(STAGING_NAME)
     try:
         if replies_running() if callable(replies_running) else replies_running:
-            raise RestoreError("A reply is running. Wait for it to finish (or stop it), then restore.")
+            raise RestoreError(tr("A reply is running. Wait for it to finish (or stop it), then restore."))
         # 1. Check the whole archive and extract the chosen parts (nothing changes yet)
         _rmtree(staging)
         os.makedirs(staging, mode=0o700)
@@ -498,8 +494,7 @@ def restore(sid: str, parts: list[str], confirm: str, replies_running=False) -> 
             try:
                 before = snapshots.create("data", note=f"Before restoring {sid}")["id"]
             except snapshots.SnapshotError as e:
-                raise RestoreError(f"The snapshot of the current state, taken before every restore, failed: {e} "
-                                   "Nothing was restored.")
+                raise RestoreError(tr("The snapshot of the current state, taken before every restore, failed: {e} Nothing was restored.", e=e))
 
         # 3. Projects: now. The current folder goes to the Workspace archive (Archived projects)
         done, archived, memory_later = [], [], []
@@ -519,7 +514,7 @@ def restore(sid: str, parts: list[str], confirm: str, replies_running=False) -> 
         except (RestoreError, workspace.WorkspaceError, OSError) as e:
             what = f" Already restored: {', '.join(done)}." if done else ""
             kept = " The earlier copies are under Archived projects." if archived else ""
-            raise RestoreError(f"{e}{what}{kept} The data parts were not restored.")
+            raise RestoreError(tr("{e}{what}{kept} The data parts were not restored.", e=e, what=what, kept=kept))
 
         # 4. Data: staged, put in place at the next start
         if data:
@@ -557,25 +552,25 @@ def restore_daily(name: str, confirm: str, replies_running=False) -> dict:
     global _busy
     from optimux_backend.core import snapshots, store
     if (confirm or "").strip() != CONFIRM_PHRASE:
-        raise RestoreError(f'Type "{CONFIRM_PHRASE}" to confirm.')
+        raise RestoreError(tr('Type "{CONFIRM_PHRASE}" to confirm.', CONFIRM_PHRASE=CONFIRM_PHRASE))
     if pending():
-        raise RestoreError("Another restore is waiting for the restart. Restart Optimux, or cancel it first.")
+        raise RestoreError(tr("Another restore is waiting for the restart. Restart Optimux, or cancel it first."))
     if snapshots.summary()["running"]:
-        raise RestoreError("A snapshot is being taken. Wait for it to finish.")
+        raise RestoreError(tr("A snapshot is being taken. Wait for it to finish."))
     try:
         source = store.backup_path(name)
     except store.BackupError as e:
         raise RestoreError(str(e))
     if snapshots.free_bytes() < os.path.getsize(source) + FREE_MARGIN:
-        raise RestoreError("Not enough free disk space to restore this backup.")
+        raise RestoreError(tr("Not enough free disk space to restore this backup."))
     with _lock:
         if _busy:
-            raise RestoreError("A restore is already running.")
+            raise RestoreError(tr("A restore is already running."))
         _busy = True                        # from here on no chat turn starts
     staging = _home(STAGING_NAME)
     try:
         if replies_running() if callable(replies_running) else replies_running:
-            raise RestoreError("A reply is running. Wait for it to finish (or stop it), then restore.")
+            raise RestoreError(tr("A reply is running. Wait for it to finish (or stop it), then restore."))
         _rmtree(staging)
         os.makedirs(os.path.join(staging, "data"), mode=0o700)
         staged = os.path.join(staging, "data", "optimux.db")
@@ -584,8 +579,7 @@ def restore_daily(name: str, confirm: str, replies_running=False) -> dict:
         try:
             before = snapshots.create("data", note=f"Before restoring the daily backup of {name[8:18]}")["id"]
         except snapshots.SnapshotError as e:
-            raise RestoreError(f"The snapshot of the current state, taken before every restore, failed: {e} "
-                               "Nothing was restored.")
+            raise RestoreError(tr("The snapshot of the current state, taken before every restore, failed: {e} Nothing was restored.", e=e))
         pend = pending_dir()
         _rmtree(pend)
         os.makedirs(os.path.join(pend, "data"), mode=0o700)
@@ -604,7 +598,7 @@ def restore_daily(name: str, confirm: str, replies_running=False) -> dict:
 def cancel_pending() -> str:
     """Drop a staged data restore: its files move to the legacy folder (nothing is deleted)."""
     if not pending():
-        raise RestoreError("No restore is waiting.")
+        raise RestoreError(tr("No restore is waiting."))
     target = _aside_dir("cancelled-restore")
     os.replace(pending_dir(), os.path.join(target, PENDING_NAME))
     return target
@@ -886,10 +880,10 @@ def new_upload() -> tuple[str, str]:
 
 def upload_path(token: str) -> str:
     if not TOKEN_RE.fullmatch(token or ""):
-        raise RestoreError("This upload is not valid. Upload the file again.")
+        raise RestoreError(tr("This upload is not valid. Upload the file again."))
     path = os.path.join(uploads_dir(), f"{token}.upload")
     if not os.path.isfile(path):
-        raise RestoreError("This upload has expired or doesn't exist. Upload the file again.")
+        raise RestoreError(tr("This upload has expired or doesn't exist. Upload the file again."))
     return path
 
 
@@ -923,14 +917,12 @@ def parse_identity(text: str):
     keys = [w for w in re.split(r"\s+", text or "") if w.upper().startswith("AGE-SECRET-KEY-1")]
     if not keys:
         if "PRIVATE KEY" in (text or "").upper():
-            raise RestoreError("SSH keys are not accepted here: never paste a private SSH key into a web page. "
-                               "Decrypt the file on your computer (age -d -i ~/.ssh/id_ed25519 -o snapshot.tar.gz "
-                               "<file>.age) and upload the .tar.gz.")
-        raise RestoreError("Paste the key Optimux gave you (it starts with AGE-SECRET-KEY-1), or choose its key file.")
+            raise RestoreError(tr("SSH keys are not accepted here: never paste a private SSH key into a web page. Decrypt the file on your computer (age -d -i ~/.ssh/id_ed25519 -o snapshot.tar.gz <file>.age) and upload the .tar.gz."))
+        raise RestoreError(tr("Paste the key Optimux gave you (it starts with AGE-SECRET-KEY-1), or choose its key file."))
     try:
         return pyrage.x25519.Identity.from_str(keys[0].upper())
     except Exception:
-        raise RestoreError("This key is not valid. Check that it was copied whole.")
+        raise RestoreError(tr("This key is not valid. Check that it was copied whole."))
 
 
 def import_upload(token: str, key: str = "", filename: str = "") -> dict:
@@ -946,14 +938,13 @@ def import_upload(token: str, key: str = "", filename: str = "") -> dict:
             keep_upload = True
             identity = parse_identity(key)
             if snapshots.free_bytes() < os.path.getsize(path) + FREE_MARGIN:
-                raise RestoreError("Not enough free disk space to decrypt the file.")
+                raise RestoreError(tr("Not enough free disk space to decrypt the file."))
             try:
                 fd = os.open(work, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                 with open(path, "rb") as src, os.fdopen(fd, "wb") as dst:
                     pyrage.decrypt_io(src, dst, [identity])
             except pyrage.DecryptError:
-                raise RestoreError("This key doesn't open the file. Use the key file that was made with this download "
-                                   "(optimux-key-<snapshot>.txt).")
+                raise RestoreError(tr("This key doesn't open the file. Use the key file that was made with this download (optimux-key-<snapshot>.txt)."))
             keep_upload = False
             os.unlink(path)
         else:
@@ -964,7 +955,7 @@ def import_upload(token: str, key: str = "", filename: str = "") -> dict:
         snapshots._ensure_dir()
         size = os.path.getsize(work)
         if snapshots.used_bytes() + size > snapshots.limit_bytes():
-            raise RestoreError("The file would pass the snapshot size limit. Delete some snapshots, or raise the limit.")
+            raise RestoreError(tr("The file would pass the snapshot size limit. Delete some snapshots, or raise the limit."))
         with snapshots._lock:
             sid = snapshots._new_id(kind)
             os.replace(work, snapshots.archive_path(sid))

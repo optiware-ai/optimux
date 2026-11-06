@@ -17,6 +17,7 @@ isn't on the same filesystem either, nothing is moved and the caller says so.
 import datetime
 import os
 from urllib.parse import quote
+from optimux_backend.core.i18n import tr
 
 WORKSPACE_TRASH = ".trash"
 
@@ -84,4 +85,4 @@ def move_to_trash(path: str, trash: str) -> str:
             os.unlink(info_path)
             raise
         return name
-    raise OSError("the Trash has too many items with this name")
+    raise OSError(tr("the Trash has too many items with this name"))

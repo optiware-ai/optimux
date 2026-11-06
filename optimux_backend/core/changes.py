@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from optimux_backend.core.i18n import tr
 
 TIMEOUT = 20            # seconds for each git call; a slower project gets no summary
 MAX_FILES = 30          # files listed; the rest are counted
@@ -46,10 +47,10 @@ def _tree(top: str) -> str:
         env["GIT_INDEX_FILE"] = index
         add = _git(["add", "-A", "--", "."], top, env)
         if add.returncode != 0:
-            raise RuntimeError(add.stderr.decode(errors="replace").strip() or "git add failed")
+            raise RuntimeError(add.stderr.decode(errors="replace").strip() or tr("git add failed"))
         tree = _git(["write-tree"], top, env)
         if tree.returncode != 0:
-            raise RuntimeError(tree.stderr.decode(errors="replace").strip() or "git write-tree failed")
+            raise RuntimeError(tree.stderr.decode(errors="replace").strip() or tr("git write-tree failed"))
         return tree.stdout.decode().strip()
 
 

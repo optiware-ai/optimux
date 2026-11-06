@@ -1642,7 +1642,7 @@
                                         <input :name="'key_' + model.id" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true" data-bwignore :placeholder="$t('Enter ') + model.env_key + '...'" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-100 focus:border-blue-500 outline-none" required>
                                         <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-[15px] font-bold transition">{{ $t('Save Key') }}</button>
                                     </form>
-                                    <p v-if="model.instructions && !availableModels.find(m => m.id === model.id)" class="text-[13px] text-gray-500 mt-2">{{ model.instructions }}</p>
+                                    <p v-if="model.instructions && !availableModels.find(m => m.id === model.id)" class="text-[13px] text-gray-500 mt-2">{{ $t(model.instructions) }}</p>
                                 </div>
                             </div>
                         </div>

@@ -16,6 +16,7 @@ import time
 import uuid
 
 from optimux_backend.core import store
+from optimux_backend.core.i18n import tr
 
 COLUMNS = ("id", "ts", "session", "project", "kind", "tier", "model", "conductor_model", "conductor_tier",
            "conductor_plan", "conductor_error", "escalated", "escalation_reason", "outcome", "steps", "calls",
@@ -124,14 +125,14 @@ def mark_escalated(task_id: str | None, reason: str) -> None:
 def rate(task_id: str, rating: int) -> dict:
     """👍 (1), 👎 (-1) or cleared (0) for one request."""
     if rating not in RATINGS:
-        raise TaskError("The rating must be 1, -1 or 0.")
+        raise TaskError(tr("The rating must be 1, -1 or 0."))
     conn = store.connect()
     try:
         with conn:
             cur = conn.execute("UPDATE tasks SET rating = ?, rated_ts = ? WHERE id = ?",
                                (rating or None, time.time() if rating else None, task_id))
         if not cur.rowcount:
-            raise TaskError("No such request.")
+            raise TaskError(tr("No such request."))
     finally:
         conn.close()
     return {"id": task_id, "rating": rating or None}

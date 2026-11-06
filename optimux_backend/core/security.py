@@ -11,6 +11,7 @@ import secrets
 import shlex
 from pathlib import Path
 from urllib.parse import urlsplit
+from optimux_backend.core.i18n import tr
 
 TOKEN_ENV = "OPTIMUX_TOKEN"
 # Feature 25: the GitHub token Optimux uses to create repositories (secrets.env).
@@ -348,21 +349,21 @@ def origin_allowed(origin: str | None, host: str | None, extra: str | None = Non
 def validate_project_name(name: str) -> str:
     """A project is a single, non-hidden folder name directly under the scope root."""
     if not isinstance(name, str) or not name.strip():
-        raise ScopeError("Project name is empty.")
+        raise ScopeError(tr("Project name is empty."))
     if any(c in name for c in ("/", "\\", "\x00")) or name in (".", "..") or name.startswith("."):
-        raise ScopeError(f"Invalid project name: {name!r}")
+        raise ScopeError(tr("Invalid project name: {name}", name=f'{name!r}'))
     return name
 
 
 def resolve_scope_root(root: str) -> Path:
     if not root:
-        raise ScopeError("No Workspace folder configured. Set it in Dashboard > Scope.")
+        raise ScopeError(tr("No Workspace folder configured. Set it in Dashboard > Scope."))
     p = Path(root)
     if not p.is_absolute():
-        raise ScopeError(f"The Workspace folder must be an absolute path: {root!r}")
+        raise ScopeError(tr("The Workspace folder must be an absolute path: {root}", root=f'{root!r}'))
     p = p.resolve()
     if not p.is_dir():
-        raise ScopeError(f"The Workspace folder does not exist or is not a directory: {root!r}")
+        raise ScopeError(tr("The Workspace folder does not exist or is not a directory: {root}", root=f'{root!r}'))
     return p
 
 
@@ -371,9 +372,9 @@ def resolve_project_dir(root: str, name: str) -> Path:
     base = resolve_scope_root(root)
     target = (base / validate_project_name(name)).resolve()
     if target.parent != base:
-        raise ScopeError(f"Project {name!r} resolves outside the Workspace folder.")
+        raise ScopeError(tr("Project {name} resolves outside the Workspace folder.", name=f'{name!r}'))
     if not target.is_dir():
-        raise ScopeError(f"Project folder not found: {name!r}")
+        raise ScopeError(tr("Project folder not found: {name}", name=f'{name!r}'))
     return target
 
 
@@ -382,16 +383,16 @@ def resolve_project_dir(root: str, name: str) -> Path:
 def validate_env_key(key: str) -> str:
     if not isinstance(key, str) or not ENV_KEY_RE.match(key) or not key.endswith(ENV_KEY_SUFFIXES):
         raise ValidationError(
-            f"Invalid env key {key!r}: use UPPER_SNAKE_CASE ending in one of {', '.join(ENV_KEY_SUFFIXES)}."
+            tr("Invalid env key {key}: use UPPER_SNAKE_CASE ending in one of {v}.", key=f'{key!r}', v=', '.join(ENV_KEY_SUFFIXES))
         )
     if key == TOKEN_ENV:
-        raise ValidationError(f"{TOKEN_ENV} cannot be changed from the UI.")
+        raise ValidationError(tr("{TOKEN_ENV} cannot be changed from the UI.", TOKEN_ENV=TOKEN_ENV))
     return key
 
 
 def validate_env_value(value: str) -> str:
     if any(c in value for c in ("\n", "\r", "\x00")):
-        raise ValidationError("Value must not contain newlines or NUL bytes.")
+        raise ValidationError(tr("Value must not contain newlines or NUL bytes."))
     return value
 
 

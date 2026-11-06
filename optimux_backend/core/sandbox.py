@@ -29,6 +29,7 @@ import shutil
 import subprocess
 
 from optimux_backend.core import paths
+from optimux_backend.core.i18n import tk, tr
 
 REQUIRE_ENV = "OPTIMUX_REQUIRE_SANDBOX"
 
@@ -74,14 +75,14 @@ def check_ro_path(path: str) -> str:
     """Validate an extra read-only folder: absolute, existing, and not exposing
     Optimux's own folder (keys and token) or a whole home folder."""
     if not path or not os.path.isabs(path):
-        raise SandboxError(f"'{path}' must be an absolute path.")
+        raise SandboxError(tr("'{path}' must be an absolute path.", path=path))
     real = os.path.realpath(path)
     if not os.path.isdir(real):
-        raise SandboxError(f"'{path}' is not an existing folder.")
+        raise SandboxError(tr("'{path}' is not an existing folder.", path=path))
     if _under(os.path.realpath(paths.HOME), real):
-        raise SandboxError(f"'{path}' would expose Optimux's folder ({paths.HOME}), which holds your keys.")
+        raise SandboxError(tr("'{path}' would expose Optimux's folder ({HOME}), which holds your keys.", path=path, HOME=paths.HOME))
     if real in ("/", "/home") or real == os.path.realpath(os.path.expanduser("~")):
-        raise SandboxError(f"'{path}' is too broad; list the specific folders the commands need.")
+        raise SandboxError(tr("'{path}' is too broad; list the specific folders the commands need.", path=path))
     return real
 
 
@@ -149,7 +150,7 @@ def status(refresh: bool = False) -> dict:
     out = {"installed": bool(path), "path": path, "version": None, "works": False, "error": None,
            "required": required()}
     if not path:
-        out["error"] = "bubblewrap is not installed (Debian/Ubuntu: sudo apt install bubblewrap)."
+        out["error"] = tr("bubblewrap is not installed (Debian/Ubuntu: sudo apt install bubblewrap).")
     else:
         try:
             v = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=5)
@@ -159,9 +160,8 @@ def status(refresh: bool = False) -> dict:
             out["works"] = t.returncode == 0
             if not out["works"]:
                 why = (t.stderr or "").strip()[:300] or f"exit {t.returncode}"
-                out["error"] = "bubblewrap is installed but can't create a sandbox here: " + why + ". " + (
-                    PROC_HINT if "mount proc" in why else "Unprivileged user namespaces may be disabled.")
+                out["error"] = tr("bubblewrap is installed but can't create a sandbox here: {why}. {v}", why=why, v=PROC_HINT if "mount proc" in why else "Unprivileged user namespaces may be disabled.")
         except Exception as e:
-            out["error"] = f"bubblewrap check failed: {e}"
+            out["error"] = tr("bubblewrap check failed: {e}", e=e)
     _STATUS = out
     return out

@@ -21,6 +21,7 @@ import os
 import time
 
 from optimux_backend.core import paths
+from optimux_backend.core.i18n import tk, tr
 
 CATALOG_DIR_NAME = "catalog"
 PRICES_FILE = "prices.json"
@@ -33,15 +34,15 @@ HTTP_TIMEOUT = 20
 PROVIDERS = [
     {"id": "openai", "label": "OpenAI", "prefix": "", "env": "OPENAI_API_KEY",
      "models_url": "https://api.openai.com/v1/models", "keys_url": "https://platform.openai.com/api-keys"},
-    {"id": "anthropic", "label": "Anthropic (Claude)", "prefix": "", "env": "ANTHROPIC_API_KEY",
+    {"id": "anthropic", "label": tk("Anthropic (Claude)"), "prefix": "", "env": "ANTHROPIC_API_KEY",
      "models_url": "https://api.anthropic.com/v1/models?limit=1000", "kind": "anthropic",
      "keys_url": "https://console.anthropic.com/settings/keys"},
-    {"id": "gemini", "label": "Google (Gemini)", "prefix": "gemini/", "env": "GEMINI_API_KEY",
+    {"id": "gemini", "label": tk("Google (Gemini)"), "prefix": "gemini/", "env": "GEMINI_API_KEY",
      "models_url": "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", "kind": "gemini",
      "keys_url": "https://aistudio.google.com/apikey",
      # Google doesn't send its limits with replies: they are shown on this page
      "limits_url": "https://ai.google.dev/gemini-api/docs/rate-limits"},
-    {"id": "xai", "label": "xAI (Grok)", "prefix": "xai/", "env": "XAI_API_KEY",
+    {"id": "xai", "label": tk("xAI (Grok)"), "prefix": "xai/", "env": "XAI_API_KEY",
      "models_url": "https://api.x.ai/v1/models", "keys_url": "https://console.x.ai"},
     {"id": "mistral", "label": "Mistral", "prefix": "mistral/", "env": "MISTRAL_API_KEY",
      "models_url": "https://api.mistral.ai/v1/models", "keys_url": "https://console.mistral.ai/api-keys"},
@@ -49,10 +50,10 @@ PROVIDERS = [
      "models_url": "https://api.deepseek.com/models", "keys_url": "https://platform.deepseek.com/api_keys"},
     {"id": "groq", "label": "Groq", "prefix": "groq/", "env": "GROQ_API_KEY",
      "models_url": "https://api.groq.com/openai/v1/models", "keys_url": "https://console.groq.com/keys"},
-    {"id": "openrouter", "label": "OpenRouter (many providers)", "prefix": "openrouter/", "env": "OPENROUTER_API_KEY",
+    {"id": "openrouter", "label": tk("OpenRouter (many providers)"), "prefix": "openrouter/", "env": "OPENROUTER_API_KEY",
      "models_url": "https://openrouter.ai/api/v1/models", "kind": "openrouter",
      "keys_url": "https://openrouter.ai/settings/keys"},
-    {"id": "ollama", "label": "Ollama (local, free)", "prefix": "ollama/", "env": None, "kind": "ollama",
+    {"id": "ollama", "label": tk("Ollama (local, free)"), "prefix": "ollama/", "env": None, "kind": "ollama",
      "models_url": "/api/tags", "keys_url": "https://ollama.com/library"},
 ]
 PROVIDER_IDS = tuple(p["id"] for p in PROVIDERS)
@@ -66,7 +67,7 @@ def provider(pid: str) -> dict:
     for p in PROVIDERS:
         if p["id"] == pid:
             return {"limits_url": None, **p}
-    raise CatalogError(f"Unknown provider '{pid}'.")
+    raise CatalogError(tr("Unknown provider '{pid}'.", pid=pid))
 
 
 def catalog_dir() -> str:
@@ -189,7 +190,7 @@ def models(pid: str) -> dict:
     for r in rows.values():
         r["limits"] = ratelimits.get(r["id"])        # learned from earlier calls, or None
     out = sorted(rows.values(), key=lambda r: (r["input"] is None, r["input"] or 0, r["id"]))
-    return {"provider": {k: p[k] for k in ("id", "label", "prefix", "env", "keys_url", "limits_url")},
+    return {"provider": {**{k: p[k] for k in ("id", "label", "prefix", "env", "keys_url", "limits_url")}, "label": tr(p["label"])},
             "key_saved": key_saved(p), "models": out,
             "models_refreshed": live.get("fetched"), "online": online_allowed()}
 
@@ -200,7 +201,7 @@ def summary() -> dict:
         "online": online_allowed(),
         "prices_refreshed": prices.get("fetched"),
         "prices_count": len(prices.get("models") or {}),
-        "providers": [{"id": p["id"], "label": p["label"], "prefix": p["prefix"], "env": p["env"],
+        "providers": [{"id": p["id"], "label": tr(p["label"]), "prefix": p["prefix"], "env": p["env"],
                        "key_saved": key_saved(p), "keys_url": p["keys_url"],
                        "limits_url": p.get("limits_url"),
                        "models_refreshed": (_read_json(f"models-{p['id']}.json") or {}).get("fetched")}
@@ -217,19 +218,17 @@ def _http_get(url: str, headers: dict | None = None):
         # Authorization header on a move to another site, not x-api-key or x-goog-api-key
         r = httpx.get(url, headers=headers or {}, timeout=HTTP_TIMEOUT, follow_redirects=not headers)
     except httpx.HTTPError as e:
-        raise CatalogError(f"Could not reach {url.split('/')[2]}: {e.__class__.__name__}. "
-                           "Check the network or the proxy (HTTPS_PROXY).")
+        raise CatalogError(tr("Could not reach {v}: {__name__}. Check the network or the proxy (HTTPS_PROXY).", v=url.split('/')[2], __name__=e.__class__.__name__))
     if r.status_code in (401, 403):
         raise CatalogError("The provider refused the API key (HTTP %d). Check the key in Models." % r.status_code)
     if r.status_code >= 400:
-        raise CatalogError(f"The provider answered HTTP {r.status_code}.")
+        raise CatalogError(tr("The provider answered HTTP {status_code}.", status_code=r.status_code))
     return r
 
 
 def _require_online() -> None:
     if not online_allowed():
-        raise CatalogError("The online catalog is off. Turn it on in Models first; until then Optimux "
-                           "connects to nothing for the catalog.")
+        raise CatalogError(tr("The online catalog is off. Turn it on in Models first; until then Optimux connects to nothing for the catalog."))
 
 
 def refresh_models(pid: str) -> dict:
@@ -241,7 +240,7 @@ def refresh_models(pid: str) -> dict:
         try:
             data = _http_get(base + p["models_url"]).json()
         except CatalogError as e:
-            raise CatalogError(f"Ollama doesn't answer at {base}. Is it running? ({e})")
+            raise CatalogError(tr("Ollama doesn't answer at {base}. Is it running? ({e})", base=base, e=e))
         ids = [p["prefix"] + m["name"] for m in data.get("models", []) if m.get("name")]
         result = {"fetched": time.time(), "models": sorted(ids), "prices": {}}
         _write_json(f"models-{pid}.json", result)
@@ -249,8 +248,7 @@ def refresh_models(pid: str) -> dict:
     _require_online()
     key = os.environ.get(p["env"] or "")
     if not key and kind != "openrouter":
-        raise CatalogError(f"Save your {p['label']} API key first ({p['env']}): the provider only lists "
-                           "models for a key.")
+        raise CatalogError(tr("Save your {v} API key first ({v2}): the provider only lists models for a key.", v=p['label'], v2=p['env']))
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     if kind == "anthropic":
         headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
@@ -260,7 +258,7 @@ def refresh_models(pid: str) -> dict:
     try:
         data = r.json()
     except ValueError:
-        raise CatalogError("The provider's answer was not valid JSON.")
+        raise CatalogError(tr("The provider's answer was not valid JSON."))
     ids, prices = [], {}
     if kind == "gemini":
         for m in data.get("models", []):
@@ -292,7 +290,7 @@ PRICE_KEYS = ("litellm_provider", "mode", "input_cost_per_token", "output_cost_p
 def _clean_prices(raw) -> dict:
     """Only well-formed entries with known fields of the right types."""
     if not isinstance(raw, dict):
-        raise CatalogError("The downloaded price list has an unexpected format.")
+        raise CatalogError(tr("The downloaded price list has an unexpected format."))
     out = {}
     for key, info in raw.items():
         if key == "sample_spec" or not isinstance(key, str) or len(key) > 300 or not isinstance(info, dict):
@@ -313,7 +311,7 @@ def _clean_prices(raw) -> dict:
         if entry.get("litellm_provider"):
             out[key] = entry
     if len(out) < 100:
-        raise CatalogError("The downloaded price list looks incomplete; the current prices are kept.")
+        raise CatalogError(tr("The downloaded price list looks incomplete; the current prices are kept."))
     return out
 
 
@@ -323,11 +321,11 @@ def refresh_prices() -> dict:
     _require_online()
     r = _http_get(litellm.model_cost_map_url)
     if len(r.content) > MAX_PRICES_BYTES:
-        raise CatalogError("The downloaded price list is too large; the current prices are kept.")
+        raise CatalogError(tr("The downloaded price list is too large; the current prices are kept."))
     try:
         cleaned = _clean_prices(r.json())
     except ValueError:
-        raise CatalogError("The downloaded price list was not valid JSON; the current prices are kept.")
+        raise CatalogError(tr("The downloaded price list was not valid JSON; the current prices are kept."))
     _write_json(PRICES_FILE, {"fetched": time.time(), "source": litellm.model_cost_map_url, "models": cleaned})
     _apply(cleaned)
     return {"count": len(cleaned)}

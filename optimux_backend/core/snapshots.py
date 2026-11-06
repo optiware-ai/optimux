@@ -41,6 +41,7 @@ import threading
 import time
 
 from optimux_backend.core import paths
+from optimux_backend.core.i18n import tk, tr
 
 FORMAT = "optimux-snapshot"
 FORMAT_VERSION = 1
@@ -52,15 +53,15 @@ FREE_MARGIN = 200 * 1024 * 1024      # never fill the disk to the last byte
 # Data snapshot: (path under OPTIMUX_HOME, what it is). The database is copied
 # with SQLite's backup API, never as a raw file, so it is consistent while in use.
 DATA_ITEMS = (
-    ("config", "Settings, models, routing, budgets, autonomy and project settings"),
-    ("memory", "Personal, professional and project memory"),
-    ("skills", "Global skills"),
-    ("data/optimux.db", "Database: chats, usage and costs, memory history, sign-ins"),
-    ("secrets.env", "API keys, the access token and the GitHub token"),
-    ("auth.json", "Password and two-step codes"),
+    ("config", tk("Settings, models, routing, budgets, autonomy and project settings")),
+    ("memory", tk("Personal, professional and project memory")),
+    ("skills", tk("Global skills")),
+    ("data/optimux.db", tk("Database: chats, usage and costs, memory history, sign-ins")),
+    ("secrets.env", tk("API keys, the access token and the GitHub token")),
+    ("auth.json", tk("Password and two-step codes")),
 )
-DATA_LEFT_OUT = ("backups/ (daily database copies)", "snapshots/ (the snapshots themselves)",
-                 "logs/", "legacy/ (old files moved aside)")
+DATA_LEFT_OUT = (tk("backups/ (daily database copies)"), tk("snapshots/ (the snapshots themselves)"),
+                 "logs/", tk("legacy/ (old files moved aside)"))
 
 # Folders a project can rebuild (npm install, pip install, ...): skipped by default
 REBUILDABLE = frozenset({"node_modules", ".venv", "venv", "__pycache__", ".pytest_cache",
@@ -222,11 +223,10 @@ def _choose_projects(root: str, projects: list[str] | None) -> list[str]:
         return available
     links = [p for p in projects if p in linked]
     if links:
-        raise SnapshotError(f"These projects are links to another folder, which snapshots don't follow: "
-                            f"{', '.join(links)}")
+        raise SnapshotError(tr("These projects are links to another folder, which snapshots don't follow: {v}", v=', '.join(links)))
     unknown = [p for p in projects if p not in available]
     if unknown:
-        raise SnapshotError(f"Not in the Workspace: {', '.join(unknown)}")
+        raise SnapshotError(tr("Not in the Workspace: {v}", v=', '.join(unknown)))
     return [p for p in available if p in projects]
 
 
@@ -234,7 +234,7 @@ def plan(kind: str, projects: list[str] | None = None, skip_rebuildable: bool = 
     """What a snapshot would hold: the items (archive path, label, real path, files,
     bytes), the projects, the total size and whether it fits."""
     if kind not in KINDS:
-        raise SnapshotError(f"Unknown snapshot type '{kind}' (full, data or workspace).")
+        raise SnapshotError(tr("Unknown snapshot type '{kind}' (full, data or workspace).", kind=kind))
     items, project_rows, skipped, left_out = [], [], {"dirs": 0, "bytes": 0}, []
     if kind in ("data", "full"):
         for rel, label in DATA_ITEMS:
@@ -248,14 +248,14 @@ def plan(kind: str, projects: list[str] | None = None, skip_rebuildable: bool = 
                 files, size = 1, os.path.getsize(full)
                 if rel == "data/optimux.db" and os.path.exists(full + "-wal"):
                     size += os.path.getsize(full + "-wal")   # the copy includes what the WAL holds
-            items.append({"path": rel, "label": label, "source": full, "files": files, "bytes": size,
+            items.append({"path": rel, "label": tr(label), "source": full, "files": files, "bytes": size,
                           "private": True})
-        left_out += DATA_LEFT_OUT
+        left_out += [tr(x) for x in DATA_LEFT_OUT]
     if kind in ("workspace", "full"):
         if kind == "full":
             root = _safe_workspace()       # no Workspace folder yet: Everything is the data alone
             if projects:
-                raise SnapshotError("Everything holds all projects; choose Workspace to pick some.")
+                raise SnapshotError(tr("Everything holds all projects; choose Workspace to pick some."))
         else:
             root = _workspace_root()
         for name in _choose_projects(root, projects) if root else []:
@@ -570,7 +570,7 @@ def _meta_path(sid: str) -> str:
 
 def archive_path(sid: str) -> str:
     if not ID_RE.fullmatch(sid or ""):
-        raise SnapshotError("No such snapshot.")
+        raise SnapshotError(tr("No such snapshot."))
     return os.path.join(paths.SNAPSHOT_DIR, f"{sid}.tar.gz")
 
 
@@ -646,7 +646,7 @@ def create(kind: str, note: str = "", projects: list[str] | None = None, skip_re
     if not p["fits"]:
         raise SnapshotError(p["reason"])
     if kind == "workspace" and not p["projects"]:
-        raise SnapshotError("There are no projects in the Workspace.")
+        raise SnapshotError(tr("There are no projects in the Workspace."))
     _ensure_dir()
     with _lock:
         sid = sid or _new_id(kind)
@@ -725,7 +725,7 @@ def _create(kind: str, note: str, p: dict, skip_rebuildable: bool, auto: bool, s
         _write_meta(sid, meta)
         if isinstance(e, SnapshotError):
             raise
-        raise SnapshotError(f"The snapshot failed: {e}")
+        raise SnapshotError(tr("The snapshot failed: {e}", e=e))
     finally:
         try:
             os.unlink(db_copy)
@@ -747,10 +747,10 @@ def start(kind: str, note: str = "", projects: list[str] | None = None, skip_reb
     if not p["fits"]:
         raise SnapshotError(p["reason"])
     if kind == "workspace" and not p["projects"]:
-        raise SnapshotError("There are no projects in the Workspace.")
+        raise SnapshotError(tr("There are no projects in the Workspace."))
     with _lock:
         if _running:
-            raise SnapshotError("A snapshot is already being taken. Wait for it to finish.")
+            raise SnapshotError(tr("A snapshot is already being taken. Wait for it to finish."))
         _ensure_dir()
         sid = _new_id(kind)
         _running.add(sid)
@@ -828,10 +828,10 @@ def read_head_member(sid: str, name: str) -> str:
     """manifest.json or the README from a snapshot, as text. They are the first two
     members, so only the start of the archive is read."""
     if name not in _HEAD_MEMBERS:
-        raise SnapshotError("Only manifest.json and the README can be read.")
+        raise SnapshotError(tr("Only manifest.json and the README can be read."))
     path = archive_path(sid)
     if sid in _running or not os.path.exists(path):
-        raise SnapshotError("This snapshot is not ready.")
+        raise SnapshotError(tr("This snapshot is not ready."))
     try:
         with tarfile.open(path, mode="r|gz") as tar:      # stream: stops reading where it stops
             for n, member in enumerate(tar):
@@ -840,8 +840,8 @@ def read_head_member(sid: str, name: str) -> str:
                 if member.name == name and member.isreg() and member.size <= _HEAD_MAX:
                     return tar.extractfile(member).read().decode("utf-8", "replace")
     except (OSError, tarfile.TarError, EOFError) as e:
-        raise SnapshotError(f"The snapshot file can't be read: {e}")
-    raise SnapshotError(f"{name} is not in this snapshot.")
+        raise SnapshotError(tr("The snapshot file can't be read: {e}", e=e))
+    raise SnapshotError(tr("{name} is not in this snapshot.", name=name))
 
 
 def read_readme(sid: str) -> dict:
@@ -876,15 +876,15 @@ def get(sid: str) -> dict:
     for s in list_snapshots():
         if s["id"] == sid:
             return s
-    raise SnapshotError("No such snapshot.")
+    raise SnapshotError(tr("No such snapshot."))
 
 
 def delete(sid: str) -> None:
     archive = archive_path(sid)            # validates the id
     if sid in _running:
-        raise SnapshotError("This snapshot is still being taken.")
+        raise SnapshotError(tr("This snapshot is still being taken."))
     if sid in _held:
-        raise SnapshotError("This snapshot is being restored. Wait for the restore to finish.")
+        raise SnapshotError(tr("This snapshot is being restored. Wait for the restore to finish."))
     found = False
     for f in (archive, archive + ".partial", _meta_path(sid), _db_copy_path(sid)):
         try:
@@ -893,7 +893,7 @@ def delete(sid: str) -> None:
         except FileNotFoundError:
             pass
     if not found:
-        raise SnapshotError("No such snapshot.")
+        raise SnapshotError(tr("No such snapshot."))
 
 
 def summary() -> dict:

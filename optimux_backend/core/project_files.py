@@ -28,6 +28,7 @@ import subprocess
 from optimux_backend.core import config_manager, files as filetools, paths, trash
 from optimux_backend.core.changes import SECRET_NAME
 from optimux_backend.core.security import ScopeError, mask_secrets, resolve_project_dir
+from optimux_backend.core.i18n import tr
 
 MAX_ENTRIES = 2000        # entries listed per folder; the rest are counted
 MAX_STATUS = 5000         # changed files reported by git_status
@@ -48,7 +49,7 @@ def project_dir(name: str) -> str:
     """The real folder of a project in the Workspace."""
     settings = config_manager.get_settings()
     if not name:
-        raise FilesError("No project is open. Pick one in the top bar.", 409)
+        raise FilesError(tr("No project is open. Pick one in the top bar."), 409)
     try:
         return str(resolve_project_dir(settings.get("projects_root", ""), name))
     except ScopeError as e:
@@ -67,10 +68,10 @@ def _inside(path: str, folder: str) -> bool:
 
 def _clean_rel(rel: str) -> str:
     if not isinstance(rel, str) or "\0" in rel:
-        raise FilesError("Invalid path.")
+        raise FilesError(tr("Invalid path."))
     rel = rel.strip()
     if os.path.isabs(rel) or rel.startswith("\\"):
-        raise FilesError("Use a path relative to the project, not an absolute one.")
+        raise FilesError(tr("Use a path relative to the project, not an absolute one."))
     return rel.rstrip("/")
 
 
@@ -92,7 +93,7 @@ def resolve_dir(root: str, rel: str) -> tuple[str, str]:
     if why:
         raise FilesError(f"{rel} {why}.", 403)
     if not os.path.isdir(real):
-        raise FilesError(f"{rel or 'The project'} isn't a folder (or no longer exists).", 404)
+        raise FilesError(tr("{v} isn't a folder (or no longer exists).", v=rel or 'The project'), 404)
     return real, "" if real == root else os.path.relpath(real, root)
 
 
@@ -172,7 +173,7 @@ def list_dir(root: str, rel: str = "") -> dict:
     try:
         names = os.listdir(real)
     except OSError as e:
-        raise FilesError(f"Can't read {rel or 'the project folder'}: {e.strerror}.", 403)
+        raise FilesError(tr("Can't read {v}: {strerror}.", v=rel or 'the project folder', strerror=e.strerror), 403)
     entries = []
     for name in names:
         if name in HIDDEN:
@@ -213,7 +214,7 @@ def read_file(root: str, rel: str) -> dict:
     except filetools.FileToolError as e:
         raise FilesError(str(e).replace(" can be written", " can be opened"), 403)
     if not os.path.isfile(real):
-        raise FilesError(f"{rel} doesn't exist (any more).", 404)
+        raise FilesError(tr("{rel} doesn't exist (any more).", rel=rel), 404)
     size = os.path.getsize(real)
     if size > filetools.MAX_BYTES:
         return {"path": rel, "size": size, "too_large": True}
@@ -234,7 +235,7 @@ def save_file(root: str, rel: str, text: str, digest: str | None) -> dict:
     Conflicts (changed, created or deleted meanwhile) are 409s."""
     rel = _clean_rel(rel)
     if not rel:
-        raise FilesError("The file name is empty.")
+        raise FilesError(tr("The file name is empty."))
     change = None
     try:
         change = filetools.prepare_user_save(root, rel, text, digest)
@@ -247,7 +248,7 @@ def save_file(root: str, rel: str, text: str, digest: str | None) -> dict:
     except filetools.FileToolError as e:
         msg = str(e)
         if change is not None and "changed while waiting" in msg:
-            raise FilesError(f"{change['path']} changed on disk while saving; nothing was written.", 409)
+            raise FilesError(tr("{v} changed on disk while saving; nothing was written.", v=change['path']), 409)
         raise FilesError(msg.replace(" can be written", " can be saved"), 400)
     return {"path": change["path"], "digest": filetools._digest(change["new_text"]), "changed": True,
             "op": change["op"], "added": change["added"], "removed": change["removed"]}
@@ -292,22 +293,22 @@ def _target(root: str, rel: str) -> tuple[str, str, str]:
     delete. Its folder must be inside the project; the entry itself isn't followed."""
     rel = _clean_rel(rel)
     if not rel:
-        raise FilesError("The project folder itself can't be changed here.", 400)
+        raise FilesError(tr("The project folder itself can't be changed here."), 400)
     parent, name = os.path.split(rel)
     if name in ("", ".", ".."):
-        raise FilesError("Invalid path.", 400)
+        raise FilesError(tr("Invalid path."), 400)
     parent_real, _ = resolve_dir(root, parent)
     full = os.path.join(parent_real, name)
     if not os.path.lexists(full):
-        raise FilesError(f"{rel} doesn't exist (any more).", 404)
+        raise FilesError(tr("{rel} doesn't exist (any more).", rel=rel), 404)
     rel = os.path.relpath(full, root)
     if name in HIDDEN or ".git" in rel.split(os.sep):
-        raise FilesError(f"{rel} is git's own data; it can't be changed here.", 403)
+        raise FilesError(tr("{rel} is git's own data; it can't be changed here.", rel=rel), 403)
     if os.path.islink(full):
         return full, rel, "link"
     home = os.path.realpath(paths.HOME)
     if _inside(full, home) or _inside(home, full):
-        raise FilesError(f"{rel} holds Optimux's own data folder; it can't be changed here.", 403)
+        raise FilesError(tr("{rel} holds Optimux's own data folder; it can't be changed here.", rel=rel), 403)
     return full, rel, "folder" if os.path.isdir(full) else "file"
 
 
@@ -316,18 +317,18 @@ def _new_target(root: str, rel: str) -> tuple[str, str]:
     rel = _clean_rel(rel)
     parent, name = os.path.split(rel)
     if not rel or name in ("", ".", ".."):
-        raise FilesError("Give the new name.", 400)
+        raise FilesError(tr("Give the new name."), 400)
     if name in HIDDEN or ".git" in rel.split("/"):
-        raise FilesError("Nothing goes into .git from here.", 403)
+        raise FilesError(tr("Nothing goes into .git from here."), 403)
     parent_real = os.path.realpath(os.path.join(root, parent)) if parent else root
     why = _forbidden(parent_real, root)
     if why:
         raise FilesError(f"{parent or 'That folder'} {why}.", 403)
     if os.path.exists(parent_real) and not os.path.isdir(parent_real):
-        raise FilesError(f"{parent} is a file, not a folder.", 409)
+        raise FilesError(tr("{parent} is a file, not a folder.", parent=parent), 409)
     full = os.path.join(parent_real, name)
     if os.path.lexists(full):
-        raise FilesError(f"{os.path.relpath(full, root)} already exists.", 409)
+        raise FilesError(tr("{v} already exists.", v=os.path.relpath(full, root)), 409)
     return full, os.path.relpath(full, root)
 
 
@@ -343,10 +344,10 @@ def rename_path(root: str, rel: str, to: str) -> dict:
     full, rel, kind = _target(root, rel)
     new_full, new_rel = _new_target(root, to)
     if kind == "folder" and _inside(new_full, full):
-        raise FilesError("A folder can't go inside itself.", 400)
+        raise FilesError(tr("A folder can't go inside itself."), 400)
     os.makedirs(os.path.dirname(new_full), exist_ok=True)
     if os.path.realpath(os.path.dirname(new_full)) != os.path.dirname(new_full):
-        raise FilesError(f"{os.path.dirname(new_rel)} changed while renaming.", 409)
+        raise FilesError(tr("{v} changed while renaming.", v=os.path.dirname(new_rel)), 409)
     os.rename(full, new_full)
     return {"path": rel, "to": new_rel, "kind": kind}
 
@@ -505,7 +506,7 @@ def locate(root: str, page: str, el: dict) -> dict:
     to: {line, col}, how: page|text|name} (lines from 1, columns from 0), or {found: false}."""
     tag = str(el.get("tag") or "").lower()
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,40}", tag):
-        raise FilesError("Invalid element.")
+        raise FilesError(tr("Invalid element."))
     el = {**el, "tag": tag}
     page = _clean_rel(page or "")
     text = None
@@ -657,7 +658,7 @@ def style_rules(root: str, page: str) -> dict:
     page = _clean_rel(page or "")
     text, parts = _page_parts(root, page)
     if text is None:
-        raise FilesError("Open the CSS works on HTML pages of the project.", 400)
+        raise FilesError(tr("Open the CSS works on HTML pages of the project."), 400)
     rules, sheets = [], []
     for tag, a, start, end in parts:
         if tag == "link" and "stylesheet" in (a.get("rel") or "").lower().split():
@@ -781,7 +782,7 @@ def definition(root: str, path: str, kind: str, name: str) -> dict:
     path = _clean_rel(path or "")
     name = str(name or "").strip()
     if kind not in ("class", "id", "file", "symbol") or not name or len(name) > 300:
-        raise FilesError("Nothing to follow here.", 400)
+        raise FilesError(tr("Nothing to follow here."), 400)
     if kind == "file":
         target = _local_ref(path, name)
         if target is None:
@@ -900,12 +901,11 @@ def delete_path(root: str, rel: str) -> dict:
     full, rel, kind = _target(root, rel)
     place = trash.where(full, _workspace())
     if place is None:
-        raise FilesError(f"{rel} is on another disk than the Trash and the Workspace's .trash folder, so it can't be "
-                         "moved aside. Nothing was deleted; delete it yourself if you're sure.", 409)
+        raise FilesError(tr("{rel} is on another disk than the Trash and the Workspace's .trash folder, so it can't be moved aside. Nothing was deleted; delete it yourself if you're sure.", rel=rel), 409)
     try:
         name = trash.move_to_trash(full, place)
     except OSError as e:
-        raise FilesError(f"Couldn't move {rel} aside: {e.strerror or e}. Nothing was deleted.", 500)
+        raise FilesError(tr("Couldn't move {rel} aside: {v}. Nothing was deleted.", rel=rel, v=e.strerror or e), 500)
     return {"path": rel, "kind": kind, "trash": "home" if place == trash.home_trash() else "workspace",
             "trash_path": os.path.join(place, "files", name)}
 
@@ -948,12 +948,12 @@ def preview_target(root: str, rel: str) -> tuple[str, str]:
     if os.path.isdir(real):
         real = os.path.join(real, "index.html")
         if not os.path.isfile(real):
-            raise FilesError(f"{rel or 'The project'} has no index.html.", 404)
+            raise FilesError(tr("{v} has no index.html.", v=rel or 'The project'), 404)
     if not os.path.isfile(real):
-        raise FilesError(f"{rel} doesn't exist.", 404)
+        raise FilesError(tr("{rel} doesn't exist.", rel=rel), 404)
     shown = os.path.relpath(real, root).replace(os.sep, "/")
     if SECRET_NAME.search(shown) or SECRET_NAME.search(os.path.basename(shown)):
-        raise FilesError(f"{shown} may hold secrets; the preview never serves it.", 403)
+        raise FilesError(tr("{shown} may hold secrets; the preview never serves it.", shown=shown), 403)
     ctype = mimetypes.guess_type(real)[0] or "application/octet-stream"
     return real, ctype
 

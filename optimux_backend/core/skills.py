@@ -31,6 +31,7 @@ import shutil
 import time
 
 from optimux_backend.core import paths
+from optimux_backend.core.i18n import tr
 
 PROJECT_SKILLS_DIR = ".optimux-skills"
 
@@ -54,7 +55,7 @@ class SkillError(Exception):
 def validate_name(name: str) -> str:
     name = (name or "").strip()
     if not NAME_RE.match(name):
-        raise SkillError(f"'{name}' isn't a valid skill name: lowercase letters, digits and '-', up to 64 characters.")
+        raise SkillError(tr("'{name}' isn't a valid skill name: lowercase letters, digits and '-', up to 64 characters.", name=name))
     return name
 
 
@@ -151,10 +152,10 @@ def parse_command(text: str, skills: dict[str, dict]) -> tuple[str | None, str]:
 def set_mode(scope: str, name: str, mode: str, project_dir: str | None) -> None:
     """Change a skill's mode by rewriting the mode line of its front matter."""
     if mode not in MODES:
-        raise SkillError("Mode must be 'manual' or 'auto'.")
+        raise SkillError(tr("Mode must be 'manual' or 'auto'."))
     text = read_raw(scope, name, project_dir)
     if not text.startswith("---") or text.find("\n---", 3) == -1:
-        raise SkillError("SKILL.md has no front matter.")
+        raise SkillError(tr("SKILL.md has no front matter."))
     end = text.find("\n---", 3)
     head, tail = text[:end], text[end:]
     lines = head.split("\n")
@@ -178,7 +179,7 @@ def load(name: str, project_dir: str | None = None) -> dict:
     """Full instructions plus the files in the skill's folder (for load_skill)."""
     skills = discover(project_dir)
     if name not in skills:
-        raise SkillError(f"No skill named '{name}'. Available: {', '.join(skills) or 'none'}.")
+        raise SkillError(tr("No skill named '{name}'. Available: {v}.", name=name, v=', '.join(skills) or 'none'))
     s = skills[name]
     with open(s["path"]) as f:
         _, body = parse(f.read())
@@ -195,7 +196,7 @@ def read_raw(scope: str, name: str, project_dir: str | None) -> str:
     folder = _folder(scope, name, project_dir)
     path = os.path.join(folder, "SKILL.md")
     if not os.path.isfile(path):
-        raise SkillError(f"No {scope} skill named '{name}'.")
+        raise SkillError(tr("No {scope} skill named '{name}'.", scope=scope, name=name))
     with open(path) as f:
         return f.read()
 
@@ -205,7 +206,7 @@ def save_raw(scope: str, name: str, text: str, project_dir: str | None) -> dict:
     name = validate_name(name)
     meta, _ = parse(text)
     if not (meta.get("description") or "").strip():
-        raise SkillError("SKILL.md needs a 'description:' line in its front matter; it's how the model knows when to use it.")
+        raise SkillError(tr("SKILL.md needs a 'description:' line in its front matter; it's how the model knows when to use it."))
     folder = _folder(scope, name, project_dir)
     os.makedirs(folder, exist_ok=True)
     with open(os.path.join(folder, "SKILL.md"), "w") as f:
@@ -217,7 +218,7 @@ def remove(scope: str, name: str, project_dir: str | None) -> str:
     """Move a skill folder to ~/.optimux/legacy/skills/ (never deleted outright)."""
     folder = _folder(scope, name, project_dir)
     if not os.path.isdir(folder):
-        raise SkillError(f"No {scope} skill named '{name}'.")
+        raise SkillError(tr("No {scope} skill named '{name}'.", scope=scope, name=name))
     dest = os.path.join(paths.LEGACY_DIR, "skills", f"{scope}-{name}-{time.strftime('%Y%m%d-%H%M%S')}")
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     shutil.move(folder, dest)
@@ -230,9 +231,9 @@ def _folder(scope: str, name: str, project_dir: str | None) -> str:
         return os.path.join(paths.SKILLS_DIR, name)
     if scope == "project":
         if not project_dir:
-            raise SkillError("No active project for a project skill.")
+            raise SkillError(tr("No active project for a project skill."))
         return os.path.join(project_skills_dir(project_dir), name)
-    raise SkillError("Scope must be 'global' or 'project'.")
+    raise SkillError(tr("Scope must be 'global' or 'project'."))
 
 
 def template(name: str, description: str = "") -> str:

@@ -3,6 +3,7 @@ import hashlib
 import re
 import os
 import json
+from html import escape as html_escape
 import secrets
 import time
 import traceback
@@ -68,6 +69,7 @@ from optimux_backend.core.security import (
     get_or_create_token, host_allowed, mask_messages, mask_secrets, origin_allowed, secret_mark, paths_outside_scope, resolve_project_dir, rotate_token,
     secret_values, validate_project_name,
 )
+from optimux_backend.core.i18n import tk, tr
 
 # No interactive API docs: they would load scripts from a CDN and list every endpoint
 app = FastAPI(title="Optimux Gateway", docs_url=None, redoc_url=None, openapi_url=None)
@@ -231,7 +233,7 @@ def security_headers(request, response) -> None:
 def _unauthorized(request: Request):
     if request.method == "GET" and request.url.path == "/":
         return RedirectResponse("/login", status_code=303)
-    return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return JSONResponse({"detail": tr("Unauthorized")}, status_code=401)
 
 
 @app.middleware("http")
@@ -247,13 +249,13 @@ async def guard(request: Request, call_next):
         if bearer:
             wait = auth.retry_after(ip)
             if wait:
-                response = JSONResponse({"detail": "Too many failed attempts."}, status_code=429,
+                response = JSONResponse({"detail": tr("Too many failed attempts.")}, status_code=429,
                                         headers={"Retry-After": str(wait)})
                 security_headers(request, response)
                 return response
             if not check_token(bearer):
                 auth.failed(ip)
-                response = JSONResponse({"detail": "Unauthorized"}, status_code=401)
+                response = JSONResponse({"detail": tr("Unauthorized")}, status_code=401)
                 security_headers(request, response)
                 return response
         else:
@@ -263,12 +265,12 @@ async def guard(request: Request, call_next):
                 security_headers(request, response)
                 return response
             if request.method not in SAFE_METHODS and not same_origin(request):
-                response = JSONResponse({"detail": "Cross-site request refused."}, status_code=403)
+                response = JSONResponse({"detail": tr("Cross-site request refused.")}, status_code=403)
                 security_headers(request, response)
                 return response
             request.state.login_id = login_id
     elif request.method not in SAFE_METHODS and path.startswith("/auth/") and not same_origin(request):
-        response = JSONResponse({"detail": "Cross-site request refused."}, status_code=403)
+        response = JSONResponse({"detail": tr("Cross-site request refused.")}, status_code=403)
         security_headers(request, response)
         return response
     # While a restore runs or waits for the restart, changes would be lost (data is replaced
@@ -501,14 +503,24 @@ _HTML_TAG = re.compile(r"<html(?:\s[^>]*)?>", re.I)
 _DOCTYPE = re.compile(r"^\ufeff?\s*<!doctype[^>]*>", re.I)
 
 
+def _preview_shim() -> str:
+    """PREVIEW_SHIM with the picker's few labels in the chosen language (v0.8)."""
+    shim = PREVIEW_SHIM
+    for text in (tk("↗ Send to chat"), tk("Sent ✓"), tk("Cancel"), tk("Selection")):
+        out = html_escape(tr(text), quote=True).replace("'", "&#39;")
+        shim = shim.replace(f">{text}<", f">{out}<").replace(f'"{text}"', f'"{out}"')
+    return shim
+
+
 def with_preview_shim(html: str) -> str:
     """The page with PREVIEW_SHIM before its own scripts, never before <!doctype>
     (that would switch the page to quirks mode)."""
+    shim = _preview_shim()
     for tag in (_HEAD_TAG, _HTML_TAG, _DOCTYPE):
         m = tag.search(html) if tag is not _DOCTYPE else tag.match(html)
         if m:
-            return html[:m.end()] + PREVIEW_SHIM + html[m.end():]
-    return PREVIEW_SHIM + html
+            return html[:m.end()] + shim + html[m.end():]
+    return shim + html
 
 
 @app.get("/preview/{project}/{token}/{path:path}")
@@ -1050,8 +1062,7 @@ class UpdatePayload(BaseModel):
 
 def _git_busy(name: str) -> JSONResponse | None:
     if BUSY_PROJECTS.get(name):
-        return JSONResponse({"detail": f"A request is running in '{name}'. Wait for it to finish (or stop it), "
-                                       "so half-done work isn't pushed or overwritten."}, status_code=422)
+        return JSONResponse({"detail": tr("A request is running in '{name}'. Wait for it to finish (or stop it), so half-done work isn't pushed or overwritten.", name=name)}, status_code=422)
     return None
 
 
@@ -1110,9 +1121,9 @@ async def project_commit_message(name: str):
     following the project's commit template if it has one. One paid call."""
     model = routing_for(name).get("simple_model", "")
     if not model:
-        return JSONResponse({"detail": "No Simple model is configured (Dashboard → Routing)."}, status_code=422)
+        return JSONResponse({"detail": tr("No Simple model is configured (Dashboard → Routing).")}, status_code=422)
     if (b := budgets.blocks(name)):
-        return JSONResponse({"detail": budget_text(b) + " New model calls are blocked until you raise it."},
+        return JSONResponse({"detail": tr("{v} New model calls are blocked until you raise it.", v=budget_text(b))},
                             status_code=422)
     material = await _gitsync(gitsync.message_material, name)
     if not isinstance(material, dict):
@@ -1124,14 +1135,14 @@ async def project_commit_message(name: str):
             timeout=60, **litellm_key_kwargs(model), **thinking_kwargs(model))
     except Exception as e:
         ratelimits.record_error(model, e)
-        return JSONResponse({"detail": "The model couldn't write it: " + providers.classify(e).summary},
+        return JSONResponse({"detail": tr("The model couldn't write it: {v}", v=providers.classify(e).summary)},
                             status_code=502)
     ratelimits.record_response(model, response)
     entry = usage_meter.record("", "commit_message", model, getattr(response, "usage", None),
                                int((time.monotonic() - started) * 1000), project=name)
     message = gitsync.clean_message(response.choices[0].message.content or "")
     if not message:
-        return JSONResponse({"detail": "The model returned an empty message. Try again, or write it yourself."},
+        return JSONResponse({"detail": tr("The model returned an empty message. Try again, or write it yourself.")},
                             status_code=502)
     return {"message": message, "model": model, "cost": entry.get("cost"), "template": bool(material["template"])}
 
@@ -1139,8 +1150,7 @@ async def project_commit_message(name: str):
 @app.post("/api/projects/{name}/archive")
 async def archive_project_api(name: str):
     if BUSY_PROJECTS.get(name):
-        return JSONResponse({"detail": f"A request is running in '{name}' (maybe in another tab). "
-                                       "Wait for it to finish, or stop it, then archive."}, status_code=422)
+        return JSONResponse({"detail": tr("A request is running in '{name}' (maybe in another tab). Wait for it to finish, or stop it, then archive.", name=name)}, status_code=422)
     try:
         result = await asyncio.to_thread(workspace.archive_project, name)
     except workspace.WorkspaceError as e:
@@ -1694,7 +1704,7 @@ def _limited(request: Request, password: bool = False) -> JSONResponse | None:
     wait = auth.password_retry_after(ip) if password else auth.retry_after(ip)
     if wait:
         mins = max(1, round(wait / 60))
-        return JSONResponse({"detail": f"Too many failed attempts. Try again in about {mins} minute{'s' if mins != 1 else ''}."},
+        return JSONResponse({"detail": tr("Too many failed attempts. Try again in about {mins} minute{v}.", mins=mins, v='s' if mins != 1 else '')},
                             status_code=429, headers={"Retry-After": str(wait)})
     return None
 
@@ -1755,7 +1765,7 @@ async def auth_login(payload: LoginPayload, request: Request):
             return JSONResponse({"need_code": True}, status_code=401)
         wait = auth.code_limiter.retry_after(auth.GLOBAL)
         if wait:
-            return JSONResponse({"detail": "Too many wrong codes. Two-step sign-in is paused for a while; try again later."},
+            return JSONResponse({"detail": tr("Too many wrong codes. Two-step sign-in is paused for a while; try again later.")},
                                 status_code=429, headers={"Retry-After": str(wait)})
         if not auth.check_totp(payload.code):
             auth.failed(ip)
@@ -1843,7 +1853,7 @@ async def auth_totp_disable(payload: LoginPayload, request: Request):
     if limited:
         return limited
     if auth.code_limiter.retry_after(auth.GLOBAL):
-        return JSONResponse({"detail": "Too many wrong codes; try again later."}, status_code=429)
+        return JSONResponse({"detail": tr("Too many wrong codes; try again later.")}, status_code=429)
     ok = await asyncio.to_thread(auth.check_password, payload.password) and auth.check_totp(payload.code)
     if not ok:
         auth.failed(client_ip(request))
@@ -1861,19 +1871,19 @@ def approval_check() -> dict:
     """The security checklist's line about approvals (autonomy levels, v0.8)."""
     a = autonomy_lib.overview()
     if a["blocked"]:
-        return {"id": "approve", "label": "Command approval", "ok": True, "important": True,
-                "detail": "Every command and file change waits for your approval (Supervised). " + a["blocked"]}
+        return {"id": "approve", "label": tr("Command approval"), "ok": True, "important": True,
+                "detail": tr("Every command and file change waits for your approval (Supervised). {v}", v=a["blocked"])}
     freer = sorted(p for p, lv in a["projects"].items() if lv != "supervised")
     ok = a["default"] == "supervised" and not freer
     if ok:
-        detail = "Every command and file change waits for your approval (Supervised)."
+        detail = tr("Every command and file change waits for your approval (Supervised).")
     else:
-        parts = [] if a["default"] == "supervised" else [f"projects without their own level are {a['default'].capitalize()}"]
+        parts = [] if a["default"] == "supervised" else [
+            tr("projects without their own level are {level}", level=tr(a["default"].capitalize()))]
         if freer:
-            parts.append("own levels: " + ", ".join(f"{p} ({a['projects'][p].capitalize()})" for p in freer))
-        detail = ("Some work runs without asking: " + "; ".join(parts) + ". Pushes, deletions, installs, network use "
-                  "and paths outside the project always ask. Change it in Execution.")
-    return {"id": "approve", "label": "Command approval", "ok": ok, "important": True, "detail": detail}
+            parts.append(tr("own levels: {list}", list=", ".join(f"{p} ({tr(a['projects'][p].capitalize())})" for p in freer)))
+        detail = (tr("Some work runs without asking: {v}. Pushes, deletions, installs, network use and paths outside the project always ask. Change it in Execution.", v="; ".join(parts)))
+    return {"id": "approve", "label": tr("Command approval"), "ok": ok, "important": True, "detail": detail}
 
 
 @app.get("/api/security")
@@ -1887,27 +1897,27 @@ async def security_checklist(request: Request):
     network = bool(settings.get("sandbox_network", True))
     others = max(0, len(auth.list_sessions()) - 1)
     checks = [
-        {"id": "https", "label": "HTTPS", "ok": is_https(request), "important": not local,
-         "detail": "This page is encrypted." if is_https(request) else
-                   ("Plain HTTP is fine on this computer only." if local else
-                    "Plain HTTP over the network: the password and your chats can be read in transit. Put Optimux behind a reverse proxy with HTTPS.")},
-        {"id": "totp", "label": "Two-step codes", "ok": auth.totp_enabled(), "important": server or not local,
-         "detail": "A code from your phone is needed to sign in." if auth.totp_enabled() else
-                   "Off: the password alone signs in. Turn it on below."},
-        {"id": "sandbox", "label": "Sandbox", "ok": sandbox_on, "important": True,
-         "detail": ("Commands can only change the working folder." if sandbox_on else
-                    (f"On, but bubblewrap doesn't work here, so commands are refused: {sb['error']}" if sandbox_lib.enabled(settings) else
-                     "Off: an approved command can change anything the server's user can. Turn it on in Execution."))},
-        {"id": "network", "label": "Network for commands", "ok": not (sandbox_on and network), "important": server,
-         "detail": ("Commands have no network." if sandbox_on and not network else
-                    ("Commands can reach the internet (needed for pip, npm, git over HTTPS)." if sandbox_on else
-                     "Without the sandbox, commands always have the network."))},
+        {"id": "https", "label": tr("HTTPS"), "ok": is_https(request), "important": not local,
+         "detail": tr("This page is encrypted.") if is_https(request) else
+                   (tr("Plain HTTP is fine on this computer only.") if local else
+                    tr("Plain HTTP over the network: the password and your chats can be read in transit. Put Optimux behind a reverse proxy with HTTPS."))},
+        {"id": "totp", "label": tr("Two-step codes"), "ok": auth.totp_enabled(), "important": server or not local,
+         "detail": tr("A code from your phone is needed to sign in.") if auth.totp_enabled() else
+                   tr("Off: the password alone signs in. Turn it on below.")},
+        {"id": "sandbox", "label": tr("Sandbox"), "ok": sandbox_on, "important": True,
+         "detail": (tr("Commands can only change the working folder.") if sandbox_on else
+                    (tr("On, but bubblewrap doesn't work here, so commands are refused: {v}", v=sb['error']) if sandbox_lib.enabled(settings) else
+                     tr("Off: an approved command can change anything the server's user can. Turn it on in Execution.")))},
+        {"id": "network", "label": tr("Network for commands"), "ok": not (sandbox_on and network), "important": server,
+         "detail": (tr("Commands have no network.") if sandbox_on and not network else
+                    (tr("Commands can reach the internet (needed for pip, npm, git over HTTPS).") if sandbox_on else
+                     tr("Without the sandbox, commands always have the network.")))},
         approval_check(),
-        {"id": "server", "label": "Server mode", "ok": server, "important": not local,
-         "detail": "OPTIMUX_SERVER=1: sandbox required, secure cookies." if server else
-                   "Off (fine on your own computer). On a VPS, start with OPTIMUX_SERVER=1."},
-        {"id": "sessions", "label": "Other signed-in browsers", "ok": True, "important": False,
-         "detail": f"{others} other browser{'s' if others != 1 else ''} signed in." if others else "Only this browser."},
+        {"id": "server", "label": tr("Server mode"), "ok": server, "important": not local,
+         "detail": tr("OPTIMUX_SERVER=1: sandbox required, secure cookies.") if server else
+                   tr("Off (fine on your own computer). On a VPS, start with OPTIMUX_SERVER=1.")},
+        {"id": "sessions", "label": tr("Other signed-in browsers"), "ok": True, "important": False,
+         "detail": tr("{others} other browser{v} signed in.", others=others, v='s' if others != 1 else '') if others else tr("Only this browser.")},
     ]
     return {"checks": checks, "server_mode": server}
 
@@ -2202,7 +2212,7 @@ async def github_check():
     """Ask GitHub whether the saved token still works."""
     token = os.environ.get(GITHUB_TOKEN_ENV, "")
     if not token:
-        return JSONResponse({"detail": "No token is saved in Optimux."}, status_code=422)
+        return JSONResponse({"detail": tr("No token is saved in Optimux.")}, status_code=422)
     try:
         info = await asyncio.to_thread(workspace.check_github_token, token)
     except workspace.GitHubError as e:
@@ -2331,7 +2341,7 @@ async def github_clone(payload: ClonePayload):
     """Start cloning github.com/<full_name> into the Workspace as <name>; poll its state."""
     name = payload.name.strip()
     if any(j["state"] == "running" and j["name"] == name for j in CLONE_JOBS.values()):
-        return JSONResponse({"detail": f"'{name}' is already being cloned."}, status_code=422)
+        return JSONResponse({"detail": tr("'{name}' is already being cloned.", name=name)}, status_code=422)
     # Registered before anything is awaited, so a double click can't start two clones
     job = {"id": uuid.uuid4().hex, "full_name": payload.full_name.strip(), "name": name, "path": "", "staging": "",
            "argv": [], "state": "running", "progress": "Starting…", "error": "", "started": time.time(), "proc": None}
@@ -2354,7 +2364,7 @@ async def github_clone(payload: ClonePayload):
 async def github_clone_state(job_id: str):
     job = CLONE_JOBS.get(job_id)
     if not job:
-        return JSONResponse({"detail": "No such clone."}, status_code=404)
+        return JSONResponse({"detail": tr("No such clone.")}, status_code=404)
     return _clone_view(job)
 
 
@@ -2362,7 +2372,7 @@ async def github_clone_state(job_id: str):
 async def github_clone_cancel(job_id: str):
     job = CLONE_JOBS.get(job_id)
     if not job:
-        return JSONResponse({"detail": "No such clone."}, status_code=404)
+        return JSONResponse({"detail": tr("No such clone.")}, status_code=404)
     if job["state"] == "running":
         job["state"] = "cancelled"
         _kill_group(job.get("proc"))
@@ -2479,7 +2489,7 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
     """Plan a big task (v0.4). True when a plan was made and shown; False means the
     task goes on the usual way (the planner failed, with the reason shown)."""
     model = routing["complex_model"]
-    await send(websocket, "system", f"Planning: {model} splits the task into steps for the cheaper model.",
+    await send(websocket, "system", tr("Planning: {model} splits the task into steps for the cheaper model.", model=model),
                tier="complex", model=model)
     try:
         result = await planner.make_plan(user_message, model, mask_secrets(get_memory_context())[0], current_workdir())
@@ -2489,7 +2499,7 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
         info = providers.record_failure(model, e)
         ratelimits.record_error(model, e)
         analytics.record_event("error", model, "planner", info.kind)
-        await send(websocket, "system", f"Couldn't make a plan ({info.summary}); doing the task the usual way.")
+        await send(websocket, "system", tr("Couldn't make a plan ({summary}); doing the task the usual way.", summary=info.summary))
         return False
     if result.get("thinking"):
         await send(websocket, "thinking", result["thinking"])
@@ -2505,9 +2515,9 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
         await meter(websocket, session, "planner", model, usage, ms, plan_id=plan["id"] if plan else None)
     if not plan:
         if result.get("declined"):
-            await send(websocket, "system", f"Not planned: {result['error'].rstrip('.')}. Doing the task the usual way.")
+            await send(websocket, "system", tr("Not planned: {v}. Doing the task the usual way.", v=result['error'].rstrip('.')))
         else:
-            await send(websocket, "system", f"The plan couldn't be used ({result['error']}); doing the task the usual way.")
+            await send(websocket, "system", tr("The plan couldn't be used ({v}); doing the task the usual way.", v=result['error']))
         return False
     record = plans_lib.summary_for_history(plan)
     await send(websocket, "plan", plan=public_plan(plan))
@@ -2515,12 +2525,10 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
                                                             {"role": "assistant", "content": record}])
     session["last_turn_ok"] = True
     if plan_mode() == "auto":
-        await send(websocket, "system", f"Plan ready: {len(plan['steps'])} steps. Running it now (Plan big tasks: "
-                                        "Automatic); Stop pauses it.")
+        await send(websocket, "system", tr("Plan ready: {v} steps. Running it now (Plan big tasks: Automatic); Stop pauses it.", v=len(plan['steps'])))
         await run_plan(websocket, session, plan["id"])
     else:
-        await send(websocket, "system", f"Plan ready: {len(plan['steps'])} steps. Check them, then press Run, "
-                                        "or Cancel. Nothing runs until then.")
+        await send(websocket, "system", tr("Plan ready: {v} steps. Check them, then press Run, or Cancel. Nothing runs until then.", v=len(plan['steps'])))
     return True
 
 
@@ -2554,7 +2562,7 @@ async def send_plan(websocket: WebSocket, pid: str) -> dict:
 async def pause_plan(websocket: WebSocket, session: dict, pid: str, note: str) -> None:
     plan = plans_lib.set_status(pid, "paused", note=note)
     await send(websocket, "plan", plan=public_plan(plan))
-    await send(websocket, "system", f"Plan paused. {note}")
+    await send(websocket, "system", tr("Plan paused. {note}", note=note))
     plan_history_record(session, plan)
     session["last_turn_ok"] = False
 
@@ -2577,7 +2585,7 @@ async def run_in_step(websocket: WebSocket, session: dict, routing: dict, pid: s
         alt = fallback_for(role, model, routing)
         if not alt:
             raise
-        await send(websocket, "system", f"Fell back to {alt[1]}: {model} {e.info.summary}")
+        await send(websocket, "system", tr("Fell back to {v}: {model} {summary}", v=alt[1], model=model, summary=e.info.summary))
         role, model = alt
         if step_no != plans_lib.CHECK_STEP:
             plans_lib.update_step(pid, step_no, model=model)
@@ -2588,7 +2596,7 @@ async def run_in_step(websocket: WebSocket, session: dict, routing: dict, pid: s
             analytics.record_event("escalation", model, role, stuck_reason(outcome, role))
             tasks_lib.escalate(session.get("task"), f"step {step_no}: {stuck_reason(outcome, role)}")
             usage_meter.zero_reference((session.get("task") or {}).get("id"), role, step_no)
-            await send(websocket, "system", f"Escalated this step to {alt[1]}: {stuck_reason(outcome, role)}")
+            await send(websocket, "system", tr("Escalated this step to {v}: {v2}", v=alt[1], v2=stuck_reason(outcome, role)))
             role, model = alt
             if step_no != plans_lib.CHECK_STEP:
                 plans_lib.update_step(pid, step_no, model=model, escalated=True)
@@ -2631,7 +2639,7 @@ async def run_plan_step(websocket: WebSocket, session: dict, routing: dict, plan
     messages = build_messages(get_memory_context(), [], prompt, model, current_workdir())
     plans_lib.update_step(pid, sid, status="running", started=time.time(), model=model, result="")
     await send_plan(websocket, pid)
-    await send(websocket, "system", f"Step {sid} of {len(plan['steps'])}: {step['title']} on {model} ({role})",
+    await send(websocket, "system", tr("Step {sid} of {v}: {v2} on {model} ({role})", sid=sid, v=len(plan['steps']), v2=step['title'], model=model, role=role),
                tier=role, model=model, plan_step=sid, step_title=step["title"])
     session.update(plan_ctx={"plan_id": pid, "step": sid}, step_tools=TOOLS + files_lib.FILE_TOOLS + [FINISH_STEP_TOOL], step_finish=None)
     try:
@@ -2672,7 +2680,7 @@ async def run_final_check(websocket: WebSocket, session: dict, routing: dict, pi
     results, details = plans_lib.earlier_work(plan, 10 ** 6)
     messages = build_messages(get_memory_context(), [], get_step_prompt(plan, None, results, details), model,
                               current_workdir())
-    await send(websocket, "system", f"Final check on {model} ({role}): {plan['check']}", tier=role, model=model,
+    await send(websocket, "system", tr("Final check on {model} ({role}): {v}", model=model, role=role, v=plan['check']), tier=role, model=model,
                plan_step=plans_lib.CHECK_STEP, step_title="Final check")
     session.update(plan_ctx={"plan_id": pid, "step": plans_lib.CHECK_STEP}, step_tools=TOOLS + files_lib.FILE_TOOLS + [FINISH_CHECK_TOOL],
                    step_finish=None)
@@ -2774,31 +2782,30 @@ async def handle_plan_action(websocket: WebSocket, session: dict, payload: dict)
     also retries a blocked step), skip (the paused step, then go on) and cancel."""
     action, pid = payload.get("action"), str(payload.get("plan_id", ""))
     if action not in PLAN_ACTIONS:
-        await send(websocket, "error", f"Unknown plan action: {action}")
+        await send(websocket, "error", tr("Unknown plan action: {action}", action=action))
         return
     try:
         plan = plans_lib.get(pid)
     except plans_lib.PlanError:
-        await send(websocket, "error", "That plan no longer exists.")
+        await send(websocket, "error", tr("That plan no longer exists."))
         return
     if plan["session"] != session.get("chat_id"):
-        await send(websocket, "error", "That plan belongs to another chat; open that chat to use it.")
+        await send(websocket, "error", tr("That plan belongs to another chat; open that chat to use it."))
         return
     if session.get("task") is not None:
         session["task"]["plan_id"] = pid
     allowed = {"run": ("waiting",), "resume": ("paused",), "skip": ("paused",), "cancel": ("waiting", "paused")}
     if plan["status"] not in allowed[action]:
-        await send(websocket, "system", f"This plan is {plan['status']}, so {action.capitalize()} doesn't apply now.")
+        await send(websocket, "system", tr("This plan is {v}, so {capitalize} doesn't apply now.", v=plan['status'], capitalize=action.capitalize()))
         return
     if action == "cancel":
         plan = plans_lib.set_status(pid, "cancelled", note="Cancelled by you.")
         await send(websocket, "plan", plan=public_plan(plan))
-        await send(websocket, "system", "Plan cancelled. Nothing more of it will run.")
+        await send(websocket, "system", tr("Plan cancelled. Nothing more of it will run."))
         plan_history_record(session, plan)
         return
     if (plan["project"] or "") != active_project():
-        await send(websocket, "error", f"This plan works in the project {plan['project'] or '(none)'}; "
-                                       "switch to it first.")
+        await send(websocket, "error", tr("This plan works in the project {v}; switch to it first.", v=plan['project'] or '(none)'))
         return
     if not await check_budget_before_request(websocket, session):
         return
@@ -2806,9 +2813,9 @@ async def handle_plan_action(websocket: WebSocket, session: dict, payload: dict)
         step = plans_lib.next_step(plan)
         if step is not None:
             plans_lib.update_step(pid, step["id"], status="skipped", finished=time.time())
-            await send(websocket, "system", f"Skipped step {step['id']}: {step['title']}.")
+            await send(websocket, "system", tr("Skipped step {v}: {v2}.", v=step['id'], v2=step['title']))
     else:
-        await send(websocket, "system", "Running the plan." if action == "run" else "Resuming the plan.")
+        await send(websocket, "system", tr("Running the plan.") if action == "run" else tr("Resuming the plan."))
     await run_plan(websocket, session, pid)
 
 
@@ -3248,7 +3255,7 @@ async def call_model(websocket: WebSocket, session: dict, role: str, model: str,
             print(f"[Optimux] {model} call failed ({info.kind}): {e}")
             analytics.record_event("error", model, role, info.kind)  # every failed call, retried ones too
             if info.kind == "transient" and attempt == 1 and not r.streamed:
-                await send(websocket, "system", f"{model} {info.summary}, retrying...")
+                await send(websocket, "system", tr("{model} {summary}, retrying...", model=model, summary=info.summary))
                 await asyncio.sleep(RETRY_DELAY)
                 continue
             if info.kind == "fatal":
@@ -3468,11 +3475,9 @@ async def raise_project_level(websocket: WebSocket, project: str, level: str) ->
     try:
         autonomy_lib.set_level(project, level)
     except ValueError as e:
-        await send(websocket, "system", f"The level of {project} stays Supervised: {e}")
+        await send(websocket, "system", tr("The level of {project} stays Supervised: {e}", project=project, e=e))
         return
-    await send(websocket, "system", f"{project} is now {level.capitalize()}: file changes and ordinary commands "
-                                    "run without asking. Pushes, deletions, installs, network use and paths outside "
-                                    "the project still ask (Dashboard → Execution).")
+    await send(websocket, "system", tr("{project} is now {capitalize}: file changes and ordinary commands run without asking. Pushes, deletions, installs, network use and paths outside the project still ask (Dashboard → Execution).", project=project, capitalize=level.capitalize()))
 
 
 TIME_LIMIT_CHOICES = (0, 600, 1800)       # the approval box: no limit, 10 min, 30 min (or the setting)
@@ -3584,8 +3589,7 @@ async def run_file_tool(websocket: WebSocket, session: dict, name: str, args_str
                                        ask_reason=why, level=level)
         if answer["approved"] and answer.get("all_edits") is True:
             session["approve_edits"] = True
-            await send(websocket, "system", "Approved: this and the next file edits of this reply. "
-                                            "Commands still ask; the next reply asks again.")
+            await send(websocket, "system", tr("Approved: this and the next file edits of this reply. Commands still ask; the next reply asks again."))
     if not answer["approved"]:
         reason = answer.get("reason", "")
         await send(websocket, "system", declined_line(f"Change to {change['path']} rejected", reason))
@@ -3689,14 +3693,14 @@ async def run_workspace_tool(websocket: WebSocket, session: dict, name: str, arg
                 return {"ok": True, "active_project": target or None, "note": "Already active; nothing changed."}
             await set_active_project(websocket, target)
             where = f"project '{target}'" if target else "the Workspace (no project)"
-            await send(websocket, "system", f"Switched to {where}.")
+            await send(websocket, "system", tr("Switched to {where}.", where=where))
             return {"ok": True, "active_project": target or None,
                     "note": "Commands now run there and its project memory applies from the next request."}
 
         if name == "create_project":
             form = await ask_create_form(websocket, session, tc_id, args)
             if form is None:
-                await send(websocket, "system", "Project creation cancelled.")
+                await send(websocket, "system", tr("Project creation cancelled."))
                 return {"ok": False, "declined": True,
                         "note": "The user cancelled the form. Don't retry; ask what they'd like to change."}
             pname = form["name"]
@@ -3889,10 +3893,10 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                     if session.get("skill") and session["skill"]["name"] == sname:
                         # Already in the system prompt: don't pay for its instructions twice
                         raise skills_lib.SkillError(f"'{sname}' is already loaded (see ACTIVE SKILL in your instructions); "
-                                                    "follow it without calling load_skill.")
+                                                   "follow it without calling load_skill.")   # to the model: English
                     loaded = skills_lib.load(sname, skill_project_dir())
                     session["skill"] = loaded
-                    await send(websocket, "system", f"Skill loaded: {loaded['name']}", skill=loaded["name"])
+                    await send(websocket, "system", tr("Skill loaded: {v}", v=loaded['name']), skill=loaded["name"])
                     result = {"ok": True, **{k: loaded[k] for k in ("name", "instructions", "files", "folder")}}
                 except skills_lib.SkillError as e:
                     result = {"ok": False, "error": str(e)}
@@ -3957,7 +3961,7 @@ async def run_turn(websocket: WebSocket, session: dict, model: str, role: str, m
                 except Exception:
                     file_type, content = "error", "error parsing json"
                 result = update_memory(file_type, content)
-                await send(websocket, "system", f"Memory Saved: {file_type}.md")
+                await send(websocket, "system", tr("Memory Saved: {file_type}.md", file_type=file_type))
                 messages.append({"role": "tool", "tool_call_id": tc_id, "name": tc_name, "content": result})
 
             else:
@@ -4090,8 +4094,8 @@ async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
 
     if fallback:
         fb_role, fb_model = fallback
-        verb = "Escalated" if fb_role == "complex" else "Fell back"
-        await send(websocket, "system", f"{verb} to {fb_model}: {reason}")
+        await send(websocket, "system", tr("Escalated to {model}: {reason}", model=fb_model, reason=reason)
+                   if fb_role == "complex" else tr("Fell back to {model}: {reason}", model=fb_model, reason=reason))
         if fb_role == "complex" and not provider_problem:
             session["tier"] = "complex"  # the task proved hard; stay on complex for this chat
             analytics.record_event("escalation", model, role, reason)
@@ -4109,7 +4113,7 @@ async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
                 await notify_step_limit(websocket, fb_role)
         except (ProviderFailure, ModelUnavailable) as e:
             task_outcome(session, "provider_error")
-            await send(websocket, "error", f"{reason}. Fallback {fb_model} also failed: {e.info.summary}")
+            await send(websocket, "error", tr("{reason}. Fallback {fb_model} also failed: {summary}", reason=reason, fb_model=fb_model, summary=e.info.summary))
         except BudgetExceeded as e:
             task_outcome(session, "budget_paused")
             await notify_budget_pause(websocket, e.status)
@@ -4164,17 +4168,16 @@ async def resolve_tier(websocket: WebSocket, session: dict, user_message: str) -
         session["task"].update(conductor_model=conductor_model, conductor_tier=tier,
                                conductor_plan=session["conductor_plan"], conductor_error=failed or None)
     if failed:                       # never fall back silently: the user should know routing didn't happen
-        await send(websocket, "system", f"The Conductor ({conductor_model}) couldn't decide: {failed}. "
-                                        "This request starts on the simple tier.")
+        await send(websocket, "system", tr("The Conductor ({conductor_model}) couldn't decide: {failed}. This request starts on the simple tier.", conductor_model=conductor_model, failed=failed))
     if conductor_model == "off" and session["tier"] is not None:
         return session["tier"]  # Conductor Off: only escalation changes the tier
     if tier == "complex":
         if session["tier"] == "simple":
-            await send(websocket, "system", "Conductor: this request looks complex; moving the chat to the complex tier.")
+            await send(websocket, "system", tr("Conductor: this request looks complex; moving the chat to the complex tier."))
         session["tier"] = "complex"
     elif session["tier"] == "complex":
         if session["last_turn_ok"]:
-            await send(websocket, "system", "Conductor: this looks like a new, simpler request; moving the chat back to the simple tier.")
+            await send(websocket, "system", tr("Conductor: this looks like a new, simpler request; moving the chat back to the simple tier."))
             session["tier"] = "simple"
     else:
         session["tier"] = "simple"
@@ -4185,7 +4188,7 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
     if user_message.strip().lower() == NEW_CHAT_COMMAND:
         reset_chat(session)
         await send(websocket, "chat_reset")
-        await send(websocket, "system", "New chat started.")
+        await send(websocket, "system", tr("New chat started."))
         return
 
     if not await check_budget_before_request(websocket, session):
@@ -4205,22 +4208,21 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
     plan_cmd, user_message = parse_plan_command(user_message)
     session["plan_cmd"] = plan_cmd
     if plan_cmd is not None and not user_message:
-        await send(websocket, "system", "Add the task after the command, for example: /plan write tests for the parser")
+        await send(websocket, "system", tr("Add the task after the command, for example: /plan write tests for the parser"))
         return
     tier_cmd, user_message = parse_tier_command(user_message)
     if tier_cmd:
         session["tier"] = tier_cmd
         session["tier_pinned"] = True
         if not user_message:
-            await send(websocket, "system", f"Using the {tier_cmd} tier for this chat.")
+            await send(websocket, "system", tr("Using the {tier_cmd} tier for this chat.", tier_cmd=tier_cmd))
             return
 
     # /<skill> or /skill <name>: run a skill on request (any mode; this is how manual skills run)
     asked_skill, rest = skills_lib.parse_command(user_message, found)
     if asked_skill:
         if skills_mode() == "off":
-            await send(websocket, "error", f"Skills are turned off, so /{asked_skill} can't run. "
-                                           "Turn them on in Dashboard > Skills.")
+            await send(websocket, "error", tr("Skills are turned off, so /{asked_skill} can't run. Turn them on in Dashboard > Skills.", asked_skill=asked_skill))
             return
         user_message = rest or f"Run the {asked_skill} skill."
 
@@ -4231,13 +4233,13 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
         role = await resolve_tier(websocket, session, user_message)
         model = routing.get(f"{role}_model", "")
         if not model:
-            await send(websocket, "error", f"Routing role '{role}_model' is not configured. Please assign it in Settings > Routing.")
+            await send(websocket, "error", tr("Routing role '{role}_model' is not configured. Please assign it in Settings > Routing.", role=role))
             return
         if not providers.is_available(model):
             # Don't spend a request on a model we know is down; this switch is not sticky
             alt = fallback_for(role, model, routing)
             if alt:
-                await send(websocket, "system", f"Skipping {unavailable_note(model)}; using {alt[1]}.")
+                await send(websocket, "system", tr("Skipping {v}; using {v2}.", v=unavailable_note(model), v2=alt[1]))
                 role, model = alt
     picked = asked_skill or session.get("picked_skill")
     if picked and (role != "override" or asked_skill):
@@ -4263,8 +4265,8 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
             if await start_plan(websocket, session, routing, user_message):
                 return
         elif plan_cmd is True:
-            await send(websocket, "system", f"Not planned: {why_not}. Doing the task the usual way.")
-    await send(websocket, "system", f"Routed to: {model} ({role})", tier=role, model=model)
+            await send(websocket, "system", tr("Not planned: {why_not}. Doing the task the usual way.", why_not=why_not))
+    await send(websocket, "system", tr("Routed to: {model} ({role})", model=model, role=role), tier=role, model=model)
     task_route(session, role, model)
     await run_with_fallback(websocket, session, routing, model, role, user_message)
 
@@ -4281,7 +4283,7 @@ async def scout_first(websocket: WebSocket, session: dict, routing: dict, user_m
         return user_message
     if session.get("tier_before") == "complex" and session["history"]:
         # Its earlier turns in this chat already hold what it read: a new look would be paid twice
-        await send(websocket, "system", "Scout skipped: the chat was already on Complex, which has the project in view.")
+        await send(websocket, "system", tr("Scout skipped: the chat was already on Complex, which has the project in view."))
         return user_message
     workdir = current_workdir() if active_project() else ""
     files = (await asyncio.to_thread(planner.file_list, workdir))[0] if workdir else []
@@ -4290,9 +4292,9 @@ async def scout_first(websocket: WebSocket, session: dict, routing: dict, user_m
     if not why and not providers.is_available(model):
         why = unavailable_note(model)
     if why:
-        await send(websocket, "system", f"Scout skipped: {why}.")
+        await send(websocket, "system", tr("Scout skipped: {why}.", why=why))
         return user_message
-    await send(websocket, "system", f"Scout: {model} reads the project first, so {strong} starts with a brief.")
+    await send(websocket, "system", tr("Scout: {model} reads the project first, so {strong} starts with a brief.", model=model, strong=strong))
     try:
         result = await asyncio.wait_for(
             scout_lib.run(user_message, model, mask_secrets(get_memory_context())[0], workdir), SCOUT_TIMEOUT)
@@ -4303,17 +4305,16 @@ async def scout_first(websocket: WebSocket, session: dict, routing: dict, user_m
         if info.kind == "quota":             # like the Conductor: only a used-up quota cools the model down
             providers.record_failure(model, e)
         ratelimits.record_error(model, e)
-        await send(websocket, "system", f"Scout failed ({info.summary}); {strong} starts without a brief.")
+        await send(websocket, "system", tr("Scout failed ({summary}); {strong} starts without a brief.", summary=info.summary, strong=strong))
         return user_message
     for usage, ms in result["calls"]:
         await meter(websocket, session, "scout", model, usage, ms)
     if not result["brief"]:
-        await send(websocket, "system", f"The scout wrote no brief; {strong} starts without one.")
+        await send(websocket, "system", tr("The scout wrote no brief; {strong} starts without one.", strong=strong))
         return user_message
     n = len(result["read"])
     log = result.get("log") or []
-    await send(websocket, "system", f"Scout brief: {n} file{'s' if n != 1 else ''} read, "
-                                    f"{result['tools']} lookup{'s' if result['tools'] != 1 else ''}.",
+    await send(websocket, "system", tr("Scout brief: {n} file{v} read, {v2} lookup{v3}.", n=n, v='s' if n != 1 else '', v2=result['tools'], v3='s' if result['tools'] != 1 else ''),
                brief=mask_secrets(result["brief"] + ("\n\nLookups run:\n" + "\n".join(f"- {x}" for x in log)
                                                      if log else ""))[0])
     return scout_lib.handoff(user_message, result, model)
@@ -4413,7 +4414,7 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
         try:
             switched = switch_active_project(target)
         except Exception as e:
-            await send(websocket, "error", f"Can't switch to {target or 'the Workspace'}: {e}")
+            await send(websocket, "error", tr("Can't switch to {v}: {e}", v=target or 'the Workspace', e=e))
     data = chat_store.get(sid) if sid else None
     if data is None:
         reset_chat(session)  # nothing to open: start clean, as the UI does
@@ -4435,7 +4436,7 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
             settings = get_settings()
             save_settings(SettingsPayload(**{**settings, "active_project": data["project"]}))
         except Exception as e:
-            await send(websocket, "error", f"Can't switch to project {data['project']}: {e}")
+            await send(websocket, "error", tr("Can't switch to project {v}: {e}", v=data['project'], e=e))
     reset_chat(session)
     session.update({
         "chat_id": data["id"], "history": data["history"], "tier": data["tier"],
@@ -4456,7 +4457,7 @@ async def handle_escalate(websocket: WebSocket, session: dict) -> None:
     routing = routing_for()
     model = routing.get("complex_model", "")
     if last_user is None or not model:
-        await send(websocket, "system", "Nothing to escalate." if last_user is None else "No Complex Executor is configured.")
+        await send(websocket, "system", tr("Nothing to escalate.") if last_user is None else tr("No Complex Executor is configured."))
         return
     user_message = history[last_user]["content"]
     # Keep the commands already run and their output, so the stronger model
@@ -4587,15 +4588,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 if hidden:
                     names = sorted({n for n, _ in secret_values() if secret_mark(n) in prompt})
                     await send(websocket, "prompt_masked", content=prompt)     # the page shows the hidden version
-                    await send(websocket, "system", f"Your message held a saved key ({', '.join(names)}). It was "
-                                                    "hidden as ••••(NAME) before anything was sent or stored: "
-                                                    "models never get saved keys.")
+                    await send(websocket, "system", tr("Your message held a saved key ({v}). It was hidden as ••••(NAME) before anything was sent or stored: models never get saved keys.", v=', '.join(names)))
                 model_override = payload.get("model", payload.get("model_override", "auto"))
                 await handle_prompt(websocket, session, prompt, model_override)
         except asyncio.CancelledError:
             task_outcome(session, "stopped")
             await send(websocket, "stopped")
-            await send(websocket, "system", "Stopped.")
+            await send(websocket, "system", tr("Stopped."))
         except WebSocketDisconnect:
             finish_task(session)
             return
@@ -4659,7 +4658,7 @@ async def websocket_endpoint(websocket: WebSocket):
             if kind not in ("new_chat", "escalate", "open_session", "plan_action") and not payload.get("prompt", ""):
                 continue
             if busy:
-                await send(websocket, "system", "Still working on the previous request. Stop it first.")
+                await send(websocket, "system", tr("Still working on the previous request. Stop it first."))
                 continue
             if kind not in ("new_chat", "open_session") and (why := restore_lib.blocked_reason()):
                 await send(websocket, "system", why)

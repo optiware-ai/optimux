@@ -12,6 +12,7 @@ from optimux_backend.core import usage
 from optimux_backend.core.security import ValidationError
 
 from optimux_backend.core import paths
+from optimux_backend.core.i18n import tr
 
 BUDGETS_FILE = paths.BUDGETS_FILE
 ON_LIMIT = ("block", "warn")
@@ -30,15 +31,15 @@ def get_budgets() -> dict:
 def save_budget(project: str, monthly_usd: float | None, on_limit: str = "block") -> None:
     """Set a project's monthly budget, or remove it with monthly_usd=None."""
     if not project:
-        raise ValidationError("Project name is required.")
+        raise ValidationError(tr("Project name is required."))
     budgets = get_budgets()
     if monthly_usd is None:
         budgets.pop(project, None)
     else:
         if monthly_usd <= 0:
-            raise ValidationError("Budget must be greater than 0 (leave it empty for no limit).")
+            raise ValidationError(tr("Budget must be greater than 0 (leave it empty for no limit)."))
         if on_limit not in ON_LIMIT:
-            raise ValidationError(f"on_limit must be one of {', '.join(ON_LIMIT)}.")
+            raise ValidationError(tr("on_limit must be one of {v}.", v=', '.join(ON_LIMIT)))
         budgets[project] = {"monthly_usd": float(monthly_usd), "on_limit": on_limit}
     os.makedirs(os.path.dirname(BUDGETS_FILE), exist_ok=True)
     with open(BUDGETS_FILE, "w") as f:

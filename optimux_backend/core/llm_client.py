@@ -9,6 +9,7 @@ from optimux_backend.core.config_manager import get_routing_config, litellm_key_
 from optimux_backend.core.agents import get_router_prompt
 from optimux_backend.core import analytics, providers, ratelimits
 from optimux_backend.core.security import mask_messages
+from optimux_backend.core.i18n import tr
 
 CONDUCTOR_OFF = "off"
 
@@ -181,7 +182,7 @@ async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_m
     # v0.8: the caller passes the project's Conductor (its own, or the global one)
     conductor_model = conductor if conductor is not None else get_routing_config().get("conductor_model", "")
     if not conductor_model:
-        raise Exception("Routing not configured. Please assign a Conductor Model (or set it to Off) in Settings.")
+        raise Exception(tr("Routing not configured. Please assign a Conductor Model (or set it to Off) in Settings."))
     if conductor_model == CONDUCTOR_OFF:
         return "simple", CONDUCTOR_OFF, None, 0, None, False, ""
     if not providers.is_available(conductor_model):

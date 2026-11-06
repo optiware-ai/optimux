@@ -23,6 +23,7 @@ from optimux_backend.core.config_manager import (
 )
 from optimux_backend.core.security import ValidationError
 from optimux_backend.core.security import GITHUB_TOKEN_ENV, ScopeError, resolve_scope_root, scrubbed_env
+from optimux_backend.core.i18n import tr
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 ARCHIVE_DIR = ".archive"
@@ -49,14 +50,13 @@ def projects_root() -> str:
     try:
         return str(resolve_scope_root(root))
     except ScopeError as e:
-        raise WorkspaceError(f"The Workspace folder isn't set up: {e}")
+        raise WorkspaceError(tr("The Workspace folder isn't set up: {e}", e=e))
 
 
 def validate_name(name: str) -> str:
     name = (name or "").strip()
     if not NAME_RE.match(name) or name in (".", ".."):
-        raise WorkspaceError(f"'{name}' isn't a valid project name: use letters, digits, '.', '_' or '-' "
-                             "(up to 100 characters, not starting with a dot or dash).")
+        raise WorkspaceError(tr("'{name}' isn't a valid project name: use letters, digits, '.', '_' or '-' (up to 100 characters, not starting with a dot or dash).", name=name))
     return name
 
 
@@ -162,7 +162,7 @@ def git_commands(name: str) -> dict:
     name = validate_name(name)
     path = os.path.join(projects_root(), name)
     if not os.path.isdir(path):
-        raise WorkspaceError(f"There's no project called {name} in the Workspace folder.")
+        raise WorkspaceError(tr("There's no project called {name} in the Workspace folder.", name=name))
     out = {"project": name, "path": path, "git": os.path.isdir(os.path.join(path, ".git")),
            "remote": None, "branch": None, "changes": 0, "push": None, "pull": None, "pull_ssh": None,
            "server": server_mode(), "commit_message": MANUAL_COMMIT_MESSAGE, "problem": None, "warning": None,
@@ -242,7 +242,7 @@ def normalize_create(form) -> dict:
     """form_values, and a WorkspaceError for what check_create doesn't cover."""
     out = form_values(form)
     if len(out["description"]) > DESCRIPTION_MAX:
-        raise WorkspaceError(f"The description is too long ({len(out['description'])} characters; GitHub allows {DESCRIPTION_MAX}).")
+        raise WorkspaceError(tr("The description is too long ({v} characters; GitHub allows {DESCRIPTION_MAX}).", v=len(out['description']), DESCRIPTION_MAX=DESCRIPTION_MAX))
     return out
 
 
@@ -263,13 +263,13 @@ def check_create(name: str, template: str = "basic", git_init: bool = True,
     root = projects_root()
     name = validate_name(name)
     if template not in TEMPLATES:
-        raise WorkspaceError(f"Unknown template '{template}'; use one of: {', '.join(TEMPLATES)}.")
+        raise WorkspaceError(tr("Unknown template '{template}'; use one of: {v}.", template=template, v=', '.join(TEMPLATES)))
     if github and github not in VISIBILITIES:
-        raise WorkspaceError("GitHub visibility must be 'private' or 'public'.")
+        raise WorkspaceError(tr("GitHub visibility must be 'private' or 'public'."))
     if github and not git_init:
-        raise WorkspaceError("A GitHub repository needs git_init=true.")
+        raise WorkspaceError(tr("A GitHub repository needs git_init=true."))
     if os.path.exists(os.path.join(root, name)):
-        raise WorkspaceError(f"A project named '{name}' already exists.")
+        raise WorkspaceError(tr("A project named '{name}' already exists.", name=name))
     return root, name
 
 
@@ -282,7 +282,7 @@ def create_project(name: str, template: str = "basic", git_init: bool = True,
     try:
         os.makedirs(path)
     except OSError as e:          # created meanwhile, or the folder isn't writable
-        raise WorkspaceError(f"Couldn't create {path}: {e.strerror or e}.")
+        raise WorkspaceError(tr("Couldn't create {path}: {v}.", path=path, v=e.strerror or e))
     from optimux_backend.core import project_records
     project_records.unmark_deleted(name)      # a deleted project's name in use again
     steps = [{"step": f"create {path}", "ok": True, "output": ""}]
@@ -379,7 +379,7 @@ def check_github_token(token: str) -> dict:
     is wrong) and a hint (a reminder that can't be checked from here)."""
     token = (token or "").strip()
     if not TOKEN_RE.match(token):
-        raise GitHubError("That doesn't look like a GitHub token (they start with github_pat_ or ghp_).")
+        raise GitHubError(tr("That doesn't look like a GitHub token (they start with github_pat_ or ghp_)."))
     req = urllib.request.Request(GITHUB_API + "/user", headers={
         "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "Optimux"})
@@ -389,11 +389,10 @@ def check_github_token(token: str) -> dict:
             scopes_header = r.headers.get("X-OAuth-Scopes")
     except urllib.error.HTTPError as e:
         if e.code == 401:
-            raise GitHubError("GitHub refused the token: it's wrong, expired or revoked.")
-        raise GitHubError(f"GitHub answered {e.code} ({e.reason}).")
+            raise GitHubError(tr("GitHub refused the token: it's wrong, expired or revoked."))
+        raise GitHubError(tr("GitHub answered {code} ({reason}).", code=e.code, reason=e.reason))
     except (urllib.error.URLError, TimeoutError, OSError) as e:
-        raise GitHubError(f"Couldn't reach GitHub: {getattr(e, 'reason', e)}. "
-                          "If this machine needs a proxy, set HTTPS_PROXY for Optimux.")
+        raise GitHubError(tr("Couldn't reach GitHub: {v}. If this machine needs a proxy, set HTTPS_PROXY for Optimux.", v=getattr(e, 'reason', e)))
     scopes = None if scopes_header is None else [x.strip() for x in scopes_header.split(",") if x.strip()]
     warning = hint = ""
     if scopes is not None and "repo" not in scopes:
@@ -469,14 +468,14 @@ def check_switch(name: str) -> str:
         return ""
     name = validate_name(name)
     if name not in project_names():
-        raise WorkspaceError(f"There is no project named '{name}'. Use list_projects to see them.")
+        raise WorkspaceError(tr("There is no project named '{name}'. Use list_projects to see them.", name=name))
     return name
 
 
 def check_archive(name: str) -> str:
     name = validate_name(name)
     if name not in project_names():
-        raise WorkspaceError(f"There is no project named '{name}'.")
+        raise WorkspaceError(tr("There is no project named '{name}'.", name=name))
     return name
 
 
@@ -494,7 +493,7 @@ def archive_project(name: str) -> dict:
     try:
         shutil.move(os.path.join(root, name), dest)
     except OSError as e:
-        raise WorkspaceError(f"Couldn't archive '{name}': {e.strerror or e}.")
+        raise WorkspaceError(tr("Couldn't archive '{name}': {v}.", name=name, v=e.strerror or e))
     return {"ok": True, "project": name, "archived_to": dest}
 
 
@@ -514,7 +513,7 @@ def _archive_dir(create: bool = False) -> str:
     if create and not os.path.lexists(d):
         os.makedirs(d, exist_ok=True)
     if os.path.lexists(d) and (os.path.islink(d) or os.path.realpath(d) != os.path.join(os.path.realpath(root), ARCHIVE_DIR)):
-        raise WorkspaceError(f"{d} isn't a plain folder inside the Workspace (a link?); fix or remove it by hand.")
+        raise WorkspaceError(tr("{d} isn't a plain folder inside the Workspace (a link?); fix or remove it by hand.", d=d))
     return d
 
 
@@ -525,7 +524,7 @@ def list_archived() -> list[dict]:
     try:
         entries = os.listdir(d) if os.path.isdir(d) else []
     except OSError as e:
-        raise WorkspaceError(f"Can't read {d}: {e.strerror or e}.")
+        raise WorkspaceError(tr("Can't read {d}: {v}.", d=d, v=e.strerror or e))
     for folder in entries:
         m = ARCHIVED_RE.match(folder)
         path = os.path.join(d, folder)
@@ -544,13 +543,13 @@ def _archived_path(folder: str) -> tuple[str, str]:
     (other names, symlinks, paths that resolve outside .archive/)."""
     m = ARCHIVED_RE.match(folder or "")
     if not m:
-        raise WorkspaceError(f"'{folder}' isn't an archived project.")
+        raise WorkspaceError(tr("'{folder}' isn't an archived project.", folder=folder))
     d = _archive_dir()
     path = os.path.join(d, folder)
     if os.path.islink(path) or not os.path.isdir(path):
-        raise WorkspaceError(f"There is no archived project '{folder}'.")
+        raise WorkspaceError(tr("There is no archived project '{folder}'.", folder=folder))
     if os.path.dirname(os.path.realpath(path)) != os.path.realpath(d):
-        raise WorkspaceError("That folder isn't inside the Workspace's .archive folder.")
+        raise WorkspaceError(tr("That folder isn't inside the Workspace's .archive folder."))
     return path, m["name"]
 
 
@@ -559,11 +558,11 @@ def restore_archived(folder: str) -> dict:
     path, name = _archived_path(folder)
     dest = os.path.join(projects_root(), name)
     if os.path.lexists(dest):
-        raise WorkspaceError(f"A project named '{name}' exists already; rename or archive it first.")
+        raise WorkspaceError(tr("A project named '{name}' exists already; rename or archive it first.", name=name))
     try:
         os.rename(path, dest)     # same file system: one atomic step
     except OSError as e:
-        raise WorkspaceError(f"Couldn't restore '{name}': {e.strerror or e}.")
+        raise WorkspaceError(tr("Couldn't restore '{name}': {v}.", name=name, v=e.strerror or e))
     from optimux_backend.core import project_records
     project_records.unmark_deleted(name)
     return {"ok": True, "project": name, "path": dest}
@@ -695,9 +694,9 @@ def list_github_repos() -> dict:
                     repos += json.load(r)
                     links = r.headers.get("Link") or ""
             except urllib.error.HTTPError as e:
-                raise GitHubError("GitHub refused the token." if e.code == 401 else f"GitHub answered {e.code}.")
+                raise GitHubError(tr("GitHub refused the token.") if e.code == 401 else tr("GitHub answered {code}.", code=e.code))
             except (urllib.error.URLError, TimeoutError, OSError) as e:
-                raise GitHubError(f"Couldn't reach GitHub: {getattr(e, 'reason', e)}.")
+                raise GitHubError(tr("Couldn't reach GitHub: {v}.", v=getattr(e, 'reason', e)))
             m = re.search(r'<([^>]+)>;\s*rel="next"', links)
             url = m.group(1) if m and m.group(1).startswith(GITHUB_API + "/") else None
             more = url is not None
@@ -705,7 +704,7 @@ def list_github_repos() -> dict:
         r = _run(["gh", "api", "--paginate", "user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member",
                   "--jq", ".[] | {" + ", ".join(REPO_FIELDS) + "}"], os.getcwd(), timeout=120, github=True, keep=None)
         if not r["ok"]:
-            raise GitHubError("gh couldn't list the repositories: " + r["output"][-300:])
+            raise GitHubError(tr("gh couldn't list the repositories: {v}", v=r["output"][-300:]))
         lines = [line for line in r["output"].splitlines() if line.strip().startswith("{")]
         more = len(lines) > MAX_REPOS
         repos = [json.loads(line) for line in lines[:MAX_REPOS]]
@@ -739,9 +738,9 @@ def clone_command(full_name: str, name: str, job_id: str) -> tuple[list[str], st
     Over HTTPS with gh as the credential helper (the token never reaches
     .git/config or argv); no submodules; Optimux's GIT_SAFE options apply."""
     if not REPO_RE.match(full_name or ""):
-        raise WorkspaceError(f"'{full_name}' isn't a GitHub repository name (owner/repo).")
+        raise WorkspaceError(tr("'{full_name}' isn't a GitHub repository name (owner/repo).", full_name=full_name))
     if not CLONE_ID_RE.match(job_id or ""):
-        raise WorkspaceError("Bad clone id.")
+        raise WorkspaceError(tr("Bad clone id."))
     root, name = check_create(name, "basic", True, None)
     if not github_status()["ready"]:
         raise WorkspaceError(github_status()["reason"])
@@ -749,7 +748,7 @@ def clone_command(full_name: str, name: str, job_id: str) -> tuple[list[str], st
     try:
         os.mkdir(staging, 0o700)
     except OSError as e:
-        raise WorkspaceError(f"Couldn't prepare the clone in {root}: {e.strerror or e}.")
+        raise WorkspaceError(tr("Couldn't prepare the clone in {root}: {v}.", root=root, v=e.strerror or e))
     argv = ["git", *GIT_SAFE, "-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential",
             "clone", "--progress", "--no-recurse-submodules", "--", f"https://github.com/{full_name}.git", staging]
     return argv, staging, os.path.join(root, name)
@@ -759,11 +758,11 @@ def finish_clone(staging: str, final: str) -> None:
     """Move a finished clone into place. Never replaces a project: a folder that
     appeared meanwhile under that name makes this fail (the clone is removed)."""
     if os.path.lexists(final):
-        raise WorkspaceError(f"A project named '{os.path.basename(final)}' appeared meanwhile; the clone was discarded.")
+        raise WorkspaceError(tr("A project named '{v}' appeared meanwhile; the clone was discarded.", v=os.path.basename(final)))
     try:
         os.rename(staging, final)     # same folder: atomic; refuses a non-empty target
     except OSError as e:
-        raise WorkspaceError(f"Couldn't move the clone into place: {e.strerror or e}.")
+        raise WorkspaceError(tr("Couldn't move the clone into place: {v}.", v=e.strerror or e))
 
 
 def clone_env() -> dict:
@@ -778,7 +777,7 @@ def remove_staging(staging: str) -> None:
     parent's file descriptor, never following links."""
     parent, folder = os.path.split(staging)
     if not (folder.startswith(CLONE_PREFIX) and CLONE_ID_RE.match(folder[len(CLONE_PREFIX):])):
-        raise WorkspaceError("Not a clone staging folder.")
+        raise WorkspaceError(tr("Not a clone staging folder."))
     if not os.path.lexists(staging) or os.path.islink(staging):
         return
     fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -842,12 +841,11 @@ def delete_archived(folder: str, confirm: str, keep_records: bool = True) -> dic
     otherwise forget them too (refused while another folder has the same name)."""
     path, name = _archived_path(folder)
     if not phrase_matches(confirm, name):
-        raise WorkspaceError(f'Type "{delete_phrase(name)}" to confirm.')
+        raise WorkspaceError(tr('Type "{v}" to confirm.', v=delete_phrase(name)))
     others = [a for a in list_archived() if a["name"] == name and a["folder"] != folder]
     alive = os.path.lexists(os.path.join(projects_root(), name))
     if not keep_records and (others or alive):
-        raise WorkspaceError(f"Another '{name}' ({'in the Workspace' if alive else 'archived'}) shares these "
-                             "chats and costs, so they can't be deleted with this one. Keep them, or delete that one first.")
+        raise WorkspaceError(tr("Another '{name}' ({v}) shares these chats and costs, so they can't be deleted with this one. Keep them, or delete that one first.", name=name, v='in the Workspace' if alive else 'archived'))
     remote = _git_remote(path)
     # Deleted relative to the .archive folder opened without following links, so
     # swapping .archive for a link after the checks can't redirect it; rmtree
@@ -857,8 +855,7 @@ def delete_archived(folder: str, confirm: str, keep_records: bool = True) -> dic
         fd = os.open(_archive_dir(), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         _rmtree_at(fd, folder)
     except OSError as e:
-        raise WorkspaceError(f"Couldn't delete all of {path}: {e.strerror or e}. What's left is still there; "
-                             "nothing else was changed.")
+        raise WorkspaceError(tr("Couldn't delete all of {path}: {v}. What's left is still there; nothing else was changed.", path=path, v=e.strerror or e))
     finally:
         if fd is not None:
             os.close(fd)

@@ -9,6 +9,7 @@ from optimux_backend.core.security import (
 )
 
 from optimux_backend.core import paths
+from optimux_backend.core.i18n import tk, tr
 
 # secrets.env is the single source of truth for keys managed in the UI, so it
 # wins over variables already exported in the shell that starts the server.
@@ -25,17 +26,17 @@ LEGACY_SUPPORTED_MODELS = {
     "gemini/gemini-3.6-flash": {
         "name": "Gemini 3.6 Flash",
         "env_key": "GEMINI_API_KEY",
-        "instructions": "Get your API key at https://aistudio.google.com/apikey. Paste it below to configure."
+        "instructions": tk("Get your API key at https://aistudio.google.com/apikey. Paste it below to configure.")
     },
     "anthropic/claude-haiku-4-5-20251001": {
         "name": "Claude Haiku 4.5",
         "env_key": "ANTHROPIC_API_KEY",
-        "instructions": "Create an API key (sk-ant-...) at https://console.anthropic.com/. Paste it below to configure."
+        "instructions": tk("Create an API key (sk-ant-...) at https://console.anthropic.com/. Paste it below to configure.")
     },
     "anthropic/claude-sonnet-5-5": {
         "name": "Claude Sonnet 5.5",
         "env_key": "ANTHROPIC_API_KEY",
-        "instructions": "Create an API key (sk-ant-...) at https://console.anthropic.com/. Paste it below to configure."
+        "instructions": tk("Create an API key (sk-ant-...) at https://console.anthropic.com/. Paste it below to configure.")
     }
 }
 
@@ -68,7 +69,7 @@ THINKING_LEVELS = ("default", "minimal", "low", "medium", "high")
 
 def validate_thinking(level: str) -> str:
     if level not in THINKING_LEVELS:
-        raise ValidationError(f"thinking must be one of {', '.join(THINKING_LEVELS)}.")
+        raise ValidationError(tr("thinking must be one of {v}.", v=', '.join(THINKING_LEVELS)))
     return level
 
 
@@ -102,7 +103,7 @@ def set_thinking(model_id: str, level: str) -> None:
     validate_thinking(level)
     models = get_all_models()
     if model_id not in models:
-        raise ValidationError(f"Unknown model: {model_id}")
+        raise ValidationError(tr("Unknown model: {model_id}", model_id=model_id))
     models[model_id]["thinking"] = level
     with open(MODELS_FILE, "w") as f:
         json.dump(models, f, indent=4)
@@ -175,7 +176,7 @@ def language() -> str:
 
 def set_language(code: str) -> str:
     if code not in LANGUAGES:
-        raise ValidationError(f"Unknown language: {code}. Choose one of {', '.join(LANGUAGES)}.")
+        raise ValidationError(tr("Unknown language: {code}. Choose one of {v}.", code=code, v=', '.join(LANGUAGES)))
     data = _read_settings()
     data["language"] = code
     os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
@@ -276,28 +277,27 @@ def effective_routing(project: str | None = None) -> dict:
 def save_settings(payload: SettingsPayload):
     for field in ("max_steps_simple", "max_steps_complex"):
         if not 1 <= getattr(payload, field) <= 100:
-            raise ValidationError(f"{field} must be between 1 and 100.")
+            raise ValidationError(tr("{field} must be between 1 and 100.", field=field))
     from optimux_backend.core import sandbox
     try:
         payload.sandbox_ro_paths = [sandbox.check_ro_path(p.strip()) for p in payload.sandbox_ro_paths if p.strip()]
     except sandbox.SandboxError as e:
         raise ValidationError(str(e))
     if payload.sandbox and not get_settings().get("sandbox") and not sandbox.status(refresh=True)["works"]:
-        raise ValidationError("Can't turn the sandbox on: " + (sandbox.status()["error"] or "bubblewrap doesn't work here."))
+        raise ValidationError(tr("Can't turn the sandbox on: {v}", v=sandbox.status()["error"] or "bubblewrap doesn't work here."))
     from optimux_backend.core.auth import server_mode
     if payload.auto_approve and server_mode():
-        raise ValidationError("Auto-approve is off on servers (OPTIMUX_SERVER=1): every command needs your approval.")
+        raise ValidationError(tr("Auto-approve is off on servers (OPTIMUX_SERVER=1): every command needs your approval."))
     payload.command_env = check_command_env(payload.command_env)
     for field, top in (("limit_memory_mb", 1024 * 1024), ("limit_file_mb", 1024 * 1024), ("limit_processes", 100000)):
         if not 0 <= getattr(payload, field) <= top:
-            raise ValidationError(f"{field} must be between 0 (no limit) and {top}.")
+            raise ValidationError(tr("{field} must be between 0 (no limit) and {top}.", field=field, top=top))
     if not COMMAND_TIMEOUT_RANGE[0] <= payload.command_timeout <= COMMAND_TIMEOUT_RANGE[1]:
-        raise ValidationError(f"The command timeout must be between {COMMAND_TIMEOUT_RANGE[0]} and "
-                              f"{COMMAND_TIMEOUT_RANGE[1]} seconds.")
+        raise ValidationError(tr("The command timeout must be between {v} and {v2} seconds.", v=COMMAND_TIMEOUT_RANGE[0], v2=COMMAND_TIMEOUT_RANGE[1]))
     if not BACKUPS_KEEP_RANGE[0] <= payload.backups_keep <= BACKUPS_KEEP_RANGE[1]:
-        raise ValidationError(f"Keep between {BACKUPS_KEEP_RANGE[0]} and {BACKUPS_KEEP_RANGE[1]} daily backups.")
+        raise ValidationError(tr("Keep between {v} and {v2} daily backups.", v=BACKUPS_KEEP_RANGE[0], v2=BACKUPS_KEEP_RANGE[1]))
     if not 0.1 <= payload.snapshot_limit_gb <= 10000:
-        raise ValidationError("snapshot_limit_gb must be between 0.1 and 10000.")
+        raise ValidationError(tr("snapshot_limit_gb must be between 0.1 and 10000."))
     # Checked only when it changes: a saved key never blocks unrelated saves
     # (switching project, archiving), even if a later library refuses it
     if payload.snapshot_recipient.strip() and \
@@ -308,26 +308,25 @@ def save_settings(payload: SettingsPayload):
         except ExportError as e:
             raise ValidationError(str(e))
     if 0 < payload.limit_memory_mb < 256:
-        raise ValidationError("A memory limit under 256 MB stops most tools from starting; use 0 for no limit.")
+        raise ValidationError(tr("A memory limit under 256 MB stops most tools from starting; use 0 for no limit."))
     if 0 < payload.limit_processes < 32:
-        raise ValidationError("A process limit under 32 breaks ordinary commands; use 0 for no limit.")
+        raise ValidationError(tr("A process limit under 32 breaks ordinary commands; use 0 for no limit."))
     if payload.skills_mode not in ("off", "manual", "auto"):
-        raise ValidationError("skills_mode must be off, manual or auto.")
+        raise ValidationError(tr("skills_mode must be off, manual or auto."))
     if payload.plan_mode not in PLAN_MODES:
-        raise ValidationError("plan_mode must be off, ask or auto.")
+        raise ValidationError(tr("plan_mode must be off, ask or auto."))
     if not 1 <= payload.curator_idle_minutes <= 240:
-        raise ValidationError("curator_idle_minutes must be between 1 and 240.")
+        raise ValidationError(tr("curator_idle_minutes must be between 1 and 240."))
     payload.git_name, payload.git_email = check_git_identity(payload.git_name, payload.git_email)
     if not re.match(r"^[A-Za-z0-9-]{0,39}$", payload.github_login or ""):
-        raise ValidationError("github_login isn't a GitHub user name.")
+        raise ValidationError(tr("github_login isn't a GitHub user name."))
     # Reject bad paths at save time (raises ScopeError -> HTTP 400 in main.py)
     if payload.projects_root:
         root = resolve_scope_root(payload.projects_root)
         if payload.projects_root != _read_settings().get("projects_root", ""):
             from optimux_backend.core.snapshots import is_private_home_path
             if is_private_home_path(str(root)):
-                raise ValidationError("The Workspace folder can't be Optimux's own data folder (or a part of it that "
-                                      "holds keys and chats). Pick a folder for your projects, for example ~/projects.")
+                raise ValidationError(tr("The Workspace folder can't be Optimux's own data folder (or a part of it that holds keys and chats). Pick a folder for your projects, for example ~/projects."))
             if not os.access(root, os.W_OK | os.X_OK):
                 raise ValidationError(workspace_not_writable(root))
             if payload.active_project and not (root / payload.active_project).is_dir():
@@ -367,13 +366,13 @@ def set_github_fields(**fields) -> None:
     doesn't block them)."""
     unknown = set(fields) - set(GITHUB_FIELDS)
     if unknown:
-        raise ValidationError(f"Not a GitHub setting: {', '.join(sorted(unknown))}")
+        raise ValidationError(tr("Not a GitHub setting: {v}", v=', '.join(sorted(unknown))))
     data = _read_settings()
     merged = {f: data.get(f, "") or "" for f in GITHUB_FIELDS}
     merged.update({k: (v or "") for k, v in fields.items()})
     merged["git_name"], merged["git_email"] = check_git_identity(merged["git_name"], merged["git_email"])
     if not re.match(r"^[A-Za-z0-9-]{0,39}$", merged["github_login"]):
-        raise ValidationError("github_login isn't a GitHub user name.")
+        raise ValidationError(tr("github_login isn't a GitHub user name."))
     data.update(merged)
     os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
@@ -404,11 +403,11 @@ def check_command_env(names: list[str]) -> list[str]:
         if not name:
             continue
         if not _ENV_NAME.match(name):
-            raise ValidationError(f"'{name}' is not a valid variable name.")
+            raise ValidationError(tr("'{name}' is not a valid variable name.", name=name))
         if name in secret or name.endswith("_API_KEY") or name.startswith(("OPTIMUX_", "CODEMUX_")):
-            raise ValidationError(f"{name} holds an Optimux key or setting and can't be given to commands.")
+            raise ValidationError(tr("{name} holds an Optimux key or setting and can't be given to commands.", name=name))
         if name in ("LD_PRELOAD", "LD_LIBRARY_PATH", "BASH_ENV", "ENV", "PROMPT_COMMAND"):
-            raise ValidationError(f"{name} changes how every program starts; it can't be passed to commands.")
+            raise ValidationError(tr("{name} changes how every program starts; it can't be passed to commands.", name=name))
         if name not in out:
             out.append(name)
     return out
@@ -421,11 +420,11 @@ def check_git_identity(name: str, email: str) -> tuple[str, str]:
     """Commit name and email: both or neither, no control characters."""
     name, email = (name or "").strip(), (email or "").strip()
     if any(ord(c) < 32 or ord(c) == 127 or c in "<>" for c in name) or len(name) > 100:
-        raise ValidationError("The commit name can't contain < > or control characters (100 characters at most).")
+        raise ValidationError(tr("The commit name can't contain < > or control characters (100 characters at most)."))
     if email and (not _EMAIL.match(email) or len(email) > 200 or any(ord(c) < 32 or ord(c) == 127 for c in email)):
-        raise ValidationError(f"'{email}' isn't an email address.")
+        raise ValidationError(tr("'{email}' isn't an email address.", email=email))
     if bool(name) != bool(email):
-        raise ValidationError("Set both the commit name and email, or neither.")
+        raise ValidationError(tr("Set both the commit name and email, or neither."))
     return name, email
 
 
@@ -505,15 +504,14 @@ def validate_api_base(url: str) -> str:
     if not url:
         return ""
     if len(url) > 300 or any(c.isspace() for c in url):
-        raise ValidationError("The base URL is too long or has spaces.")
+        raise ValidationError(tr("The base URL is too long or has spaces."))
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
-        raise ValidationError("The base URL must start with https:// (or http:// for a server on your network) "
-                              "and name a host, e.g. https://api.example.com/v1.")
+        raise ValidationError(tr("The base URL must start with https:// (or http:// for a server on your network) and name a host, e.g. https://api.example.com/v1."))
     if parts.username or parts.password:
-        raise ValidationError("Don't put a user name or password in the base URL; the key goes in the API key field.")
+        raise ValidationError(tr("Don't put a user name or password in the base URL; the key goes in the API key field."))
     if parts.query or parts.fragment:
-        raise ValidationError("The base URL can't have ?query or #fragment parts.")
+        raise ValidationError(tr("The base URL can't have ?query or #fragment parts."))
     return url.rstrip("/")
 
 
@@ -676,7 +674,7 @@ def save_model(payload: ModelPayload):
     for field in PRICE_FIELDS:
         value = getattr(payload, field)
         if value is not None and value < 0:
-            raise ValidationError(f"{field} must not be negative.")
+            raise ValidationError(tr("{field} must not be negative.", field=field))
     if payload.thinking is not None:
         validate_thinking(payload.thinking)
     models = get_all_models()
@@ -708,11 +706,11 @@ def update_model(old_id: str, payload: ModelPayload) -> dict:
     new values are refused. Returns {"renamed", "roles": [...], "projects": [...]}."""
     models = get_all_models()
     if old_id not in models:
-        raise ValidationError(f"Unknown model: {old_id}")
+        raise ValidationError(tr("Unknown model: {old_id}", old_id=old_id))
     payload.id = (payload.id or "").strip()
     renamed = payload.id != old_id
     if renamed and payload.id in models:
-        raise ValidationError(f"{payload.id} is already configured: choose another Model ID, or edit that one.")
+        raise ValidationError(tr("{id} is already configured: choose another Model ID, or edit that one.", id=payload.id))
     old = models[old_id]
     if payload.thinking is None:
         payload.thinking = old.get("thinking", "default")
@@ -779,7 +777,7 @@ def save_routing_config(payload: RoutingPayload):
         if not value or (field == "conductor_model" and value == "off"):
             continue
         if value not in known:
-            raise ValidationError(f"{field}: '{value}' is not a configured model.")
+            raise ValidationError(tr("{field}: '{value}' is not a configured model.", field=field, value=value))
     os.makedirs(os.path.dirname(ROUTING_FILE), exist_ok=True)
     with open(ROUTING_FILE, "w") as f:
         json.dump(payload.model_dump(), f, indent=4)
@@ -791,7 +789,7 @@ def save_api_key_to_env(payload: ApiKeyPayload) -> None:
     validate_env_key(payload.env_key)
     validate_env_value(payload.api_key)
     if not payload.api_key:
-        raise ValidationError("API key is empty.")
+        raise ValidationError(tr("API key is empty."))
     env_file = SECRETS_FILE
     lines = []
     if os.path.exists(env_file):

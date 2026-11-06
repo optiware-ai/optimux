@@ -12,6 +12,7 @@ import sqlite3
 import time
 
 from optimux_backend.core import paths
+from optimux_backend.core.i18n import tr
 
 DB_PATH = paths.DB_PATH
 BACKUP_DIR = paths.BACKUP_DIR
@@ -336,7 +337,7 @@ class BackupError(ValueError):
 def backup_path(name: str) -> str:
     """The path of a daily backup by its file name (optimux-YYYY-MM-DD.db), checked."""
     if not paths._BACKUP_NAME.fullmatch(name or "") or name not in paths.backup_files(BACKUP_DIR):
-        raise BackupError("There is no daily backup with that name.")
+        raise BackupError(tr("There is no daily backup with that name."))
     return os.path.join(BACKUP_DIR, name)
 
 

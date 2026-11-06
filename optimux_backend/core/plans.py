@@ -17,6 +17,7 @@ import secrets
 import time
 
 from optimux_backend.core import store
+from optimux_backend.core.i18n import tr
 
 TIERS = ("simple", "complex")
 MIN_STEPS, MAX_STEPS = 2, 8
@@ -63,17 +64,17 @@ def parse(text: str) -> dict:
             continue
         if isinstance(data, dict):
             return data
-    raise PlanError("The plan is not valid JSON.")
+    raise PlanError(tr("The plan is not valid JSON."))
 
 
 def _text(value, limit: int, what: str, required: bool = True) -> str:
     if value is None and not required:
         return ""
     if not isinstance(value, str) or (required and not value.strip()):
-        raise PlanError(f"{what} is missing.")
+        raise PlanError(tr("{what} is missing.", what=what))
     value = " ".join(value.split())
     if len(value) > limit:
-        raise PlanError(f"{what} is longer than {limit} characters.")
+        raise PlanError(tr("{what} is longer than {limit} characters.", what=what, limit=limit))
     return value
 
 
@@ -82,25 +83,25 @@ def validate(raw) -> dict:
     reason the planner can be told on its one retry."""
     data = parse(raw) if isinstance(raw, str) else raw
     if not isinstance(data, dict):
-        raise PlanError("The plan must be a JSON object.")
+        raise PlanError(tr("The plan must be a JSON object."))
     steps = data.get("steps")
     if not isinstance(steps, list):
-        raise PlanError("The plan has no steps list.")
+        raise PlanError(tr("The plan has no steps list."))
     if len(steps) < MIN_STEPS:
-        raise PlanError(f"A plan needs at least {MIN_STEPS} steps.")
+        raise PlanError(tr("A plan needs at least {MIN_STEPS} steps.", MIN_STEPS=MIN_STEPS))
     if len(steps) > MAX_STEPS:
-        raise PlanError(f"A plan has at most {MAX_STEPS} steps; merge some.")
+        raise PlanError(tr("A plan has at most {MAX_STEPS} steps; merge some.", MAX_STEPS=MAX_STEPS))
     clean = []
     for n, s in enumerate(steps, 1):
         if not isinstance(s, dict):
-            raise PlanError(f"Step {n} is not an object.")
+            raise PlanError(tr("Step {n} is not an object.", n=n))
         tier = s.get("tier")
         if tier not in TIERS:
-            raise PlanError(f"Step {n}: tier must be \"simple\" or \"complex\".")
+            raise PlanError(tr('Step {n}: tier must be "simple" or "complex".', n=n))
         files = s.get("files") or []
         if not isinstance(files, list) or len(files) > MAX_FILES or not all(
                 isinstance(f, str) and f.strip() and len(f) <= MAX_FILE for f in files):
-            raise PlanError(f"Step {n}: files must be a list of at most {MAX_FILES} paths.")
+            raise PlanError(tr("Step {n}: files must be a list of at most {MAX_FILES} paths.", n=n, MAX_FILES=MAX_FILES))
         clean.append({
             "id": n,                                   # renumbered: the planner's ids are not trusted
             "title": _text(s.get("title"), MAX_TITLE, f"Step {n}'s title"),
@@ -110,7 +111,7 @@ def validate(raw) -> dict:
             "files": [f.strip() for f in files],
         })
     if all(s["tier"] == "complex" for s in clean):
-        raise PlanError("Every step is complex: there is nothing to save with a plan.")
+        raise PlanError(tr("Every step is complex: there is nothing to save with a plan."))
     return {"goal": _text(data.get("goal"), MAX_GOAL, "The goal"),
             "steps": clean,
             "check": _text(data.get("check"), MAX_CHECK, "The check", required=False)}
@@ -149,14 +150,14 @@ def create(session: str, project: str, plan: dict, request: str = "") -> dict:
 
 def get(pid: str) -> dict:
     if not ID_RE.fullmatch(pid or ""):
-        raise PlanError("No such plan.")
+        raise PlanError(tr("No such plan."))
     conn = store.connect()
     try:
         r = conn.execute("SELECT * FROM plans WHERE id = ?", (pid,)).fetchone()
     finally:
         conn.close()
     if not r:
-        raise PlanError("No such plan.")
+        raise PlanError(tr("No such plan."))
     return _row(r)
 
 
@@ -233,7 +234,7 @@ def missing_files(step: dict, workdir: str) -> list[str]:
 
 def set_status(pid: str, status: str, note: str | None = None) -> dict:
     if status not in PLAN_STATUSES:
-        raise PlanError(f"Unknown plan status '{status}'.")
+        raise PlanError(tr("Unknown plan status '{status}'.", status=status))
     plan = get(pid)
     plan["status"] = status
     if note is not None:
@@ -250,11 +251,11 @@ def update_step(pid: str, step_id: int, **fields) -> dict:
     """Change one step's run state (only STEP_FIELDS). Returns the plan."""
     unknown = set(fields) - set(STEP_FIELDS)
     if unknown:
-        raise PlanError(f"Unknown step fields: {', '.join(sorted(unknown))}")
+        raise PlanError(tr("Unknown step fields: {v}", v=', '.join(sorted(unknown))))
     if "status" in fields and fields["status"] not in STEP_STATUSES:
-        raise PlanError(f"Unknown step status '{fields['status']}'.")
+        raise PlanError(tr("Unknown step status '{v}'.", v=fields['status']))
     if "tier" in fields and fields["tier"] not in TIERS:
-        raise PlanError("A step's tier is simple or complex.")
+        raise PlanError(tr("A step's tier is simple or complex."))
     if "result" in fields:
         fields["result"] = (fields["result"] or "")[:MAX_RESULT]
     if "details" in fields:
@@ -262,7 +263,7 @@ def update_step(pid: str, step_id: int, **fields) -> dict:
     plan = get(pid)
     step = next((s for s in plan["steps"] if s["id"] == step_id), None)
     if step is None:
-        raise PlanError(f"The plan has no step {step_id}.")
+        raise PlanError(tr("The plan has no step {step_id}.", step_id=step_id))
     step.update(fields)
     return _save(plan)
 
@@ -280,7 +281,7 @@ def add_cost(pid: str, step_id: int, cost: float | None, model: str | None = Non
         return _save(plan)
     step = next((s for s in plan["steps"] if s["id"] == step_id), None)
     if step is None:
-        raise PlanError(f"The plan has no step {step_id}.")
+        raise PlanError(tr("The plan has no step {step_id}.", step_id=step_id))
     step["calls"] = step.get("calls", 0) + 1
     if isinstance(cost, (int, float)):
         step["cost"] = round(step.get("cost", 0.0) + cost, 8)
@@ -294,19 +295,19 @@ def edit_waiting(pid: str, tiers: dict | None = None, remove: list[int] | None =
     must still have MIN_STEPS steps and at least one Simple step."""
     plan = get(pid)
     if plan["status"] != "waiting":
-        raise PlanError("Only a plan that hasn't started can be edited.")
+        raise PlanError(tr("Only a plan that hasn't started can be edited."))
     remove = set(remove or [])
     steps = [s for s in plan["steps"] if s["id"] not in remove]
     for s in steps:
         t = (tiers or {}).get(str(s["id"]), (tiers or {}).get(s["id"]))
         if t is not None:
             if t not in TIERS:
-                raise PlanError("A step's tier is simple or complex.")
+                raise PlanError(tr("A step's tier is simple or complex."))
             s["tier"] = t
     if len(steps) < MIN_STEPS:
-        raise PlanError(f"A plan needs at least {MIN_STEPS} steps; cancel it instead.")
+        raise PlanError(tr("A plan needs at least {MIN_STEPS} steps; cancel it instead.", MIN_STEPS=MIN_STEPS))
     if all(s["tier"] == "complex" for s in steps):
-        raise PlanError("Every step would be complex: there is nothing to save with a plan. Cancel it instead.")
+        raise PlanError(tr("Every step would be complex: there is nothing to save with a plan. Cancel it instead."))
     for n, s in enumerate(steps, 1):              # keep ids 1..n, in order
         s["id"] = n
     plan["steps"] = steps

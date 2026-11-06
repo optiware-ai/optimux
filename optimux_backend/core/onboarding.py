@@ -16,6 +16,7 @@ import platform
 import time
 
 from optimux_backend.core import store
+from optimux_backend.core.i18n import tr
 
 META_KEY = "onboarding"
 FEATURE_FIELDS = ("memory_curator", "plan_mode", "skills_mode")
@@ -62,7 +63,7 @@ def state() -> dict:
 
 def act(action: str) -> dict:
     if action not in ACTIONS:
-        raise OnboardingError(f"Unknown action: {action}")
+        raise OnboardingError(tr("Unknown action: {action}", action=action))
     s = state()
     if action == "features_ok":
         s["features_ok"] = True
@@ -92,16 +93,24 @@ def _step(id_, title, why, done, target, optional=False, info="", check=""):
             "optional": optional, "info": info, "check": check}
 
 
-def _plural(n: int, word: str) -> str:
-    return f"{n} {word}{'' if n == 1 else 's'}"
+def _count(n: int, one: str, many: str) -> str:
+    """'1 model ready.' / '3 models ready.': both forms are whole texts, so each translates."""
+    return tr(one) if n == 1 else tr(many, n=n)
 
 
 def _autonomy_check() -> tuple[bool, str]:
     from optimux_backend.core import autonomy
     o = autonomy.overview()
     own = len(o["projects"])
-    line = f"Default: {o['default']}" + (f", {_plural(own, 'project')} with its own level" if own else "")
-    return bool(o["default_saved"] or own), line + ("." if o["default_saved"] or own else " (not chosen yet).")
+    level = tr(str(o["default"]).capitalize())     # "Supervised", the name the page shows
+    if own:
+        line = (tr("Default: {level}, 1 project with its own level.", level=level) if own == 1 else
+                tr("Default: {level}, {n} projects with their own level.", level=level, n=own))
+    elif o["default_saved"]:
+        line = tr("Default: {level}.", level=level)
+    else:
+        line = tr("Default: {level} (not chosen yet).", level=level)
+    return bool(o["default_saved"] or own), line
 
 
 def _github_check() -> tuple[bool, str]:
@@ -109,10 +118,10 @@ def _github_check() -> tuple[bool, str]:
     try:
         st = workspace.github_status()          # cached for a short while: gh can be slow
     except Exception:                          # noqa: BLE001 (a check never breaks the checklist)
-        return False, "Couldn't check."
+        return False, tr("Couldn't check.")
     if st.get("ready"):
-        return True, "Connected" + (f" as {st['login']}." if st.get("login") else ".")
-    return False, st.get("reason") or "Not connected."
+        return True, tr("Connected as {login}.", login=st["login"]) if st.get("login") else tr("Connected.")
+    return False, st.get("reason") or tr("Not connected.")
 
 
 def _backup_check() -> tuple[bool, str]:
@@ -120,8 +129,8 @@ def _backup_check() -> tuple[bool, str]:
     try:
         ready = [s for s in snapshots.list_snapshots() if s.get("status") == "ready"]
     except OSError:
-        return False, "Couldn't check."
-    return bool(ready), _plural(len(ready), "snapshot") + "." if ready else "No snapshot yet."
+        return False, tr("Couldn't check.")
+    return bool(ready), _count(len(ready), "1 snapshot.", "{n} snapshots.") if ready else tr("No snapshot yet.")
 
 
 def status() -> dict:
@@ -146,53 +155,53 @@ def status() -> dict:
     backup_ok, backup_line = _backup_check()
     simple, complex_ = routing.get("simple_model") or "", routing.get("complex_model") or ""
     steps = [
-        _step("models", "Add a model and its key",
-              "Optimux can't answer without one. Add a cheap fast model and a strong one; Test checks each "
-              "for a fraction of a cent.", usable, "models",
-              check=_plural(len(usable), "model") + " ready." if usable else "No model with a key yet."),
-        _step("routing", "Choose who does what",
-              "The Conductor picks Simple or Complex for each message; most work goes to the cheap Simple "
-              "model, so this is where the savings come from.",
+        _step("models", tr("Add a model and its key"),
+              tr("Optimux can't answer without one. Add a cheap fast model and a strong one; Test checks each "
+                 "for a fraction of a cent."), usable, "models",
+              check=_count(len(usable), "1 model ready.", "{n} models ready.") if usable else tr("No model with a key yet.")),
+        _step("routing", tr("Choose who does what"),
+              tr("The Conductor picks Simple or Complex for each message; most work goes to the cheap Simple "
+                 "model, so this is where the savings come from."),
               simple and complex_ and conductor, "routing",
               check=f"Simple: {simple or '-'}, Complex: {complex_ or '-'}, Conductor: {conductor or '-'}."),
-        _step("workspace", "Set your Workspace folder",
-              "Every folder inside it is a project; commands work there.", root and os.path.isdir(root), "scope",
-              check=(root if os.path.isdir(root) else f"{root} doesn't exist.") if root else "Not set."),
-        _step("sandbox", "Turn on the sandbox",
-              "Commands can then change only the active project, even if you approve a bad one.",
+        _step("workspace", tr("Set your Workspace folder"),
+              tr("Every folder inside it is a project; commands work there."), root and os.path.isdir(root), "scope",
+              check=(root if os.path.isdir(root) else tr("{root} doesn't exist.", root=root)) if root else tr("Not set.")),
+        _step("sandbox", tr("Turn on the sandbox"),
+              tr("Commands can then change only the active project, even if you approve a bad one."),
               sandbox_ok, "execution",
-              check="On." if sandbox_ok else ("Works, but off." if sb.get("works") else "Doesn't work here yet."),
-              info="" if is_linux else "Not available on this system: bubblewrap is Linux-only. You approve "
-                                       "every command instead."),
-        _step("features", "Choose your features",
-              "Memory updates itself after each chat (a small cost per chat); plan mode splits big tasks into "
-              "steps for the cheap model; skills are reusable instructions. The defaults are fine to start.",
+              check=tr("On.") if sandbox_ok else (tr("Works, but off.") if sb.get("works") else tr("Doesn't work here yet.")),
+              info="" if is_linux else tr("Not available on this system: bubblewrap is Linux-only. You approve "
+                                          "every command instead.")),
+        _step("features", tr("Choose your features"),
+              tr("Memory updates itself after each chat (a small cost per chat); plan mode splits big tasks into "
+                 "steps for the cheap model; skills are reusable instructions. The defaults are fine to start."),
               s.get("features_ok"), "memory"),
-        _step("project", "Pick or create a project",
-              "The chat works in the active project: its files, its memory and its budget.",
+        _step("project", tr("Pick or create a project"),
+              tr("The chat works in the active project: its files, its memory and its budget."),
               settings.get("active_project"), "projects",
-              check=f"Active: {settings['active_project']}." if settings.get("active_project") else "None open."),
-        _step("first", "Send your first request",
-              "Ask anything about the project. Commands and file changes are shown for your approval first.",
-              made > 0, "chat", check=_plural(made, "request") + " so far." if made else "None yet."),
-        _step("budget", "Set a monthly budget", "Optimux warns at 80% and can stop at 100%.",
+              check=tr("Active: {project}.", project=settings["active_project"]) if settings.get("active_project") else tr("None open.")),
+        _step("first", tr("Send your first request"),
+              tr("Ask anything about the project. Commands and file changes are shown for your approval first."),
+              made > 0, "chat", check=_count(made, "1 request so far.", "{n} requests so far.") if made else tr("None yet.")),
+        _step("budget", tr("Set a monthly budget"), tr("Optimux warns at 80% and can stop at 100%."),
               plan, "budgets", optional=True,
-              check=_plural(len(plan), "budget") + " set." if plan else "No budget set."),
-        _step("autonomy", "Decide what runs without asking",
-              "Supervised asks before every command and file change; a project can have more freedom.",
+              check=_count(len(plan), "1 budget set.", "{n} budgets set.") if plan else tr("No budget set.")),
+        _step("autonomy", tr("Decide what runs without asking"),
+              tr("Supervised asks before every command and file change; a project can have more freedom."),
               autonomy_ok, "execution", optional=True, check=autonomy_line),
-        _step("backups", "Take a first snapshot",
-              "A copy of your settings, chats and projects on this machine; the database is also copied daily.",
+        _step("backups", tr("Take a first snapshot"),
+              tr("A copy of your settings, chats and projects on this machine; the database is also copied daily."),
               backup_ok, "backups", optional=True, check=backup_line),
-        _step("github", "Connect GitHub",
-              "Lets Optimux create repositories for new projects and push. Without it, projects stay local.",
+        _step("github", tr("Connect GitHub"),
+              tr("Lets Optimux create repositories for new projects and push. Without it, projects stay local."),
               github_ok, "github", optional=True, check=github_line),
     ]
     if auth.server_mode():
-        steps.append(_step("totp", "Turn on two-step codes",
-                           "On a server, a code from your phone protects the sign-in even if the password leaks.",
+        steps.append(_step("totp", tr("Turn on two-step codes"),
+                           tr("On a server, a code from your phone protects the sign-in even if the password leaks."),
                            auth.totp_enabled(), "system", optional=True,
-                           check="On." if auth.totp_enabled() else "Off."))
+                           check=tr("On.") if auth.totp_enabled() else tr("Off.")))
     if not is_linux:
         steps[3]["done"] = True             # nothing to do there: shown as information
         steps[3]["check"] = ""

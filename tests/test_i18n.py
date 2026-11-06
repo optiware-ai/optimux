@@ -1,6 +1,8 @@
 """v0.8: the page's languages. Every text marked for translation ($t, tr or tk
 with a written string) has its Italian, the placeholders match, and the
 language is saved only through its own endpoint."""
+import ast
+import glob
 import html
 import json
 import os
@@ -36,6 +38,19 @@ def marked_texts() -> set[str]:
         found |= texts
     with open(os.path.join(ROOT, "web", "login.html"), encoding="utf-8") as f:
         found |= {re.sub(r"\s+", " ", m.group(2)).strip() for m in MARKED.finditer(f.read())}
+    return found | server_texts()
+
+
+def server_texts() -> set[str]:
+    """tr("…") and tk("…") in the server (core/i18n.py): the first argument, a written string."""
+    found = set()
+    for path in glob.glob(os.path.join(ROOT, "optimux_backend", "**", "*.py"), recursive=True):
+        with open(path, encoding="utf-8") as f:
+            tree = ast.parse(f.read())
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and getattr(node.func, "id", "") in ("tr", "tk") and node.args
+                    and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
+                found.add(node.args[0].value)
     return found
 
 
@@ -92,3 +107,12 @@ def test_the_sign_in_page_learns_the_language(mocker, tmp_path):
     assert client.get("/auth/status").json()["language"] == "en"
     client.post("/api/language", json={"language": "it"}, headers=H)
     assert client.get("/auth/status").json()["language"] == "it"
+
+
+def test_the_server_speaks_the_language(mocker, tmp_path):
+    from optimux_backend.core import i18n
+    mocker.patch.object(cm, "SETTINGS_FILE", str(tmp_path / "settings.json"))
+    assert i18n.tr("Unknown action: {action}", action="x") == "Unknown action: x"
+    cm.set_language("it")
+    assert i18n.tr("Unknown action: {action}", action="x") == catalog("it")["Unknown action: {action}"].replace("{action}", "x")
+    assert i18n.tr("not a marked text") == "not a marked text"

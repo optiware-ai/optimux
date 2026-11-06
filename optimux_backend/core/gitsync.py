@@ -29,6 +29,7 @@ from optimux_backend.core.workspace import (
     MANUAL_COMMIT_MESSAGE, WorkspaceError, _GITHUB_REMOTE, _clean_remote, _git_remote, _run, copy_target, git_can_commit,
     projects_root, validate_name,
 )
+from optimux_backend.core.i18n import tr
 
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 BIG_FILE = 50 * 1024 * 1024          # GitHub refuses files over 100 MB; warn at 50
@@ -58,9 +59,9 @@ def _project(name: str) -> str:
     name = validate_name(name)
     path = os.path.join(projects_root(), name)
     if not os.path.isdir(path):
-        raise WorkspaceError(f"There's no project called {name} in the Workspace folder.")
+        raise WorkspaceError(tr("There's no project called {name} in the Workspace folder.", name=name))
     if not os.path.isdir(os.path.join(path, ".git")):
-        raise GitSyncError("This project isn't a git repository.")
+        raise GitSyncError(tr("This project isn't a git repository."))
     return path
 
 
@@ -180,7 +181,7 @@ def status_report(name: str) -> dict:
     path = _project(name)
     lock = _lock(name)
     if not lock.acquire(blocking=False):
-        raise GitSyncError("A push or update of this project is running. Try Status again when it's done.")
+        raise GitSyncError(tr("A push or update of this project is running. Try Status again when it's done."))
     try:
         out = _basics(name, path, fetch=True)
         steps = []
@@ -328,24 +329,24 @@ def push_run(name: str, message: str, tree: str | None, confirmed: bool) -> dict
     """Commit (if there are changes) and push, as shown by push_prepare."""
     lock = _lock(name)
     if not lock.acquire(blocking=False):
-        raise GitSyncError("A push or update of this project is already running.")
+        raise GitSyncError(tr("A push or update of this project is already running."))
     try:
         prep = push_prepare(name)
         path = _project(name)
         if prep["tree"] != tree:
-            raise GitSyncError("The files changed since you opened this. Open Push again to see the new list.")
+            raise GitSyncError(tr("The files changed since you opened this. Open Push again to see the new list."))
         if prep["problems"]:
             raise GitSyncError(prep["problems"][0])
         if prep["warnings"] and not confirmed:
-            raise GitSyncError("Confirm the warnings first.")
+            raise GitSyncError(tr("Confirm the warnings first."))
         commit = None
         if prep["files"]:
             message = (message or "").strip()
             if not message:
-                raise GitSyncError("Write a commit message first.")
+                raise GitSyncError(tr("Write a commit message first."))
             add = _git(path, "add", "-A", timeout=60)
             if not add["ok"]:
-                raise GitSyncError("git add failed: " + add["output"][-300:])
+                raise GitSyncError(tr("git add failed: {v}", v=add["output"][-300:]))
             with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
                 f.write(message + "\n")
                 msg_file = f.name
@@ -354,14 +355,14 @@ def push_run(name: str, message: str, tree: str | None, confirmed: bool) -> dict
             finally:
                 os.unlink(msg_file)
             if not c["ok"]:
-                raise GitSyncError("git commit failed: " + c["output"][-300:])
+                raise GitSyncError(tr("git commit failed: {v}", v=c["output"][-300:]))
         commit = _ok(_git(path, "rev-parse", "--short", "HEAD", timeout=5))
         full = _ok(_git(path, "rev-parse", "HEAD", timeout=5))
         refspec = f"HEAD:refs/heads/{prep['target']}"
         p = _git(path, "push", "-u", "origin", refspec, timeout=180, github=True, auth=_auth(prep["remote"]))
         if not p["ok"]:
             note = " The commit was made here; Push again sends it." if prep["files"] else ""
-            raise GitSyncError("GitHub refused the push: " + p["output"][-500:] + note)
+            raise GitSyncError(tr("GitHub refused the push: {v}{note}", v=p["output"][-500:], note=note))
         return {"ok": True, "project": name, "commit": commit, "branch": prep["target"],
                 "files": len(prep["files"]) + prep["more"], "commits": prep["ahead"] + (1 if prep["files"] else 0),
                 "url": f"{prep['github']}/commit/{full}" if prep["github"] and full else None}
@@ -430,17 +431,17 @@ def update_run(name: str, sha: str | None) -> dict:
     """Fast-forward to the commit update_prepare showed."""
     lock = _lock(name)
     if not lock.acquire(blocking=False):
-        raise GitSyncError("A push or update of this project is already running.")
+        raise GitSyncError(tr("A push or update of this project is already running."))
     try:
         prep = update_prepare(name)
         path = _project(name)
         if not sha or prep["sha"] != sha:
-            raise GitSyncError("GitHub changed since you opened this. Open Update again.")
+            raise GitSyncError(tr("GitHub changed since you opened this. Open Update again."))
         if prep["problems"]:
             raise GitSyncError(prep["problems"][0])
         r = _git(path, "merge", "--ff-only", "--no-edit", sha, timeout=120)
         if not r["ok"]:
-            raise GitSyncError("git refused the update: " + r["output"][-500:])
+            raise GitSyncError(tr("git refused the update: {v}", v=r["output"][-500:]))
         return {"ok": True, "project": name, "commits": prep["behind"], "files": len(prep["files"]),
                 "head": _ok(_git(path, "rev-parse", "--short", "HEAD", timeout=5))}
     finally:
@@ -456,7 +457,7 @@ def message_material(name: str) -> dict:
     tree = changes_lib._tree(top)
     head = _ok(_git(path, "rev-parse", "--verify", "--quiet", "HEAD^{tree}", timeout=5)) or EMPTY_TREE
     if tree == head:
-        raise GitSyncError("There's nothing to commit, so there's no message to write.")
+        raise GitSyncError(tr("There's nothing to commit, so there's no message to write."))
     diff = changes_lib.compare({"git": True, "top": top, "tree": head})
     problems, _ = _scan(path, diff.get("files", []))
     if problems:

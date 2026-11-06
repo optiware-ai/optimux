@@ -33,27 +33,28 @@ import shlex
 
 from optimux_backend.core import paths
 from optimux_backend.core.security import strip_heredocs
+from optimux_backend.core.i18n import tk, tr
 
 AUTONOMY_FILE = paths.AUTONOMY_FILE
 
 LEVELS = ("supervised", "checkpointed", "autonomous")
 LEVEL_TEXT = {
-    "supervised": "Every command and file change waits for you.",
-    "checkpointed": "File changes and ordinary commands in the project run without asking; models stop before "
-                    "commits, before rewriting a whole file, and at the hard limits.",
-    "autonomous": "Models also commit and rewrite files on their own; they stop only at the hard limits.",
+    "supervised": tk("Every command and file change waits for you."),
+    "checkpointed": tk("File changes and ordinary commands in the project run without asking; models stop before "
+                    "commits, before rewriting a whole file, and at the hard limits."),
+    "autonomous": tk("Models also commit and rewrite files on their own; they stop only at the hard limits."),
 }
 HARD = ("publish", "delete", "install", "network", "system", "unclear", "outside")
 REASONS = {
-    "publish": "it publishes (git push, GitHub)",
-    "delete": "it deletes or discards files",
-    "install": "it installs or removes software",
-    "network": "it uses the network",
-    "system": "it changes the system (sudo, services, processes)",
-    "unclear": "it builds a command that can't be checked before it runs (eval)",
-    "outside": "it touches paths outside the project",
-    "history": "it changes git history (commit, merge, rebase…)",
-    "rewrite": "it rewrites a whole file that already exists",
+    "publish": tk("it publishes (git push, GitHub)"),
+    "delete": tk("it deletes or discards files"),
+    "install": tk("it installs or removes software"),
+    "network": tk("it uses the network"),
+    "system": tk("it changes the system (sudo, services, processes)"),
+    "unclear": tk("it builds a command that can't be checked before it runs (eval)"),
+    "outside": tk("it touches paths outside the project"),
+    "history": tk("it changes git history (commit, merge, rebase…)"),
+    "rewrite": tk("it rewrites a whole file that already exists"),
 }
 
 SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", "\n", "|&", ";;"}
@@ -101,11 +102,11 @@ def server_block() -> str:
     from optimux_backend.core import sandbox
     from optimux_backend.core.config_manager import get_settings
     if not sandbox.enabled(get_settings()):
-        return "On a server, levels other than Supervised need the sandbox, and it is off."
+        return tr("On a server, levels other than Supervised need the sandbox, and it is off.")
     st = sandbox.status()
     if not st.get("works"):
-        return "On a server, levels other than Supervised need the sandbox, and it doesn't work here: " + \
-               str(st.get("error") or "unknown error")
+        return tr("On a server, levels other than Supervised need the sandbox, and it doesn't work here: {error}",
+                  error=str(st.get("error") or tr("unknown error")))
     return ""
 
 
@@ -136,8 +137,8 @@ def overview() -> dict:
     block = server_block()
     return {"default": _saved_default(), "default_saved": data.get("default") in LEVELS, "projects": own,
             "blocked": block,                # non-empty: every project is supervised for now, and why
-            "levels": [{"id": lv, "text": LEVEL_TEXT[lv]} for lv in LEVELS],
-            "hard_limits": [REASONS[h] for h in HARD]}
+            "levels": [{"id": lv, "text": tr(LEVEL_TEXT[lv])} for lv in LEVELS],
+            "hard_limits": [tr(REASONS[h]) for h in HARD]}
 
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
@@ -146,16 +147,16 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 def set_level(project: str | None, level: str | None) -> dict:
     """project None: the default. level None: the project follows the default again."""
     if level is not None and level not in LEVELS:
-        raise ValueError(f"Unknown level {level!r}; use one of {', '.join(LEVELS)}.")
+        raise ValueError(tr("Unknown level {level}; use one of {v}.", level=f'{level!r}', v=', '.join(LEVELS)))
     if project is not None and (not NAME_RE.match(project) or project in (".", "..")):
-        raise ValueError("Invalid project name.")
+        raise ValueError(tr("Invalid project name."))
     block = server_block()
     if level not in (None, "supervised") and block:
         raise ValueError(block)
     data = _read()
     if project is None:
         if level is None:
-            raise ValueError("The default needs a level.")
+            raise ValueError(tr("The default needs a level."))
         data["default"] = level
     else:
         projects = dict(data.get("projects") or {})
@@ -300,13 +301,13 @@ def decide(level: str, kind: str, command: str = "", outside: list | None = None
     found = classify(command) if kind == "command" else set()
     if outside:
         found.add("outside")
-    hard = [REASONS[h] for h in HARD if h in found]
+    hard = [tr(REASONS[h]) for h in HARD if h in found]
     if hard:
-        return True, "Always asked: " + "; ".join(hard) + "."
+        return True, tr("Always asked: {reasons}.", reasons="; ".join(hard))
     if level == "supervised":
-        return True, "Supervised: every command and file change waits for you."
+        return True, tr("Supervised: every command and file change waits for you.")
     if level == "checkpointed" and "history" in found:
-        return True, f"Checkpointed: {REASONS['history']}."
+        return True, tr("Checkpointed: {reason}.", reason=tr(REASONS["history"]))
     if level == "checkpointed" and kind == "rewrite":
-        return True, f"Checkpointed: {REASONS['rewrite']}."
+        return True, tr("Checkpointed: {reason}.", reason=tr(REASONS["rewrite"]))
     return False, ""

@@ -28,6 +28,7 @@ from collections import deque
 from urllib.parse import quote
 
 from optimux_backend.core import paths, store
+from optimux_backend.core.i18n import tr
 
 COOKIE = "optimux_session"
 IDLE_SECONDS = 14 * 24 * 3600
@@ -101,9 +102,9 @@ def verify_password(password: str, stored: str) -> bool:
 
 def check_new_password(password: str) -> str:
     if not isinstance(password, str) or len(password) < MIN_PASSWORD:
-        raise AuthError(f"Use at least {MIN_PASSWORD} characters (a few random words work well).")
+        raise AuthError(tr("Use at least {MIN_PASSWORD} characters (a few random words work well).", MIN_PASSWORD=MIN_PASSWORD))
     if len(password) > MAX_PASSWORD:
-        raise AuthError("That password is too long.")
+        raise AuthError(tr("That password is too long."))
     return password
 
 
@@ -117,7 +118,7 @@ def set_password(new: str) -> None:
     with _lock:
         data = _load()
         if data.get("corrupt"):
-            raise AuthError(f"{auth_file()} is unreadable; fix or delete it on the server.")
+            raise AuthError(tr("{auth_file} is unreadable; fix or delete it on the server.", auth_file=auth_file()))
         data["password"] = hash_password(new)
         data["password_changed"] = int(time.time())
         _save(data)
@@ -181,7 +182,7 @@ def start_totp() -> dict:
     with _lock:
         data = _load()
         if data.get("corrupt") or (data.get("totp") or {}).get("enabled"):
-            raise AuthError("Two-step codes are already on. Turn them off first (that needs a current code).")
+            raise AuthError(tr("Two-step codes are already on. Turn them off first (that needs a current code)."))
         data["totp_pending"] = secret
         _save(data)
     return {"secret": secret, "uri": otpauth_uri(secret)}

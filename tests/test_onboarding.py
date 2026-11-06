@@ -134,7 +134,7 @@ def test_each_step_says_what_it_found(world):
     assert st["models"]["check"] == "2 models ready."
     assert st["routing"]["check"] == "Simple: a, Complex: b, Conductor: off."
     assert st["workspace"]["check"].endswith("doesn't exist.") and not st["workspace"]["done"]
-    assert st["autonomy"]["done"] and st["autonomy"]["check"] == "Default: checkpointed, 1 project with its own level."
+    assert st["autonomy"]["done"] and st["autonomy"]["check"] == "Default: Checkpointed, 1 project with its own level."
     assert st["github"]["done"] and st["github"]["check"] == "Connected as octo."
     assert st["backups"]["done"] and st["backups"]["check"] == "1 snapshot."
 
