@@ -6,7 +6,7 @@
 
 # <img src="docs/images/logo.svg" alt="Optimux logo: one lane splitting into a light lane and a heavy lane" width="44" align="absmiddle"> Optimux
 
-**A self-hosted AI coding workspace that routes each task to the cheapest capable model, tracks every token and what it costs, and asks before running commands.**
+**A self-hosted AI coding workspace that routes each task to the cheapest capable model, tracks every token and what it costs, and by default asks before running commands.**
 
 It isn't limited to code: you can ask it anything you would ask a chat AI, and it can work on any files in a project folder (notes, documents, data).
 
@@ -24,13 +24,13 @@ It isn't limited to code: you can ask it anything you would ask a chat AI, and i
 
 <img src="docs/images/demo.gif" alt="Optimux in action: the Conductor routes a request to the cheap Simple model; a sandboxed test run, a file edit with its diff (Approve all edits in this reply) and a second test run each wait for approval; the reply lists the files it changed and gets a thumbs up; then the Dashboard menu: Overview, Usage and Performance with what routing saved, spending per day by model, price and speed, who does the work and where the money goes" width="900">
 
-<sub>The cheap model takes the request, every command and file edit waits for your approval, and the Dashboard shows where every dollar went and what routing saved.</sub>
+<sub>The cheap model takes the request; in this Supervised project (the default level) every command and file edit waits for your approval; the Dashboard shows where the money went and an estimate of what routing saved. Recorded on a demo install with a scripted model (no real provider calls) and seeded usage history; the app, the sandbox and the test runs are real.</sub>
 
 <br><br>
 
 <img src="docs/images/studio.gif" alt="The Studio: the project's files with their git status, the code editor and a live preview; Ctrl+click on a class opens its CSS rule; an element picked in the preview goes to the chat with a request, the model changes the CSS, and the editor, the preview and the file list update" width="900">
 
-<sub><b>The Studio</b>: files, editor and live preview side by side. Ctrl+click a name to open its definition, pick an element of the page and send it to the chat, and see the model's change at once.</sub>
+<sub><b>The Studio</b> (unreleased, on <code>main</code>): files, editor and live preview side by side. Ctrl+click a name to open its definition, pick an element of the page and send it to the chat, and see the model's change at once. Recorded with a scripted model; the project is set to Checkpointed, so the CSS edit runs without asking.</sub>
 
 </div>
 
@@ -40,7 +40,7 @@ It isn't limited to code: you can ask it anything you would ask a chat AI, and i
 
 Optimux helps you use AI models without wasting money.
 
-It sends simple requests to cheap models, hands hard work to stronger models, tracks every token and every cent, and asks for your approval before it runs any command on your machine.
+It sends simple requests to cheap models, hands hard work to stronger models, tracks every token and every cent, and by default asks for your approval before it runs any command on your machine. Per-project **autonomy levels** can let ordinary work in a project run without asking; risky commands still ask.
 
 ## How to start
 
@@ -56,7 +56,9 @@ It sends simple requests to cheap models, hands hard work to stronger models, tr
 ---
 
 > ### Project status
-> **Optimux is in beta (v0.6).** It is used every day on Linux and has a large test suite, but some paths have had little real-world use yet: server installs, macOS, and creating GitHub repositories from the app. Expect rough edges, and please [open an issue](https://github.com/optiware-ai/optimux/issues) when something breaks. What changed in each release: [CHANGELOG.md](CHANGELOG.md).
+> **Optimux is in beta. The latest release is v0.6.0 (2026-10-23).** The `main` branch, and this README, already include unreleased work for the next release: the Studio, autonomy levels, per-project settings and models, the Italian interface and more (listed under *Unreleased* in the [CHANGELOG](CHANGELOG.md)). An install from `main` shows `v0.6.0` with its commit until that release is made.
+>
+> It is used every day on Linux and has a large automated test suite, but some paths have had little real-world use yet: server installs, macOS, and creating GitHub repositories from the app. The tests use fake models: they check Optimux itself, not how well real models do coding tasks. What has and hasn't been measured with real models is in [docs/evaluations](docs/evaluations/README.md). Expect rough edges, and please [open an issue](https://github.com/optiware-ai/optimux/issues) when something breaks.
 
 ## Table of contents
 
@@ -89,9 +91,9 @@ Coding assistants are billed per token, and the price gap between models is huge
 Optimux runs on your own machine, works on your own repositories, and treats **cost, speed and reliability as settings you control**:
 
 - a cheap **Simple** model answers most requests, and a strong **Complex** model takes over only for hard tasks or when the Simple one gets stuck;
-- every model call is **metered** (tokens, cache hits, thinking, cost, time) and **budgets** stop a project before it overspends;
+- every model call is **metered** (tokens, cache hits, thinking, cost, time) and **budgets** stop a project once it reaches its monthly limit (or only warn, if you choose);
 - prompts are kept **small and cache-friendly**: short memory, skills that cost nothing until used, prompt caching where the provider supports it;
-- commands run only **after your approval**, and optionally in a **sandbox** that can change nothing but the project.
+- commands run **after your approval** by default (per project you can let ordinary work run without asking), and optionally in a **sandbox** that can change nothing but the project.
 
 ## Features
 
@@ -185,7 +187,7 @@ Memory costs tokens on every model call, so short and precise memory is cheaper 
 
 1. You send a message from the browser over an authenticated WebSocket.
 2. The **Conductor** classifies it as simple or complex (and may pick an Auto skill).
-3. The chosen **executor** model answers, with your memory and the recent chat as context. It may call tools: a shell command (after your approval, in the sandbox if enabled), a memory update, a skill, or a Workspace action.
+3. The chosen **executor** model answers, with your memory and the recent chat as context. It may call tools: a shell command (after your approval, unless the project's autonomy level lets it run; in the sandbox if enabled), a memory update, a skill, or a Workspace action.
 4. If the Simple model gets stuck, the turn **escalates** to the Complex model with the whole conversation.
 5. Every call is **metered** and checked against the project's **budget**; the chat is stored as it happens.
 
@@ -204,7 +206,7 @@ A detailed walkthrough of each part is in the [Guide](docs/GUIDE.md#how-routing-
     <td width="50%"><img src="docs/images/dashboard-usage.png" alt="Usage page broken down by project, role, model and skill"><p align="center"><sub><b>Usage</b>: tokens, cost and time by project, role, model and skill</sub></p></td>
   </tr>
   <tr>
-    <td><img src="docs/images/approval.png" alt="Approval box for a sandboxed command"><p align="center"><sub><b>Approvals</b>: every command waits for you, with its sandbox status</sub></p></td>
+    <td><img src="docs/images/approval.png" alt="Approval box for a sandboxed command"><p align="center"><sub><b>Approvals</b>: a command waiting for you (the default, Supervised), with its sandbox status</sub></p></td>
     <td><img src="docs/images/skills.png" alt="Skills page with Manual and Auto modes"><p align="center"><sub><b>Skills</b>: Manual (free while idle) or Auto</sub></p></td>
   </tr>
   <tr>
@@ -304,7 +306,8 @@ The [How to spend less](docs/GUIDE.md#how-to-spend-less) chapter covers every le
 
 - **Sign-in** with a password (scrypt) and optional two-step codes (TOTP); sessions in an HttpOnly, SameSite=Strict cookie; failed attempts limited per address. Scripts can use the access token instead.
 - **Browser hardening**: model output is sanitized before display; a strict Content Security Policy allows only Optimux's own scripts, all served locally at pinned versions (no CDN); no framing; cross-site changes are refused.
-- **Approval** for every command by default; per-project **autonomy levels** (Supervised, Checkpointed, Autonomous) let ordinary work run without asking, while pushes, deletions, installs, network use and paths outside the project always ask.
+- **Approval** for every command and file change by default (Supervised); per-project **autonomy levels** (Checkpointed, Autonomous) let ordinary work run without asking, while pushes, deletions, installs, network use, system changes, paths outside the project and commands Optimux can't read always ask. With no project open, and on a server without a working sandbox, everything asks.
+- **The autonomy check is not a security boundary.** It reads a command's words before it runs, to catch a model doing these things by accident; a script the model writes and runs can still do whatever its code does. The **sandbox** is what limits commands: use a freer level only with the sandbox on, in projects you can restore from git.
 - **Sandbox** (bubblewrap): the system is read-only, only the working folder is writable, home folders and Optimux's keys are hidden, `/tmp` is private, the network can be cut. It fails closed: if bubblewrap is unavailable, commands are refused.
 - **Secrets** live in `~/.optimux/secrets.env` (mode 600); commands get an allow-list of environment variables, never keys, plus per-command resource limits.
 - **Server mode** (`OPTIMUX_SERVER=1`) and a [deployment kit](deploy/) for running on a VPS behind HTTPS.
@@ -345,6 +348,7 @@ optimux/
 ├── scripts/optimux          the optimux command; scripts/build-css.sh rebuilds web/app.css; scripts/build-editor.sh the Studio's editor
 ├── docs/
 │   ├── GUIDE.md             the user guide (also shown in the app)
+│   ├── evaluations/         what has been checked and how, real-model evaluations
 │   └── images/              screenshots and diagrams
 └── tests/                   pytest suite
 ```
@@ -362,7 +366,7 @@ pytest -q
 
 The suite runs without network access or API keys: model calls are mocked, and a temporary `OPTIMUX_HOME` is used. Sandbox tests run for real where bubblewrap works and are skipped otherwise.
 
-The same tests and `shellcheck` run on GitHub Actions for every push and pull request to `main` (Python 3.10 and 3.13): see [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
+The same tests and `shellcheck` run on GitHub Actions for every push and pull request to `main` (Python 3.10 and 3.13): see [`.github/workflows/tests.yml`](.github/workflows/tests.yml). What these checks prove, and what they don't (they never call a real model), is in [docs/evaluations](docs/evaluations/README.md).
 
 ### Conventions
 

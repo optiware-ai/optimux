@@ -171,8 +171,8 @@ def status() -> dict:
               tr("Commands can then change only the active project, even if you approve a bad one."),
               sandbox_ok, "execution",
               check=tr("On.") if sandbox_ok else (tr("Works, but off.") if sb.get("works") else tr("Doesn't work here yet.")),
-              info="" if is_linux else tr("Not available on this system: bubblewrap is Linux-only. You approve "
-                                          "every command instead.")),
+              info="" if is_linux else tr("Not available on this system: bubblewrap is Linux-only. Keep projects "
+                                          "Supervised, so you approve every command yourself.")),
         _step("features", tr("Choose your features"),
               tr("Memory updates itself after each chat (a small cost per chat); plan mode splits big tasks into "
                  "steps for the cheap model; skills are reusable instructions. The defaults are fine to start."),
@@ -182,7 +182,8 @@ def status() -> dict:
               settings.get("active_project"), "projects",
               check=tr("Active: {project}.", project=settings["active_project"]) if settings.get("active_project") else tr("None open.")),
         _step("first", tr("Send your first request"),
-              tr("Ask anything about the project. Commands and file changes are shown for your approval first."),
+              tr("Ask anything about the project. At the default level (Supervised), commands and file changes "
+                 "wait for your approval."),
               made > 0, "chat", check=_count(made, "1 request so far.", "{n} requests so far.") if made else tr("None yet.")),
         _step("budget", tr("Set a monthly budget"), tr("Optimux warns at 80% and can stop at 100%."),
               plan, "budgets", optional=True,

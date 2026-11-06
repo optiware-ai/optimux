@@ -10,6 +10,7 @@ Optimux relies heavily on decentralized context to feed different LLMs.
 - **`MANIFEST.md`**: Optimux's purpose and design in one page.
 - **`README.md`**: What it is, how to install it, how it works; the roadmap.
 - **`docs/GUIDE.md`**: The user guide (also shown in the app).
+- **`docs/evaluations/`**: What each kind of check proves (unit, fake-model integration, install smoke tests) and the real-model evaluations, with a template. A result goes there only with its evidence; planned ones say NOT RUN.
 - **`SECURITY.md`**: How to report a vulnerability.
 - **`commit-template.txt`**: **[CRITICAL]** The strict convention for Optimux commits.
 - **`VERSION`**: The release number (`MAJOR.MINOR.PATCH`); the rules are in `CONTRIBUTING.md`. **`CHANGELOG.md`**: What each release changed.
@@ -30,7 +31,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 ├── scripts/build-editor.sh      (rebuilds the Studio's editor, web/vendor/codemirror-*.min.js, from scripts/editor/entry.js)
 ├── scripts/smoke-test.py        (end-to-end check of an install with a fake model; CI "install" job)
 ├── docs/
-│   └── GUIDE.md                 (User guide, shown in Dashboard → Guide)
+│   ├── GUIDE.md                 (User guide, shown in Dashboard → Guide)
+│   └── evaluations/             (What has been checked and how: test layers, real-model evaluations, template)
 ├── optimux_backend/
 │   ├── __init__.py              (runs first: settings other libraries read on import)
 │   ├── __init__.py_AGENT.md

@@ -296,7 +296,6 @@
  "Archived · {name}": "Archiviato · {name}",
  "Archived: in the Workspace's .archive folder": "Archiviato: nella cartella .archive del Workspace",
  "Area of the page {page} (in the Studio preview): {w}×{h} px at x {x}, y {y} of the page (the preview window is {w2}×{h2}).": "Area della pagina {page} (nell'anteprima dello Studio): {w}×{h} px a x {x}, y {y} della pagina (la finestra di anteprima è {w2}×{h2}).",
- "Ask anything about the project. Commands and file changes are shown for your approval first.": "Chiedi qualsiasi cosa sul progetto. Comandi e modifiche ai file ti vengono mostrati prima, per l'approvazione.",
  "Ask first": "Chiedi prima",
  "Asking…": "Richiesta…",
  "At 100%": "Al 100%",
@@ -1001,7 +1000,6 @@
  "Not a GitHub setting: {v}": "Non è un'impostazione di GitHub: {v}",
  "Not a clone staging folder.": "Non è una cartella di preparazione di una clonazione.",
  "Not a public key Optimux can use: it must start with age1, ssh-ed25519 or ssh-rsa.": "Non è una chiave pubblica che Optimux può usare: deve iniziare con age1, ssh-ed25519 o ssh-rsa.",
- "Not available on this system: bubblewrap is Linux-only. You approve every command instead.": "Non disponibile su questo sistema: bubblewrap esiste solo per Linux. Approvi tu ogni comando.",
  "Not cancelled": "Non annullato",
  "Not connected.": "Non connesso.",
  "Not deleted": "Non eliminato",
@@ -2364,5 +2362,7 @@
  "the file and its {n} earlier versions": "il file e le sue {n} versioni precedenti",
  "with your {likes} 👍 and {dislikes} 👎": "con i tuoi {likes} 👍 e {dislikes} 👎",
  "{errors} errors, {escalations} escalations": "{errors} errori, {escalations} escalation",
- "{n} ({cost}): they leave Usage, Performance and every model's statistics, so the totals go down": "{n} ({cost}): escono da Utilizzo, Prestazioni e dalle statistiche di ogni modello, quindi i totali diminuiscono"
+ "{n} ({cost}): they leave Usage, Performance and every model's statistics, so the totals go down": "{n} ({cost}): escono da Utilizzo, Prestazioni e dalle statistiche di ogni modello, quindi i totali diminuiscono",
+ "Not available on this system: bubblewrap is Linux-only. Keep projects Supervised, so you approve every command yourself.": "Non disponibile su questo sistema: bubblewrap esiste solo su Linux. Tieni i progetti su Supervisionato, così approvi tu ogni comando.",
+ "Ask anything about the project. At the default level (Supervised), commands and file changes wait for your approval.": "Chiedi qualsiasi cosa sul progetto. Al livello predefinito (Supervisionato), comandi e modifiche ai file aspettano la tua approvazione."
 }

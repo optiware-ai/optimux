@@ -1,8 +1,10 @@
 # Optimux Guide
 
+> **Versions.** The latest release is **v0.6.0**. This guide follows the `main` branch: parts marked *v0.8* (the Studio, autonomy levels, per-project settings, the Italian interface and more) are on `main` but not in a release yet; see *Unreleased* in the [CHANGELOG](https://github.com/optiware-ai/optimux/blob/main/CHANGELOG.md).
+
 ## Welcome
 
-Optimux is a coding assistant that runs on your own machine and works on your own projects. You chat with it in the browser; it can read your files, run commands in a terminal (after you approve them), edit code, and remember what it learns about you and each project.
+Optimux is a coding assistant that runs on your own machine and works on your own projects. You chat with it in the browser; it can read your files, run commands in a terminal (after you approve them, by default), edit code, and remember what it learns about you and each project.
 
 What makes it different is **how it spends money**. Every answer from a language model is billed by the number of tokens (pieces of words) it reads and writes, and models differ a lot in price. Optimux sends each request to the cheapest model that can handle it, keeps prompts small, and shows you exactly what everything costs, so you decide the balance between **cost, speed and reliability**.
 
@@ -13,7 +15,8 @@ The ideas in one minute:
 - **The Workspace and its projects.** The Workspace is one folder on your disk; every folder inside it is a project. Commands run inside the active project, and each project has its own memory, chats, costs and budget.
 - **Memory** is a few short Markdown files sent with every request so the model knows you and your project.
 - **Skills** are reusable instructions you can run with a `/command`.
-- **Everything is measured:** every model call is recorded with its tokens, cost and time, and nothing is ever lost when the server restarts.
+- **Everything is metered:** every model call is recorded with its tokens, cost and time, and nothing is ever lost when the server restarts. How well real models do real tasks is a separate question: see [docs/evaluations](https://github.com/optiware-ai/optimux/blob/main/docs/evaluations/README.md) for what has been measured.
+- **You decide what runs.** By default (*Supervised*) every command and file change waits for your approval; a project can be given more freedom (*Autonomy levels*), and risky commands always ask.
 
 > **New here?** Read *Getting started* first, then *The chat screen*. *How to spend less* is the chapter to come back to once you have used Optimux for a few days.
 
@@ -147,7 +150,7 @@ Try something small to see how it works:
 
 > *what does this project do? look at the files*
 
-You will see, in order: which tier answered (**Routed to: …**), any commands the model wants to run (each one waits for your **Approve**), the answer, and a line with the calls, tokens, cost and time of the reply.
+You will see, in order: which tier answered (**Routed to: …**), any commands the model wants to run (each one waits for your **Approve** at the default level, Supervised), the answer, and a line with the calls, tokens, cost and time of the reply.
 
 ## The chat screen
 
@@ -557,7 +560,7 @@ A **turn** is one request and its reply. A **step** is one model call inside it:
 
 ### Plan big tasks
 
-*New in v0.4, off by default.* We measured it on six everyday tasks (a landing page, a small API, a theme switch, a small fix, a command-line tool with tests, CI setup), each done once with plans and once without. Plans never gave a better result, and cost about 18% more in total. Splitting closely connected work between models lost details (tests written by one model didn't match the code written by another), and a step whose tool couldn't run stopped the whole plan. So the Conductor doesn't offer plans unless you turn it on. Try `/plan` for a large task with clearly separate, routine parts.
+*New in v0.4, off by default.* We measured it on six everyday tasks (a landing page, a small API, a theme switch, a small fix, a command-line tool with tests, CI setup), each done once with plans and once without. Plans never gave a better result, and cost about 18% more in total. (One run per task and mode; its raw records weren't kept, so treat it as an observation, not a reproducible result: see [docs/evaluations](https://github.com/optiware-ai/optimux/blob/main/docs/evaluations/README.md).) Splitting closely connected work between models lost details (tests written by one model didn't match the code written by another), and a step whose tool couldn't run stopped the whole plan. So the Conductor doesn't offer plans unless you turn it on. Try `/plan` for a large task with clearly separate, routine parts.
 
 A big task usually mixes hard thinking with routine work: reading files, writing code to a clear spec, running tests. Without a plan, the Complex model pays for all of it. With **Plan big tasks** (in **Dashboard → Routing**), the Complex model first writes a short plan of 2 to 8 steps, and each step runs on the tier it needs: routine steps on Simple, only the hard ones on Complex.
 
@@ -580,7 +583,7 @@ Before you run it, the card shows:
 **How a plan runs.** The steps run one after another, each on its own tier and in a **fresh, small context**: the usual instructions, the goal, the step itself, and what the earlier steps handed over, never their whole conversation. That is where the savings come from.
 
 - A step ends by reporting a short **result** (what it did, the files it changed) for the next steps. A step that decides something longer the next steps must follow, such as a design or a list of test cases, also leaves **notes**; the card shows them under the step. Results and notes are kept in Optimux's database (in `~/.optimux`), never in your project.
-- Every command still needs your approval and runs in the sandbox when it is on; the budget is checked before every model call.
+- Commands follow the project's autonomy level as usual (at Supervised, the default, each one waits for your approval) and run in the sandbox when it is on; the budget is checked before every model call.
 - The card updates live: each step's status, model, number of calls and cost, and the plan's cost so far. In the reply below it, each step has a heading with what it did (commands, output, text) under it; a finished step folds, and a click opens it again.
 - At the end, the plan's **check** runs as a last Simple step (for example, running the tests) and writes the reply. It ends with a verdict shown on the card: **✓ Passed**, **✗ Failed** (the card's status says *done · check failed*), or **? Not verified** (*done · not verified*) when the check couldn't run, for example because a tool or package is missing, or when the model gave no verdict. Steps are done either way; the verdict tells you whether to trust them. A plan without a check gets a summary of the step results, with no model call.
 - The chat history keeps a short record of the plan (each step's tier, model and result) and the reply, so a follow-up question knows what happened without paying for every step again.
@@ -668,7 +671,7 @@ Ollama models (`ollama/...`) cost nothing per token. They work for simple chat, 
 
 ### What the model can do
 
-The model has a terminal tool: it proposes a shell command, you approve it, Optimux runs it in the active project and gives the output back to the model. Each command stops after **120 seconds** by default (**Dashboard → Execution → Timeout**, from 10 seconds to 30 minutes). Servers and watchers that never end should be started by you.
+The model has a terminal tool: it proposes a shell command, you approve it (at the default level, Supervised; see *Autonomy levels* for when it runs without asking), Optimux runs it in the active project and gives the output back to the model. Each command stops after **120 seconds** by default (**Dashboard → Execution → Timeout**, from 10 seconds to 30 minutes). Servers and watchers that never end should be started by you.
 
 ### Files changed
 
@@ -753,7 +756,7 @@ The **hard limits** ask at every level: publishing (`git push`, `gh`), deleting 
 - A command or change that ran without asking is marked **auto · Checkpointed** (or Autonomous) in the chat, with its output or diff as usual, and counts as approved in the task records.
 - **Projects with their own level** lists only the projects that don't follow the default. **Configure a project…** gives one its own level; **Use default** puts it back. A project's level can also be set on its **Project** page.
 - With **no project open** (the Workspace), everything asks.
-- The check reads the command's words before it runs. It is a guard against a model doing these things by accident, **not a sandbox**: a script the model writes and runs can still do whatever its code does. Combine a freer level with the **sandbox**, and use it on projects you can restore from git.
+- The check reads the command's words before it runs. It is a guard against a model doing these things by accident, **not a security boundary and not a sandbox**: a script the model writes and runs can still do whatever its code does. Combine a freer level with the **sandbox**, and use it on projects you can restore from git.
 - **On a server** (`OPTIMUX_SERVER=1`), Checkpointed and Autonomous apply only while the sandbox works; if it doesn't, every project is Supervised and Execution says why.
 - **Updating from an older version:** with the old *Auto-approve* setting on, the default is Checkpointed until you choose one (it says so in Execution); with it off, Supervised. Auto-approve used to run every command except paths outside the project; now the hard limits ask again.
 

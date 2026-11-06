@@ -2,6 +2,18 @@
 
 What each release of Optimux changed. The version rules are in [CONTRIBUTING.md](CONTRIBUTING.md#versions-and-releases); the newest release is at the top.
 
+## Unreleased (on `main`, since v0.6.0)
+
+Work that is on `main` but not in a release yet. An install from `main` shows `v0.6.0` with its commit. The full entry, with what to do before updating, is written when the release is made.
+
+- **Studio:** browse, edit and preview a project's files beside the chat; send code or a part of the page to the model.
+- **Autonomy levels:** Supervised (the default), Checkpointed or Autonomous, per project; the hard limits always ask.
+- **Projects:** one page with every setting of a project, its own models, and a clearer delete dialog.
+- **Model tools for git:** status, and Push and Update through the confirmed windows.
+- **Scout before Complex**, **working time** per request, and a reworked **Dashboard** (charts and details, roles and jobs).
+- **Italian** interface and server texts, chosen in Dashboard → System.
+- **Restore** merges history both ways; **Getting started** has a check line per step.
+
 ## v0.6.0 (2026-10-23) — beta
 
 Measure. Optimux now shows what routing saves, keeps a small record of every request (for routing that learns from outcomes later), refuses requests for unknown host names, and every change is checked by a real install on fresh Ubuntu machines.
