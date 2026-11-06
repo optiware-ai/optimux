@@ -205,7 +205,7 @@
                         <div class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-[13px] flex-shrink-0 min-h-[38px]">
                             <template v-if="studio.file">
                                 <span class="font-mono text-gray-200 truncate" :title="studio.file.path">{{ studio.file.path }}</span>
-                                <button @click="writeClipboard(studio.file.path)" class="text-gray-500 hover:text-gray-200 flex-shrink-0" :title="$t('Copy the path')">⧉</button>
+                                <copy-btn :text="studio.file.path" :label="$t('Copy the path')"></copy-btn>
                                 <span v-if="studio.dirty" class="text-amber-300 flex-shrink-0" :title="$t('Unsaved changes')">●</span>
                                 <span v-if="studio.file.hidden" class="text-[11px] rounded px-1.5 border text-green-300 border-green-800 bg-green-950/40 flex-shrink-0" :title="$t('Saved keys are shown as ••••(NAME); they are written back as the key when you save. You can\'t add one here.')">{{ (studio.file.hidden === 1 ? $t('🔒 1 key hidden') : $t('🔒 {n} keys hidden', { n: studio.file.hidden })) }}</span>
                                 <span class="flex-1"></span>
@@ -864,7 +864,7 @@
                 </div>
 
                 <!-- v0.8: the Project page, every setting of one project in one place -->
-                <div v-if="settingsTab === 'project'" class="space-y-4 max-w-3xl">
+                <div v-if="settingsTab === 'project'" class="space-y-4">
                     <div v-if="!projectsList.length" class="text-[15px] text-gray-500 italic">{{ $t('No projects yet: create one in Projects.') }}</div>
                     <template v-else>
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-wrap items-center gap-3">
@@ -1040,7 +1040,7 @@
                     <div v-if="workspacePath" class="md:col-span-2 flex flex-wrap items-center gap-x-3 gap-y-1 bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-[13px]">
                         <span class="text-gray-500">{{ $t('Workspace folder') }}</span>
                         <span class="font-mono text-gray-200 break-all">{{ workspacePath }}</span>
-                        <button @click="copyPath(workspacePath)" class="text-gray-500 hover:text-gray-200" :title="$t('Copy the path')">{{ $t('⧉ copy') }}</button>
+                        <copy-btn :text="workspacePath" :label="$t('Copy the path')"></copy-btn>
                         <button @click="openSettings('scope')" class="ml-auto text-blue-400 hover:text-blue-300">{{ $t('Change in Scope') }}</button>
                     </div>
                     <div v-if="appSettings.projects_root" class="border-2 border-dashed border-gray-800 rounded-xl min-h-[120px] grid grid-rows-2 overflow-hidden">
@@ -1093,7 +1093,7 @@
                                     <p class="text-gray-400 mb-2">
                                         {{ $t('Run it in a terminal on {v}.', { v: gitBox.data.server ? $t('this server (it acts as the Optimux user through sudo)') : $t('this computer') }) }}
                                         <template v-if="gitBox.data.changes"><span v-html="$th('It first commits {changes} changed file{v} as <span class=&quot;font-mono text-gray-300&quot;>&quot;{commit_message}&quot;</span> (edit the message if you like), then', { changes: gitBox.data.changes, v: gitBox.data.changes === 1 ? '' : 's', commit_message: gitBox.data.commit_message })"></span></template><template v-else>{{ $t('Nothing to commit, so it only') }}</template>
-                                        <span v-html="$th('pushes <span class=&quot;font-mono text-gray-300&quot;>{branch}</span> to <span class=&quot;font-mono text-gray-300 break-all&quot;>{remote}</span>', { branch: gitBox.data.branch, remote: gitBox.data.remote })"></span><template v-if="gitBox.data.push_branch"><span v-html="$th(', as the branch <span class=&quot;font-mono text-gray-300&quot;>{push_branch}</span>', { push_branch: gitBox.data.push_branch })"></span></template>.
+                                        <span v-html="$th('pushes <span class=&quot;font-mono text-gray-300&quot;>{branch}</span> to <span class=&quot;font-mono text-gray-300 break-all&quot;>{remote}</span>', { branch: gitBox.data.branch, remote: gitBox.data.remote })"></span><copy-btn v-if="gitBox.data.remote" :text="gitBox.data.remote" class="ml-1"></copy-btn><template v-if="gitBox.data.push_branch"><span v-html="$th(', as the branch <span class=&quot;font-mono text-gray-300&quot;>{push_branch}</span>', { push_branch: gitBox.data.push_branch })"></span></template>.
                                     </p>
                                     <p v-if="gitBox.data.copy_of" class="text-gray-400 mb-2"><span v-html="$th('This is a copy of <span class=&quot;font-mono text-gray-300&quot;>{copy_of}</span>, so it pushes to its own branch and never changes the branches of <span class=&quot;font-mono text-gray-300&quot;>{copy_of2}</span> or its other copies. To push to <span class=&quot;font-mono text-gray-300&quot;>{branch}</span> instead, change <span class=&quot;font-mono text-gray-300&quot;>HEAD:{push_branch}</span> to <span class=&quot;font-mono text-gray-300&quot;>HEAD</span> at the end.', { copy_of: gitBox.data.copy_of, copy_of2: gitBox.data.copy_of, branch: gitBox.data.branch, push_branch: gitBox.data.push_branch })"></span></p>
                                     </template>
@@ -1119,12 +1119,12 @@
                             <p><span v-html="$t('Archived folders are in the Workspace\'s <code>.archive</code> folder. <b>Restore</b> moves one back. <b>Delete permanently</b> removes the folder from disk; you choose whether its chats, costs and memory go too.')"></span></p>
                             <p>{{ $t('Optimux never deletes GitHub repositories. The model can archive projects, but it can\'t restore or delete them.') }}</p>
                         </help-tip></h3>
-                        <p class="text-sm text-gray-500 mb-3"><span v-html="$th('In <span class=&quot;font-mono text-gray-300 break-all&quot;>{archivePath}</span>', { archivePath: archivePath })"></span> <button @click="copyPath(archivePath)" class="text-gray-500 hover:text-gray-200" :title="$t('Copy the path')">⧉</button>{{ $t('. Deleting is only possible from here, and only for archived projects.') }}</p>
+                        <p class="text-sm text-gray-500 mb-3"><span v-html="$th('In <span class=&quot;font-mono text-gray-300 break-all&quot;>{archivePath}</span>', { archivePath: archivePath })"></span> <copy-btn :text="archivePath" :label="$t('Copy the path')"></copy-btn>{{ $t('. Deleting is only possible from here, and only for archived projects.') }}</p>
                         <div class="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
                             <div v-for="a in archivedProjects" :key="a.folder" class="flex flex-wrap items-center gap-3 px-4 py-3">
                                 <div class="min-w-0 flex-1">
                                     <div class="text-gray-100 font-bold truncate">{{ a.name }}</div>
-                                    <div class="text-xs text-gray-500 font-mono truncate" :title="archivePath + '/' + a.folder">.archive/{{ a.folder }} <button @click="copyPath(archivePath + '/' + a.folder)" class="hover:text-gray-200" :title="$t('Copy the full path')">⧉</button></div>
+                                    <div class="text-xs text-gray-500 font-mono truncate" :title="archivePath + '/' + a.folder">.archive/{{ a.folder }} <copy-btn :text="archivePath + '/' + a.folder" :label="$t('Copy the full path')"></copy-btn></div>
                                     <div class="text-xs text-gray-500 font-mono truncate">{{ $t('archived {v} · {chats} chat{v2} · {v3}{v4}', { v: new Date(a.archived * 1000).toLocaleString($locale()), chats: a.records.chats, v2: a.records.chats === 1 ? '' : 's', v3: fmtCost(a.records.cost), v4: a.remote ? ' · ' + a.remote : '' }) }}</div>
                                 </div>
                                 <button @click="historyPage.project = a.name; openSettings('history')" class="px-3 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">{{ $t('Chats') }}</button>
@@ -1680,7 +1680,7 @@
                 </div>
 
                 <!-- Section: Backups (v0.3: snapshots kept on this machine) -->
-                <div v-if="settingsTab === 'backups'" class="space-y-6 max-w-4xl">
+                <div v-if="settingsTab === 'backups'" class="space-y-6">
                     <!-- v0.3 D: a restore waiting for the restart, or the last one applied -->
                     <div v-if="rsStatus.pending" role="status" class="rounded-xl border-2 border-yellow-500/60 bg-yellow-500/10 p-4 flex gap-3 items-start">
                         <span class="text-2xl leading-none text-yellow-400" aria-hidden="true">⚠</span>
@@ -1692,7 +1692,7 @@
                                 <button v-if="rsStatus.can_restart" @click="restartForRestore" :disabled="rsRestarting" class="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-3 py-1.5 rounded-lg font-bold text-[14px] disabled:opacity-60">{{ rsRestarting ? $t('Restarting… the page reloads by itself') : $t('Restart now') }}</button>
                                 <span v-else class="text-[14px] text-yellow-100 flex flex-wrap items-center gap-2">{{ $t('Restart it where it runs:') }}
                                     <span class="cm-path-box"><code>optimux restart</code>
-                                        <button type="button" @click="snapCopy('rs-restart', 'optimux restart')" :class="['cm-copy-btn', snapCopied['rs-restart'] ? 'cm-copied' : '']">{{ snapCopied['rs-restart'] ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                        <copy-btn :text="'optimux restart'"></copy-btn></span>
                                     <span class="text-[13px] text-yellow-200/80"><span v-html="$t('(on a server: <code>sudo optimux restart</code>)')"></span></span></span>
                                 <button @click="cancelRestore" :disabled="rsRestarting" class="px-3 py-1.5 rounded-lg border border-yellow-500/40 text-yellow-100 text-[14px] hover:border-yellow-400 disabled:opacity-50">{{ $t('Cancel the restore') }}</button>
                             </div>
@@ -1706,7 +1706,7 @@
                                 <div class="text-gray-300"><span v-html="$th('Put back: <b>{v}</b> ({v2}). It was merged with your data: nothing recorded on either side was lost.', { v: rsStatus.last.parts.join(', '), v2: new Date(rsStatus.last.ts * 1000).toLocaleString($locale()) })"></span></div>
                                 <div class="text-gray-400 flex flex-wrap items-center gap-2">{{ $t('The files they replaced are in') }}
                                     <span class="cm-path-box"><code>{{ rsStatus.last.aside }}</code>
-                                        <button type="button" @click="snapCopy('rs-aside', rsStatus.last.aside)" :class="['cm-copy-btn', snapCopied['rs-aside'] ? 'cm-copied' : '']">{{ snapCopied['rs-aside'] ? $t('Copied ✓') : $t('Copy') }}</button></span></div>
+                                        <copy-btn :text="rsStatus.last.aside"></copy-btn></span></div>
                             </template>
                             <template v-else>
                                 <div class="font-bold text-red-300">{{ $t('The restore could not be finished') }}</div>
@@ -1800,7 +1800,7 @@
                         <div v-if="snapshotsInfo.dir" class="flex flex-wrap items-center gap-2 text-[14px] text-gray-400 mb-2">
                             <span>{{ $t('Stored on this server in') }}</span>
                             <span class="cm-path-box"><code>{{ snapshotsInfo.dir }}</code>
-                                <button type="button" @click="snapCopy('dir', snapshotsInfo.dir)" :class="['cm-copy-btn', snapCopied.dir ? 'cm-copied' : '']">{{ snapCopied.dir ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                <copy-btn :text="snapshotsInfo.dir"></copy-btn></span>
                             <help-tip wide>
                                 <p><span v-html="$t('Each snapshot is two files in this folder: <code>&amp;lt;date&amp;gt;-&amp;lt;type&amp;gt;.tar.gz</code> (the snapshot) and <code>&amp;lt;date&amp;gt;-&amp;lt;type&amp;gt;.json</code> (what is inside, for this list).')"></span></p>
                                 <p><span v-html="$t('Only Optimux\'s own user can open the folder and the files. On a server installed with the installer that user is <code>optimux</code>, so use <code>sudo</code> to reach them.')"></span></p>
@@ -1898,7 +1898,7 @@
                                 <div v-if="snapProblems(s)" class="text-[13px] text-orange-400 whitespace-pre-line">{{ snapProblems(s) }}</div>
                                 <div class="text-[13px] text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-1">{{ $t('File') }}
                                     <span class="cm-path-box"><code>{{ $t('{dir}/{id}.tar.gz', { dir: snapshotsInfo.dir, id: s.id }) }}</code>
-                                        <button type="button" @click="snapCopy(s.id, snapshotsInfo.dir + '/' + s.id + '.tar.gz')" :class="['cm-copy-btn', snapCopied[s.id] ? 'cm-copied' : '']">{{ snapCopied[s.id] ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                        <copy-btn :text="snapshotsInfo.dir + '/' + s.id + '.tar.gz'"></copy-btn></span>
                                     <span v-if="s.total_bytes">{{ $t('{v} before compression', { v: fmtBytes(s.total_bytes) }) }}</span></div>
                                 <div v-if="s.optimux_version" class="text-[13px] text-gray-500 flex items-center"><span v-html="$th('Taken by Optimux version <code class=&quot;text-gray-400 mx-1&quot;>{optimux_version}</code>', { optimux_version: s.optimux_version })"></span><help-tip>
                                     <p><span v-html="$t('The version of Optimux that took this snapshot. A release looks like <code>v0.3.0</code>; between releases it is the git commit of your Optimux code (for example <code>36b7058</code>, as in <code>git log</code>). An ending of <code>-dirty</code> means the code had changes that were not committed yet.')"></span></p>
@@ -1939,11 +1939,11 @@
                                                                     <p class="text-yellow-200"><span v-html="$t('Use a key from <b>the computer where you will open the download</b> (your laptop), never one made on this server: the secret half must not live next to the backup.')"></span></p>
                                                                     <div><span v-html="$t('<b>1. Do you already have one?</b> Most developers have an SSH key. On your computer, run:')"></span></div>
                                                                     <span class="cm-path-box"><code>cat ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub 2>/dev/null</code>
-                                                                        <button type="button" @click="snapCopy('k1-' + s.id, 'cat ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub 2>/dev/null')" :class="['cm-copy-btn', snapCopied['k1-' + s.id] ? 'cm-copied' : '']">{{ snapCopied['k1-' + s.id] ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                                                        <copy-btn :text="'cat ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub 2>/dev/null'"></copy-btn></span>
                                                                     <div class="text-gray-400"><span v-html="$t('On Windows (PowerShell): <code>type $env:USERPROFILE\\.ssh\\id_ed25519.pub</code>. A line starting with <code>ssh-ed25519</code> or <code>ssh-rsa</code> is your public key: paste it below.')"></span></div>
                                                                     <div><span v-html="$t('<b>2. None yet? Make one</b> on your computer (press Enter for the defaults; a passphrase is a good idea):')"></span></div>
                                                                     <span class="cm-path-box"><code>ssh-keygen -t ed25519</code>
-                                                                        <button type="button" @click="snapCopy('k2-' + s.id, 'ssh-keygen -t ed25519')" :class="['cm-copy-btn', snapCopied['k2-' + s.id] ? 'cm-copied' : '']">{{ snapCopied['k2-' + s.id] ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                                                        <copy-btn :text="'ssh-keygen -t ed25519'"></copy-btn></span>
                                                                     <div class="text-gray-400"><span v-html="$t('Or a key only for backups, with age: <code>age-keygen -o ~/optimux-backup.key</code>. It prints <code>Public key: age1…</code>: paste the <code>age1…</code> part.')"></span></div>
                                                                     <div><span v-html="$t('<b>3. Paste only the public part</b>: the <code>.pub</code> file\'s line or the <code>age1…</code> key. Never the file without <code>.pub</code>, and never a line starting with <code>AGE-SECRET-KEY</code>: those stay on your computer.')"></span></div>
                                                                     <div class="text-gray-400"><span v-html="$t('To open the download later you need the secret half: <code>~/.ssh/id_ed25519</code> (or <code>id_rsa</code>, or your age key file). Keys in a hardware token (<code>sk-ssh-…</code>) don\'t work with age.')"></span></div>
@@ -1970,7 +1970,7 @@
                                                 <div class="font-bold text-yellow-300 text-[15px]">{{ $t('⚠ Save this key now: it is shown only once') }}</div>
                                                 <p class="text-[13px] text-yellow-100">{{ $t('Optimux doesn\'t keep it. Without it the download can\'t be opened, by anyone. Store it apart from the file (a password manager is a good place).') }}</p>
                                                 <span class="cm-path-box w-full"><code>{{ snapDl[s.id].result.key }}</code>
-                                                    <button type="button" @click="snapCopy('key-' + s.id, snapDl[s.id].result.key)" :class="['cm-copy-btn', snapCopied['key-' + s.id] ? 'cm-copied' : '']">{{ snapCopied['key-' + s.id] ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                                    <copy-btn :text="snapDl[s.id].result.key"></copy-btn></span>
                                                 <div class="flex flex-wrap items-center gap-3">
                                                     <button @click="dlSaveKey(s)" class="text-[13px] px-3 py-1 rounded border border-yellow-500/40 text-yellow-100 hover:border-yellow-400">{{ $t('Save the key as a file') }}</button>
                                                     <label class="flex items-center gap-2 text-[14px] text-yellow-100"><input type="checkbox" v-model="snapDl[s.id].saved" class="w-4 h-4"> {{ $t('I have saved the key') }}</label>
@@ -1985,7 +1985,7 @@
                                             <div v-if="snapDl[s.id].result.mode !== 'plain'" class="text-[13px] text-gray-400 space-y-1">
                                                 <div><span v-html="$t('To open it on your computer, with <a href=&quot;https://age-encryption.org&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot; class=&quot;text-blue-400 hover:underline&quot;>age</a> (<code>apt install age</code>, <code>brew install age</code>):')"></span></div>
                                                 <span class="cm-path-box"><code>{{ dlCommand(s) }}</code>
-                                                    <button type="button" @click="snapCopy('cmd-' + s.id, dlCommand(s))" :class="['cm-copy-btn', snapCopied['cmd-' + s.id] ? 'cm-copied' : '']">{{ snapCopied['cmd-' + s.id] ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                                    <copy-btn :text="dlCommand(s)"></copy-btn></span>
                                             </div>
                                         </template>
                                     </div>
@@ -2014,7 +2014,7 @@
                         <div v-if="dailyInfo.dir" class="flex flex-wrap items-center gap-2 text-[13px] text-gray-500 mb-2">
                             <span>{{ $t('Stored in') }}</span>
                             <span class="cm-path-box"><code>{{ dailyInfo.dir }}</code>
-                                <button type="button" @click="snapCopy('daily-dir', dailyInfo.dir)" :class="['cm-copy-btn', snapCopied['daily-dir'] ? 'cm-copied' : '']">{{ snapCopied['daily-dir'] ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                <copy-btn :text="dailyInfo.dir"></copy-btn></span>
                         </div>
                         <div v-if="dailyInfo.last_check && !dailyInfo.last_check.ok" role="alert" class="mb-2 rounded-lg border border-red-800 bg-red-950/40 p-3 text-[13px] text-red-200">
                             <span v-html="$th('<b class=&quot;text-red-300&quot;>✕ The last backup failed its check</b>: <span class=&quot;font-mono&quot;>{error}</span>. It was kept aside as <span class=&quot;font-mono break-all&quot;>{file}</span>; the backups below were kept.', { error: dailyInfo.last_check.error, file: dailyInfo.last_check.file })"></span>
@@ -2085,11 +2085,11 @@
                                                                     <p class="text-yellow-200"><span v-html="$t('Use a key from <b>the computer where you will open the download</b> (your laptop), never one made on this server: the secret half must not live next to the backup.')"></span></p>
                                                                     <div><span v-html="$t('<b>1. Do you already have one?</b> Most developers have an SSH key. On your computer, run:')"></span></div>
                                                                     <span class="cm-path-box"><code>cat ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub 2>/dev/null</code>
-                                                                        <button type="button" @click="snapCopy('k1-' + dailyItem(b).id, 'cat ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub 2>/dev/null')" :class="['cm-copy-btn', snapCopied['k1-' + dailyItem(b).id] ? 'cm-copied' : '']">{{ snapCopied['k1-' + dailyItem(b).id] ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                                                        <copy-btn :text="'cat ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub 2>/dev/null'"></copy-btn></span>
                                                                     <div class="text-gray-400"><span v-html="$t('On Windows (PowerShell): <code>type $env:USERPROFILE\\.ssh\\id_ed25519.pub</code>. A line starting with <code>ssh-ed25519</code> or <code>ssh-rsa</code> is your public key: paste it below.')"></span></div>
                                                                     <div><span v-html="$t('<b>2. None yet? Make one</b> on your computer (press Enter for the defaults; a passphrase is a good idea):')"></span></div>
                                                                     <span class="cm-path-box"><code>ssh-keygen -t ed25519</code>
-                                                                        <button type="button" @click="snapCopy('k2-' + dailyItem(b).id, 'ssh-keygen -t ed25519')" :class="['cm-copy-btn', snapCopied['k2-' + dailyItem(b).id] ? 'cm-copied' : '']">{{ snapCopied['k2-' + dailyItem(b).id] ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                                                        <copy-btn :text="'ssh-keygen -t ed25519'"></copy-btn></span>
                                                                     <div class="text-gray-400"><span v-html="$t('Or a key only for backups, with age: <code>age-keygen -o ~/optimux-backup.key</code>. It prints <code>Public key: age1…</code>: paste the <code>age1…</code> part.')"></span></div>
                                                                     <div><span v-html="$t('<b>3. Paste only the public part</b>: the <code>.pub</code> file\'s line or the <code>age1…</code> key. Never the file without <code>.pub</code>, and never a line starting with <code>AGE-SECRET-KEY</code>: those stay on your computer.')"></span></div>
                                                                     <div class="text-gray-400"><span v-html="$t('To open the download later you need the secret half: <code>~/.ssh/id_ed25519</code> (or <code>id_rsa</code>, or your age key file). Keys in a hardware token (<code>sk-ssh-…</code>) don\'t work with age.')"></span></div>
@@ -2116,7 +2116,7 @@
                                                 <div class="font-bold text-yellow-300 text-[15px]">{{ $t('⚠ Save this key now: it is shown only once') }}</div>
                                                 <p class="text-[13px] text-yellow-100">{{ $t('Optimux doesn\'t keep it. Without it the download can\'t be opened, by anyone. Store it apart from the file (a password manager is a good place).') }}</p>
                                                 <span class="cm-path-box w-full"><code>{{ snapDl[dailyItem(b).id].result.key }}</code>
-                                                    <button type="button" @click="snapCopy('key-' + dailyItem(b).id, snapDl[dailyItem(b).id].result.key)" :class="['cm-copy-btn', snapCopied['key-' + dailyItem(b).id] ? 'cm-copied' : '']">{{ snapCopied['key-' + dailyItem(b).id] ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                                    <copy-btn :text="snapDl[dailyItem(b).id].result.key"></copy-btn></span>
                                                 <div class="flex flex-wrap items-center gap-3">
                                                     <button @click="dlSaveKey(dailyItem(b))" class="text-[13px] px-3 py-1 rounded border border-yellow-500/40 text-yellow-100 hover:border-yellow-400">{{ $t('Save the key as a file') }}</button>
                                                     <label class="flex items-center gap-2 text-[14px] text-yellow-100"><input type="checkbox" v-model="snapDl[dailyItem(b).id].saved" class="w-4 h-4"> {{ $t('I have saved the key') }}</label>
@@ -2131,7 +2131,7 @@
                                             <div v-if="snapDl[dailyItem(b).id].result.mode !== 'plain'" class="text-[13px] text-gray-400 space-y-1">
                                                 <div><span v-html="$t('To open it on your computer, with <a href=&quot;https://age-encryption.org&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot; class=&quot;text-blue-400 hover:underline&quot;>age</a> (<code>apt install age</code>, <code>brew install age</code>):')"></span></div>
                                                 <span class="cm-path-box"><code>{{ dlCommand(dailyItem(b)) }}</code>
-                                                    <button type="button" @click="snapCopy('cmd-' + dailyItem(b).id, dlCommand(dailyItem(b)))" :class="['cm-copy-btn', snapCopied['cmd-' + dailyItem(b).id] ? 'cm-copied' : '']">{{ snapCopied['cmd-' + dailyItem(b).id] ? $t('Copied ✓') : $t('Copy') }}</button></span>
+                                                    <copy-btn :text="dlCommand(dailyItem(b))"></copy-btn></span>
                                             </div>
                                         </template>
                                     </div>
@@ -2169,7 +2169,7 @@
                 </div>
 
                 <!-- Section: GitHub (Feature 25) -->
-                <div v-if="settingsTab === 'github'" class="space-y-6 max-w-3xl">
+                <div v-if="settingsTab === 'github'" class="space-y-6">
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
                         <h3 class="font-bold text-gray-200 mb-1 flex items-center">{{ $t('Status') }}<help-tip wide>
                             <p><span v-html="$t('When you create a project with <b>Also on GitHub</b>, Optimux runs <code>gh repo create</code> and pushes the first commit, on the machine Optimux runs on.')"></span></p>
@@ -2614,8 +2614,8 @@
                         <div v-if="settingsTab === 'system' && systemInfo && systemInfo.paths">
                             <h3 class="font-bold text-gray-200 text-[15px] mb-2 flex items-center">{{ $t('Files') }}<help-tip><span v-html="$t('Everything Optimux keeps lives here (set <code>OPTIMUX_HOME</code> to move it). Keys and the token are in <code>secrets.env</code>, readable only by you.')"></span></help-tip></h3>
                             <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-[13px] font-mono text-gray-400 grid sm:grid-cols-2 gap-x-6 gap-y-1">
-                                <div v-for="(path, name) in systemInfo.paths" :key="name" class="truncate" :title="path"><span class="text-gray-500 inline-block w-16">{{ name }}</span> {{ path }}</div>
-                                <div v-if="workspacePath" class="truncate" :title="workspacePath + $t(' (your projects; archived ones in .archive/)')"><span class="text-gray-500 inline-block w-16">{{ $t('projects') }}</span> {{ workspacePath }}</div>
+                                <div v-for="(path, name) in systemInfo.paths" :key="name" class="flex items-center gap-2 min-w-0"><span class="text-gray-500 w-20 flex-shrink-0">{{ name }}</span><span class="truncate" :title="path">{{ path }}</span><copy-btn :text="path"></copy-btn></div>
+                                <div v-if="workspacePath" class="flex items-center gap-2 min-w-0"><span class="text-gray-500 w-20 flex-shrink-0">{{ $t('projects') }}</span><span class="truncate" :title="workspacePath + $t(' (your projects; archived ones in .archive/)')">{{ workspacePath }}</span><copy-btn :text="workspacePath"></copy-btn></div>
                             </div>
                             <details v-if="systemInfo.migrations && systemInfo.migrations.length" class="mt-2">
                                 <summary class="text-xs text-gray-500 cursor-pointer hover:text-gray-300">{{ $t('File moves ({length}): what was moved into this layout, and from where', { length: systemInfo.migrations.length }) }}</summary>
@@ -2677,11 +2677,24 @@
                             </div>
                         </div>
                         <div v-if="settingsTab === 'system' && storageInfo && storageInfo.path">
-                            <h3 class="font-bold text-gray-200 text-[15px] mb-1">{{ $t('Storage') }}</h3>
-                            <div class="text-xs text-gray-400 font-mono space-y-0.5">
-                                <div>{{ $t('Database: {path} · {v} · {v2} usage rows', { path: storageInfo.path, v: fmtBytes(storageInfo.size_bytes), v2: (storageInfo.usage_rows || 0).toLocaleString($locale()) }) }}</div>
-                                <div v-if="storageInfo.latest_backup">{{ $t('Latest backup: {latest_backup} ({v}) · {backups} kept', { latest_backup: storageInfo.latest_backup, v: new Date(storageInfo.latest_backup_time * 1000).toLocaleString($locale()), backups: storageInfo.backups }) }}<span v-if="storageInfo.backup_check && storageInfo.backup_check.ok" class="text-green-400" :title="$t('The last backup passed SQLite\'s quick_check before it replaced anything.')">{{ ' ' + $t('· ✓ checked') }}</span> · <button @click="openSettings('backups')" class="text-blue-400 hover:underline font-sans">{{ $t('manage in Backups') }}</button></div>
-                                <div v-else class="text-yellow-400">{{ $t('No backup yet; one is made on every server start.') }}</div>
+                            <h3 class="font-bold text-gray-200 text-[15px] mb-2 flex items-center">{{ $t('Storage') }}
+                                <button @click="openSettings('backups')" class="ml-auto text-[13px] font-normal text-blue-400 hover:text-blue-300">{{ $t('Manage in Backups') }}</button></h3>
+                            <!-- v0.8: columns (what, where, size or date, count) instead of one dotted line -->
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-[13px] font-mono text-gray-400 grid grid-cols-[auto_minmax(0,1fr)_auto_auto] gap-x-6 gap-y-1.5 items-center">
+                                <span class="text-gray-500 font-sans">{{ $t('Database') }}</span>
+                                <span class="flex items-center gap-2 min-w-0"><span class="truncate text-gray-300" :title="storageInfo.path">{{ storageInfo.path }}</span><copy-btn :text="storageInfo.path"></copy-btn></span>
+                                <span class="text-right">{{ fmtBytes(storageInfo.size_bytes) }}</span>
+                                <span>{{ $t('{v} usage rows', { v: (storageInfo.usage_rows || 0).toLocaleString($locale()) }) }}</span>
+                                <template v-if="storageInfo.latest_backup">
+                                    <span class="text-gray-500 font-sans">{{ $t('Latest backup') }}</span>
+                                    <span class="flex items-center gap-2 min-w-0"><span class="truncate text-gray-300" :title="storageInfo.latest_backup">{{ storageInfo.latest_backup }}</span><copy-btn :text="storageInfo.latest_backup"></copy-btn></span>
+                                    <span class="text-right">{{ new Date(storageInfo.latest_backup_time * 1000).toLocaleString($locale()) }}</span>
+                                    <span>{{ $t('{backups} kept', { backups: storageInfo.backups }) }}<span v-if="storageInfo.backup_check && storageInfo.backup_check.ok" class="text-green-400" :title="$t('The last backup passed SQLite\'s quick_check before it replaced anything.')">{{ ' · ' + $t('✓ checked') }}</span></span>
+                                </template>
+                                <template v-else>
+                                    <span class="text-gray-500 font-sans">{{ $t('Latest backup') }}</span>
+                                    <span class="col-span-3 text-yellow-400">{{ $t('No backup yet; one is made on every server start.') }}</span>
+                                </template>
                             </div>
                             <div v-if="storageInfo.backup_check && !storageInfo.backup_check.ok" role="alert" class="mt-2 rounded-lg border border-red-800 bg-red-950/40 p-3 text-[13px] text-red-200">
                                 <span v-html="$th('<b class=&quot;text-red-300&quot;>✕ The last backup failed its check</b> ({v}): <span class=&quot;font-mono&quot;>{error}</span>. It was kept aside as <span class=&quot;font-mono break-all&quot;>{file}</span>, and the older backups were kept. The database itself may be damaged: take a snapshot in Dashboard → Backups, then see <i>Backing up, starting over, moving</i> in the Guide.', { v: new Date(storageInfo.backup_check.time * 1000).toLocaleString($locale()), error: storageInfo.backup_check.error, file: storageInfo.backup_check.file })"></span>
@@ -2934,7 +2947,7 @@
                     <p class="text-gray-400 mb-3">
                         <template v-if="syncBox.kind === 'push'">{{ $t('Commits every change shown below and pushes') }}</template><template v-else>{{ $t('Brings in GitHub\'s new commits for') }}</template>
                         <span v-html="$th('the branch <span class=&quot;font-mono text-gray-200&quot;>{v}</span>', { v: syncBox.data.target || syncBox.data.branch })"></span>
-                        <template v-if="syncBox.data.remote"> <span v-html="$th('of <span class=&quot;font-mono text-gray-200 break-all&quot;>{remote}</span>', { remote: syncBox.data.remote })"></span></template>.
+                        <template v-if="syncBox.data.remote"> <span v-html="$th('of <span class=&quot;font-mono text-gray-200 break-all&quot;>{remote}</span>', { remote: syncBox.data.remote })"></span><copy-btn :text="syncBox.data.remote" class="ml-1"></copy-btn></template>.
                         <template v-if="syncBox.data.copy_of"> <span v-html="$th('This is a copy of <span class=&quot;font-mono text-gray-200&quot;>{copy_of}</span>, so it uses its own branch and never changes {copy_of2}\'s.', { copy_of: syncBox.data.copy_of, copy_of2: syncBox.data.copy_of })"></span></template>
                     </p>
                     <div v-for="(pr, i) in syncBox.data.problems" :key="'p' + i" class="mb-2 rounded-lg border border-red-900/70 bg-red-950/30 text-red-200 px-3 py-2">⛔ {{ pr }}</div>

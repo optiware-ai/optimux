@@ -976,8 +976,9 @@ Most of the cost is **input tokens resent on every step**. The levers below are 
 | **Budgets** | Monthly limits per project (Block or Warn) and the cost warnings. |
 | **Projects** | Cost, budget, chats and memory per project; make one active, create, archive; restore or permanently delete archived projects. |
 | **History** | Every stored chat with filters (project, period, active or archived, title search) and sortable columns; open one to continue it. The project filter also has **Workspace (no project)** and deleted projects whose chats were kept. It loads the newest 5000 chats; filter to see older ones. |
-| **Routing** | The Conductor, Simple and Complex models. |
 | **Models** | Add models, keys, prices, thinking level, test, cooldowns. |
+| **Routing** | The Conductor, Simple and Complex models. |
+| **Project** | Every setting of one project in one place: autonomy, budget, models, planning, memory, execution, skills, GitHub and its folder. |
 | **Memory** | Personal, professional and project memory; automatic updates and their history. |
 | **Skills** | When skills run (Off, Manual only, Auto allowed), each skill's mode, editing, removing, usage and drafting cost. |
 | **Execution** | Autonomy levels, the sandbox, what commands see and their limits, the step limits. |
@@ -987,7 +988,7 @@ Most of the cost is **input tokens resent on every step**. The levers below are 
 | **System** | The security checklist, versions, where files are kept, sign-in (password, two-step codes, signed-in browsers), the access token, database and backups, models in cooldown. |
 | **Guide** | This guide. |
 
-Every page has **?** marks: hover one for an explanation, click to keep it open. Each section has its own address (for example `#/dashboard/usage`), so the browser's back button and bookmarks work. **Esc** or **← Back to chat** returns to the chat, which keeps running in the background.
+Every page has **?** marks: hover one for an explanation, click to keep it open. A folder, a file path, an address or a command you may want elsewhere has a small copy symbol after it: click it and it turns into a green tick for a moment. Each section has its own address (for example `#/dashboard/usage`), so the browser's back button and bookmarks work. **Esc** or **← Back to chat** returns to the chat, which keeps running in the background.
 
 ## Settings reference
 

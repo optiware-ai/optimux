@@ -801,6 +801,45 @@ const DeletedTag = {
     props: { at: { type: Number, default: 0 } },
     template: `<span v-if="at" class="ml-1.5 inline-block align-middle text-[10px] font-sans uppercase tracking-wider text-red-300/90 bg-red-950/50 border border-red-900/70 rounded px-1 py-px" :title="$t('Deleted on {date}. Its folder is gone; its chats, costs and memory were kept.', { date: new Date(at * 1000).toLocaleDateString($locale()) })">{{ $t('deleted') }}</span>`,
 };
+// Copy text to the clipboard; true when it worked. Also on plain HTTP (a VPS without TLS),
+// where navigator.clipboard is missing.
+const copyText = async (text) => {
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
+    }
+};
+// v0.8: the copy symbol after an address (a path, a URL, a command): a green tick when copied,
+// fading back to the symbol after a moment (.cm-copy in optimux.css)
+const CopyBtn = {
+    props: { text: { type: String, default: '' }, label: { type: String, default: '' } },
+    data: () => ({ done: false }),
+    methods: {
+        async copy() {
+            if (!this.text || !(await copyText(this.text))) return;
+            this.done = true;
+            clearTimeout(this.timer);
+            this.timer = setTimeout(() => { this.done = false; }, 1800);
+        },
+    },
+    beforeUnmount() { clearTimeout(this.timer); },
+    template: `<button type="button" @click.stop.prevent="copy" :class="['cm-copy', done ? 'cm-copy-done' : '']"
+        :title="done ? $t('Copied') : (label || $t('Copy'))" :aria-label="done ? $t('Copied') : (label || $t('Copy'))">
+        <svg class="cm-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+        <svg class="cm-copy-ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+    </button>`,
+};
 // Getting started (v0.6.1): the checklist, used by the chat card and Dashboard -> Getting started (v0.8).
 // Steps tick themselves from the real settings; "Choose your features" has its controls inline.
 const OnboardSteps = {
@@ -1687,9 +1726,6 @@ const optimuxApp = createApp({
         const workspacePath = Vue.computed(() => (appSettings.value.projects_root || '').replace(/\/+$/, ''));
         const archivePath = Vue.computed(() => workspacePath.value ? workspacePath.value + '/.archive' : '');
         const projectPath = (name) => workspacePath.value ? (name ? workspacePath.value + '/' + name : workspacePath.value) : '';
-        const copyPath = async (path) => {
-            if (path && await writeClipboard(path)) pushToast({ kind: 'info', title: tr('Path copied'), text: path, timeout: 3000 });
-        };
         const leaveArchived = (name) => {
             if (appSettings.value.active_project !== name) return;
             appSettings.value.active_project = '';
@@ -1970,13 +2006,6 @@ const optimuxApp = createApp({
                 await fetchSnapshots();
             } catch (error) { snapError.value = tr('The snapshot could not be started.'); }
             finally { snapBusy.value = false; }
-        };
-        // Copy buttons on the paths: green "Copied ✓" for two seconds, like the README's
-        const snapCopied = ref({});
-        const snapCopy = async (key, text) => {
-            if (!await writeClipboard(text)) return;
-            snapCopied.value[key] = true;
-            setTimeout(() => { delete snapCopied.value[key]; }, 2000);
         };
         // Delete asks inside the row (snapDeleting = the id waiting for an answer)
         const snapDeleting = ref('');
@@ -3354,9 +3383,9 @@ const optimuxApp = createApp({
             { id: 'budgets', label: tk('Budgets'), icon: '$', group: tk('Activity'), hint: tk('Monthly spending limits per project.') },
             { id: 'projects', label: tk('Projects'), icon: '▦', group: tk('Activity'), hint: tk('Cost, budget, chats and memory per project.') },
             { id: 'history', label: tk('History'), icon: '◷', group: tk('Activity'), hint: tk('Every stored chat; open one to continue it.') },
-            { id: 'project', label: tk('Project'), icon: '◫', group: tk('Configuration'), hint: tk('Every setting of one project in one place: autonomy, budget, planning, memory, execution and GitHub.') },
-            { id: 'routing', label: tk('Routing'), icon: '⇄', group: tk('Configuration'), hint: tk('Which model handles which tier.') },
             { id: 'models', label: tk('Models'), icon: '◆', group: tk('Configuration'), hint: tk('Providers, keys, prices and thinking.') },
+            { id: 'routing', label: tk('Routing'), icon: '⇄', group: tk('Configuration'), hint: tk('Which model handles which tier.') },
+            { id: 'project', label: tk('Project'), icon: '◫', group: tk('Configuration'), hint: tk('Every setting of one project in one place: autonomy, budget, planning, memory, execution and GitHub.') },
             { id: 'memory', label: tk('Memory'), icon: '✎', group: tk('Configuration'), hint: tk('What every model is told about you and your work.') },
             { id: 'skills', label: tk('Skills'), icon: '✦', group: tk('Configuration'), hint: tk('Reusable instructions loaded only when a task needs them.') },
             { id: 'execution', label: tk('Execution'), icon: '›', group: tk('Configuration'), hint: tk('Command approval and how many steps a request may take.') },
@@ -5655,25 +5684,7 @@ const optimuxApp = createApp({
             return lines.join('\n').trim() + '\n';
         };
 
-        const writeClipboard = async (text) => {
-            try {
-                // Needs a secure context: HTTPS or localhost
-                await navigator.clipboard.writeText(text);
-                return true;
-            } catch (_) {
-                // Fallback for plain-HTTP access (e.g. a VPS without TLS)
-                const ta = document.createElement('textarea');
-                ta.value = text;
-                ta.style.position = 'fixed';
-                ta.style.opacity = '0';
-                document.body.appendChild(ta);
-                ta.select();
-                let ok = false;
-                try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
-                document.body.removeChild(ta);
-                return ok;
-            }
-        };
+        const writeClipboard = copyText;
 
         const copySession = async () => {
             const ok = await writeClipboard(sessionMarkdown());
@@ -5750,7 +5761,7 @@ const optimuxApp = createApp({
             currentSession, readOnlyChat, leaveReadOnly, historyOpen, historyScope, historyQuery, historyList, fetchSessions,
             toggleHistory, openSession, goHome, renameSession, archiveSession, deleteSession, changeProject,
             memoryProject, memoryProjectExists, charts, chartData, fmtCalls, fmtTok, fmtCount, roleBadges, recentChats, projectsOverview,
-            snapshotsInfo, snapForm, snapKinds: snapKindsShown, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapCopied, snapCopy, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
+            snapshotsInfo, snapForm, snapKinds: snapKindsShown, snapSetProjects, snapTouchProjects, snapNothingChosen, snapKindLabel, snapConfirm, snapOpen, snapDeleting, snapReadme, loadSnapReadme, onCopyCodeClick, snapDl, dlOpen, dlClose, dlPrepare, dlSaveKey, dlStarted, dlCommand, snapLeftOutProjects, snapProceedLabel, snapPreview, snapBusy, snapError, snapLimit, snapProblems, previewSnapshot, takeSnapshot, deleteSnapshot, saveSnapshotLimit,
             monthSavings, onboard, onboardSmall, onboardAct, onboardGo, onboardSave, rateReply, taskStats, taskDeleteAsk, deleteTasks, pageUpdated, reloadPage, dailyInfo, dailyKeep, dailyBusy, dailyMsg, dailyDeleting, dailyRestore, dailyItem, fetchBackups, backupNow, saveDailyKeep, checkDaily, deleteDaily, restoreDaily, toggleDailyRestore,
             rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
             historyPage, historySorted, fetchHistoryPage, sortHistory, historyProjects, setHistoryProject,
@@ -5764,7 +5775,7 @@ const optimuxApp = createApp({
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
             syncBox, chatProject, openSync, closeSync, syncReady, writeCommitMessage, runSync,
-            startClone, cancelClone, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, copyPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
+            startClone, cancelClone, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,
             removeSkill, saveAsSkill, skillDialog, confirmSkillDialog,
             setSkillsMode, setSkillMode, slashSuggestions, slashIndex, pickSlash,
@@ -5778,7 +5789,7 @@ const optimuxApp = createApp({
             projectLabel, viewer, viewerLanguages: viewerLanguagesShown, openCmdViewer, onChatClick, closeViewer, rehighlightViewer, copyViewerSection
         };
     }
-}).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).component('onboard-steps', OnboardSteps)
+}).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).component('copy-btn', CopyBtn).component('onboard-steps', OnboardSteps)
   .component('day-columns', DayColumns).component('tree-map', Treemap).component('connected-dots', ConnectedScatter)
   .component('scatter-plot', ScatterPlot).component('chart-pick', ChartPick)
   .component('lang-flag', LangFlag).component('lang-badge', LangBadge)
