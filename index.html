@@ -2694,6 +2694,8 @@
                                     {{ $t('Warn me before "Update memory now"') }}<help-tip>{{ $t('Shows the estimated cost and asks for confirmation. Unchecked: the button in Dashboard → Memory runs immediately.') }}</help-tip></label>
                                 <label class="flex items-center gap-2 text-[15px] text-gray-200 cursor-pointer"><input type="checkbox" v-model="appSettings.confirm_escalate" @change="saveSettings" class="w-4 h-4">
                                     {{ $t('Warn me before "Escalate ↑"') }}<help-tip>{{ $t('Shows the estimated cost of re-running the request on the Complex model and asks for confirmation. Unchecked: Escalate runs immediately.') }}</help-tip></label>
+                                <label class="flex items-center gap-2 text-[15px] text-gray-200 mt-2 cursor-pointer"><input type="checkbox" v-model="appSettings.confirm_auto_escalate" @change="saveSettings" class="w-4 h-4">
+                                    {{ $t('Ask before a stuck request moves to Complex') }}<help-tip>{{ $t('When the Simple model reaches its step limit or repeats itself. Unchecked: the request continues on the Complex model by itself, as before. A model that isn\'t answering always asks.') }}</help-tip></label>
                             </div>
                         </div>
                         <div v-if="settingsTab === 'system'">
@@ -3472,11 +3474,12 @@
                 <div class="flex items-start gap-3">
                     <svg class="w-6 h-6 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>
                     <div class="flex-1 min-w-0">
-                        <h3 class="text-amber-300 font-bold mb-1">{{ $t('A model isn\'t answering') }}</h3>
+                        <h3 class="text-amber-300 font-bold mb-1">{{ pendingFallback.kind === 'stuck' ? $t('The Simple model is stuck') : $t('A model isn\'t answering') }}</h3>
                         <p class="text-sm text-gray-300 break-words"><span class="font-mono text-gray-100">{{ pendingFallback.model }}</span>: {{ pendingFallback.summary }}</p>
-                        <p class="text-[13px] text-gray-400 mt-1.5">{{ pendingFallback.kind === 'quota' ? $t('Its credit or quota is used up, or the provider is limiting it. Check the provider account.') : (pendingFallback.kind === 'transient' ? $t('The provider is busy or unreachable right now; it may work again in a few minutes.') : $t('The model may be retired, misspelled, or its key may be wrong.')) }}
+                        <p v-if="pendingFallback.kind === 'stuck'" class="text-[13px] text-gray-400 mt-1.5">{{ $t('It didn\'t finish the request. Its work so far is kept either way.') }}</p>
+                        <p v-else class="text-[13px] text-gray-400 mt-1.5">{{ pendingFallback.kind === 'quota' ? $t('Its credit or quota is used up, or the provider is limiting it. Check the provider account.') : (pendingFallback.kind === 'transient' ? $t('The provider is busy or unreachable right now; it may work again in a few minutes.') : $t('The model may be retired, misspelled, or its key may be wrong.')) }}
                             <button type="button" @click="openSettings('models')" class="text-blue-400 hover:text-blue-300 underline">{{ $t('Open Models') }}</button></p>
-                        <p class="text-sm text-gray-300 mt-2">{{ $t('Do this request on {alt} instead? The Complex model costs more.', { alt: pendingFallback.alt }) }}</p>
+                        <p class="text-sm text-gray-300 mt-2">{{ pendingFallback.kind === 'stuck' ? $t('Continue this request on {alt}? The Complex model costs more.', { alt: pendingFallback.alt }) : $t('Do this request on {alt} instead? The Complex model costs more.', { alt: pendingFallback.alt }) }}</p>
                     </div>
                 </div>
                 <div class="flex flex-wrap justify-end items-center gap-3 mt-3">

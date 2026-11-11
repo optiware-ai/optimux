@@ -129,6 +129,8 @@ class SettingsPayload(BaseModel):
     # Feature 18: ask (with a cost estimate) before extra paid actions
     confirm_update_memory: bool = True
     confirm_escalate: bool = True
+    # v0.8: ask before a stuck Simple request (step limit, repeated call) moves to Complex
+    confirm_auto_escalate: bool = True
     # Feature 19: off | manual (only /name) | auto (auto skills are listed in prompts)
     skills_mode: str = "auto"
     # Sandbox (bubblewrap): commands can only change the working folder

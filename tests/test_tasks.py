@@ -117,7 +117,7 @@ def test_a_stuck_model_marks_the_request_and_its_calls(mocker, client):
                    reply("Saved."))
     mocker.patch("litellm.acompletion", side_effect=rec)
     chat = Conversation(client)
-    chat.prompt("remember x")
+    chat.prompt_answering("remember x", [True])
     chat.close()
     t = rows()[0]
     assert t["escalated"] == 1 and t["escalation_reason"] == "model repeated the same tool call"
@@ -194,7 +194,7 @@ def test_a_plan_is_two_requests_linked_by_the_plan(mocker, tmp_path):
     model = pr.Model(answer(json.dumps(PLAN)), *loop, pr.finish("a"), pr.finish("b"), pr.finish("c"), pr.check("ok"))
     chat = Conversation(client)
     pid = pr.make_plan(mocker, chat, model)
-    pr.act(chat, pid, "run")
+    pr.act(chat, pid, "run", [True])
     chat.close()
     proposed, ran = rows()
     assert (proposed["kind"], proposed["plan_id"], proposed["tier"], proposed["outcome"]) == \

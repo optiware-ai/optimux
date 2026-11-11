@@ -126,7 +126,7 @@ def test_simple_step_limit_escalates_instead(mocker, client):
     mocker.patch.object(main, "update_memory", return_value="saved")
     rec = Recorder(*_looping_tool_calls(2), reply("done on complex"))
     mocker.patch("litellm.acompletion", side_effect=rec)
-    msgs = Conversation(client).prompt("task")
+    msgs = Conversation(client).prompt_answering("task", [True])
     assert any(n.startswith("Escalated to complex-model: step limit (2) reached") for n in notes(msgs))
     assert not any(m["type"] == "step_limit" for m in msgs)
 

@@ -49,6 +49,9 @@ def collect(ws) -> list:
     while True:
         m = json.loads(ws.receive_text())
         msgs.append(m)
+        # nobody answers here: fail instead of waiting forever (use prompt_answering)
+        assert not (m["type"] == "approval_request" and m.get("action") == "model_fallback"), \
+            f"an unanswered question: {m.get('command')}"
         if m["type"] == "done":
             return msgs
 

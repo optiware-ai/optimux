@@ -168,7 +168,7 @@ def test_repeated_tool_call_escalates_and_keeps_progress(mocker, client):
         reply("Saved your preference."),
     )
     mocker.patch("litellm.acompletion", side_effect=rec)
-    msgs = Conversation(client).prompt("remember x")
+    msgs = Conversation(client).prompt_answering("remember x", [True])
     assert [c["model"] for c in rec.calls] == ["simple-model", "simple-model", "complex-model"]
     assert any("Escalated to complex-model: model repeated" in x for x in notes(msgs))
     # complex model sees the tool call and result already made
@@ -454,3 +454,42 @@ def test_waiting_stages_are_live_only(mocker, client):
     assert not any(e.get("type") == "status" for t in loaded["session"].get("events", []) for e in (t if isinstance(t, list) else [t]))
     assert "status" not in json.dumps(loaded)
     chat.close()
+
+
+# ---- v0.8: a stuck Simple model asks before the request moves to Complex
+
+def stuck_recorder():
+    same = tool_reply("update_markdown_memory", {"file_type": "personal", "content": "x"})
+    return Recorder(same, tool_reply("update_markdown_memory", {"file_type": "personal", "content": "x"}), reply("Saved."))
+
+
+def test_a_stuck_simple_model_asks_before_complex(mocker, client):
+    mocker.patch.object(main, "update_memory", return_value="saved")
+    rec = stuck_recorder()
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    msgs = Conversation(client).prompt_answering("remember x", [True])
+    q = asked(msgs)
+    assert len(q) == 1 and q[0]["fallback"]["kind"] == "stuck" and q[0]["fallback"]["alt"] == "complex-model"
+    assert "repeated the same tool call" in q[0]["fallback"]["summary"]
+    assert rec.calls[-1]["model"] == "complex-model"
+    assert any("Escalated to complex-model: model repeated" in x for x in notes(msgs))
+
+
+def test_no_to_a_stuck_escalation_stops_on_simple(mocker, client):
+    mocker.patch.object(main, "update_memory", return_value="saved")
+    rec = stuck_recorder()
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    chat = Conversation(client)
+    msgs = chat.prompt_answering("remember x", [False])
+    assert all(c["model"] == "simple-model" for c in rec.calls)
+    assert not any("Escalated" in x for x in notes(msgs))
+    assert any("Escalate ↑" in x for x in notes(msgs))            # says how to go on
+
+
+def test_the_stuck_question_can_be_turned_off(mocker, client):
+    mocker.patch.object(main, "update_memory", return_value="saved")
+    mocker.patch.object(main, "get_settings", return_value={**main.get_settings(), "confirm_auto_escalate": False})
+    rec = stuck_recorder()
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    msgs = Conversation(client).prompt_answering("remember x", [])
+    assert not asked(msgs) and rec.calls[-1]["model"] == "complex-model"

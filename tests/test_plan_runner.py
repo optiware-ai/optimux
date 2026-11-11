@@ -79,8 +79,8 @@ def make_plan(mocker, chat, model):
     return [m for m in msgs if m["type"] == "plan"][-1]["plan"]["id"]
 
 
-def act(chat, pid, action):
-    return chat.send({"type": "plan_action", "action": action, "plan_id": pid})
+def act(chat, pid, action, answers=()):
+    return chat.send({"type": "plan_action", "action": action, "plan_id": pid}, answers=answers)
 
 
 def test_ask_first_waits_for_run_then_runs_every_step(mocker, client):
@@ -176,7 +176,7 @@ def test_a_stuck_simple_step_escalates_that_step_only(mocker, client):
     model = Model(answer(json.dumps(PLAN)), *loop, finish("done on complex"), finish("b"), finish("c"), check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
-    msgs = act(chat, pid, "run")
+    msgs = act(chat, pid, "run", [True])
     chat.close()
     models = [c["model"] for c in model.step_calls()]
     assert models == ["simple-model", "simple-model", "complex-model", "complex-model", "simple-model", "simple-model"]
@@ -194,7 +194,7 @@ def test_stuck_after_escalation_pauses_and_retries_on_complex(mocker, client):
                   check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
-    act(chat, pid, "run")
+    act(chat, pid, "run", [True])
     p = plans.get(pid)
     assert p["status"] == "paused" and "Step 1 got stuck (the model repeated the same tool call)" in p["note"]
     act(chat, pid, "resume")
@@ -487,7 +487,7 @@ def test_a_step_that_keeps_asking_moves_to_complex(mocker, client):
     model = Model(answer(json.dumps(PLAN)), *asks, finish("done on complex"), finish("b"), finish("c"), check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
-    msgs = act(chat, pid, "run")
+    msgs = act(chat, pid, "run", [True])
     chat.close()
     s1 = plans.get(pid)["steps"][0]
     assert s1["escalated"] and s1["model"] == "complex-model" and s1["status"] == "done"
@@ -525,3 +525,17 @@ def test_missing_files_looks_by_path_and_by_name(tmp_path):
     assert plans.missing_files(step, str(tmp_path)) == ["test_main.py", "../outside.txt"]
     assert plans.missing_files({"files": []}, str(tmp_path)) == []
     assert plans.missing_files(step, "") == []
+
+
+def test_no_to_a_stuck_step_pauses_the_plan_on_simple(mocker, client):
+    """v0.8: a stuck Simple step asks before Complex; a no leaves the step stuck."""
+    model = Model(answer(json.dumps(PLAN)), call("nope", {"x": 1}), call("nope", {"x": 1}), finish("never"))
+    chat = Conversation(client)
+    pid = make_plan(mocker, chat, model)
+    msgs = act(chat, pid, "run", [False])
+    chat.close()
+    p = plans.get(pid)
+    assert len(asked(msgs)) == 1 and asked(msgs)[0]["fallback"]["kind"] == "stuck"
+    assert p["status"] == "paused" and "Step 1 got stuck" in p["note"]
+    assert all(c["model"] == "simple-model" for c in model.step_calls())
+    assert not p["steps"][0].get("escalated")

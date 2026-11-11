@@ -2435,5 +2435,12 @@
  "The provider is busy or unreachable right now; it may work again in a few minutes.": "Il provider è occupato o irraggiungibile in questo momento; potrebbe tornare a funzionare tra qualche minuto.",
  "Use {alt} for this request": "Usa {alt} per questa richiesta",
  "not answering": "non risponde",
- "{model} isn't answering: {summary}. Do this request on {alt} instead? The Complex model costs more.": "{model} non risponde: {summary}. Eseguire questa richiesta con {alt}? Il modello Complex costa di più."
+ "{model} isn't answering: {summary}. Do this request on {alt} instead? The Complex model costs more.": "{model} non risponde: {summary}. Eseguire questa richiesta con {alt}? Il modello Complex costa di più.",
+ "The Simple model is stuck": "Il modello Simple è bloccato",
+ "It didn't finish the request. Its work so far is kept either way.": "Non ha completato la richiesta. Il lavoro fatto finora viene conservato in ogni caso.",
+ "Continue this request on {alt}? The Complex model costs more.": "Continuare questa richiesta con {alt}? Il modello Complex costa di più.",
+ "Ask before a stuck request moves to Complex": "Chiedi prima che una richiesta bloccata passi a Complex",
+ "When the Simple model reaches its step limit or repeats itself. Unchecked: the request continues on the Complex model by itself, as before. A model that isn't answering always asks.": "Quando il modello Simple raggiunge il limite di passi o si ripete. Deselezionato: la richiesta continua da sola sul modello Complex, come prima. Un modello che non risponde chiede sempre.",
+ "{model} is stuck: {summary}. Continue this request on {alt}? The Complex model costs more.": "{model} è bloccato: {summary}. Continuare questa richiesta con {alt}? Il modello Complex costa di più.",
+ "Not moved to {alt}. Send a new message to go on with {model}, or press Escalate ↑ under the reply.": "Non spostato su {alt}. Invia un nuovo messaggio per continuare con {model}, oppure premi Passa a Complex ↑ sotto la risposta."
 }

@@ -2654,6 +2654,8 @@ async def run_in_step(websocket: WebSocket, session: dict, routing: dict, pid: s
         return await run_turn(websocket, session, model, role, messages, max_loops=max_steps_for(role)), model, role
     if outcome in ("loop_limit", "aborted") and role == "simple":
         alt = fallback_for(role, model, routing)
+        if alt and not await allow_stuck_escalation(websocket, session, model, stuck_reason(outcome, role), alt[1]):
+            alt = None                       # the step stays stuck: the plan pauses as without a Complex model
         if alt:
             analytics.record_event("escalation", model, role, stuck_reason(outcome, role))
             tasks_lib.escalate(session.get("task"), f"step {step_no}: {stuck_reason(outcome, role)}")
@@ -4158,6 +4160,24 @@ async def allow_costlier_model(websocket: WebSocket, session: dict, model: str, 
     return False
 
 
+async def allow_stuck_escalation(websocket: WebSocket, session: dict, model: str, reason: str, alt_model: str) -> bool:
+    """v0.8: the Simple model got stuck (step limit, the same call twice). Going on
+    with the Complex model costs more, so the user is asked first (the same card as
+    allow_costlier_model, kind "stuck"; a yes lasts the request). Settings →
+    "Ask before a stuck request moves to Complex" turns the question off."""
+    pair = (model, alt_model)
+    if session.get("fallback_ok") == pair or get_settings().get("confirm_auto_escalate", True) is False:
+        return True
+    question = tr("{model} is stuck: {summary}. Continue this request on {alt}? The Complex model costs more.",
+                  model=model, summary=reason, alt=alt_model)
+    answer = await wait_for_answer(websocket, session, None, question, action=FALLBACK_ACTION, always_ask=True,
+                                   fallback={"model": model, "alt": alt_model, "kind": "stuck", "summary": reason})
+    if answer["approved"]:
+        session["fallback_ok"] = pair
+        return True
+    return False
+
+
 async def run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
                             model: str, role: str, user_message: str, prior: list | None = None) -> None:
     """Run a turn; on failure escalate (simple -> complex) or fall back
@@ -4261,6 +4281,15 @@ async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
         fallback = fallback_for(role, model, routing)
     if fallback and provider_problem and fallback[0] == "complex" and not await allow_costlier_model(
             websocket, session, model, failure, fallback[1]):
+        session["history"] = trim_history(compact_history(messages[1:]))
+        return
+    if fallback and not provider_problem and fallback[0] == "complex" and not await allow_stuck_escalation(
+            websocket, session, model, reason, fallback[1]):
+        # Stays on Simple: the work so far is kept, and the user chooses how to go on
+        if reason.startswith("step limit"):
+            await notify_step_limit(websocket, role)
+        await send(websocket, "system", tr("Not moved to {alt}. Send a new message to go on with {model}, or press "
+                                           "Escalate ↑ under the reply.", alt=fallback[1], model=model))
         session["history"] = trim_history(compact_history(messages[1:]))
         return
 

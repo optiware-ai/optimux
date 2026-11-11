@@ -544,6 +544,7 @@ For every new message, the Conductor (one short, cheap call) classifies the requ
 - **Fallback** handles provider trouble: if a model fails (outage, quota), Optimux retries once, then switches to the other tier for that request. A model that keeps failing goes into a **cooldown** and is skipped until it recovers (see *Models*).
   - *From Simple to Complex, it asks first* (*v0.8*), at every autonomy level, because Complex costs more: **A model isn't answering** shows the model, why (credit or quota used up, provider busy, model retired or key wrong) and a link to **Models**. **Use … for this request** continues on Complex (a plan asks once, not for every step); **Stop** ends the request and says what to check. The next request asks again while the Simple model is still down.
   - *From Complex to Simple* (the cheaper way) it switches without asking; the chat says so.
+- **A stuck Simple model asks too** (*v0.8*): when it reaches its step limit or repeats the same call, **The Simple model is stuck** asks before the request continues on Complex. **Stop** keeps the work so far on Simple: send a new message to go on, or press **Escalate ↑**. In a plan, a no pauses the plan at that step. **Dashboard → Budgets → Ask before a stuck request moves to Complex** turns this question off (the request then moves by itself, as before); useful for long unattended runs.
 
 ### Scout before Complex
 

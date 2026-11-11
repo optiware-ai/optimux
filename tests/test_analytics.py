@@ -157,7 +157,7 @@ def test_a_stuck_model_records_an_escalation(mocker, client):
                    tool_reply("update_markdown_memory", {"file_type": "personal", "content": "x"}),
                    reply("Saved."))
     mocker.patch("litellm.acompletion", side_effect=rec)
-    msgs = Conversation(client).prompt("remember x")
+    msgs = Conversation(client).prompt_answering("remember x", [True])
     assert any("Escalated to complex-model" in n for n in notes(msgs))
     ev = events()
     assert len(ev) == 1 and ev[0]["kind"] == "escalation" and ev[0]["model"] == "simple-model"

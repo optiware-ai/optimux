@@ -31,7 +31,7 @@
 - Called by `main.py` (REST endpoints), `executor.py` (settings, secret names), `memory_manager.py` (settings) and `llm_client.py` (routing).
 
 - **Memory curator settings:** `memory_curator` (bool, default true) and `curator_idle_minutes` (1 to 240, default 10) in `SettingsPayload`; out-of-range values raise `ValidationError`.
-- **Cost confirmations (Feature 18):** `confirm_update_memory` and `confirm_escalate` (bool, default true): ask, with an estimate, before Update memory now and Escalate.
+- **Cost confirmations (Feature 18):** `confirm_update_memory` and `confirm_escalate` (bool, default true): ask, with an estimate, before Update memory now and Escalate. `confirm_auto_escalate` (v0.8, default true): ask before a stuck Simple request moves to Complex (main.py `allow_stuck_escalation`).
 - **Skills mode (Feature 19):** `skills_mode` (off, manual or auto, default auto; anything else raises `ValidationError`). Auto lists only skills whose own mode is auto.
 - **Sandbox:** `sandbox` (default false), `sandbox_network` (default true), `sandbox_ro_paths` (list; each normalized by `sandbox.check_ro_path`, which refuses relative, missing, too broad or Optimux-exposing paths). Turning `sandbox` on is refused with `ValidationError` when bubblewrap doesn't work (`sandbox.status(refresh=True)`).
 - **Saving JSON:** uses Pydantic v2's `model_dump()`.
