@@ -16,6 +16,7 @@ GitHub, with gh as the credential helper (never in a URL or a git config).
 run_* re-checks what prepare_* showed (the files' tree, the upstream commit),
 so a confirmation never applies to something else.
 """
+import hashlib
 import json
 import os
 import re
@@ -439,6 +440,34 @@ def local_state(name: str) -> dict:
     out["warnings"] += warnings
     out["can_commit"] = bool(out["files"]) and not out["problems"]
     return out
+
+
+MARK_FILES = 3000      # files whose size and time go into local_mark; more only count by name
+
+
+def local_mark(name: str) -> str:
+    """A fingerprint of what the Git pane shows, polled every few seconds while the
+    Studio is open: HEAD, the remote branches (ahead/behind), git status with every
+    untracked file, and the size and time of each changed file (an edit to a file
+    already shown as changed must count too). Read-only and cheap: no fetch, no
+    temporary index. '' for a folder without git."""
+    path = _project(name)
+    status = _git(path, "status", "--porcelain=v1", "-z", "--untracked-files=all", timeout=10)
+    if not status["ok"]:
+        return ""
+    head = _ok(_git(path, "rev-parse", "--verify", "--quiet", "HEAD", timeout=5))
+    refs = _ok(_git(path, "for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes", timeout=5))
+    top = _ok(_git(path, "rev-parse", "--show-toplevel", timeout=5)) or path
+    h = hashlib.sha1(f"{head}\n{refs}\n{status['output']}".encode("utf-8", "surrogateescape"))
+    entries = [e for e in status["output"].split("\0") if e]
+    for entry in entries[:MARK_FILES]:
+        rel = entry[3:] if len(entry) > 3 and entry[2] == " " else entry      # renames add a bare old name
+        try:
+            st = os.stat(os.path.join(top, rel))
+            h.update(f"{rel}:{st.st_size}:{st.st_mtime_ns}\0".encode("utf-8", "surrogateescape"))
+        except OSError:
+            h.update(f"{rel}:-\0".encode("utf-8", "surrogateescape"))
+    return h.hexdigest()
 
 
 def commit_run(name: str, message: str, tree: str | None, confirmed: bool) -> dict:

@@ -1100,6 +1100,12 @@ const optimuxApp = createApp({
             // fenced code block (handled by onChatClick)
             return optimuxSafeHtml(marked.parse(text), { codeButtons: true });
         };
+        // v0.8: your own messages keep their line breaks (Shift+Enter), and a line that
+        // is only `text` shows as a terminal block (chat-input.js userMarkdown)
+        const renderUserText = (text) => {
+            if (!text) return '';
+            return optimuxSafeHtml(marked.parse(window.OptimuxChatInput.userMarkdown(text), { breaks: true }), { codeButtons: true });
+        };
 
         // The projects root is shown as "Workspace" (the backend keeps '' / '(no project)')
         const projectLabel = (p) => (!p || p === '(no project)') ? tr('Workspace') : p;
@@ -1118,7 +1124,7 @@ const optimuxApp = createApp({
             sh: 'bash', bash: 'bash', zsh: 'bash', diff: 'diff', patch: 'diff', sql: 'sql', go: 'go', rs: 'rust',
             java: 'java', c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', hpp: 'cpp' };
         const LANG_ALIAS = { sh: 'bash', shell: 'bash', zsh: 'bash', console: 'bash', py: 'python', js: 'javascript',
-            ts: 'typescript', html: 'xml', vue: 'xml', yml: 'yaml', toml: 'ini', text: 'plaintext', txt: 'plaintext', md: 'markdown' };
+            ts: 'typescript', html: 'xml', vue: 'xml', yml: 'yaml', toml: 'ini', text: 'plaintext', txt: 'plaintext', md: 'markdown', term: 'bash' };
         const escHtml = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         // Guess the language of a command's output from the command itself
         const guessOutputLang = (command, output) => {
@@ -1176,10 +1182,20 @@ const optimuxApp = createApp({
             ]);
         };
         // Clicks on the View button of a code block inside a reply
-        const onChatClick = (e) => {
+        const onChatClick = async (e) => {
+            const copy = e.target.closest && e.target.closest('[data-cm-copy-code]');
+            if (copy) {      // v0.8: the copy icon on each code block in the chat
+                const code = copy.closest('.cm-pre')?.querySelector('code');
+                if (!code || !(await writeClipboard(code.textContent.replace(/\n$/, '')))) return;
+                copy.classList.add('cm-copy-done');
+                copy.title = tr('Copied');
+                clearTimeout(copy._t);
+                copy._t = setTimeout(() => { copy.classList.remove('cm-copy-done'); copy.title = tr('Copy'); }, 1800);
+                return;
+            }
             const btn = e.target.closest && e.target.closest('[data-cm-view]');
             if (!btn) return;
-            const code = btn.parentElement.querySelector('code');
+            const code = btn.closest('.cm-pre')?.querySelector('code');
             if (!code) return;
             const m = (code.className || '').match(/language-([\w+#-]+)/);
             let lang = m ? m[1].toLowerCase() : 'auto';
@@ -4097,8 +4113,61 @@ const optimuxApp = createApp({
         // (by you or by the model, in any reply), and Commit / Push / Update.
         // Local only: it never fetches, so it can refresh after every reply.
         const studioGit = Vue.reactive({ open: true, loading: false, data: null, error: '', message: '',
-            confirmed: false, busy: false, writing: false, note: '' });
-        try { studioGit.open = localStorage.getItem('optimux.studio.git') !== '0'; } catch (_) {}
+            confirmed: false, busy: false, writing: false, note: '', h: null, mark: '', markFor: '' });
+        try {
+            studioGit.open = localStorage.getItem('optimux.studio.git') !== '0';
+            studioGit.h = Number(localStorage.getItem('optimux.studio.gitH')) || null;   // null: its natural height
+        } catch (_) {}
+        // Follows the project by itself: every 3 s while the Studio is open and the tab
+        // visible, a cheap fingerprint (git-mark: git status, sizes and times, no network);
+        // the tree letters and this pane reload only when it changes.
+        let gitPolling = false;
+        setInterval(async () => {
+            const project = studio.project;
+            if (!studio.open || !project || gitPolling || document.visibilityState !== 'visible') return;
+            gitPolling = true;
+            try {
+                const { mark } = await studioFetch(`/api/projects/${encodeURIComponent(project)}/git-mark`);
+                if (project !== studio.project) return;
+                const changed = studioGit.markFor === project && mark !== studioGit.mark;
+                studioGit.mark = mark; studioGit.markFor = project;
+                if (changed) await reloadStudioTree();      // the tree, then the letters and this pane
+            } catch (_) { /* the pane shows its own error */ }
+            finally { gitPolling = false; }
+        }, 3000);
+        // The line above the pane moves it up and down (drag, or ↑ ↓ on the keyboard;
+        // a double click gives it back its natural height). Remembered in this browser.
+        const saveGitHeight = () => {
+            try { studioGit.h ? localStorage.setItem('optimux.studio.gitH', String(Math.round(studioGit.h))) : localStorage.removeItem('optimux.studio.gitH'); } catch (_) {}
+        };
+        const gitHeightBounds = (sec) => {
+            const nav = sec.parentElement.getBoundingClientRect().height;
+            return [64, Math.max(64, nav - 90)];
+        };
+        const startGitResize = (e) => {
+            const sec = e.currentTarget.closest('[data-git-pane]');
+            if (!sec || e.button !== 0) return;
+            e.preventDefault();
+            const [lo, hi] = gitHeightBounds(sec);
+            const y0 = e.clientY, h0 = sec.getBoundingClientRect().height;
+            if (!studioGit.open) studioGit.open = true;
+            const move = (ev) => { studioGit.h = Math.min(hi, Math.max(lo, h0 + (y0 - ev.clientY))); };
+            const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+                document.body.classList.remove('cm-row-resizing'); saveGitHeight(); };
+            document.body.classList.add('cm-row-resizing');
+            window.addEventListener('pointermove', move);
+            window.addEventListener('pointerup', up);
+        };
+        const keyGitResize = (e) => {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+            e.preventDefault();
+            const sec = e.currentTarget.closest('[data-git-pane]');
+            const [lo, hi] = gitHeightBounds(sec);
+            const h = studioGit.h || sec.getBoundingClientRect().height;
+            studioGit.h = Math.min(hi, Math.max(lo, h + (e.key === 'ArrowUp' ? 24 : -24)));
+            saveGitHeight();
+        };
+        const resetGitHeight = () => { studioGit.h = null; saveGitHeight(); };
         const toggleStudioGit = () => {
             studioGit.open = !studioGit.open;
             try { localStorage.setItem('optimux.studio.git', studioGit.open ? '1' : '0'); } catch (_) {}
@@ -4110,8 +4179,11 @@ const optimuxApp = createApp({
             const seq = ++gitSeq;
             studioGit.loading = true;
             try {
+                // The fingerprint first: a change made after it shows at the next poll
+                const m = await studioFetch(`/api/projects/${encodeURIComponent(project)}/git-mark`).catch(() => null);
                 const d = await studioFetch(`/api/projects/${encodeURIComponent(project)}/git-state`);
                 if (seq !== gitSeq) return;
+                if (m) { studioGit.mark = m.mark; studioGit.markFor = project; }
                 if (!studioGit.data || studioGit.data.project !== d.project) { studioGit.message = ''; studioGit.note = ''; }
                 if (!studioGit.data || studioGit.data.tree !== d.tree) studioGit.confirmed = false;
                 studioGit.data = d; studioGit.error = '';
@@ -5622,6 +5694,7 @@ const optimuxApp = createApp({
         };
 
         const sendMessage = () => {
+            userInput.value = window.OptimuxChatInput.cleanForSend(userInput.value);   // an unused "3. " isn't sent
             if (!userInput.value.trim() || readOnlyChat.value) return;
 
             // v0.8: what was picked in the Studio goes after the prompt, as plain text
@@ -5824,6 +5897,16 @@ const optimuxApp = createApp({
                 if (!isGenerating.value && !pendingApproval.value && userInput.value.trim()) {
                     sendMessage();
                 }
+                return;
+            }
+            // v0.8: Shift+Enter in a list line continues the list ("2. ", "- "); on an empty item it ends it
+            if (e.key === 'Enter' && e.shiftKey && !e.isComposing) {
+                const el = e.target;
+                const next = window.OptimuxChatInput.listEnter(el.value, el.selectionStart, el.selectionEnd);
+                if (!next) return;
+                e.preventDefault();
+                userInput.value = next.value;
+                nextTick(() => { el.setSelectionRange(next.cursor, next.cursor); autoResize(); });
             }
         };
 
@@ -5836,7 +5919,7 @@ const optimuxApp = createApp({
             pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
             MEMORY_MAX_CHARS, pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
             pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, followChat, onChatScroll, waitText, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
-					renderMarkdown,
+					renderMarkdown, renderUserText,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashView, setDashView, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,
             newModelBase, newModelAck, newModelMsg, onEnvKeyInput, newModelHost, newModelHostLocal, newModelNeedsAck,
@@ -5854,7 +5937,7 @@ const optimuxApp = createApp({
             planAction, planStepMark, planStuckStep, projectOffer, openOfferedProject, planEdit, stepFolded, stepItems,
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
-            studio, studioGit, toggleStudioGit, loadStudioGit, studioGitCount, studioGitBlocked, writeStudioCommitMessage, commitStudio, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
+            studio, studioGit, toggleStudioGit, startGitResize, keyGitResize, resetGitHeight, loadStudioGit, studioGitCount, studioGitBlocked, writeStudioCommitMessage, commitStudio, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
             saveStudioFile, reloadStudioFile, previewSrc, previewMarkdown, previewKind, studioOpenInTab,
             gitTerm, openGitTerm, closeGitTerm, gitTermLines, copyGitTerm,
             studioLayout, studioPanes, startResize, resizeKey, resetResize, toggleStudioTree, expandAllStudio, collapseAllStudio,

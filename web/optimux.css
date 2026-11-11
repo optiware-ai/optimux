@@ -6,9 +6,23 @@
 #chat-container::-webkit-scrollbar-thumb:hover { background: #4b5563; }
 /* Code blocks in replies: a View button in the corner */
 .cm-pre { position: relative; }
-.cm-pre .cm-view-btn { position: absolute; top: 6px; right: 6px; font: 11px ui-monospace, monospace; color: #9ca3af;
-    background: rgba(17,24,39,.85); border: 1px solid #374151; border-radius: 4px; padding: 1px 8px; opacity: .55; transition: opacity .15s; }
-.cm-pre:hover .cm-view-btn, .cm-pre .cm-view-btn:focus { opacity: 1; }
+.cm-pre .cm-pre-tools { position: absolute; top: 6px; right: 6px; display: flex; align-items: center; gap: 4px;
+    opacity: .6; transition: opacity .15s; }
+.cm-pre:hover .cm-pre-tools, .cm-pre .cm-pre-tools:focus-within { opacity: 1; }
+.cm-pre .cm-pre-tools .cm-copy { background: rgba(17,24,39,.85); border: 1px solid #374151; border-radius: 4px; width: 24px; height: 22px; }
+.cm-pre .cm-view-btn { font: 11px ui-monospace, monospace; color: #9ca3af;
+    background: rgba(17,24,39,.85); border: 1px solid #374151; border-radius: 4px; padding: 1px 8px; }
+/* v0.8: the Studio's Git pane: the line above it moves it up and down */
+.cm-row-handle { position: absolute; left: 0; right: 0; top: -4px; height: 8px; cursor: row-resize; z-index: 2; touch-action: none; }
+.cm-row-handle::after { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 2px; background: transparent; transition: background .15s; }
+.cm-row-handle:hover::after, .cm-row-handle:focus-visible::after, .cm-row-resizing .cm-row-handle::after { background: #3b82f6; }
+.cm-row-handle:focus-visible { outline: none; }
+body.cm-row-resizing { cursor: row-resize; user-select: none; }
+/* v0.8: a line you wrote between backticks shows like a terminal */
+.cm-pre pre:has(> code.language-term) { background: #030712 !important; border-left: 3px solid #4ade80; }
+.cm-pre code.language-term { color: #d1fae5; }
+.cm-pre code.language-term::before { content: '$ ' !important; color: #4ade80; user-select: none; }   /* beats .prose code::before */
+.cm-pre pre { padding-right: 5.5rem; }      /* the copy and View buttons never cover the first line */
 .cm-pre .cm-view-btn:hover { color: #e5e7eb; border-color: #6b7280; }
 /* Code blocks outside chat (snapshot README): a bar above the code with the language and Copy */
 .cm-pre-bar { margin: 0.8em 0; border: 1px solid #1f2937; border-radius: 6px; overflow: hidden; }

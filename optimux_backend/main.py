@@ -1134,6 +1134,14 @@ async def project_git_state(name: str):
     return result
 
 
+@app.get("/api/projects/{name}/git-mark")
+async def project_git_mark(name: str):
+    """A fingerprint of the project's git state (gitsync.local_mark): the Studio's
+    Git pane polls it and reloads only when it changes. Read-only, no network."""
+    result = await _gitsync(gitsync.local_mark, name)
+    return {"mark": result} if isinstance(result, str) else result
+
+
 @app.post("/api/projects/{name}/commit")
 async def project_commit(name: str, payload: CommitPayload):
     """Commit here, without pushing (the Studio's Git pane)."""
@@ -2976,7 +2984,7 @@ STREAMED_KINDS = ("token", "thinking")
 # The page compares the build it started with to the one in each auth_ok: after
 # an update (or any change to the page's files) a reconnecting tab offers a reload
 # instead of running old code against a new server.
-PAGE_FILES = ("index.html", "web/app.js", "web/app.css", "web/boot.js", "web/optimux.css")
+PAGE_FILES = ("index.html", "web/app.js", "web/app.css", "web/boot.js", "web/chat-input.js", "web/optimux.css")
 _build_cache: dict = {"key": None, "value": ""}
 
 

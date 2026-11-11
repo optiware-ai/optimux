@@ -39,6 +39,9 @@
         FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select'],
         FORBID_ATTR: ['style'],
     };
+    // The same two icons as the copy-btn component (app.js CopyBtn): fixed markup, no data in it
+    const COPY_ICONS = '<svg class="cm-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>'
+        + '<svg class="cm-copy-ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
     window.optimuxSafeHtml = (html, opts = {}) => {
         if (!opts.codeButtons) return window.DOMPurify.sanitize(html, PURIFY);
         const frag = window.DOMPurify.sanitize(html, { ...PURIFY, RETURN_DOM_FRAGMENT: true });
@@ -64,14 +67,24 @@
             }
             const box = document.createElement('div');
             box.className = 'cm-pre';
+            const tools = document.createElement('div');
+            tools.className = 'cm-pre-tools';
+            const copy = document.createElement('button');      // v0.8: copy, like the copy-btn component
+            copy.type = 'button';
+            copy.className = 'cm-copy';
+            copy.setAttribute('data-cm-copy-code', '');
+            copy.title = window.OptimuxI18n ? window.OptimuxI18n.tr('Copy') : 'Copy';
+            copy.setAttribute('aria-label', copy.title);
+            copy.innerHTML = COPY_ICONS;
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'cm-view-btn';
             btn.setAttribute('data-cm-view', '');
             btn.title = 'Open in the code viewer';
             btn.textContent = 'View';
+            tools.append(copy, btn);
             pre.replaceWith(box);
-            box.append(btn, pre);
+            box.append(tools, pre);
         });
         const out = document.createElement('div');
         out.appendChild(frag);

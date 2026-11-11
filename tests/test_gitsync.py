@@ -470,3 +470,38 @@ def test_the_git_pane_api(ws, mocker, tmp_path):
     r = client.post("/api/projects/site/commit", json={"message": "m", "tree": s["tree"]}, headers=H).json()
     assert r["ok"] and git("log", "-1", "--format=%s", cwd=ws["proj"]) == "m"
     assert client.get("/api/projects/nope/git-state", headers=H).status_code == 422
+
+
+def test_local_mark_changes_only_when_the_project_does(ws, monkeypatch):
+    """The Git pane polls this every few seconds: cheap (git status, no fetch, no temp
+    index) and it must change for every change the pane would show."""
+    calls = []
+    real = gitsync._git
+    monkeypatch.setattr(gitsync, "_git", lambda path, *a, **k: calls.append(a) or real(path, *a, **k))
+    p = ws["proj"]
+    m0 = gitsync.local_mark("site")
+    assert m0 and gitsync.local_mark("site") == m0
+    (p / "menu.js").write_text("// menu\n")
+    m1 = gitsync.local_mark("site")
+    assert m1 != m0
+    (p / "menu.js").write_text("// menu, longer now\n")          # same status letter, new content
+    m2 = gitsync.local_mark("site")
+    assert m2 != m1
+    (p / "deep" / "er").mkdir(parents=True)
+    (p / "deep" / "er" / "x.txt").write_text("x\n")                # inside a new folder
+    m3 = gitsync.local_mark("site")
+    assert m3 != m2
+    git("add", "-A", cwd=p)
+    git("commit", "-qm", "c", cwd=p)
+    assert gitsync.local_mark("site") not in (m0, m1, m2, m3)
+    assert not any(a and a[0] in ("fetch", "push", "pull", "add", "read-tree") for a in calls)
+
+
+def test_git_mark_api(ws, mocker, tmp_path):
+    from tests.ws_helpers import make_client
+    client = make_client(mocker, tmp_path)
+    H = {"Authorization": "Bearer test-token"}
+    a = client.get("/api/projects/site/git-mark", headers=H).json()["mark"]
+    (ws["proj"] / "n.txt").write_text("n\n")
+    assert client.get("/api/projects/site/git-mark", headers=H).json()["mark"] != a
+    assert client.get("/api/projects/nope/git-mark", headers=H).status_code == 422

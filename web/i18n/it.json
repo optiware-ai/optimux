@@ -2420,5 +2420,8 @@
  "{n} s": "{n} s",
  "↓ Approval waiting": "↓ Approvazione in attesa",
  "↓ Working…": "↓ Al lavoro…",
- "A request is running in this project. Wait for it to finish first.": "Una richiesta è in corso in questo progetto. Aspetta che finisca."
+ "A request is running in this project. Wait for it to finish first.": "Una richiesta è in corso in questo progetto. Aspetta che finisca.",
+ "Copy the command": "Copia il comando",
+ "Drag to resize. Double-click: natural height.": "Trascina per ridimensionare. Doppio clic: altezza naturale.",
+ "Resize the Git pane": "Ridimensiona il pannello Git"
 }
