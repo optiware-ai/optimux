@@ -1099,6 +1099,29 @@ async def project_push(name: str, payload: PushPayload):
     return _git_busy(name) or await _gitsync(gitsync.push_run, name, payload.message, payload.tree, payload.confirmed)
 
 
+class CommitPayload(BaseModel):
+    message: str = ""
+    tree: str | None = None
+    confirmed: bool = False
+
+
+@app.get("/api/projects/{name}/git-state")
+async def project_git_state(name: str):
+    """The Studio's Git pane: uncommitted files, branch, ahead/behind. Local
+    only (no fetch); nothing changes."""
+    result = await _gitsync(gitsync.local_state, name)
+    if isinstance(result, dict):
+        result["busy"] = bool(BUSY_PROJECTS.get(name))
+    return result
+
+
+@app.post("/api/projects/{name}/commit")
+async def project_commit(name: str, payload: CommitPayload):
+    """Commit here, without pushing (the Studio's Git pane)."""
+    return _git_busy(name) or await _gitsync(gitsync.commit_run, name, payload.message, payload.tree,
+                                              payload.confirmed)
+
+
 @app.get("/api/projects/{name}/status")
 async def project_status(name: str):
     """git fetch, git status and the last commits, as text for the Project
@@ -2974,6 +2997,12 @@ def running_version() -> str:
     return _version_cache["value"]
 
 
+# v0.8: what the reply is waiting for right now (the Conductor, Scout's file list, a model),
+# so the page can say so with a timer instead of an empty reply. Not recorded: a
+# reopened chat shows what happened, not what was being waited for.
+LIVE_ONLY_KINDS = {"status"}
+
+
 async def send(websocket: WebSocket, kind: str, content=None, **extra) -> None:
     """Send one event to the page (and record it with the chat).
 
@@ -2998,7 +3027,7 @@ async def _send_now(websocket: WebSocket, kind: str, content=None, **extra) -> N
     if content is not None:
         payload["content"] = content
     recorder = getattr(websocket, "optimux_recorder", None)
-    if recorder is not None:
+    if recorder is not None and kind not in LIVE_ONLY_KINDS:
         recorder.add(payload)
     await websocket.send_text(json.dumps(payload))
 
@@ -3125,6 +3154,7 @@ async def stream_once(websocket: WebSocket, model: str, messages: list, r: Strea
     """One streamed completion into `r`. Text is forwarded to the UI as it
     arrives, except output that looks like a JSON tool call, which is held
     back. `r` is passed in so the caller can see what was streamed on error."""
+    await send(websocket, "status", stage="model", model=model)
     stream = await litellm.acompletion(
         model=model,
         messages=prepare_messages(messages, model),
@@ -4217,6 +4247,7 @@ async def resolve_tier(websocket: WebSocket, session: dict, user_message: str) -
         return session["tier"]
     ask_plan = plan_mode() != "off" and session.get("plan_cmd") is not False
     own = project_settings_lib.routing_overrides(active_project()).get("conductor_model")
+    await send(websocket, "status", stage="conductor", model=own or (get_routing_config() or {}).get("conductor_model", ""))
     result = await route_model_with_usage(user_message, session.get("skills") or None,
                                           **({"plan_mode": True} if ask_plan else {}),
                                           **({"conductor": own} if own else {}))      # v0.8: the project's own Conductor
@@ -4350,6 +4381,8 @@ async def scout_first(websocket: WebSocket, session: dict, routing: dict, user_m
         await send(websocket, "system", tr("Scout skipped: the chat was already on Complex, which has the project in view."))
         return user_message
     workdir = current_workdir() if active_project() else ""
+    if workdir:
+        await send(websocket, "status", stage="files")
     files = (await asyncio.to_thread(planner.file_list, workdir))[0] if workdir else []
     why = scout_lib.skip_reason(user_message, routing, workdir, files)
     model, strong = routing.get("simple_model", ""), routing.get("complex_model", "")

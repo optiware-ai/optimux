@@ -431,3 +431,22 @@ def test_a_long_reason_is_cut(mocker, client):
     chat.close()
     tool = [m for m in rec.calls[1]["messages"] if m["role"] == "tool"][0]["content"]
     assert "x" * 500 in tool and "x" * 501 not in tool
+
+
+def test_waiting_stages_are_live_only(mocker, client):
+    """v0.8: the page is told what a reply waits for (the Conductor, then the model), so
+    it never sits empty; these status events aren't stored, so a reopened chat
+    doesn't replay them."""
+    rec = Recorder(reply("Hi!"))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    chat = Conversation(client)
+    msgs = chat.prompt("hello")
+    stages = [m.get("stage") for m in msgs if m["type"] == "status"]
+    assert stages[:1] == ["conductor"] and "model" in stages
+    first_model = next(i for i, m in enumerate(msgs) if m["type"] == "status" and m.get("stage") == "model")
+    assert first_model < next(i for i, m in enumerate(msgs) if m["type"] == "token")
+    replay = chat.send({"type": "open_session", "id": "latest"})
+    loaded = next(m for m in replay if m["type"] == "session_loaded")
+    assert not any(e.get("type") == "status" for t in loaded["session"].get("events", []) for e in (t if isinstance(t, list) else [t]))
+    assert "status" not in json.dumps(loaded)
+    chat.close()

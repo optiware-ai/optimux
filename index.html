@@ -196,6 +196,53 @@
                             </button>
                         </template>
                     </div>
+                    <!-- v0.8: the Git pane. Every change not yet committed (yours and the model's, from any reply) -->
+                    <section class="flex-shrink-0 border-t border-gray-800 flex flex-col min-h-0 max-h-[55%] text-[13px]" :aria-label="$t('Git')" data-git-pane>
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 min-h-[34px]">
+                            <button @click="toggleStudioGit" :aria-expanded="studioGit.open" class="flex items-center gap-1.5 text-gray-400 hover:text-gray-200 min-w-0" :title="$t('Changes not yet committed, and Commit, Push and Update')">
+                                <span class="w-3 text-[11px]">{{ studioGit.open ? '▾' : '▸' }}</span><span>{{ $t('Git') }}</span>
+                                <span v-if="studioGitCount" class="text-[11px] font-mono rounded-full px-1.5 bg-amber-900/60 text-amber-200">{{ studioGitCount }}</span>
+                            </button>
+                            <span v-if="studioGit.data && studioGit.data.branch" class="text-[11px] font-mono text-gray-500 truncate min-w-0">⑂ {{ studioGit.data.branch }}</span>
+                            <span v-if="studioGit.data && studioGit.data.ahead" class="text-[11px] font-mono text-blue-300 flex-shrink-0" :title="$t('Commits here that GitHub doesn\'t have yet (as of the last check)')">↑{{ studioGit.data.ahead }}</span>
+                            <span v-if="studioGit.data && studioGit.data.behind" class="text-[11px] font-mono text-amber-300 flex-shrink-0" :title="$t('Commits on GitHub that this project doesn\'t have (as of the last check)')">↓{{ studioGit.data.behind }}</span>
+                            <button @click="loadStudioGit" :disabled="studioGit.loading" class="ml-auto cm-icon-btn disabled:opacity-40" :title="$t('Refresh')" :aria-label="$t('Refresh')">↻</button>
+                        </div>
+                        <div v-show="studioGit.open" class="flex-1 min-h-0 overflow-auto px-3 pb-2">
+                            <div v-if="studioGit.error" class="text-gray-500 text-[12px]">{{ studioGit.error }}</div>
+                            <template v-else-if="studioGit.data">
+                                <div v-if="!studioGit.data.remote" class="text-[12px] text-gray-500 mb-1">{{ $t('No origin: you can commit here, but not push.') }}</div>
+                                <div v-if="!studioGit.data.files.length" class="text-gray-500 italic text-[12px] py-1">{{ studioGit.data.ahead ? $t('Everything is committed. Push sends the commits to GitHub.') : $t('Everything is committed.') }}</div>
+                                <div v-else class="font-mono text-[12px] mb-2" role="list" :aria-label="$t('Changes not yet committed')">
+                                    <button v-for="f in studioGit.data.files" :key="f.path" type="button" role="listitem" @click="f.status !== 'deleted' && openStudioFile(f.path)"
+                                            :class="['w-full text-left flex items-baseline gap-2 py-0.5 hover:bg-gray-800/60 rounded', f.warn ? 'text-red-300' : 'text-gray-300']" :title="f.path">
+                                        <span class="truncate min-w-0 flex-1">{{ f.warn ? '⚠ ' : '' }}{{ f.path }}</span>
+                                        <span :class="['flex-shrink-0 whitespace-nowrap', f.status === 'new' ? 'text-green-400' : (f.status === 'deleted' ? 'text-red-400' : 'text-gray-400')]">{{ changeLabel(f) }}</span>
+                                    </button>
+                                    <div v-if="studioGit.data.more" class="text-gray-500">{{ $t('and {more} more', { more: studioGit.data.more }) }}</div>
+                                </div>
+                                <div v-for="p in studioGit.data.problems" :key="p" class="text-[12px] text-red-300 mb-1 break-words" role="alert">{{ p }}</div>
+                                <template v-if="studioGit.data.files.length">
+                                    <div v-if="studioGit.data.warnings.length" class="mb-1.5">
+                                        <div v-for="w in studioGit.data.warnings" :key="w" class="text-[12px] text-amber-300 break-words">⚠ {{ w }}</div>
+                                        <label class="flex items-center gap-1.5 text-[12px] text-gray-300 mt-1 cursor-pointer"><input type="checkbox" v-model="studioGit.confirmed" class="accent-blue-600"> {{ $t('I checked: commit anyway') }}</label>
+                                    </div>
+                                    <textarea v-model="studioGit.message" rows="2" :placeholder="$t('Commit message')" :aria-label="$t('Commit message')" spellcheck="false"
+                                              class="w-full bg-gray-900 border border-gray-700 focus:border-blue-600 rounded px-2 py-1 text-[12px] font-mono text-gray-200 resize-y outline-none"></textarea>
+                                </template>
+                                <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                    <button v-if="studioGit.data.files.length" @click="commitStudio" :disabled="!!studioGitBlocked || studioGit.busy" :title="studioGitBlocked || $t('Commit these changes here. Nothing is sent to GitHub.')"
+                                            class="px-2.5 py-0.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold">{{ studioGit.busy ? $t('Committing…') : $t('Commit') }}</button>
+                                    <button v-if="studioGit.data.files.length" @click="writeStudioCommitMessage" :disabled="studioGit.writing || studioGit.data.problems.length > 0" class="px-2 py-0.5 rounded border border-gray-700 hover:border-gray-500 text-gray-300 disabled:opacity-40" :title="$t('A model writes the message from the changes (a paid call)')">{{ studioGit.writing ? $t('Writing…') : $t('✨ Write it') }}</button>
+                                    <span class="flex-1"></span>
+                                    <button v-if="studioGit.data.remote" @click="openSync(studio.project, 'push')" :disabled="isGenerating" class="text-blue-400 hover:text-blue-300 disabled:opacity-40" :title="$t('Commit (if needed) and push to GitHub, after you check what goes')">{{ $t('Push…') }}</button>
+                                    <button v-if="studioGit.data.remote" @click="openSync(studio.project, 'update')" :disabled="isGenerating" class="text-blue-400 hover:text-blue-300 disabled:opacity-40" :title="$t('Bring in the new commits from GitHub (pull), after you check them')">{{ $t('Update…') }}</button>
+                                </div>
+                                <div v-if="studioGit.note" class="text-[11px] text-gray-400 mt-1 break-words" role="status">{{ studioGit.note }}</div>
+                            </template>
+                            <div v-else class="text-gray-500 italic text-[12px]">{{ $t('Loading…') }}</div>
+                        </div>
+                    </section>
                 </nav>
                 <div v-show="studio.showTree" class="cm-split" role="separator" aria-orientation="vertical" :aria-label="$t('Resize the file list')" tabindex="0"
                      :aria-valuenow="Math.round(studioLayout.tree)" @pointerdown="startResize('tree', $event)" @dblclick="resetResize('tree')" @keydown="resizeKey('tree', $event)" :title="$t('Drag to resize · double-click to reset')"></div>
@@ -3143,7 +3190,7 @@
             </div>
             <button v-if="pinnedPrompt" @click="jumpToPinned" class="flex-shrink-0 text-xs font-mono text-gray-400 hover:text-gray-100 bg-gray-900 hover:bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 transition" :title="$t('Scroll up to this prompt')">↑</button>
         </div>
-        <div class="flex-1 overflow-y-auto py-6 pl-1 pr-4 space-y-6 scroll-smooth" id="chat-container" @click="onChatClick" @scroll.passive="updatePinned">
+        <div class="flex-1 overflow-y-auto py-6 pl-1 pr-4 space-y-6 scroll-smooth" id="chat-container" @click="onChatClick" @scroll.passive="onChatScroll">
             <div v-for="(msg, index) in messages" :key="index" :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
                 <div :data-user-msg="msg.role === 'user' ? index : null" :class="['max-w-[90%] rounded-xl p-5 shadow-sm', msg.role === 'user' ? 'bg-blue-900/40 border border-blue-800/50 text-gray-100' : 'bg-gray-900 border border-gray-800 text-gray-300 w-full']">
                     
@@ -3337,6 +3384,10 @@
                     <div v-if="showTrail(msg, index)" class="mt-2" :title="$t('Working…')">
                         <route-trail></route-trail>
                     </div>
+                    <!-- v0.8: what it waits for, with a timer, so a slow start never looks like nothing -->
+                    <div v-if="msg.role === 'agent' && msg.status && isGenerating && index === messages.length - 1" class="mt-2 flex items-center gap-2 text-[12px] font-mono text-gray-400" role="status" aria-live="polite">
+                        <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0"></span><span class="min-w-0">{{ waitText(msg.status) }}</span>
+                    </div>
                 </div>
             </div>
 
@@ -3350,6 +3401,8 @@
         </div>
         <!-- Up to the previous prompt, one per click, next to the scrollbar (5s) -->
         <div class="relative h-0">
+            <!-- scrolled away from the end: one click back (a waiting approval says so) -->
+            <button v-if="!followChat && messages.length" @click="scrollToBottom(true)" :class="['absolute bottom-full mb-3 text-xs font-mono rounded-lg px-3 py-1.5 transition border', promptAbove ? 'right-20' : 'right-6', pendingApproval ? 'text-yellow-200 bg-yellow-950/80 border-yellow-700 hover:border-yellow-500' : (isGenerating ? 'text-blue-200 bg-gray-900 border-blue-800 hover:border-blue-600' : 'text-gray-400 bg-gray-900 border-gray-700 hover:text-gray-100')]" :title="$t('Back to the end of the chat')">{{ pendingApproval ? $t('↓ Approval waiting') : (isGenerating ? $t('↓ Working…') : '↓') }}</button>
             <button v-if="promptAbove" @click="hopUp" class="absolute bottom-full mb-3 right-6 text-xs font-mono text-gray-400 hover:text-gray-100 bg-gray-900 hover:bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 transition" :title="$t('Up to the previous prompt (one per click)')">↑</button>
         </div>
 
@@ -3404,7 +3457,7 @@
             <div v-if="pendingApproval && !pendingForm && pendingAction !== 'push_project' && pendingAction !== 'update_project'" class="mb-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 flex flex-col gap-3">
                 <div class="flex items-start gap-3">
                     <svg class="w-6 h-6 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                    <div>
+                    <div class="flex-1 min-w-0"><!-- min-w-0: long lines wrap inside the box, never past the page -->
                         <h3 class="text-yellow-400 font-bold mb-1 flex items-center gap-2">{{ $t('Approval Required') }}
                             <span v-if="!pendingAction && !pendingFile && pendingSandboxProblem" class="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border text-red-300 border-red-800 bg-red-950/40" :title="pendingSandboxProblem">{{ $t('⚠ sandbox broken: will be refused') }}</span>
                             <span v-else-if="pendingFile" class="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border text-green-300 border-green-800 bg-green-950/40" :title="$t('Optimux writes it itself, only inside the active project (never .git), and replaces the file in one step')">{{ $t('✎ project file') }}</span>
@@ -3413,7 +3466,7 @@
                         <p v-if="pendingFile && pendingStillAsking" class="text-[12px] text-yellow-300/90 mb-2">{{ $t('This rewrites a file that already exists, so it asks even after "Approve all edits": check that nothing important is dropped.') }}</p>
                         <p v-else-if="pendingAskReason && !pendingAskReason.startsWith('Supervised')" class="text-[12px] text-yellow-300/90 mb-2">{{ pendingAskReason }}</p>
                         <div class="bg-black/60 p-3 rounded font-mono text-sm text-yellow-200 whitespace-pre-wrap break-all max-h-96 overflow-y-auto">{{ pendingCommand }}</div>
-                        <pre v-if="pendingFile && pendingFile.diff" class="mt-2 bg-black/60 p-3 rounded font-mono text-xs whitespace-pre overflow-auto max-h-96"><span v-for="(l, i) in pendingFile.diff.split('\n')" :key="i" :class="diffLineClass(l)">{{ l }}
+                        <pre v-if="pendingFile && pendingFile.diff" class="mt-2 bg-black/60 p-3 rounded font-mono text-xs whitespace-pre-wrap break-all overflow-y-auto max-h-96"><span v-for="(l, i) in pendingFile.diff.split('\n')" :key="i" :class="diffLineClass(l)">{{ l }}
 </span></pre>
                         <div v-if="!pendingAction && !pendingFile" class="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-gray-300">
                             <span>{{ $t('⏱ Time limit') }}</span>

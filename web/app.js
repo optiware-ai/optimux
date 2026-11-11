@@ -1466,7 +1466,7 @@ const optimuxApp = createApp({
                     content: tr('Successfully configured and loaded credentials for {value}.', { value: setupEnvKey.value }), 
                     system_note: tr('Configuration Updated')
                 });
-                scrollToBottom();
+                scrollToBottom(true);
                 closeModal();
             } catch (error) {
                 console.error("Failed to save key", error);
@@ -1535,10 +1535,33 @@ const optimuxApp = createApp({
         };
         Vue.watch(() => messages.value.length, () => nextTick(updatePinned));
 
-        const scrollToBottom = async () => {
+        // Follow the end of the chat only while the reader is there: scrolling up while a reply
+        // streams keeps you where you are (it used to pull you back down at every chunk, with a
+        // smooth scroll that made the page flicker). Your own actions always go to the end.
+        // The waiting line under a reply (v0.8): the stage the server reported, and for how long
+        const WAIT_ENDS = new Set(['token', 'thinking', 'command_start', 'approval_request', 'done', 'error', 'stopped',
+                                   'step_limit', 'command_limit']);
+        const waitText = (st) => {
+            const name = st.model ? modelName(st.model) : '';
+            const secs = Math.max(0, Math.round((nowTick.value - st.since) / 1000));
+            const what = st.stage === 'conductor' ? (name ? tr('Choosing a model ({model})…', { model: name }) : tr('Choosing a model…'))
+                : st.stage === 'files' ? tr('Scout is listing the project\'s files…')
+                : tr('Waiting for {model}…', { model: name || tr('the model') });
+            const late = st.stage === 'model' && secs >= 20 ? ' ' + tr('(it may be thinking before it answers)') : '';
+            return secs >= 2 ? what + ' ' + tr('{n} s', { n: secs }) + late : what;
+        };
+        const followChat = ref(true);
+        const onChatScroll = () => {
+            const c = document.getElementById('chat-container');
+            if (c) followChat.value = c.scrollHeight - c.scrollTop - c.clientHeight < 120;
+            updatePinned();
+        };
+        const scrollToBottom = async (force = false) => {
             await nextTick();
             const container = document.getElementById('chat-container');
-            container.scrollTop = container.scrollHeight;
+            if (!container || (force !== true && !followChat.value)) return;
+            container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
+            followChat.value = true;
             updatePinned();
         };
 
@@ -1709,6 +1732,7 @@ const optimuxApp = createApp({
                     ? { title: tr('Pushed · {project}', { project: syncBox.project }), text: `${syncBox.result.branch} · ${syncBox.result.commit}`, link: syncBox.result.url || '', linkLabel: tr('Open on GitHub') }
                     : { title: tr('Updated · {project}', { project: syncBox.project }), text: tr('{commits} new commit{v}', { commits: syncBox.result.commits, v: syncBox.result.commits === 1 ? '' : 's' }) });
                 if (showSettingsModal.value && settingsTab.value === 'projects') fetchProjectsOverview();
+                if (studio.open) (syncBox.kind === 'update' ? refreshStudio() : loadStudioStatus());
             } catch (e) { syncBox.error = e.message; }
             syncBox.busy = false;
         };
@@ -4060,8 +4084,69 @@ const optimuxApp = createApp({
             if (studio.devFor !== d.project) { studio.devFor = d.project; loadDevFor(d.project); }
         };
         const loadStudioStatus = async () => {
+            loadStudioGit();
             try { const d = await studioFetch('/api/files/status'); studio.status = d.files || {}; studio.branch = d.branch || ''; }
             catch (e) { studio.status = {}; studio.branch = ''; }
+        };
+        // v0.8: the Studio's Git pane, under the files. Every change not yet committed
+        // (by you or by the model, in any reply), and Commit / Push / Update.
+        // Local only: it never fetches, so it can refresh after every reply.
+        const studioGit = Vue.reactive({ open: true, loading: false, data: null, error: '', message: '',
+            confirmed: false, busy: false, writing: false, note: '' });
+        try { studioGit.open = localStorage.getItem('optimux.studio.git') !== '0'; } catch (_) {}
+        const toggleStudioGit = () => {
+            studioGit.open = !studioGit.open;
+            try { localStorage.setItem('optimux.studio.git', studioGit.open ? '1' : '0'); } catch (_) {}
+        };
+        let gitSeq = 0;
+        const loadStudioGit = async () => {
+            const project = studio.project;
+            if (!project) { studioGit.data = null; return; }
+            const seq = ++gitSeq;
+            studioGit.loading = true;
+            try {
+                const d = await studioFetch(`/api/projects/${encodeURIComponent(project)}/git-state`);
+                if (seq !== gitSeq) return;
+                if (!studioGit.data || studioGit.data.project !== d.project) { studioGit.message = ''; studioGit.note = ''; }
+                if (!studioGit.data || studioGit.data.tree !== d.tree) studioGit.confirmed = false;
+                studioGit.data = d; studioGit.error = '';
+            } catch (e) { if (seq === gitSeq) { studioGit.data = null; studioGit.error = e.message; } }
+            if (seq === gitSeq) studioGit.loading = false;
+        };
+        const studioGitCount = Vue.computed(() => studioGit.data ? studioGit.data.files.length + (studioGit.data.more || 0) : 0);
+        const studioGitBlocked = Vue.computed(() => {
+            const d = studioGit.data;
+            if (!d) return tr('Not available.');
+            if (d.busy || isGenerating.value) return tr('Wait for the request to finish.');
+            if (d.problems.length) return d.problems[0];
+            if (!d.files.length) return tr('Nothing to commit.');
+            if (d.warnings.length && !studioGit.confirmed) return tr('Confirm the warnings first.');
+            if (!studioGit.message.trim()) return tr('Write a commit message first.');
+            return '';
+        });
+        const writeStudioCommitMessage = async () => {
+            const project = studio.project;
+            studioGit.writing = true; studioGit.note = '';
+            try {
+                const d = await postJson(`/api/projects/${encodeURIComponent(project)}/commit-message`, {});
+                studioGit.message = d.message;
+                countCallInHeader({ project, cost: d.cost });
+                studioGit.note = tr('Written by {model}{v} · {v2}. Check it before pushing.', { model: d.model, v: d.template ? tr(', following the commit template') : '', v2: d.cost != null ? fmtCost(d.cost) : tr('cost unknown') });
+            } catch (e) { studioGit.note = e.message; }
+            studioGit.writing = false;
+        };
+        const commitStudio = async () => {
+            if (studioGitBlocked.value || studioGit.busy) return;
+            const project = studio.project;
+            studioGit.busy = true; studioGit.note = '';
+            try {
+                const r = await postJson(`/api/projects/${encodeURIComponent(project)}/commit`,
+                    { message: studioGit.message, tree: studioGit.data.tree, confirmed: studioGit.confirmed });
+                studioGit.message = '';
+                pushToast({ title: tr('Committed · {project}', { project }), text: tr('{branch} · {commit} · not pushed yet', { branch: r.branch || '—', commit: r.commit }) });
+            } catch (e) { studioGit.note = e.message; }
+            studioGit.busy = false;
+            loadStudioStatus();
         };
         // Every folder that is open, again (after a save, a model's changes or Refresh)
         const refreshStudio = async () => {
@@ -4752,7 +4837,7 @@ const optimuxApp = createApp({
         watch(() => studio.open && studio.chat, (on) => { document.body.classList.toggle('cm-studio-chat', !!on); });
         const toggleStudioChat = () => {
             studio.chat = !studio.chat;
-            if (studio.chat) nextTick(() => { if (chatInputRef.value && !chatInputRef.value.disabled) chatInputRef.value.focus(); scrollToBottom(); });
+            if (studio.chat) nextTick(() => { if (chatInputRef.value && !chatInputRef.value.disabled) chatInputRef.value.focus(); scrollToBottom(true); });
         };
         // After a reply, show what the model changed: the tree, the open file (unless edited) and the preview
         const studioAfterReply = async () => {
@@ -4999,7 +5084,7 @@ const optimuxApp = createApp({
             messages.value.push({ role: 'agent', content: '', events: [], commands: [], blocks: [] });
             isGenerating.value = true;
             ws.value.send(JSON.stringify({ type: 'escalate' }));
-            scrollToBottom();
+            scrollToBottom(true);
         };
         // Things a reply gets once it's complete (live on "done", or after a replay)
         const finalizeReply = (msg) => {
@@ -5232,6 +5317,13 @@ const optimuxApp = createApp({
                     return;
                 }
                 const lastMsg = messages.value[messages.value.length - 1];
+
+                // v0.8: what the reply is waiting for (live only, never replayed); any output ends it
+                if (data.type === 'status') {
+                    if (lastMsg && lastMsg.role === 'agent') lastMsg.status = { stage: data.stage, model: data.model || '', since: Date.now() };
+                    return;
+                }
+                if (lastMsg && lastMsg.status && WAIT_ENDS.has(data.type)) lastMsg.status = null;
 
                 if (data.type === "stopped") {
                     if (lastMsg.role === 'agent') lastMsg.interrupted = 'stopped';
@@ -5472,7 +5564,7 @@ const optimuxApp = createApp({
                 if (!data.active_project_changed && !readOnlyChat.value && data.session.project && data.session.project !== appSettings.value.active_project) {
                     fetchConfig();  // the server switched to the session's project
                 }
-                nextTick(scrollToBottom);
+                nextTick(() => scrollToBottom(true));
             };
 
             connect();
@@ -5540,7 +5632,7 @@ const optimuxApp = createApp({
             userInput.value = '';
             chatContext.value = [];
             isGenerating.value = true;
-            scrollToBottom();
+            scrollToBottom(true);
         };
 
         const autoResize = () => {
@@ -5657,7 +5749,7 @@ const optimuxApp = createApp({
             messages.value.push({ role: 'agent', content: '', events: [], commands: [], blocks: [], planRun: true });
             isGenerating.value = true;
             ws.value.send(JSON.stringify({ type: 'plan_action', action, plan_id: plan.id }));
-            scrollToBottom();
+            scrollToBottom(true);
         };
 
         // A plan card as Markdown (chat export)
@@ -5738,7 +5830,7 @@ const optimuxApp = createApp({
             keyInput, isSavingKey, saveKey,
             pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
             MEMORY_MAX_CHARS, pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
-            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
+            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, followChat, onChatScroll, waitText, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
 					renderMarkdown,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashView, setDashView, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,
@@ -5757,7 +5849,7 @@ const optimuxApp = createApp({
             planAction, planStepMark, planStuckStep, projectOffer, openOfferedProject, planEdit, stepFolded, stepItems,
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
-            studio, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
+            studio, studioGit, toggleStudioGit, loadStudioGit, studioGitCount, studioGitBlocked, writeStudioCommitMessage, commitStudio, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
             saveStudioFile, reloadStudioFile, previewSrc, previewMarkdown, previewKind, studioOpenInTab,
             gitTerm, openGitTerm, closeGitTerm, gitTermLines, copyGitTerm,
             studioLayout, studioPanes, startResize, resizeKey, resetResize, toggleStudioTree, expandAllStudio, collapseAllStudio,

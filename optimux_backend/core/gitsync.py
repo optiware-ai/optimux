@@ -410,6 +410,74 @@ def push_run(name: str, message: str, tree: str | None, confirmed: bool) -> dict
         lock.release()
 
 
+def local_state(name: str) -> dict:
+    """The Studio's Git pane (v0.8): uncommitted files, branch and ahead/behind
+    against the last known GitHub branch. Never fetches: it is refreshed after
+    every reply, so it must be fast and work offline. Nothing changes."""
+    path = _project(name)
+    out = _basics(name, path, fetch=False)
+    out.update(files=[], more=0, ahead=0, behind=0, tree=None, problems=[], warnings=[],
+               identity=True, can_commit=False)
+    top = _ok(_git(path, "rev-parse", "--show-toplevel", timeout=5)) or path
+    tree = changes_lib._tree(top)
+    head = _ok(_git(path, "rev-parse", "--verify", "--quiet", "HEAD^{tree}", timeout=5)) or EMPTY_TREE
+    out["tree"] = tree
+    if tree and tree != head:
+        diff = changes_lib.compare({"git": True, "top": top, "tree": head})
+        out["files"], out["more"] = diff.get("files", []), diff.get("more", 0)
+    out["ahead"], out["behind"] = _counts(path, out["upstream"])
+    if not out["upstream"]:
+        out["ahead"] = 0                # no GitHub branch to compare with: nothing is "ahead"
+    if out["files"] and not git_can_commit(path):
+        out["identity"] = False
+        out["problems"].append(tr("Git has no name and email to commit with. Set them in Dashboard → GitHub "
+                                  "(Who commits)."))
+    if not out["branch"]:
+        out["problems"].append(tr("HEAD isn't on a branch (detached). Check out a branch first."))
+    problems, warnings = _scan(path, out["files"])
+    out["problems"] += problems
+    out["warnings"] += warnings
+    out["can_commit"] = bool(out["files"]) and not out["problems"]
+    return out
+
+
+def commit_run(name: str, message: str, tree: str | None, confirmed: bool) -> dict:
+    """Commit every change shown by local_state, here only (no push)."""
+    lock = _lock(name)
+    if not lock.acquire(blocking=False):
+        raise GitSyncError(tr("A push or update of this project is already running."))
+    try:
+        state = local_state(name)
+        path = _project(name)
+        if state["tree"] != tree:
+            raise GitSyncError(tr("The files changed since this list was shown. Check the new list, then commit."))
+        if not state["files"]:
+            raise GitSyncError(tr("Nothing to commit."))
+        if state["problems"]:
+            raise GitSyncError(state["problems"][0])
+        if state["warnings"] and not confirmed:
+            raise GitSyncError(tr("Confirm the warnings first."))
+        message = (message or "").strip()
+        if not message:
+            raise GitSyncError(tr("Write a commit message first."))
+        add = _git(path, "add", "-A", timeout=60)
+        if not add["ok"]:
+            raise GitSyncError(tr("git add failed: {v}", v=add["output"][-300:]))
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            f.write(message + "\n")
+            msg_file = f.name
+        try:
+            c = _git(path, "commit", "--no-verify", "--cleanup=whitespace", "-F", msg_file, timeout=60)
+        finally:
+            os.unlink(msg_file)
+        if not c["ok"]:
+            raise GitSyncError(tr("git commit failed: {v}", v=c["output"][-300:]))
+        return {"ok": True, "project": name, "commit": _ok(_git(path, "rev-parse", "--short", "HEAD", timeout=5)),
+                "branch": state["branch"], "files": len(state["files"]) + state["more"]}
+    finally:
+        lock.release()
+
+
 def update_prepare(name: str) -> dict:
     """What Update would bring in: nothing changes."""
     path = _project(name)

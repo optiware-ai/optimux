@@ -391,3 +391,82 @@ def test_push_warns_when_origin_changed_since_the_last_push(ws, tmp_path):
     assert "origin changed since the last push" in prep["warnings"][0] and str(other) in prep["warnings"][0]
     with pytest.raises(gitsync.GitSyncError, match="Confirm the warnings"):
         gitsync.push_run("site", "second", prep["tree"], False)
+
+
+# ---- v0.8: the Studio's Git pane (local state, commit only)
+
+def test_local_state_lists_uncommitted_files_without_the_network(ws, monkeypatch):
+    """The pane is refreshed after every reply: it must never fetch (no network, no wait)."""
+    calls = []
+    real = gitsync._git
+    monkeypatch.setattr(gitsync, "_git", lambda path, *a, **k: calls.append(a) or real(path, *a, **k))
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    s = gitsync.local_state("site")
+    assert {f["path"]: f["status"] for f in s["files"]} == {"index.html": "changed", "menu.js": "new"}
+    assert s["branch"] == "main" and s["remote"] and s["ahead"] == 0 and s["behind"] == 0
+    assert s["tree"] and s["problems"] == [] and s["can_commit"]
+    assert not any(a and a[0] in ("fetch", "push", "pull") for a in calls)
+    git("add", "-A", cwd=ws["proj"])
+    git("commit", "-qm", "local", cwd=ws["proj"])
+    s = gitsync.local_state("site")
+    assert s["files"] == [] and s["ahead"] == 1 and not s["can_commit"]
+
+
+def test_commit_only_commits_what_was_shown_and_never_pushes(ws):
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    s = gitsync.local_state("site")
+    r = gitsync.commit_run("site", "[ FIX ] Site: Year 2026", s["tree"], False)
+    assert r["ok"] and r["files"] == 1 and r["commit"]
+    assert git("log", "-1", "--format=%s", cwd=ws["proj"]) == "[ FIX ] Site: Year 2026"
+    assert git("rev-list", "--count", "main", cwd=ws["remote"]) == "1"        # GitHub untouched
+    assert gitsync.local_state("site")["ahead"] == 1
+    (ws["proj"] / "a.txt").write_text("a\n")
+    s = gitsync.local_state("site")
+    (ws["proj"] / "late.txt").write_text("after\n")
+    with pytest.raises(gitsync.GitSyncError, match="changed since"):
+        gitsync.commit_run("site", "msg", s["tree"], False)
+    with pytest.raises(gitsync.GitSyncError, match="commit message"):
+        gitsync.commit_run("site", "  ", gitsync.local_state("site")["tree"], False)
+
+
+def test_commit_only_keeps_the_safety_checks(ws):
+    (ws["proj"] / "config.py").write_text("KEY = 'sk-ant-very-secret-123'\n")
+    s = gitsync.local_state("site")
+    assert any("ANTHROPIC_API_KEY" in p for p in s["problems"]) and "sk-ant" not in str(s)
+    with pytest.raises(gitsync.GitSyncError, match="ANTHROPIC_API_KEY"):
+        gitsync.commit_run("site", "msg", s["tree"], True)
+    (ws["proj"] / "config.py").unlink()
+    (ws["proj"] / ".env").write_text("X=1\n")
+    s = gitsync.local_state("site")
+    assert s["warnings"] and not s["problems"]
+    with pytest.raises(gitsync.GitSyncError, match="Confirm"):
+        gitsync.commit_run("site", "msg", s["tree"], False)
+    assert gitsync.commit_run("site", "msg", s["tree"], True)["ok"]
+
+
+def test_local_state_without_origin_can_still_commit(ws):
+    git("remote", "remove", "origin", cwd=ws["proj"])
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    s = gitsync.local_state("site")
+    assert s["remote"] is None and s["files"] and s["can_commit"]
+    assert gitsync.commit_run("site", "local only", s["tree"], False)["ok"]
+
+
+def test_the_git_pane_api(ws, mocker, tmp_path):
+    import optimux_backend.main as main
+    from tests.ws_helpers import make_client
+    client = make_client(mocker, tmp_path)
+    H = {"Authorization": "Bearer test-token"}
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    s = client.get("/api/projects/site/git-state", headers=H).json()
+    assert [f["path"] for f in s["files"]] == ["index.html"]
+    main.BUSY_PROJECTS["site"] = 1
+    try:
+        r = client.post("/api/projects/site/commit", json={"message": "m", "tree": s["tree"]}, headers=H)
+        assert r.status_code == 422 and "A request is running" in r.json()["detail"]
+    finally:
+        main.BUSY_PROJECTS.pop("site", None)
+    r = client.post("/api/projects/site/commit", json={"message": "m", "tree": s["tree"]}, headers=H).json()
+    assert r["ok"] and git("log", "-1", "--format=%s", cwd=ws["proj"]) == "m"
+    assert client.get("/api/projects/nope/git-state", headers=H).status_code == 422
