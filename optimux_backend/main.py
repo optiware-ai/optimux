@@ -1066,14 +1066,32 @@ class PushPayload(BaseModel):
     message: str = ""
     tree: str | None = None
     confirmed: bool = False
+    sync_pass: str | None = None      # the window the model opened (SYNC_PASSES)
 
 
 class UpdatePayload(BaseModel):
     sha: str | None = None
+    sync_pass: str | None = None
 
 
-def _git_busy(name: str) -> JSONResponse | None:
-    if BUSY_PROJECTS.get(name):
+# v0.8: a Push or Update window opened by the model (push_project / update_project).
+# Its request is running, but it only waits for this window, so the window gets a
+# pass that lets this one request through the "a request is running" guard.
+# token -> {"project", "kind"}; removed when the window is answered or the request ends.
+SYNC_PASSES: dict[str, dict] = {}
+
+
+def _busy(name: str, kind: str, sync_pass: str | None = None) -> bool:
+    """A request is running in the project, other than one waiting for this window."""
+    running = BUSY_PROJECTS.get(name, 0)
+    held = SYNC_PASSES.get(sync_pass or "")
+    if running == 1 and held and held["project"] == name and held["kind"] == kind:
+        return False
+    return bool(running)
+
+
+def _git_busy(name: str, kind: str = "", sync_pass: str | None = None) -> JSONResponse | None:
+    if _busy(name, kind, sync_pass):
         return JSONResponse({"detail": tr("A request is running in '{name}'. Wait for it to finish (or stop it), so half-done work isn't pushed or overwritten.", name=name)}, status_code=422)
     return None
 
@@ -1086,17 +1104,18 @@ async def _gitsync(fn, *args):
 
 
 @app.get("/api/projects/{name}/push")
-async def project_push_prepare(name: str):
+async def project_push_prepare(name: str, sync_pass: str | None = None):
     """What Push would commit and push. Nothing changes."""
     result = await _gitsync(gitsync.push_prepare, name)
-    if isinstance(result, dict) and BUSY_PROJECTS.get(name):
-        result["problems"].insert(0, "A request is running in this project. Wait for it to finish first.")
+    if isinstance(result, dict) and _busy(name, "push", sync_pass):
+        result["problems"].insert(0, tr("A request is running in this project. Wait for it to finish first."))
     return result
 
 
 @app.post("/api/projects/{name}/push")
 async def project_push(name: str, payload: PushPayload):
-    return _git_busy(name) or await _gitsync(gitsync.push_run, name, payload.message, payload.tree, payload.confirmed)
+    return _git_busy(name, "push", payload.sync_pass) or await _gitsync(gitsync.push_run, name, payload.message,
+                                                                         payload.tree, payload.confirmed)
 
 
 class CommitPayload(BaseModel):
@@ -1137,17 +1156,17 @@ async def project_identity(name: str):
 
 
 @app.get("/api/projects/{name}/update")
-async def project_update_prepare(name: str):
+async def project_update_prepare(name: str, sync_pass: str | None = None):
     """What Update would bring in from GitHub. Nothing changes."""
     result = await _gitsync(gitsync.update_prepare, name)
-    if isinstance(result, dict) and BUSY_PROJECTS.get(name):
-        result["problems"].insert(0, "A request is running in this project. Wait for it to finish first.")
+    if isinstance(result, dict) and _busy(name, "update", sync_pass):
+        result["problems"].insert(0, tr("A request is running in this project. Wait for it to finish first."))
     return result
 
 
 @app.post("/api/projects/{name}/update")
 async def project_update(name: str, payload: UpdatePayload):
-    return _git_busy(name) or await _gitsync(gitsync.update_run, name, payload.sha)
+    return _git_busy(name, "update", payload.sync_pass) or await _gitsync(gitsync.update_run, name, payload.sha)
 
 
 @app.post("/api/projects/{name}/commit-message")
@@ -3830,8 +3849,14 @@ async def run_git_tool(websocket: WebSocket, session: dict, name: str, args: dic
     message = str(args.get("message") or "").strip()[:2000] if kind == "push" else ""
     label = (tr("Push {project} to GitHub: check it in the Push window", project=pname) if kind == "push" else
              tr("Update {project} from GitHub: check it in the Update window", project=pname))
-    answer = await wait_for_answer(websocket, session, tc_id, label, action=name, always_ask=True,
-                                   sync={"project": pname, "kind": kind, "message": message})
+    sync_pass = secrets.token_urlsafe(18)
+    SYNC_PASSES[sync_pass] = {"project": pname, "kind": kind}
+    try:
+        answer = await wait_for_answer(websocket, session, tc_id, label, action=name, always_ask=True,
+                                       sync={"project": pname, "kind": kind, "message": message,
+                                             "sync_pass": sync_pass})
+    finally:
+        SYNC_PASSES.pop(sync_pass, None)
     if not answer["approved"]:
         await send(websocket, "system", tr("Push window closed: nothing was sent.") if kind == "push"
                    else tr("Update window closed: nothing changed."))

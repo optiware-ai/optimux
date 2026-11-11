@@ -1668,16 +1668,20 @@ const optimuxApp = createApp({
             if (await writeClipboard(gitLine.value)) { gitBox.copied = true; setTimeout(() => { gitBox.copied = false; }, 1500); }
         };
         // ---- Push / Update from GitHub (v0.4-5t): prepare (nothing changes), then run on confirm
-        const syncBox = Vue.reactive({ open: false, kind: '', project: '', loading: false, data: null, error: '',
+        const syncBox = Vue.reactive({ open: false, kind: '', project: '', loading: false, data: null, error: '', pass: '',
             message: '', confirmed: false, busy: false, writing: false, writeNote: '', result: null,
             tool: false });   // v0.8: opened by the model (push_project / update_project); the chat waits for it
         const chatProject = Vue.computed(() => (currentSession.value && currentSession.value.project) || appSettings.value.active_project || '');
         const openSync = async (project, kind, fromTool = null) => {
             if (syncBox.tool && !fromTool) answerSyncTool(false);   // the button replaces a window the model opened
             Object.assign(syncBox, { open: true, kind, project, loading: true, data: null, error: '', message: '',
-                confirmed: false, busy: false, writing: false, writeNote: '', result: null, tool: !!fromTool });
+                confirmed: false, busy: false, writing: false, writeNote: '', result: null, tool: !!fromTool,
+                pass: (fromTool && fromTool.sync_pass) || '' });
+            // The model's own request waits for this window: its pass lets the window
+            // through the "a request is running" guard (only for that request).
+            const passQuery = syncBox.pass ? `?sync_pass=${encodeURIComponent(syncBox.pass)}` : '';
             try {
-                const r = await fetch(`/api/projects/${encodeURIComponent(project)}/${kind}`);
+                const r = await fetch(`/api/projects/${encodeURIComponent(project)}/${kind}${passQuery}`);
                 const d = await r.json();
                 if (!syncBox.open || syncBox.project !== project) return;
                 if (!r.ok) syncBox.error = d.detail || tr('Could not read the project.');
@@ -1725,6 +1729,7 @@ const optimuxApp = createApp({
             const body = syncBox.kind === 'push'
                 ? { message: syncBox.message, tree: syncBox.data.tree, confirmed: syncBox.confirmed }
                 : { sha: syncBox.data.sha };
+            if (syncBox.tool && syncBox.pass) body.sync_pass = syncBox.pass;
             try {
                 syncBox.result = await postJson(`/api/projects/${encodeURIComponent(syncBox.project)}/${syncBox.kind}`, body);
                 answerSyncTool(true);

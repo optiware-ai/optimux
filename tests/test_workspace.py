@@ -1244,13 +1244,59 @@ def test_push_project_waits_for_the_push_window(mocker, client, root, tmp_path):
         if m["type"] == "approval_request":
             break
     assert m["action"] == "push_project" and m["always_ask"] is True
-    assert m["sync"] == {"project": "alpha", "kind": "push", "message": "Add the menu"}
+    sync_pass = m["sync"].pop("sync_pass")
+    assert m["sync"] == {"project": "alpha", "kind": "push", "message": "Add the menu"} and len(sync_pass) >= 16
     chat.ws.send_text(json.dumps({"type": "approval_response", "approved": True,
                                   "result": {"ok": True, "commit": "abc1234", "branch": "main", "files": 2,
                                              "commits": 1, "url": None, "token": "never-passed-on"}}))
     collect(chat.ws)
     result = tool_result(rec)
     assert result["ok"] and result["commit"] == "abc1234" and "token" not in result
+    chat.close()
+
+
+def test_the_window_the_model_opened_can_push_while_its_request_waits(mocker, client, root):
+    """The model's own request is running (it waits for the window), so the usual
+    "a request is running" guard used to block the Push button it asked for: a
+    deadlock. The window's pass lets that one request through, and only it."""
+    r, settings = root
+    settings["active_project"] = "alpha"
+    import subprocess
+    remote = r.parent / "github" / "alpha.git"
+    run = lambda *a, cwd: subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True)
+    run("init", "-q", "--bare", "-b", "main", str(remote), cwd=r.parent)
+    run("init", "-q", "-b", "main", cwd=r / "alpha")
+    (r / "alpha" / "a.txt").write_text("a\n")
+    run("add", "-A", cwd=r / "alpha"); run("commit", "-qm", "first", cwd=r / "alpha")
+    run("remote", "add", "origin", str(remote), cwd=r / "alpha"); run("push", "-q", "-u", "origin", "main", cwd=r / "alpha")
+    (r / "alpha" / "menu.txt").write_text("menu\n")
+    rec = tool_turn("push_project", {"message": "Add the menu"})
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    chat = Conversation(client)
+    chat.ws.send_text(json.dumps({"prompt": "push it", "model": "auto"}))
+    while True:
+        m = json.loads(chat.ws.receive_text())
+        if m["type"] == "approval_request":
+            break
+    sync_pass = m["sync"]["sync_pass"]
+    busy = "A request is running"
+    H = {"Authorization": "Bearer test-token"}
+    with_pass = client.get(f"/api/projects/alpha/push?sync_pass={sync_pass}", headers=H).json()
+    assert "tree" in with_pass and not any(busy in p for p in with_pass["problems"]), with_pass
+    no_pass = client.get("/api/projects/alpha/push", headers=H).json()
+    assert any(busy in p for p in no_pass["problems"]), no_pass
+    assert any(busy in p for p in client.get("/api/projects/alpha/push?sync_pass=guess", headers=H).json()["problems"])
+    from optimux_backend import main
+    assert main._busy("alpha", "update", sync_pass) and not main._busy("alpha", "push", sync_pass)  # one window, one kind
+    tree = with_pass["tree"]
+    pushed = client.post("/api/projects/alpha/push", json={"message": "Add the menu", "tree": tree, "sync_pass": sync_pass}, headers=H)
+    assert pushed.status_code == 200 and pushed.json()["ok"], pushed.json()
+    assert run("log", "-1", "--format=%s", "main", cwd=remote).stdout.decode().strip() == "Add the menu"
+    (r / "alpha" / "more.txt").write_text("more\n")
+    assert busy in client.post("/api/projects/alpha/push", json={"message": "m", "tree": None}, headers=H).json()["detail"]
+    chat.ws.send_text(json.dumps({"type": "approval_response", "approved": False}))
+    collect(chat.ws)
+    assert sync_pass not in main.SYNC_PASSES            # the pass ends with the window
     chat.close()
 
 

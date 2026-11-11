@@ -2419,5 +2419,6 @@
  "{branch} · {commit} · not pushed yet": "{branch} · {commit} · non ancora inviato",
  "{n} s": "{n} s",
  "↓ Approval waiting": "↓ Approvazione in attesa",
- "↓ Working…": "↓ Al lavoro…"
+ "↓ Working…": "↓ Al lavoro…",
+ "A request is running in this project. Wait for it to finish first.": "Una richiesta è in corso in questo progetto. Aspetta che finisca."
 }
