@@ -471,25 +471,29 @@
                                 </g>
                                 <text v-for="l in P.sv.xlabels" :key="'x' + l.x" :x="l.x" :y="P.sv.H - 6" :text-anchor="l.anchor" class="cm-pf-axis">{{ l.text }}</text>
                             </svg>
-                            <div :class="['grid grid-cols-1 gap-4 mt-4', P.sv.jobs.length ? 'lg:grid-cols-3' : 'lg:grid-cols-2']">
-                                <div v-for="t in [[$t('By role'), P.sv.roles], [$t('By job'), P.sv.jobs], [$t('By project'), P.sv.projects]].filter(x => x[1].length)" :key="t[0]" class="overflow-x-auto">
-                                    <table class="w-full text-[13px]">
-                                        <thead><tr class="text-xs text-gray-500 text-left">
+                            <!-- By role with By job under it on the left; By project gets the right half -->
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 items-start">
+                              <div v-for="col in [[[$t('By role'), P.sv.roles], [$t('By job'), P.sv.jobs]], [[$t('By project'), P.sv.projects]]].map(c => c.filter(x => x[1].length)).filter(c => c.length)" :key="col[0][0]" class="flex flex-col gap-4 min-w-0">
+                                <div v-for="t in col" :key="t[0]" class="overflow-x-auto">
+                                    <table class="w-full text-[13px] table-fixed min-w-[30rem]">
+                                        <colgroup><col class="w-[26%]"><col class="w-[11%]"><col class="w-[14%]"><col class="w-[20%]"><col></colgroup>
+                                        <thead><tr class="text-xs text-gray-500 text-left whitespace-nowrap">
                                             <th class="font-normal py-1 pr-3">{{ t[0] }}</th><th class="font-normal py-1 pr-3 text-right">{{ $t('Calls') }}</th>
                                             <th class="font-normal py-1 pr-3 text-right">{{ $t('Spent') }}</th><th class="font-normal py-1 pr-3 text-right">{{ $t('Would have cost') }}</th>
                                             <th class="font-normal py-1 text-right">{{ $t('Saved') }}</th>
                                         </tr></thead>
                                         <tbody>
                                             <tr v-for="r in t[1]" :key="r.key" class="border-t border-gray-800 text-gray-300">
-                                                <td class="py-1 pr-3 truncate max-w-[12rem]" :title="r.key">{{ r.label }}</td>
+                                                <td class="py-1 pr-3 truncate" :title="r.key">{{ r.label }}</td>
                                                 <td class="py-1 pr-3 text-right font-mono">{{ r.calls.toLocaleString($locale()) }}</td>
                                                 <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.spent) }}</td>
                                                 <td class="py-1 pr-3 text-right font-mono">{{ fmtUsd(r.reference) }}</td>
-                                                <td :class="['py-1 text-right font-mono', r.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(r.saved) }}<span class="text-gray-500"> · {{ r.saved_share === null ? 'extra' : fmtPct(r.saved_share) }}</span></td>
+                                                <td :class="['py-1 text-right font-mono whitespace-nowrap', r.saved >= 0 ? 'text-green-400' : 'text-red-400']">{{ fmtUsd(r.saved) }}<span class="text-gray-500"> · {{ r.saved_share === null ? 'extra' : fmtPct(r.saved_share) }}</span></td>
                                             </tr>
                                         </tbody>
                                     </table>
                                 </div>
+                              </div>
                             </div>
                             <p class="text-xs text-gray-500 mt-3">
                                 <span v-if="P.sv.v.estimated_calls">{{ $t('{v} older calls are estimated with today\'s prices.', { v: P.sv.v.estimated_calls.toLocaleString($locale()) }) }} </span>
