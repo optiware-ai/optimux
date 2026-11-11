@@ -914,6 +914,18 @@ def project_settings_view(name: str) -> dict:
             "stale": project_settings_lib.stale(name)}
 
 
+@app.get("/api/projects/{name}/locations")
+async def project_locations(name: str):
+    """Every place on disk that holds something of this project (v0.8, from OmniLatch):
+    Projects → a card's "Where its files are"."""
+    try:
+        project_settings_lib.check_name(name)
+    except project_settings_lib.ProjectSettingsError as e:
+        raise HTTPException(422, str(e))
+    root = get_settings().get("projects_root", "")
+    return {"project": name, "locations": await asyncio.to_thread(project_records.locations, name, root or None)}
+
+
 @app.get("/api/projects/{name}/settings")
 async def get_project_settings(name: str):
     try:

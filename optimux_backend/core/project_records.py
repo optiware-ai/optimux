@@ -8,9 +8,11 @@ When a project is deleted from the Dashboard, its folder is removed and either
   memory versions, the project memory file and its budget.
 """
 import os
+import re
 import time
 
-from optimux_backend.core import budgets, store
+from optimux_backend.core import budgets, paths, store
+from optimux_backend.core.i18n import tr
 from optimux_backend.core.memory_manager import PROJECTS_DIR
 
 
@@ -98,3 +100,58 @@ def forget(name: str) -> dict:
         os.remove(path)
     budgets.save_budget(name, None)
     return counts
+
+
+def _item(key: str, label: str, path: str, what: str, shared: bool = False) -> dict:
+    return {"key": key, "label": label, "path": path, "what": what, "shared": shared,
+            "exists": os.path.exists(path), "folder": os.path.isdir(path)}
+
+
+def locations(name: str, root: str | None) -> list[dict]:
+    """Every place on disk that holds something of this project, the project folder
+    first (v0.8, from OmniLatch): Projects → a card's "Where its files are".
+    `shared` marks a file that also holds other projects' data (the database,
+    budgets.json, the project settings, a snapshot), so deleting it isn't the way to
+    remove one project. Only places that exist are listed, except the project folder
+    and its memory file, which every project has (or will have)."""
+    out = []
+    if root:
+        out.append(_item("folder", tr("Project folder"), os.path.join(root, name),
+                         tr("Its files, git history and its own skills (.optimux-skills)")))
+    out.append(_item("memory", tr("Project memory"), _memory_file(name),
+                     tr("What the models remember about this project (Memory page)")))
+    counts = record_counts(name)
+    if counts["chats"] or counts["calls"] or counts["memory_versions"] or counts["requests"]:
+        out.append(_item("database", tr("Chats, costs and history"), paths.DB_PATH,
+                         tr("{chats} chats, {calls} model calls, {requests} requests, {versions} memory versions",
+                            chats=counts["chats"], calls=counts["calls"], requests=counts["requests"],
+                            versions=counts["memory_versions"]), shared=True))
+    if budgets.status(name):
+        out.append(_item("budget", tr("Budget"), budgets.BUDGETS_FILE, tr("This project's monthly limit"), shared=True))
+    try:
+        from optimux_backend.core import project_settings
+        own = name in (project_settings._read().get("projects") or {})
+    except Exception:
+        own = False
+    if own:
+        out.append(_item("settings", tr("Project settings"), paths.PROJECT_SETTINGS_FILE,
+                         tr("Its own models, steps, memory and planning settings"), shared=True))
+    if root:
+        archive = os.path.join(root, ".archive")
+        if os.path.isdir(archive) and not os.path.islink(archive):
+            pat = re.compile(re.escape(name) + r"-\d{8}-\d{6}$")
+            for f in sorted(os.listdir(archive)):
+                if pat.fullmatch(f):
+                    out.append(_item("archived", tr("Archived copy"), os.path.join(archive, f),
+                                     tr("Restore it from Projects → Archived projects")))
+    try:
+        from optimux_backend.core import snapshots
+        snaps = snapshots.list_snapshots()
+    except Exception:          # a damaged snapshot folder mustn't hide the rest
+        snaps = []
+    for m in snaps:
+        names = [p.get("name") if isinstance(p, dict) else p for p in (m.get("projects") or [])]
+        if m.get("status") == "ready" and name in names:
+            out.append(_item("snapshot", tr("Snapshot"), snapshots.archive_path(m["id"]),
+                             tr("A snapshot that includes it ({kind})", kind=m.get("kind", "")), shared=True))
+    return [o for o in out if o["exists"] or o["key"] in ("folder", "memory")]

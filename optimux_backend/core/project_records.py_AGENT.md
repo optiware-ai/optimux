@@ -10,3 +10,4 @@ What Optimux remembers about projects deleted from the Dashboard (fix25a). Calle
 
 ## Tests
 `tests/test_workspace.py` (fix25a section).
+- `locations(name, root)` (v0.8, from OmniLatch): every place on disk with something of the project, for Projects → "Where its files are": the folder and the memory file (always), then, if they exist, the database (chats, model calls, requests, memory versions), budgets.json, project_settings.json (when the project has own settings), archived copies in `.archive/` and ready snapshots that include it. `shared` marks files that also hold other projects' data. Labels and descriptions go through `tr`.

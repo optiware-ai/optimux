@@ -1038,51 +1038,85 @@
                 </div>
 
                 <!-- Section: Projects -->
-                <div v-if="settingsTab === 'projects'" class="grid md:grid-cols-2 gap-4">
-                    <div v-if="workspacePath" class="md:col-span-2 flex flex-wrap items-center gap-x-3 gap-y-1 bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-[13px]">
+                <div v-if="settingsTab === 'projects'" class="grid gap-4">
+                    <div v-if="workspacePath" class="flex flex-wrap items-center gap-x-3 gap-y-1 bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-[13px]">
                         <span class="text-gray-500">{{ $t('Workspace folder') }}</span>
                         <span class="font-mono text-gray-200 break-all">{{ workspacePath }}</span>
                         <copy-btn :text="workspacePath" :label="$t('Copy the path')"></copy-btn>
                         <button @click="openSettings('scope')" class="ml-auto text-blue-400 hover:text-blue-300">{{ $t('Change in Scope') }}</button>
                     </div>
-                    <div v-if="appSettings.projects_root" class="border-2 border-dashed border-gray-800 rounded-xl min-h-[120px] grid grid-rows-2 overflow-hidden">
+                    <div v-if="appSettings.projects_root" class="border-2 border-dashed border-gray-800 rounded-xl min-h-[64px] grid grid-cols-2 overflow-hidden">
                         <button @click="openNewProject('new')" class="text-gray-400 hover:text-blue-300 hover:bg-blue-950/20 transition flex items-center justify-center gap-2">
                             <span class="text-2xl leading-none">+</span><span class="font-bold">{{ $t('New project') }}</span>
                         </button>
-                        <button @click="openNewProject('github')" class="border-t border-dashed border-gray-800 text-gray-500 hover:text-blue-300 hover:bg-blue-950/20 transition flex items-center justify-center gap-2 text-sm">
+                        <button @click="openNewProject('github')" class="border-l border-dashed border-gray-800 text-gray-500 hover:text-blue-300 hover:bg-blue-950/20 transition flex items-center justify-center gap-2 text-sm">
                             <span>⑂</span><span>{{ $t('Clone from GitHub') }}</span>
                         </button>
                     </div>
                     <div v-if="projectsOverview.length === 0" class="text-[15px] text-gray-500 italic">{{ $t('No projects found. Set the Workspace folder in Scope.') }}</div>
                     <div v-for="p in projectsOverview.filter(x => x.exists || !(x.archived || x.deleted))" :key="p.project" :class="['bg-gray-900 border rounded-xl p-4', p.active ? 'border-blue-700' : 'border-gray-800']">
-                        <div class="flex items-center justify-between">
-                            <h3 class="font-bold text-gray-100 truncate"><button v-if="p.exists" @click="openProjectPage(p.project)" class="hover:text-blue-300 truncate" :title="$t('Open its settings')">{{ p.project }}</button><template v-else>{{ p.project }}</template></h3>
-                            <span v-if="p.active" class="text-[11px] uppercase tracking-wider text-blue-300 bg-blue-950/60 px-2 py-0.5 rounded">{{ $t('active') }}</span>
-                            <deleted-tag v-else-if="p.deleted && !p.exists" :at="p.deleted"></deleted-tag>
-                            <span v-else-if="!p.exists && p.archived" class="text-[11px] uppercase tracking-wider text-yellow-300/90 bg-yellow-950/40 px-2 py-0.5 rounded" :title="$t('In the Workspace\'s .archive folder; restore or delete it under Archived projects')">{{ $t('archived') }}</span>
-                            <span v-else-if="!p.exists" class="text-[11px] uppercase tracking-wider text-gray-500 bg-gray-800 px-2 py-0.5 rounded" :title="$t('Its folder isn\'t in the Workspace folder anymore; history is kept')">{{ $t('folder missing') }}</span>
+                        <!-- v0.8 (from OmniLatch): name and state on the left, the numbers on the right -->
+                        <div class="flex flex-wrap items-start gap-x-6 gap-y-3">
+                            <div class="flex flex-wrap items-center gap-2 min-w-0 flex-1">
+                                <h3 class="font-bold text-gray-100 text-[17px] truncate"><button v-if="p.exists" @click="openProjectPage(p.project)" class="hover:text-blue-300 truncate" :title="$t('Open its settings')">{{ p.project }}</button><template v-else>{{ p.project }}</template></h3>
+                                <span v-if="p.active" class="text-[11px] uppercase tracking-wider text-blue-300 bg-blue-950/60 px-2 py-0.5 rounded">{{ $t('active') }}</span>
+                                <button v-if="p.active && p.exists" @click="closeSettings" class="w-6 h-6 rounded border border-blue-800 text-blue-300 hover:border-blue-500 text-[13px] leading-none" :title="$t('Open it in the chat')" :aria-label="$t('Open {name} in the chat', { name: p.project })">↗</button>
+                                <button v-if="!p.active && p.exists" @click="switchProject(p.project)" class="text-[12px] px-2 py-0.5 rounded border border-gray-700 text-gray-300 hover:border-gray-500">{{ $t('Make active') }}</button>
+                                <deleted-tag v-if="!p.active && p.deleted && !p.exists" :at="p.deleted"></deleted-tag>
+                                <span v-else-if="!p.exists && p.archived" class="text-[11px] uppercase tracking-wider text-yellow-300/90 bg-yellow-950/40 px-2 py-0.5 rounded" :title="$t('In the Workspace\'s .archive folder; restore or delete it under Archived projects')">{{ $t('archived') }}</span>
+                                <span v-else-if="!p.exists" class="text-[11px] uppercase tracking-wider text-gray-500 bg-gray-800 px-2 py-0.5 rounded" :title="$t('Its folder isn\'t in the Workspace folder anymore; history is kept')">{{ $t('folder missing') }}</span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-x-8 text-center flex-shrink-0">
+                                <div><div class="text-[11px] uppercase text-gray-500">{{ $t('This month') }}</div><div class="font-mono text-gray-200">{{ fmtCost(p.month_cost) }}</div></div>
+                                <div><div class="text-[11px] uppercase text-gray-500">{{ $t('All time') }}</div><div class="font-mono text-gray-200">{{ fmtCost(p.all_time_cost) }}</div></div>
+                                <div><div class="text-[11px] uppercase text-gray-500">{{ $t('Chats') }}</div><div class="font-mono text-gray-200">{{ p.chats }}</div></div>
+                            </div>
                         </div>
-                        <div class="grid grid-cols-3 gap-2 mt-3 text-center">
-                            <div><div class="text-[11px] uppercase text-gray-500">{{ $t('This month') }}</div><div class="font-mono text-gray-200">{{ fmtCost(p.month_cost) }}</div></div>
-                            <div><div class="text-[11px] uppercase text-gray-500">{{ $t('All time') }}</div><div class="font-mono text-gray-200">{{ fmtCost(p.all_time_cost) }}</div></div>
-                            <div><div class="text-[11px] uppercase text-gray-500">{{ $t('Chats') }}</div><div class="font-mono text-gray-200">{{ p.chats }}</div></div>
+                        <div v-if="p.exists && projectPath(p.project)" class="flex items-center gap-2 min-w-0 mt-1 text-[13px] font-mono text-gray-300">
+                            <span class="truncate" :title="projectPath(p.project)">{{ projectPath(p.project) }}</span><copy-btn :text="projectPath(p.project)" :label="$t('Copy the path')"></copy-btn>
                         </div>
-                        <div v-if="p.budget" class="mt-3">
-                            <div class="flex justify-between text-xs font-mono text-gray-400 mb-1"><span>{{ $t('Budget ({on_limit})', { on_limit: p.budget.on_limit }) }}</span><span>{{ $t('{v}% of {v2}', { v: Math.round(p.budget.ratio * 100), v2: fmtCost(p.budget.monthly_usd) }) }}</span></div>
-                            <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden"><div class="h-full" :class="p.budget.state === 'over' ? 'bg-red-500' : (p.budget.state === 'warning' ? 'bg-yellow-500' : 'bg-blue-500')" :style="{ width: Math.min(100, p.budget.ratio * 100) + '%' }"></div></div>
+                        <!-- the budget always has its line: the meter, or a link to set one -->
+                        <div class="mt-3 pt-3 border-t border-gray-800">
+                            <div class="flex flex-wrap items-baseline gap-x-2 text-[13px]">
+                                <span class="text-[11px] uppercase tracking-wider text-gray-500">{{ $t('Budget') }}</span>
+                                <template v-if="p.budget"><span class="font-mono text-gray-300">{{ $t('{v} a month ({on_limit})', { v: fmtCost(p.budget.monthly_usd), on_limit: p.budget.on_limit }) }}</span>
+                                    <button v-if="p.exists" @click="openSettings('budgets')" class="text-blue-400 hover:text-blue-300">{{ $t('Change') }}</button>
+                                    <span class="ml-auto font-mono text-gray-400">{{ $t('{v}% used', { v: Math.round(p.budget.ratio * 100) }) }}</span></template>
+                                <template v-else><span class="text-gray-500">{{ $t('none') }}</span>
+                                    <button v-if="p.exists" @click="openSettings('budgets')" class="text-blue-400 hover:text-blue-300">{{ $t('Set one') }}</button></template>
+                            </div>
+                            <div v-if="p.budget" class="h-1.5 bg-gray-800 rounded-full overflow-hidden mt-1.5"><div class="h-full" :class="p.budget.state === 'over' ? 'bg-red-500' : (p.budget.state === 'warning' ? 'bg-yellow-500' : 'bg-blue-500')" :style="{ width: Math.min(100, p.budget.ratio * 100) + '%' }"></div></div>
+                            <div class="text-xs text-gray-500 mt-2">{{ p.last_activity ? $t('Last activity ') + fmtAgo(p.last_activity) : $t('No activity yet') }}</div>
                         </div>
-                        <div class="text-xs text-gray-500 mt-3">{{ p.last_activity ? $t('Last activity ') + fmtAgo(p.last_activity) : $t('No activity yet') }}</div>
-                        <div class="flex flex-wrap gap-2 mt-3 text-[13px]">
-                            <button v-if="!p.active && p.exists" @click="switchProject(p.project)" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">{{ $t('Make active') }}</button>
-                            <button v-if="p.exists" @click="openProjectPage(p.project)" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600" :title="$t('Every setting of this project in one place')">{{ $t('Settings') }}</button>
-                            <button @click="historyPage.project = p.project; openSettings('history')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">{{ $t('Chats') }}</button>
-                            <button @click="memoryTab = 'project'; memoryProject = p.project; openSettings('memory'); fetchMemory()" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">{{ $t('Memory') }}</button>
-                            <button v-if="!p.deleted || p.exists" @click="openSettings('budgets')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">{{ $t('Budget') }}</button>
-                            <button v-if="p.exists" @click="openSync(p.project, 'push')" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600" :title="$t('Commit and push this project to GitHub, after you check what goes')">{{ $t('Push…') }}</button>
-                            <button v-if="p.exists" @click="openSync(p.project, 'update')" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600" :title="$t('Bring in GitHub\'s new commits (fast-forward only)')">{{ $t('Update…') }}</button>
-                            <button v-if="p.exists" @click="openGitBox(p.project, 'push')" :class="['px-2 py-1 rounded border hover:border-gray-500', gitBox.project === p.project && gitBox.kind === 'push' ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-300']" :title="$t('A one-line command to commit and push this project from a terminal')">{{ $t('Push manually') }}</button>
-                            <button v-if="p.exists" @click="openGitBox(p.project, 'pull')" :class="['px-2 py-1 rounded border hover:border-gray-500', gitBox.project === p.project && gitBox.kind === 'pull' ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-300']" :title="$t('A one-line command to get this project on another computer')">{{ $t('Pull manually') }}</button>
-                            <button v-if="p.exists" @click="archiveFromDashboard(p.project)" :disabled="p.active && (isGenerating || pendingApproval)" class="px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-yellow-700 hover:text-yellow-300 disabled:opacity-40 ml-auto" :title="$t('Move its folder to .archive/ (chats and costs are kept)')">{{ $t('Archive') }}</button>
+                        <!-- the buttons in groups, divided by a line -->
+                        <div class="mt-3 pt-3 border-t border-gray-800 flex flex-wrap gap-y-3 text-[13px]">
+                            <div class="pr-4" role="group" :aria-label="$t('Project')">
+                                <div class="text-[10px] uppercase tracking-wider text-gray-500 mb-1">{{ $t('Project') }}</div>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <button v-if="p.exists" @click="openProjectPage(p.project)" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500" :title="$t('Every setting of this project in one place')">{{ $t('Settings') }}</button>
+                                    <button @click="historyPage.project = p.project; openSettings('history')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">{{ $t('Chats') }}</button>
+                                    <button @click="memoryTab = 'project'; memoryProject = p.project; openSettings('memory'); fetchMemory()" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">{{ $t('Memory') }}</button>
+                                </div>
+                            </div>
+                            <div v-if="!p.deleted || p.exists" class="px-4 border-l border-gray-800" role="group" :aria-label="$t('Cost')">
+                                <div class="text-[10px] uppercase tracking-wider text-gray-500 mb-1">{{ $t('Cost') }}</div>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <button @click="openSettings('budgets')" class="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">{{ $t('Budget') }}</button>
+                                </div>
+                            </div>
+                            <div v-if="p.exists" class="px-4 border-l border-gray-800" role="group" :aria-label="$t('Git')">
+                                <div class="text-[10px] uppercase tracking-wider text-gray-500 mb-1">{{ $t('Git') }}</div>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <button @click="openSync(p.project, 'push')" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600" :title="$t('Commit and push this project to GitHub, after you check what goes')">{{ $t('Push…') }}</button>
+                                    <button @click="openSync(p.project, 'update')" class="px-2 py-1 rounded border border-blue-800 text-blue-200 hover:border-blue-600" :title="$t('Bring in GitHub\'s new commits (fast-forward only)')">{{ $t('Update…') }}</button>
+                                    <button @click="openGitBox(p.project, 'push')" :class="['px-2 py-1 rounded border hover:border-gray-500', gitBox.project === p.project && gitBox.kind === 'push' ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-300']" :title="$t('A one-line command to commit and push this project from a terminal')">{{ $t('Push manually') }}</button>
+                                    <button @click="openGitBox(p.project, 'pull')" :class="['px-2 py-1 rounded border hover:border-gray-500', gitBox.project === p.project && gitBox.kind === 'pull' ? 'border-blue-600 text-blue-200' : 'border-gray-700 text-gray-300']" :title="$t('A one-line command to get this project on another computer')">{{ $t('Pull manually') }}</button>
+                                </div>
+                            </div>
+                            <div v-if="p.exists" class="pl-4 border-l border-gray-800 ml-auto" role="group" :aria-label="$t('Manage')">
+                                <div class="text-[10px] uppercase tracking-wider text-gray-500 mb-1">{{ $t('Manage') }}</div>
+                                <button @click="archiveFromDashboard(p.project)" :disabled="p.active && (isGenerating || pendingApproval)" class="px-2 py-1 rounded border border-red-900 text-red-300 hover:border-red-700 hover:bg-red-950/30 disabled:opacity-40" :title="$t('Move its folder to .archive/ (chats and costs are kept)')">{{ $t('Archive') }}</button>
+                            </div>
                         </div>
                         <div v-if="gitBox.project === p.project" class="mt-3 bg-gray-950 border border-gray-800 rounded-lg p-3 text-xs">
                             <div v-if="gitBox.loading" class="text-gray-500">{{ $t('Reading the project…') }}</div>
@@ -1114,9 +1148,21 @@
                                 </template>
                             </template>
                         </div>
+                        <!-- v0.8 (from OmniLatch): every place on disk with something of the project -->
+                        <details class="mt-3" @toggle="$event.target.open && loadProjectLocations(p.project)">
+                            <summary class="cursor-pointer text-[13px] font-semibold text-gray-300 hover:text-gray-100">{{ $t('Where its files are') }}</summary>
+                            <div class="mt-2 space-y-2 text-[13px]">
+                                <p v-if="projectLocations[p.project] && projectLocations[p.project].error" class="text-red-300">{{ projectLocations[p.project].error }}</p>
+                                <p v-else-if="!projectLocations[p.project] || !projectLocations[p.project].items" class="text-gray-500">{{ $t('Looking…') }}</p>
+                                <div v-else v-for="l in projectLocations[p.project].items" :key="l.key + l.path">
+                                    <div class="flex items-center gap-2 min-w-0"><span class="text-gray-400 w-40 flex-shrink-0">{{ l.label }}</span><span class="font-mono text-gray-300 truncate" :title="l.path">{{ l.path }}</span><copy-btn :text="l.path"></copy-btn></div>
+                                    <div class="text-xs text-gray-500 sm:pl-[10.5rem]">{{ l.what }}{{ !l.exists ? ' · ' + $t('not created yet') : '' }}{{ l.shared ? ' · ' + $t('shared with other projects') : '' }}</div>
+                                </div>
+                            </div>
+                        </details>
                     </div>
                     <!-- fix25a: archived projects: restore, or delete permanently -->
-                    <div v-if="archivedProjects.length" class="md:col-span-2 mt-4">
+                    <div v-if="archivedProjects.length" class="mt-4">
                         <h3 class="font-bold text-gray-200 mb-1 flex items-center">{{ $t('Archived projects') }}<help-tip wide>
                             <p><span v-html="$t('Archived folders are in the Workspace\'s <code>.archive</code> folder. <b>Restore</b> moves one back. <b>Delete permanently</b> removes the folder from disk; you choose whether its chats, costs and memory go too.')"></span></p>
                             <p>{{ $t('Optimux never deletes GitHub repositories. The model can archive projects, but it can\'t restore or delete them.') }}</p>
@@ -1136,7 +1182,7 @@
                         </div>
                     </div>
                     <!-- fix25e: deleted projects whose records were kept, closed by default -->
-                    <div v-if="projectsOverview.some(x => x.deleted && !x.exists)" class="md:col-span-2 mt-2">
+                    <div v-if="projectsOverview.some(x => x.deleted && !x.exists)" class="mt-2">
                         <button @click="toggleGroup('projects-deleted')" class="font-bold text-gray-300 hover:text-gray-100 flex items-center gap-2">
                             <span v-html="$th('<span class=&quot;w-3 text-gray-500&quot;>{v}</span>Deleted projects ({v2}) <span class=&quot;font-normal text-sm text-gray-500&quot;>· folders gone, chats and costs kept</span>', { v: openGroups['projects-deleted'] ? '▾' : '▸', v2: projectsOverview.filter(x => x.deleted && !x.exists).length })"></span>
                         </button>

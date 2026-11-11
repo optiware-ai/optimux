@@ -2494,6 +2494,17 @@ const optimuxApp = createApp({
             projectOffer.value = '';
             if (name && !isGenerating.value && !pendingApproval.value) await switchProject(name);
         };
+        // Projects: a card's "Where its files are" (v0.8, from OmniLatch), read when opened
+        const projectLocations = ref({});
+        const loadProjectLocations = async (name) => {
+            projectLocations.value[name] = { items: null };
+            try {
+                const r = await fetch(`/api/projects/${encodeURIComponent(name)}/locations`);
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(d.detail || r.statusText);
+                projectLocations.value[name] = { items: d.locations || [] };
+            } catch (e) { projectLocations.value[name] = { error: String(e.message || e) }; }
+        };
         const switchProject = async (name) => {
             appSettings.value.active_project = name;
             await changeProject();
@@ -5776,7 +5787,7 @@ const optimuxApp = createApp({
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
             syncBox, chatProject, openSync, closeSync, syncReady, writeCommitMessage, runSync,
-            startClone, cancelClone, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
+            startClone, cancelClone, projectLocations, loadProjectLocations, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,
             removeSkill, saveAsSkill, skillDialog, confirmSkillDialog,
             setSkillsMode, setSkillMode, slashSuggestions, slashIndex, pickSlash,

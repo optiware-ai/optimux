@@ -1272,3 +1272,30 @@ def test_git_tools_need_an_open_project(mocker, client, root):
     mocker.patch("litellm.acompletion", side_effect=rec)
     Conversation(client).prompt("status?")
     assert "No project is open" in tool_result(rec)["error"]
+
+
+def test_locations_lists_every_place(mocker, root, tmp_path):
+    """Projects → a card's "Where its files are": every place on disk with something of the project."""
+    from optimux_backend.core import paths, project_records
+    r, _ = root
+    mem = _records("alpha", tmp_path, mocker)
+    (r / ".archive" / "alpha-20261001-120000").mkdir(parents=True)
+    (r / ".archive" / "alphabet-20261001-120000").mkdir()             # another project
+    out = {(o["key"], o["path"]): o for o in project_records.locations("alpha", str(r))}
+    keys = [k for k, _ in out]
+    assert keys[0] == "folder" and out[("folder", str(r / "alpha"))]["exists"]
+    assert ("memory", str(mem / "alpha.md")) in out
+    assert out[("database", paths.DB_PATH)]["shared"] and "1 chats" in out[("database", paths.DB_PATH)]["what"]
+    assert any(k == "budget" for k in keys)
+    assert [p for k, p in out if k == "archived"] == [str(r / ".archive" / "alpha-20261001-120000")]
+
+
+def test_locations_of_a_new_project_and_the_api(mocker, client, root, tmp_path):
+    from optimux_backend.core import project_records
+    mem = tmp_path / "mem2"
+    mem.mkdir()
+    mocker.patch.object(project_records, "PROJECTS_DIR", str(mem))
+    res = client.get("/api/projects/beta/locations", headers=AUTH).json()["locations"]
+    # The folder and the memory file are always listed (the memory file may not exist yet)
+    assert [(o["key"], o["exists"]) for o in res] == [("folder", True), ("memory", False)]
+    assert client.get("/api/projects/.hidden/locations", headers=AUTH).status_code == 422
