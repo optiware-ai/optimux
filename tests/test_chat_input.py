@@ -58,3 +58,27 @@ def test_a_line_in_backticks_becomes_a_terminal_block():
         "run this:\n```term\nnpm test\n```\nthen tell me"
     assert run('C.userMarkdown("use `npm test` here")') == "use `npm test` here"      # inline stays inline
     assert run('C.userMarkdown("```\\n`x`\\n```")') == "```\n`x`\n```"                 # not inside a code block
+
+
+def space(text: str, cursor: int | None = None):
+    cursor = len(text) if cursor is None else cursor
+    return run(f"C.listSpace({json.dumps(text)}, {cursor}, {cursor})")
+
+
+def test_the_space_after_a_marker_indents_the_item():
+    assert space("Do this:\n1.") == {"value": "Do this:\n  1. ", "cursor": 14}
+    assert space("-") == {"value": "  - ", "cursor": 4}
+    assert space("12)") == {"value": "  12) ", "cursor": 6}
+
+
+def test_the_space_stays_a_space_elsewhere():
+    assert space("Version 1.") is None            # not at the start of the line
+    assert space("  1.") is None                  # already indented
+    assert space("1.5") is None
+    assert space("1.", 1) is None                 # the cursor isn't after the marker
+    assert run('C.listSpace("1.", 0, 2)') is None
+
+
+def test_an_indented_list_continues_and_ends():
+    assert enter("  1. first") == {"value": "  1. first\n  2. ", "cursor": 16}
+    assert enter("  1. first\n  2. ") == {"value": "  1. first\n", "cursor": 11}

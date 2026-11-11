@@ -4,14 +4,20 @@
 #chat-container::-webkit-scrollbar-track { background: transparent; }
 #chat-container::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
 #chat-container::-webkit-scrollbar-thumb:hover { background: #4b5563; }
-/* Code blocks in replies: a View button in the corner */
-.cm-pre { position: relative; }
-.cm-pre .cm-pre-tools { position: absolute; top: 6px; right: 6px; display: flex; align-items: center; gap: 4px;
-    opacity: .6; transition: opacity .15s; }
+/* Code blocks in the chat (v0.8): the code scrolls in its own column, the copy and View
+   icons sit in a narrow column at its right, so a long line never runs under them */
+.cm-pre { display: flex; align-items: flex-start; margin: 1.4em 0; border-radius: .375rem; overflow: hidden;
+    background: var(--tw-prose-pre-bg, rgba(0, 0, 0, .5)); }
+.cm-pre > pre { flex: 1 1 auto; min-width: 0; margin: 0 !important; border-radius: 0 !important; background: transparent !important; }
+.cm-pre .cm-pre-tools { order: 2; flex: none; display: flex; align-items: center; gap: 2px; padding: 6px 6px 0 2px;
+    opacity: .55; transition: opacity .15s; }
 .cm-pre:hover .cm-pre-tools, .cm-pre .cm-pre-tools:focus-within { opacity: 1; }
-.cm-pre .cm-pre-tools .cm-copy { background: rgba(17,24,39,.85); border: 1px solid #374151; border-radius: 4px; width: 24px; height: 22px; }
-.cm-pre .cm-view-btn { font: 11px ui-monospace, monospace; color: #9ca3af;
-    background: rgba(17,24,39,.85); border: 1px solid #374151; border-radius: 4px; padding: 1px 8px; }
+/* Copy and View: the same icon button, same size, no background */
+.cm-pre .cm-pre-tools .cm-copy, .cm-pre .cm-view-btn { position: relative; display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; padding: 0; color: #9ca3af; background: transparent; border: 1px solid transparent; border-radius: 4px; }
+.cm-pre .cm-pre-tools .cm-copy:hover, .cm-pre .cm-view-btn:hover,
+.cm-pre .cm-pre-tools .cm-copy:focus-visible, .cm-pre .cm-view-btn:focus-visible { color: #e5e7eb; border-color: #4b5563; outline: none; }
+.cm-pre .cm-view-btn svg { width: 14px; height: 14px; }
 /* v0.8: the Studio's Git pane: the line above it moves it up and down */
 .cm-row-handle { position: absolute; left: 0; right: 0; top: -4px; height: 8px; cursor: row-resize; z-index: 2; touch-action: none; }
 .cm-row-handle::after { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 2px; background: transparent; transition: background .15s; }
@@ -19,11 +25,9 @@
 .cm-row-handle:focus-visible { outline: none; }
 body.cm-row-resizing { cursor: row-resize; user-select: none; }
 /* v0.8: a line you wrote between backticks shows like a terminal */
-.cm-pre pre:has(> code.language-term) { background: #030712 !important; border-left: 3px solid #4ade80; }
+.cm-pre:has(code.language-term) { background: #030712; border-left: 3px solid #4ade80; }
 .cm-pre code.language-term { color: #d1fae5; }
 .cm-pre code.language-term::before { content: '$ ' !important; color: #4ade80; user-select: none; }   /* beats .prose code::before */
-.cm-pre pre { padding-right: 5.5rem; }      /* the copy and View buttons never cover the first line */
-.cm-pre .cm-view-btn:hover { color: #e5e7eb; border-color: #6b7280; }
 /* Code blocks outside chat (snapshot README): a bar above the code with the language and Copy */
 .cm-pre-bar { margin: 0.8em 0; border: 1px solid #1f2937; border-radius: 6px; overflow: hidden; }
 .cm-pre-bar .cm-bar { display: flex; justify-content: space-between; align-items: center; padding: 3px 8px 3px 12px;

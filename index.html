@@ -202,17 +202,20 @@
                              :style="studioGit.open && studioGit.h ? { height: studioGit.h + 'px' } : null" :aria-label="$t('Git')" data-git-pane>
                         <div class="cm-row-handle" role="separator" aria-orientation="horizontal" tabindex="0" :aria-label="$t('Resize the Git pane')"
                              :title="$t('Drag to resize. Double-click: natural height.')" @pointerdown="startGitResize" @keydown="keyGitResize" @dblclick="resetGitHeight"></div>
-                        <div class="flex items-center gap-1.5 px-3 py-1.5 min-h-[34px]">
-                            <button @click="toggleStudioGit" :aria-expanded="studioGit.open" class="flex items-center gap-1.5 text-gray-400 hover:text-gray-200 min-w-0" :title="$t('Changes not yet committed, and Commit, Push and Update')">
-                                <span class="w-3 text-[11px]">{{ studioGit.open ? '▾' : '▸' }}</span><span>{{ $t('Git') }}</span>
-                                <span v-if="studioGitCount" class="text-[11px] font-mono rounded-full px-1.5 bg-amber-900/60 text-amber-200">{{ studioGitCount }}</span>
-                            </button>
+                        <!-- The same header row as Files: a line above and below, the name and the tools -->
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-800 text-[13px] flex-shrink-0 min-h-[38px]">
+                            <span class="text-gray-500">{{ $t('Git') }}</span>
+                            <span v-if="studioGitCount" class="text-[11px] font-mono rounded-full px-1.5 bg-amber-900/60 text-amber-200 flex-shrink-0" :title="$t('Changes not yet committed')">{{ studioGitCount }}</span>
                             <span v-if="studioGit.data && studioGit.data.branch" class="text-[11px] font-mono text-gray-500 truncate min-w-0">⑂ {{ studioGit.data.branch }}</span>
                             <span v-if="studioGit.data && studioGit.data.ahead" class="text-[11px] font-mono text-blue-300 flex-shrink-0" :title="$t('Commits here that GitHub doesn\'t have yet (as of the last check)')">↑{{ studioGit.data.ahead }}</span>
                             <span v-if="studioGit.data && studioGit.data.behind" class="text-[11px] font-mono text-amber-300 flex-shrink-0" :title="$t('Commits on GitHub that this project doesn\'t have (as of the last check)')">↓{{ studioGit.data.behind }}</span>
-                            <button @click="loadStudioGit" :disabled="studioGit.loading" class="ml-auto cm-icon-btn disabled:opacity-40" :title="$t('Refresh')" :aria-label="$t('Refresh')">↻</button>
+                            <span class="flex-1"></span>
+                            <button @click="loadStudioGit" :disabled="studioGit.loading" class="cm-icon-btn disabled:opacity-40" :title="$t('Refresh')" :aria-label="$t('Refresh')">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6"></path></svg></button>
+                            <button @click="toggleStudioGit" :aria-expanded="studioGit.open" class="cm-icon-btn" :title="studioGit.open ? $t('Fold the Git pane') : $t('Open the Git pane')" :aria-label="studioGit.open ? $t('Fold the Git pane') : $t('Open the Git pane')">
+                                <svg :class="['w-4 h-4 transition-transform', studioGit.open ? '' : 'rotate-180']" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 9l6 6 6-6"></path></svg></button>
                         </div>
-                        <div v-show="studioGit.open" class="flex-1 min-h-0 overflow-auto px-3 pb-2">
+                        <div v-show="studioGit.open" class="flex-1 min-h-0 overflow-auto px-3 pt-2 pb-2">
                             <div v-if="studioGit.error" class="text-gray-500 text-[12px]">{{ studioGit.error }}</div>
                             <template v-else-if="studioGit.data">
                                 <div v-if="!studioGit.data.remote" class="text-[12px] text-gray-500 mb-1">{{ $t('No origin: you can commit here, but not push.') }}</div>
@@ -234,17 +237,19 @@
                                     <textarea v-model="studioGit.message" rows="2" :placeholder="$t('Commit message')" :aria-label="$t('Commit message')" spellcheck="false"
                                               class="w-full bg-gray-900 border border-gray-700 focus:border-blue-600 rounded px-2 py-1 text-[12px] font-mono text-gray-200 resize-y outline-none"></textarea>
                                 </template>
-                                <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                <div v-if="studioGit.data.files.length" class="flex flex-wrap items-center gap-1.5 mt-1.5">
                                     <button v-if="studioGit.data.files.length" @click="commitStudio" :disabled="!!studioGitBlocked || studioGit.busy" :title="studioGitBlocked || $t('Commit these changes here. Nothing is sent to GitHub.')"
                                             class="px-2.5 py-0.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold">{{ studioGit.busy ? $t('Committing…') : $t('Commit') }}</button>
                                     <button v-if="studioGit.data.files.length" @click="writeStudioCommitMessage" :disabled="studioGit.writing || studioGit.data.problems.length > 0" class="px-2 py-0.5 rounded border border-gray-700 hover:border-gray-500 text-gray-300 disabled:opacity-40" :title="$t('A model writes the message from the changes (a paid call)')">{{ studioGit.writing ? $t('Writing…') : $t('✨ Write it') }}</button>
-                                    <span class="flex-1"></span>
-                                    <button v-if="studioGit.data.remote" @click="openSync(studio.project, 'push')" :disabled="isGenerating" class="text-blue-400 hover:text-blue-300 disabled:opacity-40" :title="$t('Commit (if needed) and push to GitHub, after you check what goes')">{{ $t('Push…') }}</button>
-                                    <button v-if="studioGit.data.remote" @click="openSync(studio.project, 'update')" :disabled="isGenerating" class="text-blue-400 hover:text-blue-300 disabled:opacity-40" :title="$t('Bring in the new commits from GitHub (pull), after you check them')">{{ $t('Update…') }}</button>
                                 </div>
                                 <div v-if="studioGit.note" class="text-[11px] text-gray-400 mt-1 break-words" role="status">{{ studioGit.note }}</div>
                             </template>
                             <div v-else class="text-gray-500 italic text-[12px]">{{ $t('Loading…') }}</div>
+                        </div>
+                        <!-- Push and Update: buttons at the bottom right, always in view -->
+                        <div v-show="studioGit.open" v-if="studioGit.data && studioGit.data.remote" class="flex items-center justify-end gap-1.5 px-3 py-1.5 border-t border-gray-800 flex-shrink-0">
+                            <button @click="openSync(studio.project, 'update')" :disabled="isGenerating" class="px-2.5 py-0.5 rounded border border-gray-700 hover:border-gray-500 text-gray-300 hover:text-gray-100 disabled:opacity-40" :title="$t('Bring in the new commits from GitHub (pull), after you check them')">{{ $t('Update…') }}</button>
+                            <button @click="openSync(studio.project, 'push')" :disabled="isGenerating" class="px-2.5 py-0.5 rounded border border-blue-700 hover:border-blue-500 text-blue-300 hover:text-blue-200 disabled:opacity-40" :title="$t('Commit (if needed) and push to GitHub, after you check what goes')">{{ $t('Push…') }}</button>
                         </div>
                     </section>
                 </nav>

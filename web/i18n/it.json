@@ -2393,7 +2393,6 @@
  "Back to the end of the chat": "Torna alla fine della chat",
  "Bring in the new commits from GitHub (pull), after you check them": "Porta qui i nuovi commit da GitHub (pull), dopo averli controllati",
  "Changes not yet committed": "Modifiche non ancora committate",
- "Changes not yet committed, and Commit, Push and Update": "Modifiche non ancora committate, e Commit, Push e Aggiorna",
  "Choosing a model ({model})…": "Scelta del modello ({model})…",
  "Choosing a model…": "Scelta del modello…",
  "Commit": "Commit",
@@ -2423,5 +2422,8 @@
  "A request is running in this project. Wait for it to finish first.": "Una richiesta è in corso in questo progetto. Aspetta che finisca.",
  "Copy the command": "Copia il comando",
  "Drag to resize. Double-click: natural height.": "Trascina per ridimensionare. Doppio clic: altezza naturale.",
- "Resize the Git pane": "Ridimensiona il pannello Git"
+ "Resize the Git pane": "Ridimensiona il pannello Git",
+ "Open in the code viewer": "Apri nel visualizzatore di codice",
+ "Fold the Git pane": "Chiudi il pannello Git",
+ "Open the Git pane": "Apri il pannello Git"
 }

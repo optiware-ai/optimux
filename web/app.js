@@ -5899,6 +5899,16 @@ const optimuxApp = createApp({
                 }
                 return;
             }
+            // v0.8: the space after "1." or "-" at the start of a line indents the item
+            if (e.key === ' ' && !e.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                const el = e.target;
+                const next = window.OptimuxChatInput.listSpace(el.value, el.selectionStart, el.selectionEnd);
+                if (!next) return;
+                e.preventDefault();
+                userInput.value = next.value;
+                nextTick(() => el.setSelectionRange(next.cursor, next.cursor));
+                return;
+            }
             // v0.8: Shift+Enter in a list line continues the list ("2. ", "- "); on an empty item it ends it
             if (e.key === 'Enter' && e.shiftKey && !e.isComposing) {
                 const el = e.target;
@@ -5918,7 +5928,7 @@ const optimuxApp = createApp({
             keyInput, isSavingKey, saveKey,
             pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
             MEMORY_MAX_CHARS, pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
-            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, followChat, onChatScroll, waitText, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
+            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, followChat, onChatScroll, scrollToBottom, waitText, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
 					renderMarkdown, renderUserText,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashView, setDashView, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,
