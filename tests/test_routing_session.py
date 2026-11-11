@@ -5,7 +5,7 @@ import litellm
 import pytest
 
 import optimux_backend.main as main
-from tests.ws_helpers import Conversation, chunk, fake_stream, make_client
+from tests.ws_helpers import Conversation, asked, chunk, fake_stream, make_client
 
 DONE = {"prompt_tokens": 10, "completion_tokens": 2}
 
@@ -117,17 +117,20 @@ def test_transient_error_retries_then_escalates(mocker, client):
     rec = Recorder(overloaded(), overloaded(), reply("answer from complex"))
     mocker.patch("litellm.acompletion", side_effect=rec)
     chat = Conversation(client)
-    msgs = chat.prompt("explain asyncio")
+    msgs = chat.prompt_answering("explain asyncio", [True])      # v0.8: the costlier model is asked for first
     assert [c["model"] for c in rec.calls] == ["simple-model", "simple-model", "complex-model"]
+    q = asked(msgs)
+    assert len(q) == 1 and q[0]["fallback"]["model"] == "simple-model" and q[0]["fallback"]["alt"] == "complex-model"
     n = notes(msgs)
     assert any("retrying" in x for x in n)
     assert any(x.startswith("Escalated to complex-model") for x in n)
     assert not any(m["type"] == "error" for m in msgs)
     # A provider outage is not a difficulty signal: the chat stays on simple,
-    # but the cooling-down simple model is skipped without spending a request.
+    # but the cooling-down simple model is skipped without spending a request
+    # (a new request asks again).
     rec.responses.append(reply("from complex, not sticky"))
-    msgs = chat.prompt("and more?")
-    assert rec.calls[-1]["model"] == "complex-model"
+    msgs = chat.prompt_answering("and more?", [True])
+    assert rec.calls[-1]["model"] == "complex-model" and len(asked(msgs)) == 1
     assert any(x.startswith("Skipping simple-model") for x in notes(msgs))
     # Once the cooldown is over, the chat is back on the simple model
     from optimux_backend.core import providers
@@ -387,7 +390,8 @@ def test_a_failed_conductor_is_said_in_the_chat(mocker, client):
     msgs = chat.prompt("write tests for this project")
     notes = [m["content"] for m in msgs if m["type"] == "system"]
     assert any(n.startswith("The Conductor (conductor-model) couldn't decide: the call failed: refused (400)")
-               and n.endswith("This request starts on the simple tier.") for n in notes)
+               and n.endswith("This request starts on the simple tier. Check the Conductor in Dashboard → Models.")
+               for n in notes)
     main._test_conductor.return_value = ("simple", "conductor-model", None, 40, None, False, "")
     again = chat.prompt("hello")
     chat.close()

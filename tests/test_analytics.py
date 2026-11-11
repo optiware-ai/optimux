@@ -144,7 +144,7 @@ def client(mocker, tmp_path):
 def test_failed_calls_and_escalations_are_recorded(mocker, client):
     rec = Recorder(overloaded(), overloaded(), reply("answer from complex"))
     mocker.patch("litellm.acompletion", side_effect=rec)
-    Conversation(client).prompt("explain asyncio")
+    Conversation(client).prompt_answering("explain asyncio", [True])     # yes to the Complex model
     ev = events()
     # both failed attempts count; a provider fallback is not an escalation for difficulty
     assert [(e["kind"], e["model"], e["role"], e["detail"]) for e in ev] == \

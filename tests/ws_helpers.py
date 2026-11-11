@@ -53,6 +53,25 @@ def collect(ws) -> list:
             return msgs
 
 
+def collect_answering(ws, answers) -> list:
+    """Like collect, answering each approval_request in turn from `answers`
+    (True = yes). A request with no answer left fails the test instead of hanging."""
+    answers, msgs = list(answers), []
+    while True:
+        m = json.loads(ws.receive_text())
+        msgs.append(m)
+        if m["type"] == "approval_request":
+            assert answers, f"an unexpected question: {m.get('command')}"
+            ws.send_text(json.dumps({"type": "approval_response", "approved": answers.pop(0)}))
+        if m["type"] == "done":
+            assert not answers, f"{len(answers)} answer(s) not used"
+            return msgs
+
+
+def asked(msgs, action="model_fallback") -> list:
+    return [m for m in msgs if m["type"] == "approval_request" and m.get("action") == action]
+
+
 def run_prompt(client, prompt, model="auto"):
     with client.websocket_connect("/ws") as ws:
         ws.send_text(json.dumps({"type": "auth", "token": "test-token"}))
@@ -74,9 +93,13 @@ class Conversation:
         self.ws.send_text(json.dumps({"prompt": text, "model": model}))
         return collect(self.ws)
 
-    def send(self, payload):
+    def send(self, payload, answers=()):
         self.ws.send_text(json.dumps(payload))
-        return collect(self.ws)
+        return collect_answering(self.ws, answers)
+
+    def prompt_answering(self, text, answers, model="auto"):
+        self.ws.send_text(json.dumps({"prompt": text, "model": model}))
+        return collect_answering(self.ws, answers)
 
     def close(self):
         self._cm.__exit__(None, None, None)

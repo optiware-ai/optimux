@@ -8,7 +8,7 @@ import optimux_backend.main as main
 from optimux_backend.core import agents, plans, store
 from tests.test_plans import PLAN
 from tests.test_planner import answer, conductor_says, notes
-from tests.ws_helpers import Conversation, chunk, collect, fake_stream, make_client
+from tests.ws_helpers import Conversation, asked, chunk, collect, fake_stream, make_client
 
 DONE = {"prompt_tokens": 10, "completion_tokens": 2}
 
@@ -246,10 +246,11 @@ def test_a_provider_failure_falls_back_for_that_step(mocker, client):
     model = Model(answer(json.dumps(PLAN)), down, down, finish("a on complex"), finish("b"), finish("c"), check("ok"))
     chat = Conversation(client)
     pid = make_plan(mocker, chat, model)
-    msgs = act(chat, pid, "run")
+    msgs = chat.send({"type": "plan_action", "action": "run", "plan_id": pid}, answers=[True])
     chat.close()
     p = plans.get(pid)
     assert p["status"] == "done" and p["steps"][0]["model"] == "complex-model"
+    assert len(asked(msgs)) == 1                       # asked once for the request, not per step
     assert any(n.startswith("Fell back to complex-model") for n in notes(msgs))
 
 

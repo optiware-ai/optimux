@@ -1539,7 +1539,6 @@
  "That plan belongs to another chat; open that chat to use it.": "Quel piano appartiene a un'altra chat; apri quella chat per usarlo.",
  "That plan no longer exists.": "Quel piano non esiste più.",
  "The <b>Conductor</b> counts as pure extra cost: without routing it would not run at all.": "Il <b>Conductor</b> conta come costo aggiuntivo puro: senza routing non verrebbe eseguito affatto.",
- "The Conductor ({conductor_model}) couldn't decide: {failed}. This request starts on the simple tier.": "Il Conductor ({conductor_model}) non è riuscito a decidere: {failed}. Questa richiesta parte sul livello simple.",
  "The Conductor decides which tasks are big enough. Type <code>/plan &lt;task&gt;</code> to plan a task anyway, or <code>/noplan &lt;task&gt;</code> to do it the usual way.": "Il Conductor decide quali compiti sono abbastanza grandi. Scrivi <code>/plan &lt;compito&gt;</code> per pianificare comunque un compito, o <code>/noplan &lt;compito&gt;</code> per farlo nel modo solito.",
  "The Conductor picks Simple or Complex for each message; most work goes to the cheap Simple model, so this is where the savings come from.": "Il Conductor sceglie Simple o Complex per ogni messaggio; la maggior parte del lavoro va al modello Simple economico, ed è da qui che viene il risparmio.",
  "The Simple and Complex roles run commands, which needs tool support. A Conductor doesn't.": "I ruoli Simple e Complex eseguono comandi, e questo richiede il supporto agli strumenti. Un Conductor no.",
@@ -2425,5 +2424,16 @@
  "Resize the Git pane": "Ridimensiona il pannello Git",
  "Open in the code viewer": "Apri nel visualizzatore di codice",
  "Fold the Git pane": "Chiudi il pannello Git",
- "Open the Git pane": "Apri il pannello Git"
+ "Open the Git pane": "Apri il pannello Git",
+ "A model isn't answering": "Un modello non risponde",
+ "Do this request on {alt} instead? The Complex model costs more.": "Eseguire questa richiesta con {alt}? Il modello Complex costa di più.",
+ "Its credit or quota is used up, or the provider is limiting it. Check the provider account.": "Il credito o la quota sono esauriti, oppure il provider lo sta limitando. Controlla l'account del provider.",
+ "Open Models": "Apri Modelli",
+ "Stopped: {model} isn't answering ({summary}). Check it in Dashboard → Models (its Test button), the provider's credit or key, or choose another Simple model in Dashboard → Routing.": "Fermato: {model} non risponde ({summary}). Controllalo in Dashboard → Modelli (il pulsante Test), il credito o la chiave del provider, oppure scegli un altro modello Simple in Dashboard → Routing.",
+ "The Conductor ({conductor_model}) couldn't decide: {failed}. This request starts on the simple tier. Check the Conductor in Dashboard → Models.": "Il Conductor ({conductor_model}) non è riuscito a decidere: {failed}. Questa richiesta parte dal livello simple. Controlla il Conductor in Dashboard → Modelli.",
+ "The model may be retired, misspelled, or its key may be wrong.": "Il modello potrebbe essere stato ritirato o scritto male, oppure la chiave potrebbe essere sbagliata.",
+ "The provider is busy or unreachable right now; it may work again in a few minutes.": "Il provider è occupato o irraggiungibile in questo momento; potrebbe tornare a funzionare tra qualche minuto.",
+ "Use {alt} for this request": "Usa {alt} per questa richiesta",
+ "not answering": "non risponde",
+ "{model} isn't answering: {summary}. Do this request on {alt} instead? The Complex model costs more.": "{model} non risponde: {summary}. Eseguire questa richiesta con {alt}? Il modello Complex costa di più."
 }

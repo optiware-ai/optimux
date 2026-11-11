@@ -3467,7 +3467,24 @@
                 <span class="flex-1 min-w-[16rem] text-[14px] text-blue-100">{{ pendingAction === 'push_project' ? $t('The model asks to push this project. Check the Push window and confirm there; closing it means no.') : $t('The model asks to update this project from GitHub. Check the Update window and confirm there; closing it means no.') }}</span>
                 <button v-if="!syncBox.open" @click="openSync(chatProject, pendingAction === 'push_project' ? 'push' : 'update', { message: '' })" class="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500">{{ pendingAction === 'push_project' ? $t('Open the Push window') : $t('Open the Update window') }}</button>
             </div>
-            <div v-if="pendingApproval && !pendingForm && pendingAction !== 'push_project' && pendingAction !== 'update_project'" class="mb-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 flex flex-col gap-3">
+            <!-- v0.8: the Simple model doesn't answer; moving to Complex costs more, so it asks -->
+            <div v-if="pendingApproval && pendingAction === 'model_fallback' && pendingFallback" class="mb-4 bg-amber-950/30 border border-amber-700/60 rounded-lg p-4" role="alertdialog" :aria-label="$t('A model isn\'t answering')">
+                <div class="flex items-start gap-3">
+                    <svg class="w-6 h-6 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>
+                    <div class="flex-1 min-w-0">
+                        <h3 class="text-amber-300 font-bold mb-1">{{ $t('A model isn\'t answering') }}</h3>
+                        <p class="text-sm text-gray-300 break-words"><span class="font-mono text-gray-100">{{ pendingFallback.model }}</span>: {{ pendingFallback.summary }}</p>
+                        <p class="text-[13px] text-gray-400 mt-1.5">{{ pendingFallback.kind === 'quota' ? $t('Its credit or quota is used up, or the provider is limiting it. Check the provider account.') : (pendingFallback.kind === 'transient' ? $t('The provider is busy or unreachable right now; it may work again in a few minutes.') : $t('The model may be retired, misspelled, or its key may be wrong.')) }}
+                            <button type="button" @click="openSettings('models')" class="text-blue-400 hover:text-blue-300 underline">{{ $t('Open Models') }}</button></p>
+                        <p class="text-sm text-gray-300 mt-2">{{ $t('Do this request on {alt} instead? The Complex model costs more.', { alt: pendingFallback.alt }) }}</p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap justify-end items-center gap-3 mt-3">
+                    <button @click="sendApprovalResponse(false)" class="px-5 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 font-bold rounded transition border border-gray-600 text-sm">{{ $t('Stop') }}</button>
+                    <button @click="sendApprovalResponse(true)" class="px-5 py-2 bg-amber-700 hover:bg-amber-600 text-white font-bold rounded transition text-sm">{{ $t('Use {alt} for this request', { alt: pendingFallback.alt }) }}</button>
+                </div>
+            </div>
+            <div v-if="pendingApproval && !pendingForm && pendingAction !== 'push_project' && pendingAction !== 'update_project' && pendingAction !== 'model_fallback'" class="mb-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 flex flex-col gap-3">
                 <div class="flex items-start gap-3">
                     <svg class="w-6 h-6 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                     <div class="flex-1 min-w-0"><!-- min-w-0: long lines wrap inside the box, never past the page -->

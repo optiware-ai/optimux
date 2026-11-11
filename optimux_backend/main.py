@@ -2645,7 +2645,7 @@ async def run_in_step(websocket: WebSocket, session: dict, routing: dict, pid: s
         outcome = await run_turn(websocket, session, model, role, messages, max_loops=max_steps_for(role))
     except (ProviderFailure, ModelUnavailable) as e:
         alt = fallback_for(role, model, routing)
-        if not alt:
+        if not alt or (alt[0] == "complex" and not await allow_costlier_model(websocket, session, model, e.info, alt[1])):
             raise
         await send(websocket, "system", tr("Fell back to {v}: {model} {summary}", v=alt[1], model=model, summary=e.info.summary))
         role, model = alt
@@ -2679,6 +2679,19 @@ def step_model(routing: dict, tier: str) -> tuple[str, str]:
     raise ModelUnavailable(model or f"the {tier} model", info)
 
 
+async def confirmed_step_model(websocket: WebSocket, session: dict, routing: dict, tier: str) -> tuple[str, str]:
+    """step_model, asking first when a Simple step would move to Complex because
+    the Simple model is down (allow_costlier_model). No raises ModelUnavailable,
+    which pauses the plan like any unavailable model."""
+    model, role = step_model(routing, tier)
+    simple = routing.get("simple_model", "")
+    if tier == "simple" and role == "complex" and simple:
+        info = providers.cooldown(simple) or providers.ProviderError("fatal", "is unavailable", None, None)
+        if not await allow_costlier_model(websocket, session, simple, info, model):
+            raise ModelUnavailable(simple, info)
+    return model, role
+
+
 def last_reply(messages: list) -> str:
     for m in reversed(messages):
         if m.get("role") == "assistant" and isinstance(m.get("content"), str) and m["content"].strip():
@@ -2693,7 +2706,7 @@ async def run_plan_step(websocket: WebSocket, session: dict, routing: dict, plan
     pid, sid = plan["id"], step["id"]
     retry = step["status"] == "blocked"
     tier = "complex" if retry and step.get("escalated") else step["tier"]
-    model, role = step_model(routing, tier)
+    model, role = await confirmed_step_model(websocket, session, routing, tier)
     results, details = plans_lib.earlier_work(plan, sid)
     prompt = get_step_prompt(plan, step, results, details)
     if retry and step.get("result"):
@@ -2738,7 +2751,7 @@ async def run_final_check(websocket: WebSocket, session: dict, routing: dict, pi
         reply = "\n".join(lines)
         await send(websocket, "token", reply)
         return reply
-    model, role = step_model(routing, "simple")
+    model, role = await confirmed_step_model(websocket, session, routing, "simple")
     results, details = plans_lib.earlier_work(plan, 10 ** 6)
     messages = build_messages(get_memory_context(), [], get_step_prompt(plan, None, results, details), model,
                               current_workdir())
@@ -4118,6 +4131,33 @@ def unavailable_note(model: str) -> str:
     return f"{model} {reason.summary}" if reason else f"{model} unavailable"
 
 
+FALLBACK_ACTION = "model_fallback"
+
+
+async def allow_costlier_model(websocket: WebSocket, session: dict, model: str, info,
+                               alt_model: str) -> bool:
+    """v0.8: the Simple model doesn't answer (no credit, retired, rate limited, in
+    cooldown). Moving the work to the Complex model costs more, so the user is
+    asked first, at every autonomy level, once per request (a plan's next steps
+    don't ask again). No: the request stops with what to check."""
+    pair = (model, alt_model)
+    if session.get("fallback_ok") == pair:
+        return True
+    kind = getattr(info, "kind", "") or ""
+    summary = getattr(info, "summary", "") or tr("not answering")
+    question = tr("{model} isn't answering: {summary}. Do this request on {alt} instead? The Complex model costs more.",
+                  model=model, summary=summary, alt=alt_model)
+    answer = await wait_for_answer(websocket, session, None, question, action=FALLBACK_ACTION, always_ask=True,
+                                   fallback={"model": model, "alt": alt_model, "kind": kind, "summary": summary})
+    if answer["approved"]:
+        session["fallback_ok"] = pair
+        return True
+    await send(websocket, "error", tr("Stopped: {model} isn't answering ({summary}). Check it in Dashboard → Models "
+                                      "(its Test button), the provider's credit or key, or choose another Simple model "
+                                      "in Dashboard → Routing.", model=model, summary=summary))
+    return False
+
+
 async def run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
                             model: str, role: str, user_message: str, prior: list | None = None) -> None:
     """Run a turn; on failure escalate (simple -> complex) or fall back
@@ -4190,7 +4230,7 @@ def task_outcome(session: dict, outcome: str) -> None:
 
 async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
                              model: str, role: str, messages: list) -> None:
-    reason, provider_problem = None, False
+    reason, provider_problem, failure = None, False, None
     session["last_turn_ok"] = False  # set True only when the turn (or its fallback) finishes normally
     try:
         outcome = await run_turn(websocket, session, model, role, messages)
@@ -4203,6 +4243,7 @@ async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
     except (ProviderFailure, ModelUnavailable) as e:
         provider_problem = True
         reason = f"{model} {e.info.summary}"
+        failure = e.info
         task_outcome(session, "provider_error")
     except BudgetExceeded as e:
         task_outcome(session, "budget_paused")
@@ -4218,6 +4259,10 @@ async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
     fallback = None
     if reason and (role == "simple" or provider_problem):
         fallback = fallback_for(role, model, routing)
+    if fallback and provider_problem and fallback[0] == "complex" and not await allow_costlier_model(
+            websocket, session, model, failure, fallback[1]):
+        session["history"] = trim_history(compact_history(messages[1:]))
+        return
 
     if fallback:
         fb_role, fb_model = fallback
@@ -4296,7 +4341,7 @@ async def resolve_tier(websocket: WebSocket, session: dict, user_message: str) -
         session["task"].update(conductor_model=conductor_model, conductor_tier=tier,
                                conductor_plan=session["conductor_plan"], conductor_error=failed or None)
     if failed:                       # never fall back silently: the user should know routing didn't happen
-        await send(websocket, "system", tr("The Conductor ({conductor_model}) couldn't decide: {failed}. This request starts on the simple tier.", conductor_model=conductor_model, failed=failed))
+        await send(websocket, "system", tr("The Conductor ({conductor_model}) couldn't decide: {failed}. This request starts on the simple tier. Check the Conductor in Dashboard → Models.", conductor_model=conductor_model, failed=failed))
     if conductor_model == "off" and session["tier"] is not None:
         return session["tier"]  # Conductor Off: only escalation changes the tier
     if tier == "complex":
@@ -4367,6 +4412,10 @@ async def handle_prompt(websocket: WebSocket, session: dict, user_message: str, 
             # Don't spend a request on a model we know is down; this switch is not sticky
             alt = fallback_for(role, model, routing)
             if alt:
+                if alt[0] == "complex" and not await allow_costlier_model(
+                        websocket, session, model, providers.cooldown(model), alt[1]):
+                    task_outcome(session, "provider_error")
+                    return
                 await send(websocket, "system", tr("Skipping {v}; using {v2}.", v=unavailable_note(model), v2=alt[1]))
                 role, model = alt
     picked = asked_skill or session.get("picked_skill")
@@ -4688,6 +4737,7 @@ async def websocket_endpoint(websocket: WebSocket):
         turns_added = 0
         session["changes_base"] = None
         session["approve_edits"] = False     # "Approve all edits in this reply" lasts one reply (IM-12)
+        session["fallback_ok"] = None        # v0.8: a yes to the costlier model lasts one request
         session["task"] = None
         if kind in ("escalate", "plan_action") or (kind not in ("new_chat", "open_session")
                                                    and payload.get("prompt", "").strip().lower() != NEW_CHAT_COMMAND):

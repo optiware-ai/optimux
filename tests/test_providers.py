@@ -4,7 +4,7 @@ import pytest
 
 import optimux_backend.core.providers as providers
 import optimux_backend.main as main
-from tests.ws_helpers import Conversation, make_client
+from tests.ws_helpers import Conversation, asked, make_client
 from tests.test_routing_session import Recorder, notes, reply
 
 # Trimmed copy of the real Gemini free-tier error from the baseline run
@@ -105,23 +105,51 @@ def client(mocker, tmp_path):
     return make_client(mocker, tmp_path)
 
 
-def test_quota_error_is_not_retried_and_falls_back(mocker, client):
+def test_quota_error_is_not_retried_and_falls_back_after_asking(mocker, client):
     rec = Recorder(rate_limit(GEMINI_QUOTA, "simple-model"), reply("from complex"))
     mocker.patch("litellm.acompletion", side_effect=rec)
-    msgs = Conversation(client).prompt("explain asyncio")
+    msgs = Conversation(client).prompt_answering("explain asyncio", [True])
     assert [c["model"] for c in rec.calls] == ["simple-model", "complex-model"]
+    q = asked(msgs)
+    assert len(q) == 1 and q[0]["always_ask"] is True
+    assert q[0]["fallback"] == {"model": "simple-model", "alt": "complex-model", "kind": "quota",
+                                "summary": q[0]["fallback"]["summary"]} and "quota" in q[0]["fallback"]["summary"]
     n = notes(msgs)
     assert not any("retrying" in x for x in n)
-    assert any("Fell back" in x or "Escalated to complex-model: simple-model quota exhausted" in x for x in n)
+    assert any("Escalated to complex-model: simple-model quota exhausted" in x for x in n)
 
 
-def test_model_in_cooldown_is_skipped_without_a_request(mocker, client):
+def test_no_to_the_costlier_model_stops_and_says_what_to_check(mocker, client):
+    """v0.8: a Simple model that doesn't answer is never replaced by Complex silently."""
+    rec = Recorder(rate_limit(GEMINI_QUOTA, "simple-model"), reply("never"))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    msgs = Conversation(client).prompt_answering("explain asyncio", [False])
+    assert [c["model"] for c in rec.calls] == ["simple-model"]
+    err = [m["content"] for m in msgs if m["type"] == "error"]
+    assert err and "simple-model" in err[-1] and "Dashboard → Models" in err[-1]
+
+
+def test_model_in_cooldown_is_skipped_without_a_request_after_asking(mocker, client):
     providers.record_failure("simple-model", rate_limit(GEMINI_QUOTA))
     rec = Recorder(reply("from complex"))
     mocker.patch("litellm.acompletion", side_effect=rec)
-    msgs = Conversation(client).prompt("hello")
+    msgs = Conversation(client).prompt_answering("hello", [True])
     assert [c["model"] for c in rec.calls] == ["complex-model"]
+    assert len(asked(msgs)) == 1
     assert any(x.startswith("Skipping simple-model quota exhausted") for x in notes(msgs))
+    rec2 = Recorder(reply("never"))
+    mocker.patch("litellm.acompletion", side_effect=rec2)
+    msgs = Conversation(client).prompt_answering("hello", [False])
+    assert rec2.calls == [] and any("Dashboard → Models" in m["content"] for m in msgs if m["type"] == "error")
+
+
+def test_complex_falling_back_to_simple_doesnt_ask(mocker, tmp_path):
+    """The cheaper direction needs no question (a note says it)."""
+    client = make_client(mocker, tmp_path, tier="complex")
+    rec = Recorder(rate_limit(GEMINI_QUOTA, "complex-model"), reply("from simple"))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    msgs = Conversation(client).prompt_answering("refactor", [])
+    assert [c["model"] for c in rec.calls] == ["complex-model", "simple-model"] and not asked(msgs)
 
 
 def test_both_models_down_gives_one_clear_error(mocker, tmp_path):

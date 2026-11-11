@@ -917,6 +917,7 @@ const optimuxApp = createApp({
         const sessionUsage = ref({ tokens: 0, cost: 0, complete: true });
         const projectUsage = ref(null);
         const pendingAction = ref('');
+        const pendingFallback = ref(null);     // v0.8: a Simple model that doesn't answer: use Complex? (model_fallback)
         const pendingForm = ref(null);   // Feature 25: { form, error, github, active_project, key } for create_project
         let formSeq = 0;
         let moveChatTo = null;           // the model switched projects: open that project's chat when the reply ends
@@ -5497,6 +5498,7 @@ const optimuxApp = createApp({
                     if (data.time_limit) pendingDefaultLimit.value = data.time_limit;
                     pendingWorkdir.value = data.workdir || '';
                     pendingAction.value = data.action || '';  // project actions always ask
+                    pendingFallback.value = data.action === 'model_fallback' ? (data.fallback || {}) : null;
                     pendingFile.value = data.file_change || null;
                     pendingStillAsking.value = !!data.still_asking;
                     pendingAskReason.value = data.ask_reason || '';      // v0.8: the server decides what asks
@@ -5926,7 +5928,7 @@ const optimuxApp = createApp({
             selectedModel, availableModels, setupModels, handleModelChange,
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
-            pendingApproval, pendingCommand, pendingFile, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
+            pendingApproval, pendingCommand, pendingFile, pendingFallback, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
             MEMORY_MAX_CHARS, pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
             pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, followChat, onChatScroll, scrollToBottom, waitText, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
 					renderMarkdown, renderUserText,

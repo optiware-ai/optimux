@@ -535,13 +535,15 @@ For every new message, the Conductor (one short, cheap call) classifies the requ
 - It can move a chat **up** to Complex at any time.
 - It moves a chat back **down** to Simple only after the previous task finished normally, so an unfinished task is never handed to a weaker model halfway.
 - **Conductor: Off** (in Routing) skips this call entirely: chats start on Simple and only escalation changes the tier. Cheapest, but hard tasks start on the weaker model.
-- **When the Conductor can't decide** (its call fails, it is in a cooldown, or its answer isn't the JSON it was asked for), the request starts on Simple and the chat says so: *The Conductor (…) couldn't decide: … This request starts on the simple tier.* If you see this on every message, the Conductor model doesn't work with these settings: test it in **Models**, or pick another one.
+- **When the Conductor can't decide** (its call fails, it is in a cooldown, or its answer isn't the JSON it was asked for), the request starts on Simple and the chat says so: *The Conductor (…) couldn't decide: … This request starts on the simple tier. Check the Conductor in Dashboard → Models.* If you see this on every message, the Conductor model doesn't work with these settings: test it in **Models**, or pick another one.
 - To keep it cheap, Optimux asks a **Gemini** Conductor for *minimal* thinking. Models that refuse an extra setting like this (Gemma, for example, served through the Gemini API) are asked again once without it.
 
 ### Escalation and fallback
 
 - **Escalation (Simple → Complex)** happens automatically when the Simple model reaches its step limit or keeps repeating the same action. The Complex model receives the whole conversation so far and continues. You can also click **Escalate ↑** yourself.
 - **Fallback** handles provider trouble: if a model fails (outage, quota), Optimux retries once, then switches to the other tier for that request. A model that keeps failing goes into a **cooldown** and is skipped until it recovers (see *Models*).
+  - *From Simple to Complex, it asks first* (*v0.8*), at every autonomy level, because Complex costs more: **A model isn't answering** shows the model, why (credit or quota used up, provider busy, model retired or key wrong) and a link to **Models**. **Use … for this request** continues on Complex (a plan asks once, not for every step); **Stop** ends the request and says what to check. The next request asks again while the Simple model is still down.
+  - *From Complex to Simple* (the cheaper way) it switches without asking; the chat says so.
 
 ### Scout before Complex
 
