@@ -482,7 +482,7 @@
                             </svg>
                             <!-- By role with By job under it on the left; By project gets the right half -->
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 items-start">
-                              <div v-for="col in [[[$t('By role'), P.sv.roles], [$t('By job'), P.sv.jobs]], [[$t('By project'), P.sv.projects]]].map(c => c.filter(x => x[1].length)).filter(c => c.length)" :key="col[0][0]" class="flex flex-col gap-4 min-w-0">
+                              <div v-for="col in [[[$t('By role'), P.sv.roles], [$t('By job'), P.sv.jobs], [$t('File work (est.)'), P.sv.files]], [[$t('By project'), P.sv.projects]]].map(c => c.filter(x => x[1].length)).filter(c => c.length)" :key="col[0][0]" class="flex flex-col gap-4 min-w-0">
                                 <div v-for="t in col" :key="t[0]" class="overflow-x-auto">
                                     <table class="w-full text-[13px] table-fixed min-w-[30rem]">
                                         <colgroup><col class="w-[26%]"><col class="w-[11%]"><col class="w-[14%]"><col class="w-[20%]"><col></colgroup>
@@ -504,6 +504,7 @@
                                 </div>
                               </div>
                             </div>
+                            <p v-if="P.sv.files.length" class="text-xs text-gray-500 mt-3">{{ $t('File work is part of the roles above, not extra: of what was sent to the models, the share that is files read (cat, grep, ls…), and of their answers, the share that is files written. An estimate, by size.') }}<span v-if="P.sv.filesUnmeasured">{{ ' ' + $t('{v} calls from before it was measured are left out.', { v: P.sv.filesUnmeasured.toLocaleString($locale()) }) }}</span></p>
                             <p class="text-xs text-gray-500 mt-3">
                                 <span v-if="P.sv.v.estimated_calls">{{ $t('{v} older calls are estimated with today\'s prices.', { v: P.sv.v.estimated_calls.toLocaleString($locale()) }) }} </span>
                                 <span v-if="P.sv.v.not_measured_calls">{{ $t('{v} calls are not measured (unknown price).', { v: P.sv.v.not_measured_calls.toLocaleString($locale()) }) }} </span>

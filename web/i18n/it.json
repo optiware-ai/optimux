@@ -2442,5 +2442,10 @@
  "Ask before a stuck request moves to Complex": "Chiedi prima che una richiesta bloccata passi a Complex",
  "When the Simple model reaches its step limit or repeats itself. Unchecked: the request continues on the Complex model by itself, as before. A model that isn't answering always asks.": "Quando il modello Simple raggiunge il limite di passi o si ripete. Deselezionato: la richiesta continua da sola sul modello Complex, come prima. Un modello che non risponde chiede sempre.",
  "{model} is stuck: {summary}. Continue this request on {alt}? The Complex model costs more.": "{model} è bloccato: {summary}. Continuare questa richiesta con {alt}? Il modello Complex costa di più.",
- "Not moved to {alt}. Send a new message to go on with {model}, or press Escalate ↑ under the reply.": "Non spostato su {alt}. Invia un nuovo messaggio per continuare con {model}, oppure premi Passa a Complex ↑ sotto la risposta."
+ "Not moved to {alt}. Send a new message to go on with {model}, or press Escalate ↑ under the reply.": "Non spostato su {alt}. Invia un nuovo messaggio per continuare con {model}, oppure premi Passa a Complex ↑ sotto la risposta.",
+ "Reading files": "Lettura di file",
+ "Writing files": "Scrittura di file",
+ "File work (est.)": "Lavoro sui file (stima)",
+ "File work is part of the roles above, not extra: of what was sent to the models, the share that is files read (cat, grep, ls…), and of their answers, the share that is files written. An estimate, by size.": "Il lavoro sui file fa parte dei ruoli qui sopra, non è in più: di ciò che è stato inviato ai modelli, la parte costituita da file letti (cat, grep, ls…), e delle loro risposte, la parte costituita da file scritti. Una stima, in base alla dimensione.",
+ "{v} calls from before it was measured are left out.": "{v} chiamate precedenti alla misurazione sono escluse."
 }

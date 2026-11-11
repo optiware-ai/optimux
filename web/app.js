@@ -3164,7 +3164,14 @@ const optimuxApp = createApp({
                 const rowsOf = (obj, label) => Object.entries(obj).map(([k, x]) => ({ key: k, label: label(k), ...x }));
                 const maxRef = Math.max(0.000001, ...Object.values(v.by_role).map(x => x.reference), ...Object.values(v.by_project).map(x => x.reference));
                 const refs = Object.keys(v.reference_models || {});
+                // v0.8 file work: the part of the calls above that is files read / written (an estimate)
+                const fw = v.by_activity || {};
+                const fileRow = (kind, label) => { const x = fw[kind] || {};
+                    const split = Object.entries(x.by_role || {}).map(([r, b]) => perfRole(r) + ' ' + fmtUsd(b.spent)).join(' · ');
+                    return { ...x, key: label + (split ? ': ' + split : ''), label }; };
+                const files = fw.measured_calls ? [fileRow('read', tr('Reading files')), fileRow('write', tr('Writing files'))] : [];
                 return {
+                    files, filesUnmeasured: fw.measured_calls ? (fw.unmeasured_calls || 0) : 0,
                     W, H, left, topPad, plotH, step: Math.max(step, 8), points, spentPath: line('spent'), refPath: line('reference'), gapPath: gap,
                     grid: [{ y: Y(ymax), text: fmtUsd(max) }],
                     xlabels: [...new Set([0, buckets.length - 1])].map(i => ({ x: X(i), anchor: buckets.length === 1 ? 'middle' : (i === 0 ? 'start' : 'end'),

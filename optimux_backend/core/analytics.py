@@ -185,6 +185,36 @@ def savings_of(entries: list[dict], escalations: int = 0) -> dict:
     by_project: dict[str, dict] = {}
     by_day: dict[str, dict] = {}
     refs: dict[str, int] = {}
+    # v0.8 file work: the part of the calls that is files read / files written (activity.py)
+    files = {"read": {"spent": 0.0, "reference": 0.0, "calls": 0, "tokens": 0, "by_role": {}},
+             "write": {"spent": 0.0, "reference": 0.0, "calls": 0, "tokens": 0, "by_role": {}},
+             "measured_calls": 0, "unmeasured_calls": 0}
+
+    def add_files(e: dict, role: str, ref_model: str, ref_total: float) -> None:
+        if e.get("read_tokens") is None:
+            files["unmeasured_calls"] += 1
+            return
+        files["measured_calls"] += 1
+        p, cached = int(e.get("prompt_tokens") or 0), int(e.get("cached_tokens") or 0)
+        for kind, n, tokens in (
+                ("read", int(e.get("read_tokens") or 0),
+                 {"prompt_tokens": p, "completion_tokens": 0, "cached_tokens": cached}),
+                ("write", int(e.get("write_tokens") or 0),
+                 {"prompt_tokens": 0, "completion_tokens": int(e.get("write_tokens") or 0), "cached_tokens": 0})):
+            if n <= 0:
+                continue
+            share = (n / p) if kind == "read" and p else 1.0       # reads: their share of the input's cost
+            own = usage.cost_for(e["model"], tokens)
+            # a call whose reference was zeroed (a stuck model's, the Conductor's) saves nothing here either
+            ref = 0.0 if not ref_total else reference_cost(role, tokens, ref_model)
+            if own is None or ref is None:
+                continue
+            b = files[kind]
+            b["tokens"] += n
+            b["calls"] += 1
+            b["spent"] += own * share
+            b["reference"] += ref * share
+            add(b["by_role"], role, own * share, ref * share)
 
     def add(bucket: dict, key: str, spent: float, ref: float) -> None:
         b = bucket.setdefault(key, {"spent": 0.0, "reference": 0.0, "calls": 0})
@@ -214,6 +244,7 @@ def savings_of(entries: list[dict], escalations: int = 0) -> dict:
         add(by_role, role, e["cost"], ref)
         add(by_project, e.get("project") or "(unknown)", e["cost"], ref)
         add(by_day, datetime.fromtimestamp(e["ts"]).date().isoformat(), e["cost"], ref)
+        add_files(e, role, ref_model, ref)
 
     def finish(b: dict) -> dict:
         b["saved"] = b["reference"] - b["spent"]
@@ -221,7 +252,10 @@ def savings_of(entries: list[dict], escalations: int = 0) -> dict:
         return b
 
     finish(tot)
-    return {**tot, "escalations": escalations, "reference_models": refs, "today_reference": today_ref,
+    for kind in ("read", "write"):
+        finish(files[kind])
+        files[kind]["by_role"] = {k: finish(v) for k, v in files[kind]["by_role"].items()}
+    return {**tot, "escalations": escalations, "by_activity": files, "reference_models": refs, "today_reference": today_ref,
             "by_role": {k: finish(v) for k, v in sorted(by_role.items(), key=lambda kv: -kv[1]["reference"])},
             "by_project": {k: finish(v) for k, v in sorted(by_project.items(), key=lambda kv: -kv[1]["reference"])},
             "by_day": {k: finish(v) for k, v in sorted(by_day.items())}}

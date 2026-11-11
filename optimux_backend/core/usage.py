@@ -15,7 +15,7 @@ from optimux_backend.core import store
 USAGE_FILE = store.paths.LEGACY_USAGE_LOG  # legacy log, imported once
 COLUMNS = ("ts", "session", "project", "role", "model", "prompt_tokens", "completion_tokens",
            "cached_tokens", "reasoning_tokens", "cost", "duration_ms", "estimated", "skill", "plan_id", "step",
-           "ref_model", "ref_cost", "task_id")
+           "ref_model", "ref_cost", "task_id", "read_tokens", "write_tokens")
 _imported_for: str | None = None
 NO_PROJECT = "(no project)"
 LOCAL_PROVIDERS = ("ollama/", "ollama_chat/")  # run on your machine: no per-token cost
@@ -138,7 +138,7 @@ def reference_cost(role: str, tokens: dict, ref_model: str) -> float | None:
 
 def record(session_id: str, role: str, model: str, usage, duration_ms: int | None = None,
            project: str = "", skill: str | None = None, plan_id: str | None = None,
-           step: int | None = None, task_id: str | None = None) -> dict:
+           step: int | None = None, task_id: str | None = None, parts: dict | None = None) -> dict:
     """Append one call to the usage log and return the entry. plan_id and step tie a
     call to a plan (v0.4 plan mode); both stay empty outside plans. task_id ties it
     to the request it served (v0.6, IM-09)."""
@@ -163,6 +163,9 @@ def record(session_id: str, role: str, model: str, usage, duration_ms: int | Non
         entry["step"] = step
     if task_id:
         entry["task_id"] = task_id
+    if parts:                    # v0.8 file work (core/activity.py): never more than the call itself
+        entry["read_tokens"] = min(max(0, int(parts.get("read_tokens") or 0)), tokens["prompt_tokens"])
+        entry["write_tokens"] = min(max(0, int(parts.get("write_tokens") or 0)), tokens["completion_tokens"])
     if isinstance(usage, dict) and usage.get("estimated"):
         entry["estimated"] = True
     try:

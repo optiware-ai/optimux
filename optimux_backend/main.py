@@ -60,6 +60,7 @@ from optimux_backend.core.providers import ModelUnavailable, ProviderFailure
 from optimux_backend.core.memory_manager import init_memory, log_command_to_session, get_memory_context, update_memory
 from optimux_backend.core.agents import get_executor_prompt, get_step_prompt
 from optimux_backend.core import files as files_lib
+from optimux_backend.core import activity as activity_lib
 from optimux_backend.core import changes as changes_lib
 from optimux_backend.core import gitsync
 from optimux_backend.core import tasks as tasks_lib
@@ -2964,7 +2965,7 @@ def build_messages(context: str, history: list, user_message: str | None, model:
 # ------------------------------------------------------------------ metering
 
 async def meter(websocket: WebSocket, session: dict, role: str, model: str, usage, duration_ms: int | None = None,
-                plan_id: str | None = None, step: int | None = None) -> None:
+                plan_id: str | None = None, step: int | None = None, parts: dict | None = None) -> None:
     """Record one LLM call and push it, with session totals, to the UI. Inside a
     plan step (session["plan_ctx"]) the call carries the plan and step and counts
     toward the step's cost on the plan card."""
@@ -2974,7 +2975,7 @@ async def meter(websocket: WebSocket, session: dict, role: str, model: str, usag
     entry = usage_meter.record(session.get("chat_id") or session["id"], role, model, usage, duration_ms,
                                project=get_settings().get("active_project", ""),
                                skill=(session.get("skill") or {}).get("name"), plan_id=plan_id, step=step,
-                               task_id=(session.get("task") or {}).get("id"))
+                               task_id=(session.get("task") or {}).get("id"), parts=parts)
     tasks_lib.add_call(session.get("task"), entry)
     if ctx:
         try:
@@ -3348,7 +3349,12 @@ async def call_model(websocket: WebSocket, session: dict, role: str, model: str,
         session["current_stream"] = None
         duration = int((time.monotonic() - started) * 1000)
         usage = r.usage if r.usage is not None else usage_meter.estimate(model, messages, r.text)
-        await meter(websocket, session, role, model, usage, duration)
+        try:      # v0.8: how much of this call is files read and files written (an estimate)
+            parts = activity_lib.shares(messages, r.text, r.tool_calls, usage_meter.extract_usage(usage))
+        except Exception as e:
+            print(f"[Optimux] file-work estimate failed: {e}")
+            parts = None
+        await meter(websocket, session, role, model, usage, duration, parts=parts)
         return r
 
 

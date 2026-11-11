@@ -188,6 +188,12 @@ MIGRATIONS = [
     ALTER TABLE tasks ADD COLUMN wait_ms INTEGER;
     ALTER TABLE tasks ADD COLUMN waits INTEGER;
     """,
+    # 13 (v0.8): file work. Of a call's input, the tokens that are files read; of its output,
+    # the tokens that are files written (core/activity.py). NULL for calls from before.
+    """
+    ALTER TABLE usage ADD COLUMN read_tokens INTEGER;
+    ALTER TABLE usage ADD COLUMN write_tokens INTEGER;
+    """,
 ]
 
 _ready_for: str | None = None

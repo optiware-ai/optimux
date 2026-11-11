@@ -29,6 +29,7 @@
 - `plan_spent(plan_id, role=None)`: calls, known cost and unpriced calls recorded for one plan (the plan card's planning cost).
 
 - **Savings reference (v0.6, IM-08):** `record()` also stores `ref_model` (`reference_model()`: the routing Complex model at that moment) and `ref_cost` (`reference_cost(role, tokens, ref_model)`: the same tokens priced on it). Roles in `REF_ZERO_ROLES` (`conductor`) get `ref_cost = 0`: pure routing overhead. The scout (role `scout`, v0.8) is priced on the reference model like work: with everything on Complex, the Complex model would have done that reading itself. Roles in `REF_SKIP_ROLES` (`test`) get neither. An unknown reference price leaves `ref_cost` empty. Columns from store migration 10.
+- **File work (v0.8):** `record(..., parts=None)` stores `read_tokens` / `write_tokens` from `activity.shares` (capped at the call's own input and output; store migration 13). Without `parts` they stay NULL ("not measured").
 - **Task link (v0.6, IM-09):** `record(..., task_id=None)` stores the request the call served (`usage.task_id`, store migration 11). `zero_reference(task_id, role, step=None)` sets `ref_cost = 0` on a stuck model's calls of that request (or plan step) when it escalates: they would not have happened with everything on the reference model.
 
 ## Reference per project (v0.8)
