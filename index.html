@@ -1393,24 +1393,27 @@
                                 <select v-model="routingConfig.conductor_model" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500">
                                     <option value="">{{ $t('-- No Model Selected --') }}</option>
                                     <option value="off">{{ $t('Off: always start on Simple, escalate only on failure') }}</option>
-                                    <option v-for="m in availableModels" :key="m.id" :value="m.id">{{ m.name }}</option>
+                                    <option v-for="m in availableModels" :key="m.id" :value="m.id">{{ m.name }} · {{ priceTag(m) }}</option>
                                 </select>
+                                <div class="mt-1 text-[13px] text-gray-500 font-mono truncate" role="status">{{ priceLine(routingConfig.conductor_model) }}</div>
                             </div>
                             
                             <div>
                                 <div class="text-[15px] font-bold mb-2 text-green-400 flex items-center">{{ $t('Simple Executor') }}<help-tip :text="$t('Handles most requests: questions, explanations, commands and small edits. Pick a cheap, capable model.')"></help-tip></div>
                                 <select v-model="routingConfig.simple_model" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500">
                                     <option value="">{{ $t('-- No Model Selected --') }}</option>
-                                    <option v-for="m in availableModels" :key="m.id" :value="m.id">{{ m.name }}</option>
+                                    <option v-for="m in availableModels" :key="m.id" :value="m.id">{{ m.name }} · {{ priceTag(m) }}</option>
                                 </select>
+                                <div class="mt-1 text-[13px] text-gray-500 font-mono truncate" role="status">{{ priceLine(routingConfig.simple_model) }}</div>
                             </div>
                             
                             <div>
                                 <div class="text-[15px] font-bold mb-2 text-red-400 flex items-center">{{ $t('Complex Executor') }}<help-tip :text="$t('For multi-step work, refactoring and design, and the fallback when Simple fails or its provider is down.')"></help-tip></div>
                                 <select v-model="routingConfig.complex_model" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-[15px] text-gray-200 outline-none focus:border-blue-500">
                                     <option value="">{{ $t('-- No Model Selected --') }}</option>
-                                    <option v-for="m in availableModels" :key="m.id" :value="m.id">{{ m.name }}</option>
+                                    <option v-for="m in availableModels" :key="m.id" :value="m.id">{{ m.name }} · {{ priceTag(m) }}</option>
                                 </select>
+                                <div class="mt-1 text-[13px] text-gray-500 font-mono truncate" role="status">{{ priceLine(routingConfig.complex_model) }}</div>
                             </div>
                         </div>
 

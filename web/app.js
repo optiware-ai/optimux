@@ -3845,6 +3845,34 @@ const optimuxApp = createApp({
         };
         const fmtPrice = (v) => v == null ? '?' : String(+Number(v).toPrecision(4));
         const fmtMtok = (v) => v == null ? '—' : v === 0 ? 'free' : '$' + (v < 0.1 ? v.toFixed(3) : v < 10 ? v.toFixed(2) : v.toFixed(1));
+        // v0.8: the price of a model for the Routing page: your own prices first, then
+        // LiteLLM's list. null when nobody knows them.
+        const modelPriceOf = (m) => {
+            if (!m) return null;
+            if (m.input_cost_per_mtok != null && m.output_cost_per_mtok != null)
+                return { in: m.input_cost_per_mtok, out: m.output_cost_per_mtok, cached: m.cached_input_cost_per_mtok, own: true };
+            if (m.price_source === 'litellm' && m.list_prices)
+                return { in: m.list_prices.input, out: m.list_prices.output, cached: m.list_prices.cached, own: false };
+            return null;
+        };
+        const modelById = (id) => [...availableModels.value, ...setupModels.value].find(m => m.id === id) || null;
+        // In the dropdown: "GPT-5 nano · $0.05 / $0.40" (in / out, per million tokens)
+        const priceTag = (m) => {
+            const p = modelPriceOf(m);
+            if (p) return `$${fmtPrice(p.in)} / $${fmtPrice(p.out)}`;
+            if (m && m.price_source === 'local') return tr('local, free');
+            return tr('price unknown');
+        };
+        // Under the dropdown, for the one picked: the same numbers with their units and where they come from
+        const priceLine = (id) => {
+            const m = modelById(id);
+            if (!m) return '';
+            const p = modelPriceOf(m);
+            if (!p) return priceTag(m);
+            const cached = p.cached != null ? ' · ' + tr('cached ${v}', { v: fmtPrice(p.cached) }) : '';
+            return tr('${in} in / ${out} out per 1M tokens', { in: fmtPrice(p.in), out: fmtPrice(p.out) }) + cached
+                + ' · ' + (p.own ? tr('your prices') : tr("LiteLLM's list"));
+        };
         const fmtCtx = (n) => !n ? '—' : n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`;
         const fmtWhen = (ts) => ts ? new Date(ts * 1000).toLocaleString(appLocale()) : 'never';
         // Rate limits learned from replies: "500 requests/min · 200k tokens/min"
@@ -6037,7 +6065,7 @@ const optimuxApp = createApp({
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,
             newModelBase, newModelAck, newModelMsg, onEnvKeyInput, newModelHost, newModelHostLocal, newModelNeedsAck,
             newModelPricesSet, newModelKeyUsers, newModelKeySaved, newModelKeyConflict, newModelKeyValid,
-            newModelKeyExample, fmtPrice,
+            newModelKeyExample, fmtPrice, priceTag, priceLine,
             editingKeys, routingConfig, saveRouting, showRoutingSaved,
             appSettings, projectsList, saveSettings, showSettingsSaved,
             memoryTab, memoryContent, fetchMemory, saveMemory, showMemorySaved,

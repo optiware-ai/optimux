@@ -2480,5 +2480,11 @@
  "Stop here": "Fermati qui",
  "{model} goes on for {n} more steps.": "{model} continua per altri {n} passi.",
  "{model} used all {steps} steps for this request and hasn't finished.": "{model} ha usato tutti i {steps} passi di questa richiesta e non ha finito.",
- "{model} used all {steps} steps for this request.": "{model} ha usato tutti i {steps} passi di questa richiesta."
+ "{model} used all {steps} steps for this request.": "{model} ha usato tutti i {steps} passi di questa richiesta.",
+ "${in} in / ${out} out per 1M tokens": "${in} in / ${out} out per 1M token",
+ "LiteLLM's list": "listino di LiteLLM",
+ "cached ${v}": "cache ${v}",
+ "local, free": "locale, gratis",
+ "price unknown": "prezzo sconosciuto",
+ "your prices": "i tuoi prezzi"
 }
