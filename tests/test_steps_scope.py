@@ -9,7 +9,7 @@ from optimux_backend.core.agents import get_executor_prompt
 from optimux_backend.core.config_manager import SettingsPayload, save_settings, max_steps_for
 from optimux_backend.core.executor import run_shell_command
 from optimux_backend.core.security import ValidationError, paths_outside_scope
-from tests.ws_helpers import Conversation, chunk, fake_stream, make_client, collect
+from tests.ws_helpers import Conversation, asked, chunk, fake_stream, make_client, collect
 from tests.test_routing_session import Recorder, notes, reply
 
 DONE = {"prompt_tokens": 5, "completion_tokens": 1}
@@ -110,7 +110,7 @@ def test_complex_step_limit_pauses_and_offers_continue(mocker, tmp_path):
     rec = Recorder(*_looping_tool_calls(3), reply("finished"))
     mocker.patch("litellm.acompletion", side_effect=rec)
     chat = Conversation(client)
-    msgs = chat.prompt("big refactor")
+    msgs = chat.prompt_answering("big refactor", [False])      # v0.8: it asks first; Stop
     limit = [m for m in msgs if m["type"] == "step_limit"]
     assert len(limit) == 1 and limit[0]["steps"] == 3 and "Continue" in limit[0]["content"]
     assert len(rec.calls) == 3
@@ -126,9 +126,59 @@ def test_simple_step_limit_escalates_instead(mocker, client):
     mocker.patch.object(main, "update_memory", return_value="saved")
     rec = Recorder(*_looping_tool_calls(2), reply("done on complex"))
     mocker.patch("litellm.acompletion", side_effect=rec)
-    msgs = Conversation(client).prompt_answering("task", [True])
+    msgs = Conversation(client).prompt_answering("task", [{"approved": True, "choice": "escalate"}])
     assert any(n.startswith("Escalated to complex-model: step limit (2) reached") for n in notes(msgs))
     assert not any(m["type"] == "step_limit" for m in msgs)
+
+
+# ---- v0.8: out of steps, what now?
+
+def test_the_step_limit_asks_and_can_go_on_with_the_same_model(mocker, client):
+    mocker.patch.object(main, "max_steps_for", side_effect=lambda role: 2 if role == "simple" else 25)
+    mocker.patch.object(main, "update_memory", return_value="saved")
+    rec = Recorder(*_looping_tool_calls(4), reply("done on simple"))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    msgs = Conversation(client).prompt_answering("task", [{"approved": True, "choice": "more", "steps": 2},
+                                                          {"approved": True, "choice": "more", "steps": 2}])
+    q = asked(msgs, "step_limit")
+    assert len(q) == 2 and q[0]["steps_box"] == {"model": "simple-model", "steps": 2, "alt": "complex-model",
+                                                 "role": "simple"}
+    assert all(c["model"] == "simple-model" for c in rec.calls) and len(rec.calls) == 5
+    assert not any("Escalated" in n for n in notes(msgs)) and not any(m["type"] == "step_limit" for m in msgs)
+    assert "done on simple" in "".join(m.get("content", "") for m in msgs if m["type"] == "token")
+
+
+def test_stopping_at_the_step_limit_still_offers_continue(mocker, client):
+    mocker.patch.object(main, "max_steps_for", side_effect=lambda role: 2 if role == "simple" else 25)
+    mocker.patch.object(main, "update_memory", return_value="saved")
+    rec = Recorder(*_looping_tool_calls(2), reply("never"))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    msgs = Conversation(client).prompt_answering("task", [False])
+    assert len(rec.calls) == 2 and not any("Escalated" in n for n in notes(msgs))
+    assert [m["steps"] for m in msgs if m["type"] == "step_limit"] == [2]
+
+
+def test_without_a_complex_model_it_still_asks_for_more_steps(mocker, tmp_path):
+    client = make_client(mocker, tmp_path, tier="complex")
+    mocker.patch.object(main, "max_steps_for", return_value=2)
+    mocker.patch.object(main, "update_memory", return_value="saved")
+    rec = Recorder(*_looping_tool_calls(2), reply("done"))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    chat = Conversation(client)
+    msgs = chat.prompt_answering("big refactor", [{"approved": True, "choice": "more", "steps": 5}])
+    assert asked(msgs, "step_limit")[0]["steps_box"]["alt"] == ""
+    assert len(rec.calls) == 3 and not any(m["type"] == "step_limit" for m in msgs)
+    chat.close()
+
+
+def test_the_step_limit_question_can_be_turned_off(mocker, client):
+    mocker.patch.object(main, "max_steps_for", side_effect=lambda role: 2 if role == "simple" else 25)
+    mocker.patch.object(main, "update_memory", return_value="saved")
+    mocker.patch.object(main, "get_settings", return_value={**main.get_settings(), "confirm_auto_escalate": False})
+    rec = Recorder(*_looping_tool_calls(2), reply("done on complex"))
+    mocker.patch("litellm.acompletion", side_effect=rec)
+    msgs = Conversation(client).prompt_answering("task", [])
+    assert not asked(msgs, "step_limit") and rec.calls[-1]["model"] == "complex-model"
 
 
 # ---------- bash

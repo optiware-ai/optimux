@@ -7,7 +7,7 @@ import pytest
 import optimux_backend.core.skills as sk
 import optimux_backend.main as main
 from optimux_backend.core import paths, sessions, usage
-from tests.ws_helpers import Conversation, chunk, fake_stream, make_client
+from tests.ws_helpers import Conversation, asked, chunk, fake_stream, make_client
 from tests.test_routing_session import Recorder, reply
 
 H = {"Authorization": "Bearer test-token"}
@@ -119,7 +119,8 @@ def test_skill_step_limit(mocker, client):
     loop = lambda **kw: fake_stream([chunk(tool_call=("update_markdown_memory", {"file_type": "personal", "content": str(len(kw["messages"]))})),
                                      chunk(empty=True, usage_obj=DONE)])
     rec = mocker.patch("litellm.acompletion", side_effect=loop)
-    msgs = Conversation(client).prompt("deploy")
+    msgs = Conversation(client).prompt_answering("deploy", [False])     # v0.8: it asks; Stop here
+    assert asked(msgs, "step_limit")[0]["steps_box"]["steps"] == 3       # the skill's own limit
     assert rec.call_count == 3 and any(m["type"] == "step_limit" for m in msgs)
 
 

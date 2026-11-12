@@ -2466,5 +2466,19 @@
  "When a reply needs you": "Quando una risposta ha bisogno di te",
  "{model} is stuck. Continue on {alt}?": "{model} è bloccato. Continuare con {alt}?",
  "{model} isn't answering. Use {alt} for this request?": "{model} non risponde. Usare {alt} per questa richiesta?",
- "{project} needs you": "{project} ti sta aspettando"
+ "{project} needs you": "{project} ti sta aspettando",
+ "Back to Studio": "Torna allo Studio",
+ "Back to the Studio (Esc)": "Torna allo Studio (Esc)",
+ "Change the limit for every request": "Cambia il limite per tutte le richieste",
+ "Continue on {alt}": "Continua con {alt}",
+ "Its work so far is kept whatever you choose.": "Il lavoro fatto finora resta, qualunque cosa tu scelga.",
+ "More steps": "Altri passi",
+ "More steps with {model}": "Altri passi con {model}",
+ "No steps left": "Passi esauriti",
+ "OFF": "OFF",
+ "ON": "ON",
+ "Stop here": "Fermati qui",
+ "{model} goes on for {n} more steps.": "{model} continua per altri {n} passi.",
+ "{model} used all {steps} steps for this request and hasn't finished.": "{model} ha usato tutti i {steps} passi di questa richiesta e non ha finito.",
+ "{model} used all {steps} steps for this request.": "{model} ha usato tutti i {steps} passi di questa richiesta."
 }

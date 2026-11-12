@@ -929,6 +929,8 @@ const optimuxApp = createApp({
         const projectUsage = ref(null);
         const pendingAction = ref('');
         const pendingFallback = ref(null);     // v0.8: a Simple model that doesn't answer: use Complex? (model_fallback)
+        const pendingSteps = ref(null);        // v0.8: out of steps: more, the other model, or stop? (step_limit)
+        const moreSteps = ref(10);             // how many more, in that card
         const pendingForm = ref(null);   // Feature 25: { form, error, github, active_project, key } for create_project
         let formSeq = 0;
         let moveChatTo = null;           // the model switched projects: open that project's chat when the reply ends
@@ -3662,16 +3664,20 @@ const optimuxApp = createApp({
             enterSection(settingsTab.value);
             if (location.hash !== dashboardHash()) location.hash = dashboardHash();
         };
+        // v0.8: the Dashboard covers whatever you were in, and sends you back there
+        const backTo = ref('chat');
         const closeSettings = () => {
             showSettingsModal.value = false;
-            if (location.hash.startsWith('#/dashboard')) location.hash = '#/';
+            if (location.hash.startsWith('#/dashboard')) location.hash = backTo.value === 'studio' ? '#/studio' : '#/';
         };
         // Back/forward buttons and typed addresses
         const applyHash = () => {
             if (location.hash.startsWith('#/studio')) { if (!studio.open) openStudio(); return; }
+            const wasStudio = studio.open;
             if (studio.open) closeStudio(true);
             const m = location.hash.match(/^#\/dashboard(?:\/([\w-]+))?(?:\/([\w-]+))?/);
             if (m) {
+                if (!showSettingsModal.value) backTo.value = wasStudio ? 'studio' : 'chat';
                 const id = m[1] && dashboardSections.some(x => x.id === m[1]) ? m[1] : settingsTab.value;
                 if (m[2]) setDashView(m[2], id);
                 if (!showSettingsModal.value || id !== settingsTab.value) openSettings(id);
@@ -5576,6 +5582,8 @@ const optimuxApp = createApp({
                     pendingWorkdir.value = data.workdir || '';
                     pendingAction.value = data.action || '';  // project actions always ask
                     pendingFallback.value = data.action === 'model_fallback' ? (data.fallback || {}) : null;
+                    pendingSteps.value = data.action === 'step_limit' ? (data.steps_box || {}) : null;
+                    if (pendingSteps.value) moreSteps.value = pendingSteps.value.steps || 10;
                     pendingFile.value = data.file_change || null;
                     pendingStillAsking.value = !!data.still_asking;
                     pendingAskReason.value = data.ask_reason || '';      // v0.8: the server decides what asks
@@ -5771,6 +5779,16 @@ const optimuxApp = createApp({
             pendingForm.value = null;
             pendingCommand.value = ''; pendingFile.value = null;
             pendingOutside.value = [];
+        };
+
+        // v0.8: the three ways out of "no steps left" (the same reply goes on, or not)
+        const answerStepLimit = (choice) => {
+            const n = Math.max(1, Math.min(100, Math.round(Number(moreSteps.value) || 0)));
+            ws.value.send(JSON.stringify(choice === 'stop'
+                ? { type: 'approval_response', approved: false }
+                : { type: 'approval_response', approved: true, choice, steps: n }));
+            pendingApproval.value = false;
+            pendingCommand.value = ''; pendingAction.value = ''; pendingSteps.value = null;
         };
 
         const sendMessage = () => {
@@ -6007,7 +6025,8 @@ const optimuxApp = createApp({
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
             pendingApproval, pendingCommand, pendingFile, pendingFallback,
-            waitingText, notifyWaiting, notifyPermission, turnNotifyOn, jumpToChat, confirmSignOut, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
+            waitingText, notifyWaiting, notifyPermission, turnNotifyOn, jumpToChat, confirmSignOut,
+            pendingSteps, moreSteps, answerStepLimit, backTo, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
             MEMORY_MAX_CHARS, pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
             pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, followChat, onChatScroll, scrollToBottom, waitText, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
 					renderMarkdown, renderUserText,

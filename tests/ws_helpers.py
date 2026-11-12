@@ -65,7 +65,8 @@ def collect_answering(ws, answers) -> list:
         msgs.append(m)
         if m["type"] == "approval_request":
             assert answers, f"an unexpected question: {m.get('command')}"
-            ws.send_text(json.dumps({"type": "approval_response", "approved": answers.pop(0)}))
+            a = answers.pop(0)                       # True / False, or the whole answer as a dict
+            ws.send_text(json.dumps({"type": "approval_response", **(a if isinstance(a, dict) else {"approved": a})}))
         if m["type"] == "done":
             assert not answers, f"{len(answers)} answer(s) not used"
             return msgs

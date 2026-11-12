@@ -4221,12 +4221,39 @@ async def notify_budget_pause(websocket: WebSocket, s: dict) -> None:
 
 
 async def notify_step_limit(websocket: WebSocket, role: str) -> None:
-    """The turn used all its steps and there is nowhere to escalate: say so,
-    and let the UI offer Continue (a normal follow-up prompt)."""
+    """The turn stopped at its step limit and goes no further: say so, and let the
+    UI offer Continue (a normal follow-up prompt)."""
     steps = max_steps_for(role)
     await send(websocket, "step_limit",
                f"Paused after {steps} steps, the limit for this tier. Press Continue to keep going, "
-               "or change the limit in Settings > Scope.", steps=steps)
+               "or change the limit in Dashboard > Execution.", steps=steps)
+
+
+MAX_STEP_LIMIT = 100
+
+
+async def ask_step_limit(websocket: WebSocket, session: dict, model: str, role: str,
+                         alt_model: str) -> tuple[str, int]:
+    """v0.8: the request used every step it was allowed. The user chooses: "more"
+    with N more steps on the same model, "escalate" to the Complex model, or
+    "stop" (the reply keeps its work and offers Continue). An older page, which
+    only sends approved, means escalate when there is somewhere to escalate to."""
+    steps = (session.get("skill") or {}).get("max_steps") or max_steps_for(role)
+    answer = await wait_for_answer(
+        websocket, session, None,
+        tr("{model} used all {steps} steps for this request.", model=model, steps=steps),
+        action="step_limit", always_ask=True,
+        steps_box={"model": model, "steps": steps, "alt": alt_model or "", "role": role})
+    if answer.get("approved") is not True:
+        return "stop", 0
+    choice = answer.get("choice") or ("escalate" if alt_model else "stop")
+    if choice == "escalate" and alt_model:
+        return "escalate", 0
+    try:
+        more = int(answer.get("steps") or 0)
+    except (TypeError, ValueError):
+        more = 0
+    return ("more", max(1, min(more, MAX_STEP_LIMIT))) if choice == "more" and more > 0 else ("stop", 0)
 
 
 def close_stopped_turn(messages: list, partial_text: str) -> None:
@@ -4258,9 +4285,23 @@ def task_outcome(session: dict, outcome: str) -> None:
 async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
                              model: str, role: str, messages: list) -> None:
     reason, provider_problem, failure = None, False, None
+    stopped_at_limit = False
     session["last_turn_ok"] = False  # set True only when the turn (or its fallback) finishes normally
     try:
         outcome = await run_turn(websocket, session, model, role, messages)
+        # v0.8: out of steps. Ask what to do, and run on here when more are asked for
+        while outcome == "loop_limit" and get_settings().get("confirm_auto_escalate", True):
+            alt = fallback_for(role, model, routing)
+            alt_model = alt[1] if alt and alt[0] == "complex" else ""
+            choice, more = await ask_step_limit(websocket, session, model, role, alt_model)
+            if choice == "escalate":
+                session["fallback_ok"] = (model, alt_model)      # don't ask the same thing twice below
+                break
+            if choice != "more":
+                stopped_at_limit = True
+                break
+            await send(websocket, "system", tr("{model} goes on for {n} more steps.", model=model, n=more))
+            outcome = await run_turn(websocket, session, model, role, messages, max_loops=more)
         session["last_turn_ok"] = outcome == "ok"
         task_outcome(session, outcome)
         if outcome == "loop_limit":
@@ -4282,6 +4323,11 @@ async def _run_with_fallback(websocket: WebSocket, session: dict, routing: dict,
         task_outcome(session, "error")
         await send(websocket, "error", f"{model}: {providers.classify(e).summary}")
         return  # nothing usable happened; keep history as it was
+
+    if stopped_at_limit:          # the user chose to stop here: the reply offers Continue
+        await notify_step_limit(websocket, role)
+        session["history"] = trim_history(compact_history(messages[1:]))
+        return
 
     fallback = None
     if reason and (role == "simple" or provider_problem):

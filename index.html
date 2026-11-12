@@ -355,8 +355,8 @@
                     </template>
                 </nav>
                 <div class="m-4 flex items-center gap-2">
-                <button @click="closeSettings" class="flex-1 px-3 py-2 rounded-lg border border-gray-700 text-[15px] text-gray-300 hover:text-white hover:border-gray-500 flex items-center justify-center gap-2" :title="$t('Back to the chat (Esc)')">
-                    ← {{ $t('Back to chat') }}
+                <button @click="closeSettings" class="flex-1 px-3 py-2 rounded-lg border border-gray-700 text-[15px] text-gray-300 hover:text-white hover:border-gray-500 flex items-center justify-center gap-2" :title="backTo === 'studio' ? $t('Back to the Studio (Esc)') : $t('Back to the chat (Esc)')">
+                    ← {{ backTo === 'studio' ? $t('Back to Studio') : $t('Back to chat') }}
                 </button>
                 <sign-out-btn @go="confirmSignOut"></sign-out-btn>
                 </div>
@@ -2408,9 +2408,11 @@
                             <p><span v-html="$t('If bubblewrap is missing or broken while the sandbox is on, commands are <b>refused</b>, never run unprotected.')"></span></p>
                             <p><span v-html="$t('On a server others can reach, start Optimux with <code>OPTIMUX_SERVER=1</code> (or just <code>OPTIMUX_REQUIRE_SANDBOX=1</code>): the sandbox is then always on and can\'t be turned off here.')"></span></p>
                         </help-tip></h3>
-                        <label class="flex items-center gap-3" :class="sandboxInfo.required ? 'opacity-70' : 'cursor-pointer'">
-                            <input type="checkbox" :checked="appSettings.sandbox || sandboxInfo.required" :disabled="sandboxInfo.required || (!appSettings.sandbox && !sandboxInfo.works)" @change="toggleSandbox($event.target.checked)" class="w-4 h-4">
+                        <label class="cm-switch" :class="sandboxInfo.required ? 'opacity-70' : ''">
+                            <input type="checkbox" :checked="appSettings.sandbox || sandboxInfo.required" :disabled="sandboxInfo.required || (!appSettings.sandbox && !sandboxInfo.works)" @change="toggleSandbox($event.target.checked)">
+                            <span class="cm-switch-track" aria-hidden="true"><span class="cm-switch-knob"></span></span>
                             <span class="text-[15px] font-bold text-gray-300">{{ $t('Run commands in the sandbox') }}</span>
+                            <span :class="['cm-switch-state', (appSettings.sandbox || sandboxInfo.required) ? 'text-green-400' : 'text-gray-500']">{{ (appSettings.sandbox || sandboxInfo.required) ? $t('ON') : $t('OFF') }}</span>
                             <span v-if="sandboxInfo.required" class="text-xs font-mono text-green-400">{{ $t('forced on by {v}', { v: sandboxInfo.server_mode ? 'OPTIMUX_SERVER' : 'OPTIMUX_REQUIRE_SANDBOX' }) }}</span>
                         </label>
                         <div class="text-xs font-mono mt-2 ml-7" :class="sandboxInfo.works ? 'text-green-400' : 'text-yellow-400'">
@@ -2419,9 +2421,11 @@
                             <button @click="fetchSandbox(true)" class="ml-2 text-gray-500 hover:text-gray-300 underline">{{ $t('check again') }}</button>
                         </div>
                         <div v-if="appSettings.sandbox || sandboxInfo.required" class="mt-4 ml-7 space-y-3">
-                            <label class="flex items-center gap-2 text-[15px] text-gray-300 cursor-pointer">
-                                <input type="checkbox" v-model="appSettings.sandbox_network" @change="saveSettings" class="w-4 h-4">
+                            <label class="cm-switch text-[15px] text-gray-300">
+                                <input type="checkbox" v-model="appSettings.sandbox_network" @change="saveSettings">
+                                <span class="cm-switch-track" aria-hidden="true"><span class="cm-switch-knob"></span></span>
                                 {{ $t('Allow network access') }}
+                                <span :class="['cm-switch-state', appSettings.sandbox_network ? 'text-green-400' : 'text-gray-500']">{{ appSettings.sandbox_network ? $t('ON') : $t('OFF') }}</span>
                                 <help-tip>{{ $t('On: commands can download packages (pip, npm) and use git over HTTPS. Off: no network at all inside the sandbox, the safest choice when you don\'t need it. Off by default on servers (OPTIMUX_SERVER=1). SSH keys are never visible in the sandbox, so git over SSH needs to be run by you.') }}</help-tip>
                             </label>
                             <div>
@@ -3486,6 +3490,26 @@
                 <span class="flex-1 min-w-[16rem] text-[14px] text-blue-100">{{ pendingAction === 'push_project' ? $t('The model asks to push this project. Check the Push window and confirm there; closing it means no.') : $t('The model asks to update this project from GitHub. Check the Update window and confirm there; closing it means no.') }}</span>
                 <button v-if="!syncBox.open" @click="openSync(chatProject, pendingAction === 'push_project' ? 'push' : 'update', { message: '' })" class="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500">{{ pendingAction === 'push_project' ? $t('Open the Push window') : $t('Open the Update window') }}</button>
             </div>
+            <!-- v0.8: the request used every step it was allowed: more steps here, the other model, or stop -->
+            <div v-if="pendingApproval && pendingAction === 'step_limit' && pendingSteps" class="mb-4 bg-amber-950/30 border border-amber-700/60 rounded-lg p-4" role="alertdialog" :aria-label="$t('No steps left')">
+                <div class="flex items-start gap-3">
+                    <svg class="w-6 h-6 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <div class="flex-1 min-w-0">
+                        <h3 class="text-amber-300 font-bold mb-1">{{ $t('No steps left') }}</h3>
+                        <p class="text-sm text-gray-300 break-words">{{ $t('{model} used all {steps} steps for this request and hasn\'t finished.', { model: pendingSteps.model, steps: pendingSteps.steps }) }}</p>
+                        <p class="text-[13px] text-gray-400 mt-1.5">{{ $t('Its work so far is kept whatever you choose.') }}
+                            <button type="button" @click="openSettings('execution')" class="text-blue-400 hover:text-blue-300 underline">{{ $t('Change the limit for every request') }}</button></p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap justify-end items-center gap-3 mt-3">
+                    <button @click="answerStepLimit('stop')" class="px-5 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 font-bold rounded transition border border-gray-600 text-sm">{{ $t('Stop here') }}</button>
+                    <button v-if="pendingSteps.alt" @click="answerStepLimit('escalate')" class="px-5 py-2 bg-gray-800 hover:bg-gray-700 text-amber-200 font-bold rounded transition border border-amber-700/60 text-sm">{{ $t('Continue on {alt}', { alt: pendingSteps.alt }) }}</button>
+                    <div class="flex items-center gap-2">
+                        <input type="number" v-model="moreSteps" min="1" max="100" :aria-label="$t('More steps')" class="w-16 bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 outline-none focus:border-amber-500">
+                        <button @click="answerStepLimit('more')" class="px-5 py-2 bg-amber-700 hover:bg-amber-600 text-white font-bold rounded transition text-sm">{{ $t('More steps with {model}', { model: pendingSteps.model }) }}</button>
+                    </div>
+                </div>
+            </div>
             <!-- v0.8: the Simple model doesn't answer; moving to Complex costs more, so it asks -->
             <div v-if="pendingApproval && pendingAction === 'model_fallback' && pendingFallback" class="mb-4 bg-amber-950/30 border border-amber-700/60 rounded-lg p-4" role="alertdialog" :aria-label="$t('A model isn\'t answering')">
                 <div class="flex items-start gap-3">
@@ -3504,7 +3528,7 @@
                     <button @click="sendApprovalResponse(true)" class="px-5 py-2 bg-amber-700 hover:bg-amber-600 text-white font-bold rounded transition text-sm">{{ $t('Use {alt} for this request', { alt: pendingFallback.alt }) }}</button>
                 </div>
             </div>
-            <div v-if="pendingApproval && !pendingForm && pendingAction !== 'push_project' && pendingAction !== 'update_project' && pendingAction !== 'model_fallback'" class="mb-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 flex flex-col gap-3">
+            <div v-if="pendingApproval && !pendingForm && pendingAction !== 'push_project' && pendingAction !== 'update_project' && pendingAction !== 'model_fallback' && pendingAction !== 'step_limit'" class="mb-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 flex flex-col gap-3">
                 <div class="flex items-start gap-3">
                     <svg class="w-6 h-6 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                     <div class="flex-1 min-w-0"><!-- min-w-0: long lines wrap inside the box, never past the page -->

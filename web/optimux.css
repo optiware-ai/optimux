@@ -18,6 +18,19 @@
 .cm-pre .cm-pre-tools .cm-copy:hover, .cm-pre .cm-view-btn:hover,
 .cm-pre .cm-pre-tools .cm-copy:focus-visible, .cm-pre .cm-view-btn:focus-visible { color: #e5e7eb; border-color: #4b5563; outline: none; }
 .cm-pre .cm-view-btn svg { width: 14px; height: 14px; }
+/* v0.8: an on/off switch (the sandbox settings): a real checkbox, dressed up */
+.cm-switch { display: inline-flex; align-items: center; gap: .6rem; cursor: pointer; }
+.cm-switch:has(input:disabled) { cursor: default; }
+.cm-switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.cm-switch-track { position: relative; flex: none; width: 40px; height: 22px; border-radius: 999px;
+    background: #374151; border: 1px solid #4b5563; transition: background .15s, border-color .15s; }
+.cm-switch-knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+    background: #9ca3af; transition: transform .15s, background .15s; }
+.cm-switch input:checked + .cm-switch-track { background: #166534; border-color: #22c55e; }
+.cm-switch input:checked + .cm-switch-track .cm-switch-knob { transform: translateX(18px); background: #dcfce7; }
+.cm-switch input:focus-visible + .cm-switch-track { outline: 2px solid #3b82f6; outline-offset: 2px; }
+.cm-switch input:disabled + .cm-switch-track { opacity: .55; }
+.cm-switch-state { font: 700 11px ui-monospace, monospace; letter-spacing: .06em; }
 /* v0.8: the Studio's Git pane: the line above it moves it up and down */
 .cm-row-handle { position: absolute; left: 0; right: 0; top: -4px; height: 8px; cursor: row-resize; z-index: 2; touch-action: none; }
 .cm-row-handle::after { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 2px; background: transparent; transition: background .15s; }

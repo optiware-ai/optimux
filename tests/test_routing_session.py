@@ -281,7 +281,7 @@ def test_no_move_down_after_an_unfinished_turn(mocker, tmp_path):
     tiers = iter(["complex", "simple"])
     main._test_conductor.side_effect = lambda msg, *_: (next(tiers), "conductor-model", None, 0)
     chat = Conversation(client)
-    first = chat.prompt("big refactor")
+    first = chat.prompt_answering("big refactor", [False])      # v0.8: out of steps; Stop here
     assert any(m["type"] == "step_limit" for m in first)
     second = chat.prompt("Continue from where you stopped.")
     assert not any("back to the simple tier" in n for n in notes(second))

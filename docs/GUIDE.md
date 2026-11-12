@@ -118,6 +118,7 @@ On its first start, the server creates an **access token** and prints it in the 
 The first time you open Optimux, the sign-in page asks for this token **once**, to prove you own the server, and lets you choose a **password** (12 characters or more; a few random words work well). From then on you sign in with the password.
 
 - The browser stays signed in for up to **30 days** (14 days without use). The sign-in lives in a cookie that page scripts can't read.
+- **The Dashboard remembers where you came from** (*v0.8*): opened from the Studio, its menu says **← Back to Studio** and Esc or the button puts the Studio back as it was, with the same file open.
 - **The red power button** (*v0.8*), at the right of the header and at the bottom of the Dashboard's menu, signs you out from anywhere in the app. It asks first, and says so when a reply is running, because signing out stops it.
 - **Sign out**, see which browsers are signed in, sign the others out, change the password and turn on **two-step codes** in **Dashboard → System → Sign-in**.
 - When another browser signs in, every open Optimux page shows a **New sign-in** notice (browser, address, time) until you dismiss it. If it wasn't you, **Not me: sign out the others**, then change your password. The list of signed-in browsers updates by itself.
@@ -526,7 +527,7 @@ For a project with a dev server (`npm run dev`, Vite, Next.js, Flask, Django…)
 | Used for | Questions, explanations, single commands, small edits | Multi-step work, changes across files, refactoring, design, investigation |
 | Typical model | Fast and cheap (e.g. Gemini Flash) | Strong and pricier (e.g. Claude Sonnet) |
 | Step limit (default) | 8 model calls per request | 25 model calls per request |
-| At the step limit | Escalates to Complex | Pauses and offers **Continue** |
+| At the step limit | **No steps left** asks what to do | **No steps left** asks what to do |
 
 Both tiers have the same tools: they can run commands, edit files and save memory.
 
@@ -546,6 +547,7 @@ For every new message, the Conductor (one short, cheap call) classifies the requ
 - **Fallback** handles provider trouble: if a model fails (outage, quota), Optimux retries once, then switches to the other tier for that request. A model that keeps failing goes into a **cooldown** and is skipped until it recovers (see *Models*).
   - *From Simple to Complex, it asks first* (*v0.8*), at every autonomy level, because Complex costs more: **A model isn't answering** shows the model, why (credit or quota used up, provider busy, model retired or key wrong) and a link to **Models**. **Use … for this request** continues on Complex (a plan asks once, not for every step); **Stop** ends the request and says what to check. The next request asks again while the Simple model is still down.
   - *From Complex to Simple* (the cheaper way) it switches without asking; the chat says so.
+- **No steps left** (*v0.8*): when a request uses every step it was allowed, Optimux stops and asks, whichever tier it was on. **More steps with …** gives the same model that many steps more and carries on in the same reply (ask as often as you like); **Continue on …** hands the request to the Complex model, when there is one; **Stop here** ends the reply, which keeps its work and offers **Continue ↻**. **Change the limit for every request** opens Dashboard → Execution, where **Steps per turn** sets the limit for each tier. The same **Dashboard → Budgets → Ask before a stuck request moves to Complex** turns this question off: the request then escalates or pauses by itself, as before.
 - **A stuck Simple model asks too** (*v0.8*): when it reaches its step limit or repeats the same call, **The Simple model is stuck** asks before the request continues on Complex. **Stop** keeps the work so far on Simple: send a new message to go on, or press **Escalate ↑**. In a plan, a no pauses the plan at that step. **Dashboard → Budgets → Ask before a stuck request moves to Complex** turns this question off (the request then moves by itself, as before); useful for long unattended runs.
 
 ### Scout before Complex
@@ -1029,8 +1031,8 @@ Every page has **?** marks: hover one for an explanation, click to keep it open.
 | Commit name and email | GitHub | (git's own) | Who the first commit of a new project, and approved model commits, are from. |
 | Snapshot space limit | Backups | 5 GB | The most space snapshots may use. Automatic snapshots are removed first to make room; yours never. |
 | Two-step codes | System → Sign-in | Off | Ask for a 6-digit code from an authenticator app when signing in. |
-| Steps per turn: Simple | Execution | 8 | Model calls before escalating to Complex. |
-| Steps per turn: Complex | Execution | 25 | Model calls before pausing with Continue. |
+| Steps per turn: Simple | Execution | 8 | Model calls before **No steps left** asks what to do. |
+| Steps per turn: Complex | Execution | 25 | Model calls before **No steps left** asks what to do. |
 | Update project memory automatically | Memory → Project | On | Curate memory when a chat ends. |
 | Idle minutes | Memory → Project | 10 | Update memory after this long without activity in a chat. |
 | Skills | Skills | Auto allowed | Off, Manual only, or Auto allowed. |
