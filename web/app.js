@@ -3657,15 +3657,18 @@ const optimuxApp = createApp({
             if (showSettingsModal.value && section === settingsTab.value && location.hash !== dashboardHash()) location.hash = dashboardHash();
         };
         const dashboardHash = () => `#/dashboard/${settingsTab.value}` + (settingsTab.value in dashView ? '/' + dashView[settingsTab.value] : '');
+        // v0.8: the Dashboard covers whatever you were in, and sends you back there
+        const backTo = ref('chat');
         const openSettings = (section) => {
+            // Set before anything closes the Studio (the header button opens the Dashboard first,
+            // the address bar closes the Studio first: applyHash puts "studio" back after this)
+            if (!showSettingsModal.value) backTo.value = studio.open ? 'studio' : 'chat';
             if (typeof section === 'string' && dashboardSections.some(x => x.id === section)) settingsTab.value = section;
             if (!dashboardSections.some(x => x.id === settingsTab.value)) settingsTab.value = 'overview';
             showSettingsModal.value = true;
             enterSection(settingsTab.value);
             if (location.hash !== dashboardHash()) location.hash = dashboardHash();
         };
-        // v0.8: the Dashboard covers whatever you were in, and sends you back there
-        const backTo = ref('chat');
         const closeSettings = () => {
             showSettingsModal.value = false;
             if (location.hash.startsWith('#/dashboard')) location.hash = backTo.value === 'studio' ? '#/studio' : '#/';
@@ -3677,10 +3680,10 @@ const optimuxApp = createApp({
             if (studio.open) closeStudio(true);
             const m = location.hash.match(/^#\/dashboard(?:\/([\w-]+))?(?:\/([\w-]+))?/);
             if (m) {
-                if (!showSettingsModal.value) backTo.value = wasStudio ? 'studio' : 'chat';
                 const id = m[1] && dashboardSections.some(x => x.id === m[1]) ? m[1] : settingsTab.value;
                 if (m[2]) setDashView(m[2], id);
                 if (!showSettingsModal.value || id !== settingsTab.value) openSettings(id);
+                if (wasStudio) backTo.value = 'studio';     // the Studio was closed to show this
             } else if (showSettingsModal.value) {
                 showSettingsModal.value = false;
             }

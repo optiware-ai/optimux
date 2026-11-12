@@ -119,7 +119,7 @@ The first time you open Optimux, the sign-in page asks for this token **once**, 
 
 - The browser stays signed in for up to **30 days** (14 days without use). The sign-in lives in a cookie that page scripts can't read.
 - **The Dashboard remembers where you came from** (*v0.8*): opened from the Studio, its menu says **← Back to Studio** and Esc or the button puts the Studio back as it was, with the same file open.
-- **The red power button** (*v0.8*), at the right of the header and at the bottom of the Dashboard's menu, signs you out from anywhere in the app. It asks first, and says so when a reply is running, because signing out stops it.
+- **The red power button** (*v0.8*), at the right of the header, at the end of the Studio's bar and at the bottom of the Dashboard's menu, signs you out from anywhere in the app. It asks first, and says so when a reply is running, because signing out stops it.
 - **Sign out**, see which browsers are signed in, sign the others out, change the password and turn on **two-step codes** in **Dashboard → System → Sign-in**.
 - When another browser signs in, every open Optimux page shows a **New sign-in** notice (browser, address, time) until you dismiss it. If it wasn't you, **Not me: sign out the others**, then change your password. The list of signed-in browsers updates by itself.
 - After **5 wrong attempts** from one address, that address has to wait 15 minutes. After 30 wrong passwords from anywhere in 15 minutes, or 10 wrong two-step codes in an hour, signing in with a password pauses for everyone; browsers already signed in and the access token keep working, and a restart clears it.

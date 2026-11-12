@@ -140,6 +140,7 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 12a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z"></path></svg>
                     {{ $t('Dashboard') }}</button>
                 <button @click="closeStudio()" class="text-[13px] px-3 py-1 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500" :title="$t('Close the Studio and go back to the chat')">{{ $t('← Back to chat') }}</button>
+                <sign-out-btn @go="confirmSignOut"></sign-out-btn>
             </div>
             <div class="flex-1 flex min-h-0">
                 <!-- The file tree -->
