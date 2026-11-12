@@ -16,6 +16,7 @@
     <script src="/static/vendor/qrcode-generator-1.4.4.js"></script>
     <script src="/static/boot.js"></script>
     <script src="/static/chat-input.js"></script>
+    <script src="/static/attention.js"></script>
     <script src="/static/i18n.js"></script>
 </head>
 <body class="bg-gray-950 text-gray-200 font-sans h-screen flex flex-col">
@@ -100,6 +101,7 @@
                     {{ $t('Dashboard') }}
                 </button>
                 <lang-badge></lang-badge>
+                <sign-out-btn @go="confirmSignOut"></sign-out-btn>
             </div>
         </header>
         <!-- v0.8: the chat as a column beside the Studio -->
@@ -352,9 +354,12 @@
                         </button>
                     </template>
                 </nav>
-                <button @click="closeSettings" class="m-4 px-3 py-2 rounded-lg border border-gray-700 text-[15px] text-gray-300 hover:text-white hover:border-gray-500 flex items-center justify-center gap-2" :title="$t('Back to the chat (Esc)')">
+                <div class="m-4 flex items-center gap-2">
+                <button @click="closeSettings" class="flex-1 px-3 py-2 rounded-lg border border-gray-700 text-[15px] text-gray-300 hover:text-white hover:border-gray-500 flex items-center justify-center gap-2" :title="$t('Back to the chat (Esc)')">
                     ← {{ $t('Back to chat') }}
                 </button>
+                <sign-out-btn @go="confirmSignOut"></sign-out-btn>
+                </div>
             </aside>
             <main class="flex-1 flex flex-col min-w-0">
                 <div class="px-8 py-5 border-b border-gray-800 flex items-center justify-between">
@@ -2456,6 +2461,17 @@
                             <button @click="saveSettings" class="ml-auto bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg font-bold transition text-[15px]">{{ $t('Save') }}</button>
                         </div>
                         <span v-if="showSettingsSaved" class="text-green-400 font-bold text-[13px] mt-2 inline-block">{{ $t('Saved!') }}</span>
+                    </div>
+                    <!-- v0.8: a desktop notification when a reply is waiting for you -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                        <h3 class="font-bold text-gray-200 mb-3 flex items-center">{{ $t('When a reply needs you') }}<help-tip>{{ $t('A reply can stop and wait for your answer: a command to approve, a file change, a form, a model that isn\'t answering. The browser tab always shows ⚠ and the project; a notification can also reach you outside the browser.') }}</help-tip></h3>
+                        <label class="flex items-center gap-2 text-[15px] text-gray-200 cursor-pointer">
+                            <input type="checkbox" v-model="notifyWaiting" @change="turnNotifyOn" :disabled="notifyPermission === 'unsupported' || notifyPermission === 'denied'" class="w-4 h-4">
+                            {{ $t('Notify me on this computer') }}
+                        </label>
+                        <p class="text-[13px] text-gray-400 mt-2">{{ $t('Clicking the notification opens the chat at the question. It is kept in this browser, so turn it on again on your other devices.') }}</p>
+                        <p v-if="notifyPermission === 'denied'" class="text-[13px] text-yellow-400 mt-1">{{ $t('This browser blocks notifications for Optimux. Allow them in the site settings (the icon next to the address), then come back.') }}</p>
+                        <p v-else-if="notifyPermission === 'unsupported'" class="text-[13px] text-yellow-400 mt-1">{{ $t('This browser has no notifications. The tab\'s title still shows when a reply is waiting.') }}</p>
                     </div>
                 </div>
                 <!-- Tab Content: Memory -->

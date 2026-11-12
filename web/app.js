@@ -822,6 +822,17 @@ const copyText = async (text) => {
 };
 // v0.8: the copy symbol after an address (a path, a URL, a command): a green tick when copied,
 // fading back to the symbol after a moment (.cm-copy in optimux.css)
+// v0.8: sign out from anywhere. The power symbol, in red, next to the other header tools.
+const SignOutBtn = {
+    emits: ['go'],
+    template: `<button type="button" @click="$emit('go')" :title="$t('Sign out')" :aria-label="$t('Sign out')"
+            class="w-8 h-8 rounded-lg flex items-center justify-center text-red-500 hover:text-red-300 hover:bg-red-950/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 transition flex-shrink-0">
+        <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M12 3.5v8"></path><path d="M7.4 6.3a7.5 7.5 0 1 0 9.2 0"></path>
+        </svg>
+    </button>`,
+};
+
 const CopyBtn = {
     props: { text: { type: String, default: '' }, label: { type: String, default: '' } },
     data: () => ({ done: false }),
@@ -1006,6 +1017,50 @@ const optimuxApp = createApp({
         // v0.8 autonomy levels: why this asks, and the level "Approve and stop asking" would set
         const pendingAskReason = ref('');
         const pendingRaiseTo = ref('');
+        // ---- v0.8: "the chat needs you" while you are somewhere else (web/attention.js)
+        const ATT = window.OptimuxAttention;
+        const waitingText = ref('');             // what the chat is waiting for, in one line
+        const notifyWaiting = ref(false);        // the Dashboard checkbox (this browser only)
+        const notifyPermission = ref(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+        try { notifyWaiting.value = localStorage.getItem('optimux.notify') === '1'; } catch (_) {}
+        let attentionNote = null;                // the open desktop notification, closed when answered
+        const closeAttentionNote = () => {
+            if (!attentionNote) return;
+            try { attentionNote.close(); } catch (_) {}
+            attentionNote = null;
+        };
+        const jumpToChat = () => {               // from the notification: back to the waiting question
+            try { window.focus(); } catch (_) {}
+            if (showSettingsModal.value) closeSettings();
+            historyOpen.value = false;
+            if (studio.open && !studio.chat) toggleStudioChat();
+            closeAttentionNote();
+            nextTick(() => scrollToBottom(true));
+        };
+        const askedForAttention = (data, replay) => {
+            waitingText.value = ATT.attentionText(data, tr);
+            if (!ATT.shouldNotify({ hidden: document.hidden, settingsOpen: showSettingsModal.value,
+                                    studioOpen: studio.open, studioChat: studio.chat, replay: replay,
+                                    enabled: notifyWaiting.value, permission: notifyPermission.value })) return;
+            closeAttentionNote();
+            try {
+                const project = appSettings.value.active_project || tr('Workspace');
+                attentionNote = new Notification(tr('{project} needs you', { project: project }),
+                    { body: waitingText.value, tag: 'optimux-attention', requireInteraction: true, icon: '/static/logo.svg' });
+                attentionNote.onclick = jumpToChat;
+            } catch (e) { console.warn('[Optimux] notification failed', e); }
+        };
+        const turnNotifyOn = async () => {       // the checkbox: the browser asks the first time
+            try { localStorage.setItem('optimux.notify', notifyWaiting.value ? '1' : '0'); } catch (_) {}
+            if (!notifyWaiting.value || typeof Notification === 'undefined') return;
+            if (Notification.permission === 'default') {
+                try { notifyPermission.value = await Notification.requestPermission(); } catch (_) {}
+            } else notifyPermission.value = Notification.permission;
+            if (notifyPermission.value !== 'granted') {
+                notifyWaiting.value = false;
+                try { localStorage.setItem('optimux.notify', '0'); } catch (_) {}
+            }
+        };
         const autonomy = ref(null);              // GET /api/autonomy (Dashboard -> Execution)
         const autonomyMsg = ref(null);
         const LEVEL_NAMES = { supervised: tk('Supervised'), checkpointed: tk('Checkpointed'), autonomous: tk('Autonomous') };
@@ -1545,6 +1600,11 @@ const optimuxApp = createApp({
             const el = above[above.length - 1];
             if (el) c.scrollTop += el.getBoundingClientRect().top - top - 8;
         };
+        watch(pendingApproval, (waiting) => {
+            if (!waiting) { waitingText.value = ''; closeAttentionNote(); }
+            document.title = ATT.tabTitle('Optimux', appSettings.value.active_project || '', waiting);
+        });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) closeAttentionNote(); });
         const jumpToPinned = () => {
             const c = document.getElementById('chat-container');
             const el = pinnedPrompt.value && c && c.querySelector(`[data-user-msg="${pinnedPrompt.value.index}"]`);
@@ -2476,6 +2536,16 @@ const optimuxApp = createApp({
         const fetchAuth = async () => {
             try { authInfo.value = await (await fetch('/api/auth')).json(); } catch (_) {}
             try { securityChecks.value = (await (await fetch('/api/security')).json()).checks || []; } catch (_) {}
+        };
+        // v0.8: the power button in the header. A reply dies with the connection, so say so.
+        const confirmSignOut = async () => {
+            if (!await askConfirm({
+                title: tr('Sign out?'),
+                text: isGenerating.value || pendingApproval.value
+                    ? tr('A reply is running: signing out stops it. This browser will need the password again.')
+                    : tr('This browser will need the password again. Your chats and work are kept.'),
+                ok: tr('Sign out'), danger: true })) return;
+            await signOut();
         };
         const signOut = async () => {
             try { await fetch('/auth/logout', { method: 'POST' }); } catch (_) {}
@@ -5516,6 +5586,7 @@ const optimuxApp = createApp({
                     pendingCommand.value = data.command;
                     rejectReason.value = '';
                     pendingApproval.value = true;
+                    if (!replay) askedForAttention(data, replay);     // it needs you: notice it from anywhere
                     scrollToBottom();
                 }
                 else if (data.type === "project_created") {
@@ -5935,7 +6006,8 @@ const optimuxApp = createApp({
             selectedModel, availableModels, setupModels, handleModelChange,
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
-            pendingApproval, pendingCommand, pendingFile, pendingFallback, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
+            pendingApproval, pendingCommand, pendingFile, pendingFallback,
+            waitingText, notifyWaiting, notifyPermission, turnNotifyOn, jumpToChat, confirmSignOut, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
             MEMORY_MAX_CHARS, pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
             pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, followChat, onChatScroll, scrollToBottom, waitText, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
 					renderMarkdown, renderUserText,
@@ -6003,7 +6075,7 @@ const optimuxApp = createApp({
 }).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).component('copy-btn', CopyBtn).component('onboard-steps', OnboardSteps)
   .component('day-columns', DayColumns).component('tree-map', Treemap).component('connected-dots', ConnectedScatter)
   .component('scatter-plot', ScatterPlot).component('chart-pick', ChartPick)
-  .component('lang-flag', LangFlag).component('lang-badge', LangBadge)
+  .component('lang-flag', LangFlag).component('lang-badge', LangBadge).component('sign-out-btn', SignOutBtn)
   .use({ install(app) { app.config.globalProperties.$t = window.tr; app.config.globalProperties.$th = window.trh; app.config.globalProperties.$locale = window.appLocale; } });
 // v0.8: start once the remembered language is loaded, so texts made at start are translated
 window.OptimuxI18n.ready.finally(() => optimuxApp.mount('#app'));

@@ -3000,7 +3000,8 @@ STREAMED_KINDS = ("token", "thinking")
 # The page compares the build it started with to the one in each auth_ok: after
 # an update (or any change to the page's files) a reconnecting tab offers a reload
 # instead of running old code against a new server.
-PAGE_FILES = ("index.html", "web/app.js", "web/app.css", "web/boot.js", "web/chat-input.js", "web/optimux.css")
+PAGE_FILES = ("index.html", "web/app.js", "web/app.css", "web/attention.js", "web/boot.js", "web/chat-input.js",
+              "web/optimux.css")
 _build_cache: dict = {"key": None, "value": ""}
 
 
