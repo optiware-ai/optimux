@@ -64,6 +64,8 @@ from optimux_backend.core import activity as activity_lib
 from optimux_backend.core import changes as changes_lib
 from optimux_backend.core import gitsync
 from optimux_backend.core import tasks as tasks_lib
+from optimux_backend.core import sent as sent_lib
+from optimux_backend.core.llm_client import conductor_messages
 from optimux_backend.core import onboarding
 from optimux_backend.core.security import (
     GITHUB_TOKEN_ENV, ScopeError, ValidationError, bearer_from_header, check_token,
@@ -811,6 +813,15 @@ async def rate_task(task_id: str, payload: TaskRatingPayload):
         return tasks_lib.rate(task_id, payload.rating)
     except tasks_lib.TaskError as e:
         return JSONResponse({"detail": str(e)}, status_code=404 if "No such" in str(e) else 400)
+
+
+@app.get("/api/sent/{sid}")
+async def sent_call(sid: int):
+    """What one model call was sent (v0.8): its parts, as they left the machine."""
+    found = await asyncio.to_thread(sent_lib.get, sid)
+    if found is None:
+        return JSONResponse({"detail": tr("This prompt is no longer kept.")}, status_code=404)
+    return found
 
 
 @app.get("/api/tasks")
@@ -2986,11 +2997,31 @@ def build_messages(context: str, history: list, user_message: str | None, model:
     return [system, *history, *tail]
 
 
+# ------------------------------------------------------------------ what was sent (v0.8)
+
+def keep_sent(session: dict, role: str, model: str, messages: list, tools: list | None) -> int | None:
+    """Keep the prompt of one model call (sent.py) and return its id, which the
+    call's usage line then carries. `messages` and `tools` are what goes out: saved
+    keys already hidden. None when keeping is off (keep_sent_days 0) or it failed."""
+    try:
+        days = int(get_settings().get("keep_sent_days", sent_lib.KEEP_DAYS) or 0)
+        if days <= 0:
+            return None
+        return sent_lib.record(session.get("chat_id") or session["id"], role, model, messages, tools,
+                               project=active_project(), memory=get_memory_context(),
+                               task_id=(session.get("task") or {}).get("id"), keep_days=days)
+    except Exception as e:
+        print(f"[Optimux] the sent prompt could not be kept: {e}")
+        return None
+
+
 # ------------------------------------------------------------------ metering
 
 async def meter(websocket: WebSocket, session: dict, role: str, model: str, usage, duration_ms: int | None = None,
-                plan_id: str | None = None, step: int | None = None, parts: dict | None = None) -> None:
-    """Record one LLM call and push it, with session totals, to the UI. Inside a
+                plan_id: str | None = None, step: int | None = None, parts: dict | None = None,
+                sent: int | None = None) -> None:
+    """Record one LLM call and push it, with session totals, to the UI (with `sent`,
+    the id of the prompt kept for "What was sent"). Inside a
     plan step (session["plan_ctx"]) the call carries the plan and step and counts
     toward the step's cost on the plan card."""
     ctx = session.get("plan_ctx") if plan_id is None else None
@@ -3011,7 +3042,7 @@ async def meter(websocket: WebSocket, session: dict, role: str, model: str, usag
         session["cost_complete"] = False
     else:
         session["cost"] += entry["cost"]
-    await send(websocket, "usage", **entry,
+    await send(websocket, "usage", **entry, **({"sent": sent} if sent else {}),
                session_tokens=session["tokens"],
                session_cost=session["cost"],
                session_cost_complete=session["cost_complete"])
@@ -3563,6 +3594,9 @@ async def call_model(websocket: WebSocket, session: dict, role: str, model: str,
     reason = providers.cooldown(model)
     if reason:
         raise ModelUnavailable(model, reason)
+    tools = session.get("step_tools")
+    sent = keep_sent(session, role, model, prepare_messages(messages, model),
+                     tools if tools is not None else offered_tools())
     for attempt in (1, 2):
         r = StreamResult()
         session["current_stream"] = r
@@ -3573,7 +3607,7 @@ async def call_model(websocket: WebSocket, session: dict, role: str, model: str,
         except asyncio.CancelledError:
             # Stopped by the user: tokens were still spent, so record an estimate
             duration = int((time.monotonic() - started) * 1000)
-            await meter(websocket, session, role, model, usage_meter.estimate(model, messages, r.text), duration)
+            await meter(websocket, session, role, model, usage_meter.estimate(model, messages, r.text), duration, sent=sent)
             raise
         except Exception as e:
             info = providers.classify(e)
@@ -3594,7 +3628,7 @@ async def call_model(websocket: WebSocket, session: dict, role: str, model: str,
         except Exception as e:
             print(f"[Optimux] file-work estimate failed: {e}")
             parts = None
-        await meter(websocket, session, role, model, usage, duration, parts=parts)
+        await meter(websocket, session, role, model, usage, duration, parts=parts, sent=sent)
         return r
 
 
@@ -4661,7 +4695,10 @@ async def resolve_tier(websocket: WebSocket, session: dict, user_message: str) -
     session["picked_skill"] = result[4] if len(result) > 4 else None
     session["conductor_plan"] = bool(result[5]) if len(result) > 5 else False
     if conductor_usage is not None:
-        await meter(websocket, session, "conductor", conductor_model, conductor_usage, duration)
+        asked = mask_messages(conductor_messages(
+            user_message, skills_lib.catalog_text(session["skills"]) if session.get("skills") else "", ask_plan))
+        await meter(websocket, session, "conductor", conductor_model, conductor_usage, duration,
+                    sent=keep_sent(session, "conductor", conductor_model, asked, None))
     failed = result[6] if len(result) > 6 else ""
     if session.get("task") is not None:      # what the Conductor decided (IM-09); no reason is asked for
         session["task"].update(conductor_model=conductor_model, conductor_tier=tier,

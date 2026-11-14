@@ -32,3 +32,4 @@
 
 ## Conductor per project (v0.8)
 - `route_model_with_usage(..., conductor=None)`: main passes the project's own Conductor (a model or `off`) when it has one; otherwise the global Routing's is read as before.
+- **`conductor_messages(prompt, catalog, plan_mode)` (v0.8):** the two messages the Conductor is sent; `route_model_with_usage` builds its call from it and `main.py` keeps a copy for "What was sent".

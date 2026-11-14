@@ -194,6 +194,28 @@ MIGRATIONS = [
     ALTER TABLE usage ADD COLUMN read_tokens INTEGER;
     ALTER TABLE usage ADD COLUMN write_tokens INTEGER;
     """,
+    # 14: what was sent to the models (v0.8): each part of a prompt once, calls as references
+    """
+    CREATE TABLE sent_parts (
+        hash TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        chars INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE sent_calls (
+        id INTEGER PRIMARY KEY,
+        ts REAL NOT NULL,
+        session TEXT,
+        task_id TEXT,
+        project TEXT,
+        role TEXT,
+        model TEXT,
+        parts TEXT NOT NULL,
+        tools TEXT,
+        chars INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX sent_calls_ts ON sent_calls (ts);
+    CREATE INDEX sent_calls_session ON sent_calls (session);
+    """,
 ]
 
 _ready_for: str | None = None

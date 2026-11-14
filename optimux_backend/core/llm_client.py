@@ -165,6 +165,13 @@ async def route_model(prompt: str) -> str:
     return complexity
 
 
+def conductor_messages(prompt: str, catalog: str = "", plan_mode: bool = False) -> list:
+    """What the Conductor is sent for one request (also read by main.py, which keeps
+    a copy for "What was sent")."""
+    return [{"role": "system", "content": get_router_prompt(catalog, plan=plan_mode)},
+            {"role": "user", "content": prompt}]
+
+
 async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_mode: bool = False,
                                  conductor: str | None = None) -> tuple:
     """Ask the Conductor for a tier.
@@ -195,10 +202,7 @@ async def route_model_with_usage(prompt: str, skills: dict | None = None, plan_m
 
     kwargs = {
         "model": conductor_model,
-        "messages": [
-            {"role": "system", "content": get_router_prompt(catalog, plan=plan_mode)},
-            {"role": "user", "content": prompt},
-        ],
+        "messages": conductor_messages(prompt, catalog, plan_mode),
         "temperature": 0,
         # Models that refuse temperature 0 (gpt-5 while it thinks) get the call
         # without it instead of failing: the Conductor's answer is a short JSON either way

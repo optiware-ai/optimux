@@ -88,6 +88,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── sandbox.py_AGENT.md
 │       ├── scout.py             (Scout: the Simple model reads the project before a Complex task)
 │       ├── scout.py_AGENT.md
+│       ├── sent.py              (What was sent: every model call's prompt, kept part by part)
+│       ├── sent.py_AGENT.md
 │       ├── security.py          (Auth, origin, scope & env-key validation)
 │       ├── skills.py            (Skills: discovery, loading, editing, starters)
 │       ├── snapshots.py         (Data and Workspace snapshots kept on this machine)

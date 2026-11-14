@@ -131,6 +131,8 @@ class SettingsPayload(BaseModel):
     confirm_escalate: bool = True
     # v0.8: ask before a stuck Simple request (step limit, repeated call) moves to Complex
     confirm_auto_escalate: bool = True
+    # v0.8: days the prompts sent to the models are kept for "What was sent" (0 = not kept)
+    keep_sent_days: int = 14
     # Feature 19: off | manual (only /name) | auto (auto skills are listed in prompts)
     skills_mode: str = "auto"
     # Sandbox (bubblewrap): commands can only change the working folder
@@ -319,6 +321,8 @@ def save_settings(payload: SettingsPayload):
         raise ValidationError(tr("plan_mode must be off, ask or auto."))
     if not 1 <= payload.curator_idle_minutes <= 240:
         raise ValidationError(tr("curator_idle_minutes must be between 1 and 240."))
+    if not 0 <= payload.keep_sent_days <= 365:
+        raise ValidationError(tr("keep_sent_days must be between 0 and 365."))
     payload.git_name, payload.git_email = check_git_identity(payload.git_name, payload.git_email)
     if not re.match(r"^[A-Za-z0-9-]{0,39}$", payload.github_login or ""):
         raise ValidationError(tr("github_login isn't a GitHub user name."))

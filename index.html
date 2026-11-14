@@ -2496,6 +2496,14 @@
                         <p v-if="notifyPermission === 'denied'" class="text-[13px] text-yellow-400 mt-1">{{ $t('This browser blocks notifications for Optimux. Allow them in the site settings (the icon next to the address), then come back.') }}</p>
                         <p v-else-if="notifyPermission === 'unsupported'" class="text-[13px] text-yellow-400 mt-1">{{ $t('This browser has no notifications. The tab\'s title still shows when a reply is waiting.') }}</p>
                     </div>
+                    <!-- v0.8: the prompts sent to the models are kept so they can be read ("What was sent") -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 mt-6">
+                        <h3 class="font-bold text-gray-200 mb-3 flex items-center">{{ $t('What was sent to the models') }}<help-tip>{{ $t('Optimux keeps the prompt of every model call exactly as it left this machine (saved keys already hidden): its own instructions, your memory, the conversation, the tool results and the tools offered. Under a reply, "What was sent" shows them. They are kept in Optimux\'s own data on this machine, never anywhere else.') }}</help-tip></h3>
+                        <label class="flex flex-wrap items-center gap-2 text-[15px] text-gray-200">{{ $t('Keep them for') }}
+                            <input v-model.number="appSettings.keep_sent_days" @change="saveSettings" type="number" min="0" max="365" :aria-label="$t('Days the sent prompts are kept')" class="w-20 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-gray-200 outline-none focus:border-blue-500">
+                            {{ $t('days') }}</label>
+                        <p class="text-[13px] text-gray-400 mt-2">{{ $t('0 keeps nothing: "What was sent" then has nothing to show for new replies. Text sent again with every call (the instructions, the earlier conversation) is stored once.') }}</p>
+                    </div>
                 </div>
                 <!-- Tab Content: Memory -->
                 <div v-if="settingsTab === 'memory'" class="overflow-y-auto flex-1 pr-2">
@@ -3117,6 +3125,63 @@
         </div>
 
         <!-- Push / Update from GitHub (v0.4-5t): shown first, runs only on confirm -->
+        <!-- v0.8: What was sent: every model call of one reply, part by part, as it left the machine -->
+        <div v-if="sentBox.open" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="sentBox.open = false" @keydown.esc="sentBox.open = false" data-sent-box>
+            <div class="w-full max-w-5xl h-[85vh] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl text-sm flex flex-col" role="dialog" aria-modal="true" :aria-label="$t('What was sent')">
+                <div class="flex items-start gap-3 px-5 pt-4 pb-3 border-b border-gray-800 flex-shrink-0">
+                    <div class="flex-1 min-w-0">
+                        <h3 class="text-gray-100 font-bold">{{ $t('What was sent') }}</h3>
+                        <p class="text-[12px] text-gray-400">{{ $t('Each model call of this reply, exactly as it left this machine. Saved keys were hidden before sending. The Conductor only picks the model: it never rewrites your request.') }}</p>
+                    </div>
+                    <button @click="sentBox.open = false" class="text-gray-500 hover:text-gray-200" :title="$t('Close')" :aria-label="$t('Close')">✕</button>
+                </div>
+                <div class="flex-1 min-h-0 flex">
+                    <!-- the calls -->
+                    <nav class="w-60 flex-shrink-0 border-r border-gray-800 overflow-y-auto p-2" :aria-label="$t('Model calls')">
+                        <button v-for="(c, i) in sentBox.calls" :key="c.id" type="button" @click="showSent(i)" :aria-current="sentBox.at === i ? 'true' : 'false'"
+                                :class="['w-full text-left rounded-lg px-2.5 py-2 mb-1 border', sentBox.at === i ? 'border-blue-600 bg-blue-950/40' : 'border-transparent hover:bg-gray-800/70']">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[11px] font-mono text-gray-500">{{ i + 1 }}</span>
+                                <span :class="['text-[11px] font-mono uppercase tracking-wide rounded px-1', sentRoleClass(c.role)]">{{ c.role }}</span>
+                            </div>
+                            <div class="font-mono text-[12px] text-gray-200 truncate" :title="c.model">{{ c.model }}</div>
+                            <div class="text-[11px] font-mono text-gray-500">{{ $t('{v} tok in · {v2} out', { v: fmtTokens(c.tokens), v2: fmtTokens(c.out) }) }}</div>
+                        </button>
+                    </nav>
+                    <!-- one call -->
+                    <section class="flex-1 min-w-0 overflow-y-auto p-4">
+                        <div v-if="sentBox.loading" class="text-gray-400">{{ $t('Loading…') }}</div>
+                        <div v-else-if="sentBox.error" class="text-red-300" role="alert">{{ sentBox.error }}</div>
+                        <template v-else-if="sentBox.data">
+                            <!-- where the prompt's size goes -->
+                            <div class="flex h-2.5 rounded overflow-hidden bg-gray-800 mb-2" aria-hidden="true">
+                                <span v-for="g in sentGroups" :key="g.kind" :class="sentKindClass(g.kind, true)" :style="{ width: g.share + '%' }" :title="sentKindLabel(g.kind) + ' · ' + g.share + '%'"></span>
+                            </div>
+                            <div class="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-gray-300 mb-3">
+                                <span v-for="g in sentGroups" :key="g.kind" class="flex items-center gap-1.5"><span :class="['inline-block w-2.5 h-2.5 rounded-sm', sentKindClass(g.kind, true)]"></span>{{ sentKindLabel(g.kind) }} <span class="font-mono text-gray-500">≈{{ fmtTokens(Math.round(g.chars / 4)) }} · {{ g.share }}%</span></span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2 mb-3 text-[12px] text-gray-500">
+                                <span class="flex-1 min-w-0">{{ $t('Sizes are estimates (4 characters ≈ 1 token); the provider counted {v} tokens in for this call.', { v: fmtTokens(sentBox.calls[sentBox.at].tokens) }) }}</span>
+                                <button @click="sentOpenAll(true)" class="text-blue-300 hover:text-blue-200">{{ $t('Open all') }}</button>
+                                <button @click="sentOpenAll(false)" class="text-gray-400 hover:text-gray-200">{{ $t('Fold all') }}</button>
+                                <button @click="copySent" class="border border-gray-700 hover:border-gray-500 rounded px-2 py-0.5 text-gray-300">{{ sentBox.copied ? $t('Copied!') : $t('Copy all') }}</button>
+                            </div>
+                            <div v-for="(p, i) in sentBox.data.parts" :key="i" class="mb-1.5 border border-gray-800 rounded-lg overflow-hidden" data-sent-part>
+                                <button type="button" @click="sentBox.shown[i] = !sentBox.shown[i]" :aria-expanded="sentBox.shown[i] ? 'true' : 'false'" class="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-800/60">
+                                    <span :class="['inline-block w-1.5 h-4 rounded-sm flex-shrink-0', sentKindClass(p.kind, true)]"></span>
+                                    <span :class="['font-bold flex-shrink-0', sentKindClass(p.kind, false)]">{{ sentKindLabel(p.kind) }}</span>
+                                    <span class="text-gray-500 truncate min-w-0 flex-1 font-mono text-[12px]">{{ sentBox.shown[i] ? '' : sentPeek(p.text) }}</span>
+                                    <span class="text-[11px] font-mono text-gray-500 flex-shrink-0">≈{{ fmtTokens(Math.round(p.chars / 4)) }} tok</span>
+                                    <span class="text-gray-500 flex-shrink-0">{{ sentBox.shown[i] ? '▾' : '▸' }}</span>
+                                </button>
+                                <pre v-if="sentBox.shown[i]" class="px-3 py-2 border-t border-gray-800 bg-gray-950 text-[12px] leading-relaxed text-gray-200 whitespace-pre-wrap break-words max-h-[50vh] overflow-auto">{{ p.text }}</pre>
+                            </div>
+                        </template>
+                    </section>
+                </div>
+            </div>
+        </div>
+
         <div v-if="syncBox.open" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="closeSync">
             <div class="w-full max-w-2xl max-h-[75vh] overflow-y-auto bg-gray-900 border border-gray-700 rounded-xl p-5 shadow-2xl text-sm">
                 <div class="flex items-start gap-3 mb-3">
@@ -3449,6 +3514,7 @@
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                 {{ copiedIndex === index ? $t('Copied!') : (copiedIndex === -1 ? $t('Copy failed') : $t('Copy')) }}
                             </button>
+                            <button v-if="msg.usage && msg.usage.sent && msg.usage.sent.length" @click="openSent(msg)" data-sent-open class="text-gray-500 hover:text-gray-200 border border-gray-700 hover:border-gray-500 rounded px-2 py-0.5" :title="$t('Read exactly what each model call of this reply was sent: instructions, memory, conversation, tools')">{{ $t('What was sent') }}</button>
                             <button v-if="currentSession && msg.usage" @click="saveAsSkill(index)" :disabled="skillDrafting" class="text-gray-500 hover:text-gray-200 border border-gray-700 hover:border-gray-500 rounded px-2 py-0.5" :title="$t('Draft a reusable skill from this chat (you review it before saving)')">{{ skillDrafting ? $t('Drafting…') : $t('Save as skill') }}</button>
                             <button v-if="canEscalate(msg, index)" @click="escalate" class="text-amber-400 hover:text-amber-300 border border-amber-800/60 hover:border-amber-600 rounded px-2 py-0.5" :title="$t('Re-run your last request on the Complex Executor')">{{ $t('Escalate ↑') }}</button>
                         </span>

@@ -932,6 +932,57 @@ const optimuxApp = createApp({
         const pendingSteps = ref(null);        // v0.8: out of steps: more, the other model, or stop? (step_limit)
         const moreSteps = ref(10);             // how many more, in that card
         const pendingForm = ref(null);   // Feature 25: { form, error, github, active_project, key } for create_project
+        // v0.8: What was sent: the model calls of one reply, each read from /api/sent/<id> when picked
+        const sentBox = Vue.reactive({ open: false, calls: [], at: 0, loading: false, error: '', data: null, shown: {}, copied: false });
+        const SENT_KINDS = {     // kind: [label, the bar's colour, the text's colour]
+            instructions: [() => tr('Optimux\'s instructions'), 'bg-gray-500', 'text-gray-300'],
+            memory: [() => tr('Your memory'), 'bg-purple-500', 'text-purple-300'],
+            user: [() => tr('You'), 'bg-blue-500', 'text-blue-300'],
+            assistant: [() => tr('The model, earlier'), 'bg-green-600', 'text-green-300'],
+            call: [() => tr('Tool the model asked for'), 'bg-teal-600', 'text-teal-300'],
+            result: [() => tr('Tool result'), 'bg-amber-600', 'text-amber-300'],
+            tools: [() => tr('Tools offered'), 'bg-pink-600', 'text-pink-300'],
+        };
+        const sentKindLabel = (k) => (SENT_KINDS[k] ? SENT_KINDS[k][0]() : k);
+        const sentKindClass = (k, bar) => (SENT_KINDS[k] || [null, 'bg-gray-600', 'text-gray-300'])[bar ? 1 : 2];
+        const sentRoleClass = (r) => (r === 'complex' ? 'bg-amber-900/60 text-amber-200' : r === 'simple' ? 'bg-blue-900/60 text-blue-200' : 'bg-gray-800 text-gray-300');
+        const sentPeek = (t) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+        const sentGroups = Vue.computed(() => {
+            const d = sentBox.data;
+            if (!d || !d.chars) return [];
+            const sums = {};
+            d.parts.forEach((p) => { sums[p.kind] = (sums[p.kind] || 0) + p.chars; });
+            return Object.keys(SENT_KINDS).filter((k) => sums[k]).map((k) => ({ kind: k, chars: sums[k], share: Math.max(1, Math.round(100 * sums[k] / d.chars)) }));
+        });
+        const showSent = async (i) => {
+            const call = sentBox.calls[i];
+            if (!call) return;
+            sentBox.at = i; sentBox.loading = true; sentBox.error = ''; sentBox.data = null; sentBox.copied = false;
+            try {
+                const d = await studioFetch('/api/sent/' + call.id);
+                if (sentBox.calls[sentBox.at] !== call) return;
+                // open what a reader looks for first: the memory, and the last thing said
+                const shown = {};
+                const last = d.parts.map((p) => p.kind).lastIndexOf('user');
+                d.parts.forEach((p, n) => { shown[n] = p.kind === 'memory' || n === last; });
+                sentBox.data = d; sentBox.shown = shown;
+            } catch (e) { sentBox.error = e.message; }
+            sentBox.loading = false;
+        };
+        const openSent = (msg) => {
+            sentBox.calls = (msg.usage && msg.usage.sent) || [];
+            sentBox.open = true;
+            // start at the call that answered: the last one that is not the Conductor or the scout
+            let at = sentBox.calls.length - 1;
+            while (at > 0 && (sentBox.calls[at].role === 'conductor' || sentBox.calls[at].role === 'scout')) at--;
+            showSent(Math.max(0, at));
+        };
+        const sentOpenAll = (on) => { if (sentBox.data) sentBox.data.parts.forEach((p, n) => { sentBox.shown[n] = on; }); };
+        const copySent = async () => {
+            if (!sentBox.data) return;
+            const text = sentBox.data.parts.map((p) => '===== ' + sentKindLabel(p.kind) + ' =====\n' + p.text).join('\n\n');
+            try { await navigator.clipboard.writeText(text); sentBox.copied = true; setTimeout(() => { sentBox.copied = false; }, 1500); } catch (_) {}
+        };
         const pendingSync = ref(null);   // v0.8: the Push / Update window the model asked for: { project, kind, message, sync_pass }
         const reopenSync = () => {       // the card's button: the same window, with the pass that lets it through
             const kind = pendingAction.value === 'push_project' ? 'push' : 'update';
@@ -1307,7 +1358,7 @@ const optimuxApp = createApp({
                 routingConfig.value = await routingResponse.json();
 
                 const settingsResponse = await fetch('/api/settings');
-                appSettings.value = { language: 'en', max_steps_simple: 8, max_steps_complex: 25, memory_curator: true, curator_idle_minutes: 10, skills_mode: 'auto', confirm_update_memory: true, confirm_escalate: true, confirm_auto_escalate: true, sandbox: false, sandbox_network: true, sandbox_ro_paths: [], command_env: [], limit_memory_mb: 0, limit_file_mb: 1024, limit_processes: 0, command_timeout: 120, ...(await settingsResponse.json()) };
+                appSettings.value = { language: 'en', max_steps_simple: 8, max_steps_complex: 25, memory_curator: true, curator_idle_minutes: 10, skills_mode: 'auto', keep_sent_days: 14, confirm_update_memory: true, confirm_escalate: true, confirm_auto_escalate: true, sandbox: false, sandbox_network: true, sandbox_ro_paths: [], command_env: [], limit_memory_mb: 0, limit_file_mb: 1024, limit_processes: 0, command_timeout: 120, ...(await settingsResponse.json()) };
                 if (appSettings.value.language !== window.OptimuxI18n.lang.value) window.OptimuxI18n.setLanguage(appSettings.value.language);
                 fetchProjectUsage();
                 fetchSkills();   // for /name suggestions in the chat input
@@ -5719,6 +5770,9 @@ const optimuxApp = createApp({
                         sc.cost += data.cost || 0;
                     }
                     if (!helper) lastMsg.model = data.model;
+                    // v0.8: the prompt this call was sent is kept on the server; its id opens "What was sent"
+                    if (data.sent) (u.sent || (u.sent = [])).push({ id: data.sent, role: data.role, model: data.model,
+                                                                    tokens: data.prompt_tokens || 0, out: data.completion_tokens || 0 });
                 }
                 else if (data.type === "plan") {
                     // v0.4: a plan card; a later event for the same plan updates it in place, in any message
@@ -6260,6 +6314,7 @@ const optimuxApp = createApp({
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
+            sentBox, openSent, showSent, sentGroups, sentKindLabel, sentKindClass, sentRoleClass, sentPeek, sentOpenAll, copySent,
             syncBox, chatProject, openSync, reopenSync, closeSync, syncReady, writeCommitMessage, runSync, link, linkNote,
             startClone, cancelClone, projectLocations, loadProjectLocations, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,
