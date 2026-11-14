@@ -1850,6 +1850,7 @@ async def auth_logout(request: Request):
                 await sock.close(code=4401)
             except Exception:
                 pass
+        stop_requests_without_a_page()
     await _announce("signout")
     response = JSONResponse({"ok": True})
     response.delete_cookie(auth.COOKIE, path="/")
@@ -3001,6 +3002,7 @@ STREAMED_KINDS = ("token", "thinking")
 # an update (or any change to the page's files) a reconnecting tab offers a reload
 # instead of running old code against a new server.
 PAGE_FILES = ("index.html", "web/app.js", "web/app.css", "web/attention.js", "web/boot.js", "web/chat-input.js",
+              "web/connection.js",
               "web/optimux.css")
 _build_cache: dict = {"key": None, "value": ""}
 
@@ -3046,6 +3048,203 @@ def running_version() -> str:
 # reopened chat shows what happened, not what was being waited for.
 LIVE_ONLY_KINDS = {"status"}
 
+# ---- v0.8: a request outlives its connection for a while ---------------------------------
+# A dropped connection used to cancel the request as soon as the server noticed, and until
+# then the request ran on with no page. Now the request talks to a Line: the page's socket
+# while there is one, nothing while the page is away (everything is still recorded with the
+# chat), and the next socket when a page picks the request up again (open_session).
+PAGE_AWAY_GRACE = 120    # seconds a running request waits for a page to come back; then it stops
+QUIET_AFTER = 15         # a page that checks its line (ping) and said nothing for this long is gone
+TAKEN_OVER = 4409        # close code for a socket whose request another page picked up
+STATUS_ENDS = {"token", "thinking", "command_start", "approval_request", "done", "error", "stopped",
+               "step_limit", "command_limit"}    # the page's WAIT_ENDS (web/app.js)
+# session id -> {"session", "line", "task", "owner" (its socket; None = no page), "project",
+#                "started", "timer" (stops it when nobody comes back)}
+RUNNING: dict[str, dict] = {}
+_wait = asyncio.sleep     # the watchers' own clock: tests that make asyncio.sleep instant must not spin them
+
+
+class Line:
+    """What a running request sends to, in place of the WebSocket."""
+
+    def __init__(self, websocket, recorder):
+        self.socket = websocket          # None while the page is away
+        self.optimux_recorder = recorder
+        self.optimux_held = {}
+        self.optimux_status = None       # (the last "status" event, when), while it is the one showing
+        self.heard = time.monotonic()    # the last message from the page
+        self.pings = False               # the page checks its line, so its silence means it is gone
+        self.catching_up = None          # what the request sends while a page is brought up to date
+
+    async def send_text(self, text: str) -> None:
+        if self.catching_up is not None:
+            self.catching_up.append(text)
+            return
+        sock = self.socket
+        if sock is None:
+            return
+        try:
+            await sock.send_text(text)
+        except Exception:
+            if self.socket is sock:
+                self.socket = None       # gone: the request goes on, recorded; the reader loop sets it aside
+
+    def quiet(self) -> bool:
+        return self.pings and time.monotonic() - self.heard > QUIET_AFTER
+
+
+def chat_summary(data: dict) -> dict:
+    return {k: data[k] for k in ("id", "project", "title", "created", "updated", "turns", "tier", "cost",
+                                 "calls_without_cost", "archived")}
+
+
+def request_to_resume(want: str) -> dict | None:
+    """The running request a page that opens chat `want` should get back: one with
+    no page (its connection dropped), or whose page went silent. None for most opens."""
+    free = [e for e in RUNNING.values() if not e["task"].done() and (e["owner"] is None or e["line"].quiet())]
+    if not free:
+        return None
+    if want == "latest":
+        here = active_project()
+        newest = chat_store.latest(here)
+        free = [e for e in free if e["project"] == here or (newest and e["session"].get("chat_id") == newest)]
+    elif want != "last":
+        free = [e for e in free if e["session"].get("chat_id") == want]
+    return max(free, key=lambda e: e["started"], default=None)
+
+
+async def _close_quietly(websocket, code: int) -> None:
+    try:
+        await asyncio.wait_for(websocket.close(code=code), timeout=5)
+    except Exception:
+        pass
+
+
+async def hand_over(websocket: WebSocket, entry: dict) -> None:
+    """Give a running request to this page: the chat as far as it went, the waiting
+    line and the open question, then everything live again, in order."""
+    line, sess, old = entry["line"], entry["session"], entry["owner"]
+    if entry.get("timer") is not None:
+        entry["timer"].cancel()
+        entry["timer"] = None
+    entry["owner"] = websocket
+    data = chat_store.get(sess["chat_id"]) if sess.get("chat_id") else None
+    now = time.time()
+    summary = chat_summary(data) if data else {
+        "id": None, "project": entry["project"], "title": "", "created": now, "updated": now, "turns": 0,
+        "tier": sess.get("tier"), "cost": 0, "calls_without_cost": 0, "archived": False}
+    first = [json.dumps({
+        "type": "session_loaded", "session": summary, "running": True,
+        "events": (data["events"] if data else []) + sess["recorder"].pending,
+        "plans": [public_plan(p) for p in plans_lib.for_session(sess["chat_id"])] if data else [],
+        "ratings": tasks_lib.ratings(sess["chat_id"]) if data else {}})]
+    if line.optimux_status:
+        status, at = line.optimux_status
+        first.append(json.dumps({**status, "ago": int(time.monotonic() - at)}))
+    for question in (sess.get("asking"), sess.get("limit_asking")):
+        if question:
+            first.append(json.dumps(question))
+    line.catching_up = []          # from here nothing is missed and nothing overtakes the chat above
+    line.socket = websocket
+    line.heard, line.pings = time.monotonic(), False
+    try:
+        for text in first:
+            await websocket.send_text(text)
+        while line.catching_up:
+            await websocket.send_text(line.catching_up.pop(0))
+    except Exception:
+        line.socket = None         # this page is gone too: its reader loop sets the request aside again
+    finally:
+        line.catching_up = None
+    if old is not None and old is not websocket:
+        task = asyncio.create_task(_close_quietly(old, TAKEN_OVER))   # not left half open
+        BACKGROUND_TASKS.add(task)
+        task.add_done_callback(BACKGROUND_TASKS.discard)
+
+
+def set_aside(key: str, entry: dict) -> None:
+    """The page is gone: the request goes on without one, for PAGE_AWAY_GRACE seconds."""
+    entry["owner"] = None
+    entry["line"].socket = None
+
+    async def give_up():
+        await _wait(PAGE_AWAY_GRACE)
+        if RUNNING.get(key) is entry and entry["owner"] is None and not entry["task"].done():
+            entry["session"]["away_stop"] = max(1, round(PAGE_AWAY_GRACE))
+            entry["task"].cancel()
+
+    entry["timer"] = asyncio.create_task(give_up())
+
+
+def stop_requests_without_a_page() -> None:
+    """Signing out stops the requests no page is serving, too."""
+    for entry in list(RUNNING.values()):
+        if entry["owner"] is None and not entry["task"].done():
+            entry["task"].cancel()
+
+
+# ---- v0.8: a silent model call says whether the provider's server answers ------------------
+SILENCE_CHECK = 15       # seconds without a chunk before the check (and between checks)
+PROVIDER_HOSTS = {
+    "anthropic": "api.anthropic.com", "gemini": "generativelanguage.googleapis.com", "openai": "api.openai.com",
+    "openrouter": "openrouter.ai", "groq": "api.groq.com", "mistral": "api.mistral.ai",
+    "deepseek": "api.deepseek.com", "xai": "api.x.ai", "together_ai": "api.together.xyz",
+    "fireworks_ai": "api.fireworks.ai", "perplexity": "api.perplexity.ai", "cohere": "api.cohere.com",
+}
+
+
+def model_endpoint(model: str) -> tuple[str, int]:
+    """The host and port a call to this model goes to; ("", 0) when not known."""
+    base = config_manager.api_base_for(model)
+    if base:
+        try:
+            from urllib.parse import urlsplit
+            u = urlsplit(base)
+            return (u.hostname or "", u.port or (80 if u.scheme == "http" else 443))
+        except ValueError:
+            return ("", 0)
+    prefix = model.split("/", 1)[0] if "/" in model else ""
+    if not prefix and model.startswith(("gpt-", "chatgpt", "o1", "o3", "o4")):
+        prefix = "openai"
+    return (PROVIDER_HOSTS.get(prefix, ""), 443)
+
+
+def model_host(model: str) -> str:
+    return model_endpoint(model)[0]
+
+
+async def host_answers(host: str, port: int = 443) -> bool:
+    """A plain connection to the provider's own server (nothing is sent): does it open?"""
+    try:
+        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=4)
+        writer.close()
+        return True
+    except Exception:
+        return False
+
+
+async def watch_silence(websocket, model: str, heard: dict) -> None:
+    """Runs beside one model call. When nothing arrived for SILENCE_CHECK seconds it
+    checks that this machine reaches the provider, and tells the page which it is:
+    the model is slow or thinking (net "ok"), or the connection is the problem
+    ("down"). Sent when it changes; live only, like every status."""
+    told = None
+    while True:
+        await _wait(SILENCE_CHECK)
+        silent = time.monotonic() - heard["at"]
+        if silent < SILENCE_CHECK:
+            told = None
+            continue
+        host, port = model_endpoint(model)
+        if not host:
+            return
+        net = "ok" if await host_answers(host, port) else "down"
+        if net != told and time.monotonic() - heard["at"] >= SILENCE_CHECK:
+            await send(websocket, "status", stage="model", model=model, net=net, host=host,
+                       ago=int(time.monotonic() - heard["at"]))
+            told = net
+
+
 
 async def send(websocket: WebSocket, kind: str, content=None, **extra) -> None:
     """Send one event to the page (and record it with the chat).
@@ -3073,6 +3272,11 @@ async def _send_now(websocket: WebSocket, kind: str, content=None, **extra) -> N
     recorder = getattr(websocket, "optimux_recorder", None)
     if recorder is not None and kind not in LIVE_ONLY_KINDS:
         recorder.add(payload)
+    if isinstance(websocket, Line):      # the waiting line is live only: kept for a page that comes back
+        if kind == "status":
+            websocket.optimux_status = (payload, time.monotonic())
+        elif kind in STATUS_ENDS:
+            websocket.optimux_status = None
     await websocket.send_text(json.dumps(payload))
 
 
@@ -3197,7 +3401,18 @@ async def stream_once(websocket: WebSocket, model: str, messages: list, r: Strea
                       thinking: str | None = None, tools: list | None = None) -> StreamResult:
     """One streamed completion into `r`. Text is forwarded to the UI as it
     arrives, except output that looks like a JSON tool call, which is held
-    back. `r` is passed in so the caller can see what was streamed on error."""
+    back. `r` is passed in so the caller can see what was streamed on error.
+    A watcher runs beside it and speaks up when the call is silent (watch_silence)."""
+    heard = {"at": time.monotonic()}
+    watcher = asyncio.create_task(watch_silence(websocket, model, heard))
+    try:
+        return await _stream_once(websocket, model, messages, r, thinking, tools, heard)
+    finally:
+        watcher.cancel()
+
+
+async def _stream_once(websocket: WebSocket, model: str, messages: list, r: StreamResult,
+                       thinking: str | None, tools: list | None, heard: dict) -> StreamResult:
     await send(websocket, "status", stage="model", model=model)
     stream = await litellm.acompletion(
         model=model,
@@ -3210,6 +3425,7 @@ async def stream_once(websocket: WebSocket, model: str, messages: list, r: Strea
         **({"reasoning_effort": thinking} if thinking else thinking_kwargs(model)),
     )
     async for chunk in stream:
+        heard["at"] = time.monotonic()
         if getattr(chunk, "usage", None):
             r.usage = chunk.usage
         # The usage-only final chunk has no choices
@@ -3505,13 +3721,16 @@ async def wait_for_answer(websocket: WebSocket, session: dict, tc_id: str, comma
     loop resolves it). Returns the answer; approved only if answer["approved"] is True."""
     approval = asyncio.get_running_loop().create_future()
     session["approval"] = approval
-    await send(websocket, "approval_request", command=command, tool_call_id=tc_id,
-               sandboxed=sandbox_lib.enabled(get_settings()), sandbox_problem=sandbox_problem(), **extra)
+    question = dict(command=command, tool_call_id=tc_id, sandboxed=sandbox_lib.enabled(get_settings()),
+                    sandbox_problem=sandbox_problem(), **extra)
+    session["asking"] = {"type": "approval_request", **question}   # asked again of a page that comes back
     asked_at = time.monotonic()
     try:
+        await send(websocket, "approval_request", **question)
         answer = await approval
     finally:
         session["approval"] = None
+        session["asking"] = None
         # v0.8 working time: the user's time to answer isn't the request's work (tasks.APPROVAL_MS each)
         tasks_lib.add_wait(session.get("task"), int((time.monotonic() - asked_at) * 1000))
     task = session.get("task")
@@ -3589,6 +3808,7 @@ async def ask_keep_waiting(websocket: WebSocket, session: dict, command: str, se
     (and the question removed) when the command ends or nobody answers."""
     answer = asyncio.get_running_loop().create_future()
     session["limit_answer"] = answer
+    session["limit_asking"] = {"type": "command_limit", "command": command, "elapsed": int(seconds), "limit": limit}
     await send(websocket, "command_limit", command=command, elapsed=int(seconds), limit=limit)
     choice = None
     try:
@@ -3597,6 +3817,7 @@ async def ask_keep_waiting(websocket: WebSocket, session: dict, command: str, se
         return choice
     finally:
         session["limit_answer"] = None
+        session["limit_asking"] = None
         await send(websocket, "command_limit_done", command=command)
         span = f"{limit // 60} min" if limit >= 60 else f"{limit}s"
         note = {"more": f"Waiting {span} more for '{command}'.",
@@ -4790,15 +5011,37 @@ async def websocket_endpoint(websocket: WebSocket):
     else:
         LIVE_SOCKETS.setdefault(login_id, set()).add(websocket)
         ensure_workspace_watcher()
-    await websocket.send_text(json.dumps({"type": "auth_ok", "build": page_build(),
+    await websocket.send_text(json.dumps({"type": "auth_ok", "build": page_build(), "away": PAGE_AWAY_GRACE,
                                           "version": await asyncio.to_thread(running_version)}))
     problem = sandbox_problem()
     if problem:
         await websocket.send_text(json.dumps({"type": "sandbox_problem", "content": problem}))
 
     session = new_session()
-    websocket.optimux_recorder = session["recorder"]  # send() records what this chat shows
+    # The request talks to a Line, not to this socket: it goes on when the socket drops,
+    # and a page that comes back gets it again (see Line, above). send() records through it.
+    line = Line(websocket, session["recorder"])
     current: asyncio.Task | None = None
+
+    def start(payload: dict) -> asyncio.Task:
+        task = asyncio.create_task(run_job(payload))
+        if payload.get("type") not in ("new_chat", "open_session"):     # those are quick and belong to the page
+            key, entry = session["id"], {"session": session, "line": line, "task": task, "owner": websocket,
+                                         "project": active_project(), "started": time.monotonic(), "timer": None}
+            RUNNING[key] = entry
+
+            def ended(_task, key=key, entry=entry):
+                if RUNNING.get(key) is entry:
+                    del RUNNING[key]
+                if entry["timer"] is not None:
+                    entry["timer"].cancel()
+                if entry["owner"] is None:      # it ended with no page: the chat is finished, as when a page closes
+                    if entry["session"].get("idle_task") is not None:
+                        entry["session"]["idle_task"].cancel()
+                    schedule_curation(None, entry["session"].get("chat_id"))
+
+            task.add_done_callback(ended)
+        return task
 
     async def run_job(payload: dict) -> None:
         project = active_project()
@@ -4826,20 +5069,20 @@ async def websocket_endpoint(websocket: WebSocket):
             session["task"] = tasks_lib.new(kind if kind in tasks_lib.KINDS else "prompt", active_project())
         try:
             if kind in ("new_chat", "open_session") and session["chat_id"]:
-                schedule_curation(websocket, session["chat_id"])   # the chat being left is finished
+                schedule_curation(line, session["chat_id"])   # the chat being left is finished
             if kind == "new_chat":
                 reset_chat(session)
-                await send(websocket, "chat_reset")
+                await send(line, "chat_reset")
             elif kind == "open_session":
-                await handle_open_session(websocket, session, str(payload.get("id", "latest")))
+                await handle_open_session(line, session, str(payload.get("id", "latest")))
             elif kind == "escalate":
                 recorder.add({"type": "escalate"})
                 turns_added = 1
-                await handle_escalate(websocket, session)
+                await handle_escalate(line, session)
             elif kind == "plan_action":
                 recorder.add({"type": "plan_action", "action": payload.get("action")})
                 turns_added = 1
-                await handle_plan_action(websocket, session, payload)
+                await handle_plan_action(line, session, payload)
             else:
                 prompt = payload.get("prompt", "")
                 # A saved key pasted into the chat is hidden before anything sees it (IM-02b)
@@ -4849,23 +5092,25 @@ async def websocket_endpoint(websocket: WebSocket):
                     turns_added = 1
                 if hidden:
                     names = sorted({n for n, _ in secret_values() if secret_mark(n) in prompt})
-                    await send(websocket, "prompt_masked", content=prompt)     # the page shows the hidden version
-                    await send(websocket, "system", tr("Your message held a saved key ({v}). It was hidden as ••••(NAME) before anything was sent or stored: models never get saved keys.", v=', '.join(names)))
+                    await send(line, "prompt_masked", content=prompt)     # the page shows the hidden version
+                    await send(line, "system", tr("Your message held a saved key ({v}). It was hidden as ••••(NAME) before anything was sent or stored: models never get saved keys.", v=', '.join(names)))
                 model_override = payload.get("model", payload.get("model_override", "auto"))
-                await handle_prompt(websocket, session, prompt, model_override)
+                await handle_prompt(line, session, prompt, model_override)
         except asyncio.CancelledError:
             task_outcome(session, "stopped")
-            await send(websocket, "stopped")
-            await send(websocket, "system", tr("Stopped."))
+            await send(line, "stopped")
+            away = session.pop("away_stop", None)     # nobody came back for it (set_aside)
+            await send(line, "system", tr("The page was away for {n} s, so the request was stopped. What it did until then is kept.", n=away)
+                       if away else tr("Stopped."))
         except WebSocketDisconnect:
             finish_task(session)
             return
         except Exception as e:
             traceback.print_exc()
             task_outcome(session, "error")
-            await send(websocket, "error", providers.classify(e).summary)
+            await send(line, "error", providers.classify(e).summary)
         try:
-            await report_changes(websocket, session)       # also after a stop or an error
+            await report_changes(line, session)       # also after a stop or an error
         except WebSocketDisconnect:
             finish_task(session)
             return
@@ -4873,7 +5118,7 @@ async def websocket_endpoint(websocket: WebSocket):
             print(f"[Optimux] listing changed files failed: {e}")
         if finish_task(session):
             try:      # the page puts 👍 / 👎 under this reply; recorded, so a replay shows them too
-                await send(websocket, "task_done", task_id=session["last_task_id"])
+                await send(line, "task_done", task_id=session["last_task_id"])
             except Exception:
                 pass
         if kind not in ("new_chat", "open_session"):
@@ -4884,28 +5129,34 @@ async def websocket_endpoint(websocket: WebSocket):
             # Idle timer: curate if nothing else happens in this chat for a while
             if session.get("idle_task") is not None:
                 session["idle_task"].cancel()
-            session["idle_task"] = schedule_curation(websocket, session["chat_id"],
+            session["idle_task"] = schedule_curation(line, session["chat_id"],
                                                      curator_idle_seconds(chat_project(session["chat_id"])))
         try:
-            await send(websocket, "done")
+            await send(line, "done")
         except Exception:
             pass  # socket already closed
 
     try:
         while True:
             payload = json.loads(await websocket.receive_text())
+            if line.socket is websocket:
+                line.heard = time.monotonic()
             # The sign-in may have expired or been ended while the chat was open
             if login_id and not auth.session_alive(login_id):
                 await websocket.close(code=4401)
                 break
             kind = payload.get("type")
+            if kind == "ping":      # the page checks its line (web/connection.js); answered at once, never recorded
+                line.pings = True
+                await websocket.send_text(json.dumps({"type": "pong", "t": payload.get("t")}))
+                continue
             busy = current is not None and not current.done()
 
             if kind == "stop":
                 if busy:
                     current.cancel()
                 else:
-                    await send(websocket, "done")  # nothing running; just release the UI
+                    await send(line, "done")  # nothing running; just release the UI
                 continue
             if kind == "approval_response":
                 approval = session.get("approval")
@@ -4919,22 +5170,40 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
             if kind not in ("new_chat", "escalate", "open_session", "plan_action") and not payload.get("prompt", ""):
                 continue
+            if kind == "open_session" and not busy:
+                # A request whose page dropped (or went silent) is still running for this chat:
+                # this page gets it back instead of a chat that stops halfway.
+                entry = request_to_resume(str(payload.get("id", "latest")))
+                if entry is not None:
+                    if session.get("idle_task") is not None:
+                        session["idle_task"].cancel()
+                    session, line, current = entry["session"], entry["line"], entry["task"]
+                    await hand_over(websocket, entry)
+                    continue
             if busy:
-                await send(websocket, "system", tr("Still working on the previous request. Stop it first."))
+                await send(line, "system", tr("Still working on the previous request. Stop it first."))
                 continue
             if kind not in ("new_chat", "open_session") and (why := restore_lib.blocked_reason()):
-                await send(websocket, "system", why)
-                await send(websocket, "done")
+                await send(line, "system", why)
+                await send(line, "done")
                 continue
-            current = asyncio.create_task(run_job(payload))
+            current = start(payload)
     except WebSocketDisconnect:
         print("Optimux client disconnected.")
     finally:
-        if current is not None and not current.done():
-            current.cancel()  # also kills a running shell command
-        if session.get("idle_task") is not None:
-            session["idle_task"].cancel()
-        schedule_curation(None, session.get("chat_id"))  # page closed: the chat is finished
+        entry = RUNNING.get(session["id"])
+        working = current is not None and not current.done()
+        if entry is not None and entry["owner"] is not websocket:
+            pass        # another page picked this request up: it and its chat are no longer this socket's
+        elif (working and entry is not None and PAGE_AWAY_GRACE > 0
+              and not (login_id and not auth.session_alive(login_id))):
+            set_aside(session["id"], entry)     # the connection dropped: the request waits for a page
+        else:
+            if working:
+                current.cancel()  # also kills a running shell command
+            if session.get("idle_task") is not None:
+                session["idle_task"].cancel()
+            schedule_curation(None, session.get("chat_id"))  # page closed: the chat is finished
         if login_id:
             LIVE_SOCKETS.get(login_id, set()).discard(websocket)
 

@@ -932,6 +932,12 @@ const optimuxApp = createApp({
         const pendingSteps = ref(null);        // v0.8: out of steps: more, the other model, or stop? (step_limit)
         const moreSteps = ref(10);             // how many more, in that card
         const pendingForm = ref(null);   // Feature 25: { form, error, github, active_project, key } for create_project
+        const pendingSync = ref(null);   // v0.8: the Push / Update window the model asked for: { project, kind, message, sync_pass }
+        const reopenSync = () => {       // the card's button: the same window, with the pass that lets it through
+            const kind = pendingAction.value === 'push_project' ? 'push' : 'update';
+            const asked = pendingSync.value || { project: chatProject.value, kind, message: '' };
+            openSync(asked.project, asked.kind, asked);
+        };
         let formSeq = 0;
         let moveChatTo = null;           // the model switched projects: open that project's chat when the reply ends
         const projectOffer = ref('');    // a project just created from the chat: "Open <name>" above the chat box
@@ -972,6 +978,12 @@ const optimuxApp = createApp({
             } catch (e) { g.msg = { ok: false, text: e.message }; }
         };
         const wsState = ref('connecting');  // connecting | connected | disconnected
+        // v0.8: the page's own check of its line (web/connection.js): ok | weak | down
+        const CONN = window.OptimuxConnection;
+        const link = Vue.reactive({ state: 'ok', since: Date.now(), now: Date.now(), pingAt: 0, heardAt: Date.now(), rtt: 0,
+                                    grace: 120, wasWorking: false, everUp: false });
+        const linkNote = Vue.computed(() => link.everUp ? CONN.linkNote({ state: link.state, secs: Math.round((link.now - link.since) / 1000),
+            working: isGenerating.value || pendingApproval.value || link.wasWorking, grace: link.grace }, tr) : '');
         const storageInfo = ref(null);
         const budgetStatus = ref(null);   // budget of the active project, if any
         const budgets = ref({});          // all budgets with this month's status
@@ -1634,7 +1646,9 @@ const optimuxApp = createApp({
             const what = st.stage === 'conductor' ? (name ? tr('Choosing a model ({model})…', { model: name }) : tr('Choosing a model…'))
                 : st.stage === 'files' ? tr('Scout is listing the project\'s files…')
                 : tr('Waiting for {model}…', { model: name || tr('the model') });
-            const late = st.stage === 'model' && secs >= 20 ? ' ' + tr('(it may be thinking before it answers)') : '';
+            // v0.8: after a silence the server checked the provider's own address (watch_silence)
+            const net = st.stage === 'model' ? CONN.waitNote(st, tr) : '';
+            const late = net ? ' ' + net : (st.stage === 'model' && secs >= 20 ? ' ' + tr('(it may be thinking before it answers)') : '');
             return secs >= 2 ? what + ' ' + tr('{n} s', { n: secs }) + late : what;
         };
         const followChat = ref(true);
@@ -5437,29 +5451,76 @@ const optimuxApp = createApp({
             // On every (re)connect, auth_ok reopens the project's latest chat.
             const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
             let retryDelay = 1000;
+            let retryTimer = null;
             let activeSock = null;  // raw socket (ws.value is a reactive proxy, not comparable)
+            // The connection is gone (closed, or dead without saying so): the page lets go of
+            // the reply it was showing. The server keeps the request running for a while, and
+            // the next connection gets it back (session_loaded with running).
+            const dropped = (code) => {
+                wsState.value = 'disconnected';
+                if (isGenerating.value || pendingApproval.value) link.wasWorking = true;
+                isGenerating.value = false;
+                pendingApproval.value = false;
+                if (code === 4401) { window.optimuxToLogin(); return; }
+                clearTimeout(retryTimer);
+                retryTimer = setTimeout(connect, retryDelay);
+                retryDelay = Math.min(retryDelay * 2, 15000);
+            };
             const connect = () => {
+                clearTimeout(retryTimer);
                 wsState.value = 'connecting';
                 const sock = new WebSocket(`${wsProto}://${window.location.host}/ws`);
                 activeSock = sock;
                 ws.value = sock;
+                link.pingAt = 0; link.heardAt = Date.now(); link.rtt = 0;
+                // On a dead network a new socket can hang "connecting" for minutes: give it
+                // CONNECT_WAIT, then let go and try again.
+                setTimeout(() => {
+                    if (activeSock !== sock || wsState.value === 'connected') return;
+                    activeSock = null;
+                    try { sock.close(); } catch (_) {}
+                    dropped(0);
+                }, CONN.CONNECT_WAIT);
                 // Signed in with the session cookie: the server sends auth_ok right away.
                 sock.addEventListener('close', (e) => {
                     if (activeSock !== sock) return;
-                    wsState.value = 'disconnected';
-                    isGenerating.value = false;
-                    pendingApproval.value = false;
-                    if (e.code === 4401) { window.optimuxToLogin(); return; }
-                    setTimeout(connect, retryDelay);
-                    retryDelay = Math.min(retryDelay * 2, 15000);
+                    dropped(e.code);
                 });
                 sock.onmessage = (event) => {
+                    if (activeSock !== sock) return;
                     const data = JSON.parse(event.data);
-                    if (data.type === 'auth_ok') { wsState.value = 'connected'; retryDelay = 1000; }
+                    link.heardAt = Date.now();
+                    if (data.type === 'pong') { link.rtt = Math.max(0, Date.now() - (Number(data.t) || Date.now())); return; }
+                    if (data.type === 'auth_ok') { wsState.value = 'connected'; retryDelay = 1000; if (data.away) link.grace = data.away; }
                     lastWsAt = Date.now();
                     handleMessage(data);
                 };
             };
+            // v0.8: the page checks its own line (web/connection.js). A socket on a dead
+            // network stays "open" for minutes: the page pings, and when no answer comes it
+            // stops waiting for that socket and opens a new one.
+            const lineNow = () => ({ socket: wsState.value, online: navigator.onLine !== false, now: Date.now(),
+                                     pingAt: link.pingAt, heardAt: link.heardAt, rtt: link.rtt });
+            setInterval(() => {
+                const st = lineNow();
+                if (CONN.shouldReconnect(st)) {
+                    const dead = activeSock;
+                    activeSock = null;
+                    try { dead.close(); } catch (_) {}
+                    retryDelay = 1000;
+                    dropped(0);
+                } else if (CONN.shouldPing(st)) {
+                    link.pingAt = st.now;
+                    try { activeSock.send(JSON.stringify({ type: 'ping', t: st.now })); } catch (_) {}
+                }
+                const state = CONN.linkState(lineNow());
+                if (state !== link.state) {
+                    if (link.state === 'ok') link.since = Date.now();     // how long the line has not been fine
+                    link.state = state;
+                }
+                link.now = Date.now();
+            }, 1000);
+            window.addEventListener('online', () => { if (wsState.value === 'disconnected') { retryDelay = 1000; connect(); } });
             // replay=true while rebuilding a stored session: only the chat view changes
             const handleMessage = (data, replay = false) => {
                 if (data.type === 'sandbox_problem') { sandboxProblem.value = data.content || ''; return; }
@@ -5480,7 +5541,18 @@ const optimuxApp = createApp({
                 if (data.type === 'session_loaded') {
                     moveChatTo = null;
                     if (projectOffer.value && projectOffer.value === appSettings.value.active_project) projectOffer.value = '';
-                    loadSession(data); return;
+                    loadSession(data);
+                    link.everUp = true;
+                    if (data.running) {
+                        isGenerating.value = true; isStopping.value = false;
+                        lastWsAt = Date.now();
+                        pushToast({ kind: 'info', title: tr('Back online'), text: tr('The request went on while the page was away. This is where it is now.') });
+                    } else if (link.wasWorking) {
+                        pushToast({ kind: 'info', title: tr('Back online'), text: tr('The request ended while the page was away. The chat shows how far it got.'), timeout: 12000 });
+                        if (studio.open) studioAfterReply();
+                    }
+                    link.wasWorking = false;
+                    return;
                 }
                 if (data.type === 'session_started') { currentSession.value = data.session; return; }
                 if (data.type === 'memory_updating') {
@@ -5520,7 +5592,8 @@ const optimuxApp = createApp({
 
                 // v0.8: what the reply is waiting for (live only, never replayed); any output ends it
                 if (data.type === 'status') {
-                    if (lastMsg && lastMsg.role === 'agent') lastMsg.status = { stage: data.stage, model: data.model || '', since: Date.now() };
+                    if (lastMsg && lastMsg.role === 'agent') lastMsg.status = { stage: data.stage, model: data.model || '', since: Date.now() - (Number(data.ago) || 0) * 1000,
+                                                                               net: data.net || '', host: data.host || '' };
                     return;
                 }
                 if (lastMsg && lastMsg.status && WAIT_ENDS.has(data.type)) lastMsg.status = null;
@@ -5629,6 +5702,7 @@ const optimuxApp = createApp({
                     pendingRaiseTo.value = data.raise_to || '';
                     pendingForm.value = data.form ? { form: data.form, error: data.error || '', github: data.github || {},
                                                       active_project: data.active_project || '', key: ++formSeq } : null;
+                    pendingSync.value = data.sync || null;
                     if (data.sync && !replay) openSync(data.sync.project, data.sync.kind, data.sync);   // v0.8: push_project / update_project
                     pendingCommand.value = data.command;
                     rejectReason.value = '';
@@ -5745,10 +5819,11 @@ const optimuxApp = createApp({
                     }
                     return;
                 }
-                currentSession.value = data.session;
+                currentSession.value = data.session.id ? data.session : null;   // a running first request has no stored chat yet
                 const when = new Date(data.session.updated * 1000).toLocaleString(appLocale());
                 const rebuilt = [welcomeMessage(readOnlyChat.value
                     ? tr('Viewing "{v}" from {when}, read only: its project {project} is {v2}.', { v: data.session.title || tr('Untitled chat'), when: when, project: data.session.project, v2: readOnlyChat.value.reason === 'archived' ? 'archived' : tr('no longer in the Workspace') })
+                    : data.running ? tr('The connection came back: this request went on meanwhile, and it continues here.')
                     : tr('Reopened "{v}" from {when}.', { v: data.session.title || tr('Untitled chat'), when: when }))];
                 messages.value = rebuilt;
                 replayRatings = data.ratings || {};
@@ -5763,7 +5838,9 @@ const optimuxApp = createApp({
                         handleMessage(ev, true);
                     }
                 }
-                finalizeReply(messages.value[messages.value.length - 1]);
+                // v0.8: the request went on while the page was away: this is how far it got, the
+                // rest arrives live (and the question it waits on is asked again right after)
+                if (!data.running) finalizeReply(messages.value[messages.value.length - 1]);
                 (data.plans || []).forEach(updatePlanCard);   // as they are now, not as they were when shown
                 if (!data.active_project_changed && !readOnlyChat.value && data.session.project && data.session.project !== appSettings.value.active_project) {
                     fetchConfig();  // the server switched to the session's project
@@ -6115,7 +6192,7 @@ const optimuxApp = createApp({
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
-            syncBox, chatProject, openSync, closeSync, syncReady, writeCommitMessage, runSync,
+            syncBox, chatProject, openSync, reopenSync, closeSync, syncReady, writeCommitMessage, runSync, link, linkNote,
             startClone, cancelClone, projectLocations, loadProjectLocations, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,
             removeSkill, saveAsSkill, skillDialog, confirmSkillDialog,

@@ -17,6 +17,7 @@
     <script src="/static/boot.js"></script>
     <script src="/static/chat-input.js"></script>
     <script src="/static/attention.js"></script>
+    <script src="/static/connection.js"></script>
     <script src="/static/i18n.js"></script>
 </head>
 <body class="bg-gray-950 text-gray-200 font-sans h-screen flex flex-col">
@@ -240,6 +241,7 @@
                                     <textarea v-model="studioGit.message" rows="2" :placeholder="$t('Commit message')" :aria-label="$t('Commit message')" spellcheck="false"
                                               class="w-full bg-gray-900 border border-gray-700 focus:border-blue-600 rounded px-2 py-1 text-[12px] font-mono text-gray-200 resize-y outline-none"></textarea>
                                 </template>
+                                <div v-if="studioGit.data.files.length && (studioGit.data.busy || isGenerating)" class="text-[12px] text-amber-300 mt-1.5" role="status" data-git-working>{{ $t('A request is working in this project. Commit and push when it has finished: these changes may not be complete yet.') }}</div>
                                 <div v-if="studioGit.data.files.length" class="flex flex-wrap items-center gap-1.5 mt-1.5">
                                     <button v-if="studioGit.data.files.length" @click="commitStudio" :disabled="!!studioGitBlocked || studioGit.busy" :title="studioGitBlocked || $t('Commit these changes here. Nothing is sent to GitHub.')"
                                             class="px-2.5 py-0.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold">{{ studioGit.busy ? $t('Committing…') : $t('Commit') }}</button>
@@ -251,8 +253,8 @@
                         </div>
                         <!-- Push and Update: buttons at the bottom right, always in view -->
                         <div v-show="studioGit.open" v-if="studioGit.data && studioGit.data.remote" class="flex items-center justify-end gap-1.5 px-3 py-1.5 border-t border-gray-800 flex-shrink-0">
-                            <button @click="openSync(studio.project, 'update')" :disabled="isGenerating" class="px-2.5 py-0.5 rounded border border-gray-700 hover:border-gray-500 text-gray-300 hover:text-gray-100 disabled:opacity-40" :title="$t('Bring in the new commits from GitHub (pull), after you check them')">{{ $t('Update…') }}</button>
-                            <button @click="openSync(studio.project, 'push')" :disabled="isGenerating" class="px-2.5 py-0.5 rounded border border-blue-700 hover:border-blue-500 text-blue-300 hover:text-blue-200 disabled:opacity-40" :title="$t('Commit (if needed) and push to GitHub, after you check what goes')">{{ $t('Push…') }}</button>
+                            <button @click="openSync(studio.project, 'update')" :disabled="isGenerating || studioGit.data.busy" class="px-2.5 py-0.5 rounded border border-gray-700 hover:border-gray-500 text-gray-300 hover:text-gray-100 disabled:opacity-40" :title="$t('Bring in the new commits from GitHub (pull), after you check them')">{{ $t('Update…') }}</button>
+                            <button @click="openSync(studio.project, 'push')" :disabled="isGenerating || studioGit.data.busy" class="px-2.5 py-0.5 rounded border border-blue-700 hover:border-blue-500 text-blue-300 hover:text-blue-200 disabled:opacity-40" :title="$t('Commit (if needed) and push to GitHub, after you check what goes')">{{ $t('Push…') }}</button>
                         </div>
                     </section>
                 </nav>
@@ -3034,6 +3036,12 @@
             </div>
         </div>
 
+        <!-- v0.8: the page's own check of its line to Optimux (web/connection.js): weak, or gone -->
+        <div v-if="linkNote" role="status" aria-live="polite" data-link-note
+             :class="['fixed top-0 inset-x-0 z-[75] px-4 py-1.5 text-center text-[13px] font-semibold shadow-lg', link.state === 'down' ? 'bg-red-900 text-red-100' : 'bg-amber-900 text-amber-100']">
+            <span :class="['inline-block w-2 h-2 rounded-full mr-2 align-middle animate-pulse', link.state === 'down' ? 'bg-red-300' : 'bg-amber-300']"></span>{{ linkNote }}
+        </div>
+
         <!-- v0.8: a reply waits for you while the chat is covered (the Dashboard, or the Studio without its chat) -->
         <transition name="cm-attention" type="transition">
             <div v-if="attentionCard" role="alertdialog" :aria-label="$t('The chat needs you')" data-attention-card
@@ -3509,7 +3517,7 @@
             <!-- v0.8: the model asked to push or update; the window is where the user decides -->
             <div v-if="pendingApproval && (pendingAction === 'push_project' || pendingAction === 'update_project')" class="mb-4 bg-blue-950/30 border border-blue-800/70 rounded-lg p-4 flex flex-wrap items-center gap-3">
                 <span class="flex-1 min-w-[16rem] text-[14px] text-blue-100">{{ pendingAction === 'push_project' ? $t('The model asks to push this project. Check the Push window and confirm there; closing it means no.') : $t('The model asks to update this project from GitHub. Check the Update window and confirm there; closing it means no.') }}</span>
-                <button v-if="!syncBox.open" @click="openSync(chatProject, pendingAction === 'push_project' ? 'push' : 'update', { message: '' })" class="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500">{{ pendingAction === 'push_project' ? $t('Open the Push window') : $t('Open the Update window') }}</button>
+                <button v-if="!syncBox.open" @click="reopenSync" class="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500">{{ pendingAction === 'push_project' ? $t('Open the Push window') : $t('Open the Update window') }}</button>
             </div>
             <!-- v0.8: the request used every step it was allowed: more steps here, the other model, or stop -->
             <div v-if="pendingApproval && pendingAction === 'step_limit' && pendingSteps" class="mb-4 bg-amber-950/30 border border-amber-700/60 rounded-lg p-4" role="alertdialog" :aria-label="$t('No steps left')">

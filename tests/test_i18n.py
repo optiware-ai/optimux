@@ -15,7 +15,8 @@ from tests.ws_helpers import make_client
 
 H = {"Authorization": "Bearer test-token"}
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOURCES = ("index.html", "web/app.js", "web/attention.js", "web/boot.js", "web/i18n.js", "web/login.js")
+SOURCES = ("index.html", "web/app.js", "web/attention.js", "web/boot.js", "web/connection.js", "web/i18n.js",
+           "web/login.js")
 # The sign-in page marks whole elements: their inner HTML (spaces collapsed) is the text
 MARKED = re.compile(r"<(\w+)\b[^>]*\bdata-i18n\b[^>]*>(.*?)</\1>", re.S)
 # $t('...') in templates, tr('...') in scripts, tk('...') for texts kept as data

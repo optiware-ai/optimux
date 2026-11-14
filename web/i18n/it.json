@@ -2490,5 +2490,17 @@
  "cached ${v}": "cache ${v}",
  "local, free": "locale, gratis",
  "price unknown": "prezzo sconosciuto",
- "your prices": "i tuoi prezzi"
+ "your prices": "i tuoi prezzi",
+ "A request is working in this project. Commit and push when it has finished: these changes may not be complete yet.": "Una richiesta sta lavorando in questo progetto. Fai commit e push quando ha finito: queste modifiche potrebbero non essere ancora complete.",
+ "Back online": "Di nuovo online",
+ "No connection to Optimux for {n} s. Reconnecting…": "Nessuna connessione a Optimux da {n} s. Riconnessione…",
+ "No connection to Optimux for {n} s. The request goes on there for up to {grace} s and comes back here when the connection does.": "Nessuna connessione a Optimux da {n} s. La richiesta continua lì fino a {grace} s e torna qui quando torna la connessione.",
+ "The page was away for {n} s, so the request was stopped. What it did until then is kept.": "La pagina è rimasta assente per {n} s, quindi la richiesta è stata fermata. Ciò che ha fatto fino a quel momento è conservato.",
+ "The request ended while the page was away. The chat shows how far it got.": "La richiesta è terminata mentre la pagina era assente. La chat mostra fin dove è arrivata.",
+ "The request went on while the page was away. This is where it is now.": "La richiesta è andata avanti mentre la pagina era assente. Ecco a che punto è ora.",
+ "This Optimux machine can't reach {host}: check its internet connection.": "Questa macchina Optimux non raggiunge {host}: controlla la sua connessione a internet.",
+ "Weak connection to Optimux.": "Connessione debole a Optimux.",
+ "Weak connection to Optimux. The reply may arrive late; nothing is lost.": "Connessione debole a Optimux. La risposta può arrivare in ritardo; non si perde nulla.",
+ "{host} answers, so the model itself is slow or thinking.": "{host} risponde, quindi è il modello a essere lento o a ragionare.",
+ "The connection came back: this request went on meanwhile, and it continues here.": "La connessione è tornata: questa richiesta nel frattempo è andata avanti, e continua qui."
 }
