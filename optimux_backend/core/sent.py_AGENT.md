@@ -8,3 +8,4 @@ What was sent to the models (v0.8): every model call's prompt, kept as it left t
 - **`get(id)`:** the call with its parts' text, or `None`.
 - **`prune(days)`:** deletes the calls older than `days` and the parts no call refers to any more.
 - `KEEP_DAYS` (14) is the default of the `keep_sent_days` setting (`config_manager`, 0 to 365; 0 keeps nothing).
+- **`recent(limit, role, project)`:** the kept calls, newest first, without text (`id, ts, role, model, project, session, chars`), for the Dashboard's browse list. `split` cuts the memory out of a user message too: the scout, the planner and the memory update get it there.

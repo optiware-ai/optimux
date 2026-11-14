@@ -120,3 +120,71 @@ def test_keeping_can_be_turned_off(mocker, tmp_path):
         msgs = collect(sock)
     assert all(not m.get("sent") for m in msgs if m["type"] == "usage")
     assert rows("sent_calls") == before
+
+
+# ---- every other paid call: the scout, the planner, the memory update, the commit message, a skill draft
+
+def test_the_memory_is_shown_apart_wherever_it_was_put():
+    """The scout and the planner get the memory inside their first message, not in the instructions."""
+    messages = [{"role": "system", "content": "You are the scout."},
+                {"role": "user", "content": "Task: add a menu\n\nMemory:\nMEMORY: prefers pytest\n\nFiles: a.py"}]
+    got = sent.get(sent.record("c", "scout", "m", messages, None, memory="MEMORY: prefers pytest"))
+    assert [(p["kind"], p["text"]) for p in got["parts"]] == [
+        ("instructions", "You are the scout."), ("user", "Task: add a menu\n\nMemory:\n"),
+        ("memory", "MEMORY: prefers pytest"), ("user", "\n\nFiles: a.py")]
+
+
+def test_the_kept_calls_can_be_listed_newest_first():
+    a = sent.record("chat-1", "curator", "m1", [{"role": "user", "content": "update the memory"}], None, project="alpha")
+    b = sent.record("", "commit_message", "m2", [{"role": "user", "content": "write the message"}], None, project="beta")
+    rows_ = sent.recent(10)
+    assert [r["id"] for r in rows_[:2]] == [b, a]
+    assert rows_[0] == {"id": b, "ts": rows_[0]["ts"], "role": "commit_message", "model": "m2", "project": "beta",
+                        "session": "", "chars": len("write the message")}
+    assert [r["id"] for r in sent.recent(10, role="curator")] == [a] and sent.recent(1)[0]["id"] == b
+    assert "parts" not in rows_[0]                       # the list is light: the text comes with get()
+
+
+@pytest.mark.asyncio
+async def test_the_scout_says_what_each_of_its_calls_was_sent(tmp_path):
+    from optimux_backend.core import scout
+    from tests.test_scout import Calls, answer
+    (tmp_path / "a.py").write_text("x = 1\n")
+    call = Calls(answer(tools=[("read_file", {"path": "a.py"})]), answer("Relevant files: a.py"))
+    out = await scout.run("change x", "simple-model", "MEMORY", str(tmp_path), call=call)
+    assert len(out["sent"]) == len(out["calls"]) == 2
+    first, second = out["sent"]
+    assert [m["role"] for m in first["messages"]] == ["system", "user"]              # as it was at that call,
+    assert [m["role"] for m in second["messages"]] == ["system", "user", "assistant", "tool"]   # not as it grew later
+    assert first["tools"] and first["tools"][0]["function"]["name"]
+
+
+def test_the_planner_says_what_each_of_its_calls_was_sent(tmp_path):
+    import asyncio
+    from optimux_backend.core import planner
+    from tests.test_planner import PLAN, answer
+
+    async def call(**kwargs):
+        return answer('{"goal": "x", "steps": []}') if len(kwargs["messages"]) == 2 else answer(json.dumps(PLAN))
+    result = asyncio.run(planner.make_plan("write tests", "complex-model", "memory", str(tmp_path), call=call))
+    assert len(result["sent"]) == len(result["calls"]) == 2
+    assert len(result["sent"][0]["messages"]) == 2 and len(result["sent"][1]["messages"]) == 4
+
+
+def test_calls_outside_a_reply_are_kept_and_listed(mocker, tmp_path, monkeypatch):
+    """The commit message is written outside any reply: its prompt is kept too, and
+    Dashboard's list (GET /api/sent) is where it is found."""
+    from types import SimpleNamespace as NS
+    from optimux_backend.core import gitsync
+    client = make_client(mocker, tmp_path)
+    mocker.patch.object(gitsync, "message_material", return_value={"template": "", "recent": "", "stat": "a.py | 1 +",
+                                                                    "diff": "+x = 1", "files": ["a.py"], "tree": "t"})
+    mocker.patch("litellm.acompletion", return_value=NS(choices=[NS(message=NS(content="Add x"))],
+                                                         usage=NS(prompt_tokens=30, completion_tokens=3)))
+    r = client.post("/api/projects/site/commit-message", headers=H).json()
+    assert r["message"] == "Add x" and r["sent"]
+    listed = client.get("/api/sent?limit=5", headers=H).json()["calls"]
+    assert listed[0]["id"] == r["sent"] and listed[0]["role"] == "commit_message" and listed[0]["project"] == "site"
+    got = client.get(f"/api/sent/{r['sent']}", headers=H).json()
+    assert "+x = 1" in got["parts"][0]["text"]
+    assert client.get("/api/sent?limit=5").status_code in (401, 403)

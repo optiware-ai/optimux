@@ -286,7 +286,8 @@ async def _with_retries(call, **kwargs):
 
 async def run(request: str, model: str, memory: str, workdir: str, call=None) -> dict:
     """Scout the project for this request. Returns {"brief": text ("" if none came back),
-    "calls": [(usage, duration_ms)], "tools": tool calls run, "read": [files read]}."""
+    "calls": [(usage, duration_ms)], "tools": tool calls run, "read": [files read],
+    "sent": [{"messages", "tools"}] what each of those calls was sent}."""
     import litellm
     from optimux_backend.core.agents import get_scout_prompt
     from optimux_backend.core.config_manager import litellm_key_kwargs
@@ -296,6 +297,7 @@ async def run(request: str, model: str, memory: str, workdir: str, call=None) ->
     messages: list[dict] = [{"role": "system", "content": get_scout_prompt(MAX_TOOL_CALLS)},
                             {"role": "user", "content": first_message(request, memory, files, total)}]
     calls, read, log, used, spent = [], [], [], 0, 0
+    sent: list[dict] = []                  # what each call was sent, as it was then (for "What was sent")
     done: set[tuple[str, str]] = set()     # a lookup already run isn't run (or counted) again
     brief = ""
     for _ in range(MAX_TOOL_CALLS + 2):
@@ -303,7 +305,9 @@ async def run(request: str, model: str, memory: str, workdir: str, call=None) ->
         if last:
             messages.append({"role": "user", "content": "That's all the reading there is room for: write the brief now."})
         started = time.monotonic()
-        response = await _with_retries(call, model=model, messages=mask_messages(messages), tools=TOOLS,
+        going = list(mask_messages(messages))
+        sent.append({"messages": going, "tools": TOOLS})
+        response = await _with_retries(call, model=model, messages=going, tools=TOOLS,
                                        tool_choice="none" if last else "auto", drop_params=True,
                                        timeout=CALL_TIMEOUT, **litellm_key_kwargs(model))
         usage = getattr(response, "usage", None)
@@ -341,7 +345,7 @@ async def run(request: str, model: str, memory: str, workdir: str, call=None) ->
     if len(brief) > BRIEF_CHARS:
         brief = brief[:BRIEF_CHARS].rstrip() + "\n(brief cut short)"
     return {"brief": brief, "calls": calls, "tools": used, "read": sorted(set(p for p in read if p)),
-            "log": log, "files": files, "total": total}
+            "log": log, "files": files, "total": total, "sent": sent[:len(calls)]}
 
 
 HANDOFF_FILES = 80           # project files listed for the Complex model, at most

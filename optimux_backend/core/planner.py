@@ -74,10 +74,12 @@ async def make_plan(request: str, model: str, memory: str, workdir: str, call=No
     files, total = file_list(workdir)
     messages = build_messages(request, memory, files, total)
     calls, error, thinking = [], "", []
+    sent: list[dict] = []          # what each call was sent (for "What was sent")
     for attempt in range(2):
         started = time.monotonic()
         kwargs = {"model": model, "messages": messages, "timeout": PLANNER_TIMEOUT,
                   **litellm_key_kwargs(model), **thinking_kwargs(model)}
+        sent.append({"messages": list(messages), "tools": None})
         response = await call(**kwargs)
         calls.append((getattr(response, "usage", None), int((time.monotonic() - started) * 1000)))
         message = response.choices[0].message
@@ -89,13 +91,13 @@ async def make_plan(request: str, model: str, memory: str, workdir: str, call=No
         if declined:
             # The planner says this isn't a task for a plan: no retry, the usual way runs
             return {"plan": None, "calls": calls, "error": declined, "declined": True,
-                    "thinking": "\n\n".join(thinking)}
+                    "thinking": "\n\n".join(thinking), "sent": sent[:len(calls)]}
         try:
-            return {"plan": plans.validate(text), "calls": calls, "error": "", "thinking": "\n\n".join(thinking)}
+            return {"plan": plans.validate(text), "calls": calls, "error": "", "thinking": "\n\n".join(thinking), "sent": sent[:len(calls)]}
         except plans.PlanError as e:
             error = str(e)
             if attempt == 0:
                 messages = messages + [{"role": "assistant", "content": text},
                                        {"role": "user", "content": f"That plan can't be used: {error} "
                                                                    "Reply with the corrected plan, JSON only."}]
-    return {"plan": None, "calls": calls, "error": error, "thinking": "\n\n".join(thinking)}
+    return {"plan": None, "calls": calls, "error": error, "thinking": "\n\n".join(thinking), "sent": sent[:len(calls)]}

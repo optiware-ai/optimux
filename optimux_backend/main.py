@@ -815,6 +815,12 @@ async def rate_task(task_id: str, payload: TaskRatingPayload):
         return JSONResponse({"detail": str(e)}, status_code=404 if "No such" in str(e) else 400)
 
 
+@app.get("/api/sent")
+async def sent_calls(limit: int = 100, role: str | None = None):
+    """The kept calls, newest first, without their text (Dashboard → Execution → Browse)."""
+    return {"calls": await asyncio.to_thread(sent_lib.recent, limit, role or None)}
+
+
 @app.get("/api/sent/{sid}")
 async def sent_call(sid: int):
     """What one model call was sent (v0.8): its parts, as they left the machine."""
@@ -1226,9 +1232,11 @@ async def project_commit_message(name: str, payload: CommitMessagePayload | None
     if not isinstance(material, dict):
         return material
     started = time.monotonic()
+    asked = mask_messages([{"role": "user", "content": gitsync.message_prompt(material)}])
+    kept = keep_call("", "commit_message", model, asked, None, name, memory="")
     try:
         response = await litellm.acompletion(
-            model=model, messages=mask_messages([{"role": "user", "content": gitsync.message_prompt(material)}]),
+            model=model, messages=asked,
             timeout=60, **litellm_key_kwargs(model), **thinking_kwargs(model))
     except Exception as e:
         ratelimits.record_error(model, e)
@@ -1241,7 +1249,8 @@ async def project_commit_message(name: str, payload: CommitMessagePayload | None
     if not message:
         return JSONResponse({"detail": tr("The model returned an empty message. Try again, or write it yourself.")},
                             status_code=502)
-    return {"message": message, "model": model, "cost": entry.get("cost"), "template": bool(material["template"])}
+    return {"message": message, "model": model, "cost": entry.get("cost"), "template": bool(material["template"]),
+            **({"sent": kept} if kept else {})}
 
 
 @app.post("/api/projects/{name}/archive")
@@ -2135,7 +2144,9 @@ async def draft_skill(payload: SkillDraftPayload):
     started = time.monotonic()
     try:
         # The model's own thinking level (Gemini 3's default thinks a lot, which made drafts costly)
-        response = await litellm.acompletion(model=model, messages=mask_messages([{"role": "user", "content": prompt}]),
+        asked = mask_messages([{"role": "user", "content": prompt}])
+        keep_call(payload.session_id, "skill_draft", model, asked, None, data.get("project", ""), memory="")
+        response = await litellm.acompletion(model=model, messages=asked,
                                              timeout=60, **litellm_key_kwargs(model), **thinking_kwargs(model))
     except Exception as e:
         ratelimits.record_error(model, e)
@@ -2609,8 +2620,9 @@ async def start_plan(websocket: WebSocket, session: dict, routing: dict, user_me
     task_route(session, "complex", model)
     if plan and session.get("task") is not None:
         session["task"]["plan_id"] = plan["id"]
-    for usage, ms in result["calls"]:
-        await meter(websocket, session, "planner", model, usage, ms, plan_id=plan["id"] if plan else None)
+    for (usage, ms), was in zip(result["calls"], result.get("sent") or [None] * len(result["calls"])):
+        await meter(websocket, session, "planner", model, usage, ms, plan_id=plan["id"] if plan else None,
+                    sent=keep_sent(session, "planner", model, mask_messages(was["messages"]), None) if was else None)
     if not plan:
         if result.get("declined"):
             await send(websocket, "system", tr("Not planned: {v}. Doing the task the usual way.", v=result['error'].rstrip('.')))
@@ -3003,13 +3015,23 @@ def keep_sent(session: dict, role: str, model: str, messages: list, tools: list 
     """Keep the prompt of one model call (sent.py) and return its id, which the
     call's usage line then carries. `messages` and `tools` are what goes out: saved
     keys already hidden. None when keeping is off (keep_sent_days 0) or it failed."""
+    return keep_call(session.get("chat_id") or session["id"], role, model, messages, tools, active_project(),
+                     task_id=(session.get("task") or {}).get("id"))
+
+
+def keep_call(session_id: str, role: str, model: str, messages: list, tools: list | None, project: str,
+              memory: str | None = None, task_id: str | None = None) -> int | None:
+    """keep_sent for a call that has no chat session of its own (the memory update,
+    a commit message, a skill draft). `memory` is the memory text that call was
+    given, to show it apart ("" when it got none; None: the active project's)."""
     try:
         days = int(get_settings().get("keep_sent_days", sent_lib.KEEP_DAYS) or 0)
         if days <= 0:
             return None
-        return sent_lib.record(session.get("chat_id") or session["id"], role, model, messages, tools,
-                               project=active_project(), memory=get_memory_context(),
-                               task_id=(session.get("task") or {}).get("id"), keep_days=days)
+        if memory is None:
+            memory = mask_secrets(get_memory_context())[0]
+        return sent_lib.record(session_id, role, model, messages, tools, project=project or "", memory=memory,
+                               task_id=task_id, keep_days=days)
     except Exception as e:
         print(f"[Optimux] the sent prompt could not be kept: {e}")
         return None
@@ -3696,8 +3718,10 @@ async def curate_session(sid: str | None, websocket: WebSocket | None = None, fo
         await notify(websocket, "memory_updating", project=project)
         notified = True
         started = time.monotonic()
+        asked = mask_messages([{"role": "user", "content": curator.build_prompt(project, current, chat)}])
+        keep_call(sid, "curator", model, asked, None, project, memory=mask_secrets(current or "")[0])
         response = await litellm.acompletion(
-            model=model, messages=mask_messages([{"role": "user", "content": curator.build_prompt(project, current, chat)}]),
+            model=model, messages=asked,
             timeout=90, **litellm_key_kwargs(model), **thinking_kwargs(model))
         ratelimits.record_response(model, response)
         entry = usage_meter.record(sid, "curator", model, getattr(response, "usage", None),
@@ -4849,8 +4873,9 @@ async def scout_first(websocket: WebSocket, session: dict, routing: dict, user_m
         ratelimits.record_error(model, e)
         await send(websocket, "system", tr("Scout failed ({summary}); {strong} starts without a brief.", summary=info.summary, strong=strong))
         return user_message
-    for usage, ms in result["calls"]:
-        await meter(websocket, session, "scout", model, usage, ms)
+    for (usage, ms), was in zip(result["calls"], result.get("sent") or [None] * len(result["calls"])):
+        await meter(websocket, session, "scout", model, usage, ms,
+                    sent=keep_sent(session, "scout", model, was["messages"], was["tools"]) if was else None)
     if not result["brief"]:
         await send(websocket, "system", tr("The scout wrote no brief; {strong} starts without one.", strong=strong))
         return user_message

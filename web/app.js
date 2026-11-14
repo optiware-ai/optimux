@@ -933,7 +933,7 @@ const optimuxApp = createApp({
         const moreSteps = ref(10);             // how many more, in that card
         const pendingForm = ref(null);   // Feature 25: { form, error, github, active_project, key } for create_project
         // v0.8: What was sent: the model calls of one reply, each read from /api/sent/<id> when picked
-        const sentBox = Vue.reactive({ open: false, calls: [], at: 0, loading: false, error: '', data: null, shown: {}, copied: false });
+        const sentBox = Vue.reactive({ open: false, browse: false, calls: [], at: 0, loading: false, error: '', data: null, shown: {}, copied: false });
         const SENT_KINDS = {     // kind: [label, the bar's colour, the text's colour]
             instructions: [() => tr('Optimux\'s instructions'), 'bg-gray-500', 'text-gray-300'],
             memory: [() => tr('Your memory'), 'bg-purple-500', 'text-purple-300'],
@@ -969,12 +969,24 @@ const optimuxApp = createApp({
             } catch (e) { sentBox.error = e.message; }
             sentBox.loading = false;
         };
+        // Dashboard → Execution → Browse: every kept call, also those outside a reply
+        // (the memory update, a commit message, a skill draft)
+        const browseSent = async () => {
+            sentBox.browse = true; sentBox.calls = []; sentBox.data = null; sentBox.error = ''; sentBox.open = true; sentBox.loading = true;
+            try {
+                const d = await studioFetch('/api/sent?limit=200');
+                sentBox.calls = d.calls.map((c) => ({ ...c, when: new Date(c.ts * 1000).toLocaleString(appLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }));
+            } catch (e) { sentBox.error = e.message; }
+            sentBox.loading = false;
+            if (sentBox.calls.length) showSent(0);
+        };
         const openSent = (msg) => {
+            sentBox.browse = false;
             sentBox.calls = (msg.usage && msg.usage.sent) || [];
             sentBox.open = true;
             // start at the call that answered: the last one that is not the Conductor or the scout
             let at = sentBox.calls.length - 1;
-            while (at > 0 && (sentBox.calls[at].role === 'conductor' || sentBox.calls[at].role === 'scout')) at--;
+            while (at > 0 && ['conductor', 'scout', 'planner'].includes(sentBox.calls[at].role)) at--;
             showSent(Math.max(0, at));
         };
         const sentOpenAll = (on) => { if (sentBox.data) sentBox.data.parts.forEach((p, n) => { sentBox.shown[n] = on; }); };
@@ -6314,7 +6326,7 @@ const optimuxApp = createApp({
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
-            sentBox, openSent, showSent, sentGroups, sentKindLabel, sentKindClass, sentRoleClass, sentPeek, sentOpenAll, copySent,
+            sentBox, openSent, browseSent, showSent, sentGroups, sentKindLabel, sentKindClass, sentRoleClass, sentPeek, sentOpenAll, copySent,
             syncBox, chatProject, openSync, reopenSync, closeSync, syncReady, writeCommitMessage, runSync, link, linkNote,
             startClone, cancelClone, projectLocations, loadProjectLocations, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,

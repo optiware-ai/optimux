@@ -2544,5 +2544,10 @@
  "The model, earlier": "Il modello, prima",
  "Tool the model asked for": "Strumento chiesto dal modello",
  "Tool result": "Risultato dello strumento",
- "Tools offered": "Strumenti offerti"
+ "Tools offered": "Strumenti offerti",
+ "Every kept call, newest first: replies, the scout, plans, memory updates, commit messages, skill drafts": "Ogni chiamata conservata, dalla più recente: risposte, scout, piani, aggiornamenti della memoria, messaggi di commit, bozze di skill",
+ "Browse the kept prompts": "Sfoglia i prompt conservati",
+ "Every model call Optimux kept, newest first, exactly as it left this machine: replies, the scout, plans, memory updates, commit messages, skill drafts. Saved keys were hidden before sending.": "Ogni chiamata ai modelli conservata da Optimux, dalla più recente, esattamente come ha lasciato questa macchina: risposte, scout, piani, aggiornamenti della memoria, messaggi di commit, bozze di skill. Le chiavi salvate sono state nascoste prima dell'invio.",
+ "Nothing is kept yet. Prompts are kept from the next model call on.": "Non c'è ancora nulla. I prompt vengono conservati dalla prossima chiamata a un modello.",
+ "Sizes are estimates (4 characters ≈ 1 token).": "Le dimensioni sono stime (4 caratteri ≈ 1 token)."
 }

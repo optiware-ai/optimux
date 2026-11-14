@@ -43,22 +43,24 @@ def _call_text(call: dict) -> str:
 
 def split(messages: list, tools: list | None, memory: str = "") -> list[tuple[str, str]]:
     """(kind, text) for every part of one call, in the order it was sent. Kinds:
-    instructions (the system text), memory (the user's memory inside it, when
-    `memory` is found there), user, assistant, call (a tool the model asked for),
+    instructions (the system text), memory (the user's memory, cut out of the
+    instructions or of a user message when `memory` is found there), user, assistant, call (a tool the model asked for),
     result (what the tool answered), tools (the tool definitions offered)."""
     parts: list[tuple[str, str]] = []
     for m in messages:
         role, text = m.get("role"), _text(m.get("content"))
-        if role == "system":
-            at = text.find(memory) if memory else -1
-            if at >= 0:
-                parts += [("instructions", text[:at]), ("memory", memory), ("instructions", text[at + len(memory):])]
-            else:
-                parts.append(("instructions", text))
-        elif role == "tool":
+        if role == "tool":
             parts.append(("result", text))
+            continue
+        kind = "instructions" if role == "system" else ("assistant" if role == "assistant" else "user")
+        # The memory, wherever it was put: in the instructions (the executors) or in the
+        # first message (the scout, the planner, the memory update)
+        at = text.find(memory) if memory and kind != "assistant" else -1
+        if at >= 0:
+            parts += [(kind, text[:at]), ("memory", memory), (kind, text[at + len(memory):])]
         else:
-            parts.append(("assistant" if role == "assistant" else "user", text))
+            parts.append((kind, text))
+        if kind == "assistant":
             for call in m.get("tool_calls") or []:
                 parts.append(("call", _call_text(call if isinstance(call, dict) else dict(call))))
     if tools:
@@ -120,6 +122,23 @@ def get(sid: int) -> dict | None:
     return {"id": row["id"], "ts": row["ts"], "session": row["session"], "task_id": row["task_id"],
             "project": row["project"], "role": row["role"], "model": row["model"], "chars": row["chars"],
             "tools": json.loads(row["tools"] or "[]"), "parts": parts}
+
+
+def recent(limit: int = 100, role: str | None = None, project: str | None = None) -> list[dict]:
+    """The kept calls, newest first, without their text: {id, ts, role, model,
+    project, session, chars}. For the Dashboard's list."""
+    where, args = [], []
+    if role:
+        where.append("role = ?"); args.append(role)
+    if project is not None:
+        where.append("project = ?"); args.append(project)
+    sql = ("SELECT id, ts, role, model, project, session, chars FROM sent_calls"
+           + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC LIMIT ?")
+    conn = store.connect()
+    try:
+        return [dict(r) for r in conn.execute(sql, (*args, max(1, min(int(limit), 1000))))]
+    finally:
+        conn.close()
 
 
 def prune(days: int) -> int:
