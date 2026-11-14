@@ -325,7 +325,8 @@ def push_prepare(name: str) -> dict:
     path = _project(name)
     out = _basics(name, path, fetch=True)
     out.update(files=[], more=0, ahead=0, behind=0, tree=None, problems=[], warnings=[],
-               default_message=MANUAL_COMMIT_MESSAGE, template=False, identity=True, nothing=False)
+               default_message=MANUAL_COMMIT_MESSAGE, template=False, identity=True, nothing=False,
+               commits=0, head=None, file_problems=[], file_warnings=[])
     if not out["remote"]:
         out["problems"].append("It has no origin. Create the repository on GitHub, then run "
                                "git remote add origin https://github.com/<owner>/<name>.git in it.")
@@ -341,14 +342,22 @@ def push_prepare(name: str) -> dict:
         diff = changes_lib.compare({"git": True, "top": top, "tree": head})
         out["files"], out["more"] = diff.get("files", []), diff.get("more", 0)
     out["ahead"], out["behind"] = _counts(path, out["upstream"])
+    # v0.8: the commits already made here that GitHub lacks, and where HEAD is. Push can
+    # send just those (push_run with commit=False) and leave the files below uncommitted.
+    out["commits"] = out["ahead"]
+    out["head"] = _ok(_git(path, "rev-parse", "--verify", "--quiet", "HEAD", timeout=5)) or None
     out["template"] = bool(_template(path))
     if out["files"] and not git_can_commit(path):
         out["identity"] = False
-        out["problems"].append("Git has no name and email to commit with. Set them in Dashboard → GitHub "
-                               "(Who commits).")
+        out["file_problems"].append("Git has no name and email to commit with. Set them in Dashboard → GitHub "
+                                    "(Who commits).")
     problems, warnings = _scan(path, out["files"])
-    out["problems"] += problems
-    out["warnings"] += warnings
+    # What is wrong with the uncommitted files only matters when they are committed:
+    # kept apart (file_problems, file_warnings) and also in the whole lists, as before.
+    out["file_problems"] += problems
+    out["file_warnings"] += warnings
+    out["problems"] += out["file_problems"]
+    out["warnings"] += out["file_warnings"]
     before = changed_remote(name, out["remote"])
     if before:
         out["warnings"].insert(0, tr("origin changed since the last push from Optimux: it was {before}, now it is "
@@ -365,22 +374,33 @@ def push_prepare(name: str) -> dict:
     return out
 
 
-def push_run(name: str, message: str, tree: str | None, confirmed: bool) -> dict:
-    """Commit (if there are changes) and push, as shown by push_prepare."""
+def push_run(name: str, message: str, tree: str | None, confirmed: bool, commit: bool = True,
+             head: str | None = None) -> dict:
+    """Commit (if there are changes) and push, as shown by push_prepare. With
+    commit=False (v0.8) only the commits already made are pushed: the uncommitted
+    files stay as they are, their problems and warnings don't count, and what must
+    not have moved is HEAD (`head`), not the files."""
     lock = _lock(name)
     if not lock.acquire(blocking=False):
         raise GitSyncError(tr("A push or update of this project is already running."))
     try:
         prep = push_prepare(name)
         path = _project(name)
-        if prep["tree"] != tree:
+        committing = bool(commit and prep["files"])
+        if not commit:
+            if not prep["commits"]:
+                raise GitSyncError(tr("There is no commit to push yet. Commit first, or let Push commit these files."))
+            if head and prep["head"] != head:
+                raise GitSyncError(tr("The commits changed since you opened this. Open Push again to see them."))
+        elif prep["tree"] != tree:
             raise GitSyncError(tr("The files changed since you opened this. Open Push again to see the new list."))
-        if prep["problems"]:
-            raise GitSyncError(prep["problems"][0])
-        if prep["warnings"] and not confirmed:
+        problems = prep["problems"] if commit else [p for p in prep["problems"] if p not in prep["file_problems"]]
+        warnings = prep["warnings"] if commit else [w for w in prep["warnings"] if w not in prep["file_warnings"]]
+        if problems:
+            raise GitSyncError(problems[0])
+        if warnings and not confirmed:
             raise GitSyncError(tr("Confirm the warnings first."))
-        commit = None
-        if prep["files"]:
+        if committing:
             message = (message or "").strip()
             if not message:
                 raise GitSyncError(tr("Write a commit message first."))
@@ -401,11 +421,12 @@ def push_run(name: str, message: str, tree: str | None, confirmed: bool) -> dict
         refspec = f"HEAD:refs/heads/{prep['target']}"
         p = _git(path, "push", "-u", "origin", refspec, timeout=180, github=True, auth=_auth(prep["remote"]))
         if not p["ok"]:
-            note = " The commit was made here; Push again sends it." if prep["files"] else ""
+            note = " The commit was made here; Push again sends it." if committing else ""
             raise GitSyncError(tr("GitHub refused the push: {v}{note}", v=p["output"][-500:], note=note))
         remember_remote(name, prep["remote"])
         return {"ok": True, "project": name, "commit": commit, "branch": prep["target"],
-                "files": len(prep["files"]) + prep["more"], "commits": prep["ahead"] + (1 if prep["files"] else 0),
+                "files": len(prep["files"]) + prep["more"] if committing else 0,
+                "commits": prep["ahead"] + (1 if committing else 0),
                 "url": f"{prep['github']}/commit/{full}" if prep["github"] and full else None}
     finally:
         lock.release()

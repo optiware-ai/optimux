@@ -1085,6 +1085,8 @@ class PushPayload(BaseModel):
     tree: str | None = None
     confirmed: bool = False
     sync_pass: str | None = None      # the window the model opened (SYNC_PASSES)
+    commit: bool = True               # False: push only the commits already made
+    head: str | None = None           # where HEAD was when the window showed those commits
 
 
 class UpdatePayload(BaseModel):
@@ -1133,7 +1135,8 @@ async def project_push_prepare(name: str, sync_pass: str | None = None):
 @app.post("/api/projects/{name}/push")
 async def project_push(name: str, payload: PushPayload):
     return _git_busy(name, "push", payload.sync_pass) or await _gitsync(gitsync.push_run, name, payload.message,
-                                                                         payload.tree, payload.confirmed)
+                                                                         payload.tree, payload.confirmed,
+                                                                         payload.commit, payload.head)
 
 
 class CommitPayload(BaseModel):

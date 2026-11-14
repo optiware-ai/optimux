@@ -672,3 +672,63 @@ def test_the_diff_through_the_api(ws, mocker, tmp_path):
     assert [f["path"] for f in d["files"]] == ["menu.js"]
     assert client.get("/api/projects/site/diff?path=nope", headers=H).status_code == 422
     assert client.get("/api/projects/site/diff").status_code in (401, 403)
+
+
+# ---- v0.8: Push sends the commits already made; committing what is left is a choice
+
+def one_committed_one_left(ws):
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    (ws["proj"] / "draft.txt").write_text("not ready\n")
+    s = gitsync.stage_run("site", ["menu.js"], True)
+    gitsync.commit_run("site", "Add the menu", s["tree"], False, staged_tree=s["staged_tree"])
+    return gitsync.push_prepare("site")
+
+
+def test_push_sends_the_commits_and_leaves_the_rest_uncommitted(ws):
+    prep = one_committed_one_left(ws)
+    assert prep["commits"] == 1 and [f["path"] for f in prep["files"]] == ["draft.txt"] and prep["head"]
+    r = gitsync.push_run("site", "", prep["tree"], False, commit=False, head=prep["head"])
+    assert r["ok"] and r["commits"] == 1 and r["files"] == 0
+    assert git("log", "--format=%s", "-1", "main", cwd=ws["remote"]).strip() == "Add the menu"
+    assert git("show", "--name-only", "--format=", "main", cwd=ws["remote"]).split() == ["menu.js"]
+    left = gitsync.local_state("site")                          # still here, still not committed
+    assert [f["path"] for f in left["files"]] == ["draft.txt"] and left["ahead"] == 0
+    assert (ws["proj"] / "draft.txt").read_text() == "not ready\n"
+
+
+def test_what_is_left_uncommitted_does_not_hold_the_commits_back(ws):
+    prep = one_committed_one_left(ws)
+    (ws["proj"] / "config.py").write_text("KEY = 'sk-ant-very-secret-123'\n")     # a saved key, in a file not committed
+    (ws["proj"] / ".env").write_text("A=1\n")                                      # and a file of secrets
+    prep = gitsync.push_prepare("site")
+    assert any("ANTHROPIC_API_KEY" in p for p in prep["problems"]) and prep["file_problems"] == prep["problems"]
+    assert prep["file_warnings"] and prep["file_warnings"] == prep["warnings"]
+    with pytest.raises(gitsync.GitSyncError, match="ANTHROPIC_API_KEY"):            # committing them is still refused
+        gitsync.push_run("site", "all of it", prep["tree"], True)
+    r = gitsync.push_run("site", "", prep["tree"], False, commit=False, head=prep["head"])   # the commit goes, they stay
+    assert r["ok"] and git("show", "--name-only", "--format=", "main", cwd=ws["remote"]).split() == ["menu.js"]
+
+
+def test_pushing_only_commits_needs_commits_and_the_same_head(ws):
+    (ws["proj"] / "draft.txt").write_text("not ready\n")
+    prep = gitsync.push_prepare("site")
+    assert prep["commits"] == 0
+    with pytest.raises(gitsync.GitSyncError, match="no commit"):
+        gitsync.push_run("site", "", prep["tree"], False, commit=False, head=prep["head"])
+    prep = one_committed_one_left(ws)
+    s = gitsync.stage_run("site", ["draft.txt"], True)
+    gitsync.commit_run("site", "A second commit, after the window opened", s["tree"], False, staged_tree=s["staged_tree"])
+    with pytest.raises(gitsync.GitSyncError, match="changed since"):
+        gitsync.push_run("site", "", prep["tree"], False, commit=False, head=prep["head"])
+
+
+def test_pushing_only_commits_through_the_api(ws, mocker, tmp_path):
+    from tests.ws_helpers import make_client
+    client = make_client(mocker, tmp_path)
+    H = {"Authorization": "Bearer test-token"}
+    one_committed_one_left(ws)
+    prep = client.get("/api/projects/site/push", headers=H).json()
+    assert prep["commits"] == 1 and prep["head"] and len(prep["files"]) == 1
+    r = client.post("/api/projects/site/push", headers=H,
+                    json={"message": "", "tree": prep["tree"], "commit": False, "head": prep["head"]}).json()
+    assert r["ok"] and r["commits"] == 1 and r["files"] == 0

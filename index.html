@@ -268,7 +268,7 @@
                         <!-- Push and Update: buttons at the bottom right, always in view -->
                         <div v-show="studioGit.open" v-if="studioGit.data && studioGit.data.remote" class="flex items-center justify-end gap-1.5 px-3 py-1.5 border-t border-gray-800 flex-shrink-0">
                             <button @click="openSync(studio.project, 'update')" :disabled="isGenerating || studioGit.data.busy" class="px-2.5 py-0.5 rounded border border-gray-700 hover:border-gray-500 text-gray-300 hover:text-gray-100 disabled:opacity-40" :title="$t('Bring in the new commits from GitHub (pull), after you check them')">{{ $t('Update…') }}</button>
-                            <button @click="openSync(studio.project, 'push')" :disabled="isGenerating || studioGit.data.busy" class="px-2.5 py-0.5 rounded border border-blue-700 hover:border-blue-500 text-blue-300 hover:text-blue-200 disabled:opacity-40" :title="$t('Commit (if needed) and push to GitHub, after you check what goes')">{{ $t('Push…') }}</button>
+                            <button @click="openSync(studio.project, 'push', null, { commitsOnly: true })" :disabled="isGenerating || studioGit.data.busy" class="px-2.5 py-0.5 rounded border border-blue-700 hover:border-blue-500 text-blue-300 hover:text-blue-200 disabled:opacity-40" :title="$t('Commit (if needed) and push to GitHub, after you check what goes')">{{ $t('Push…') }}</button>
                         </div>
                     </section>
                 </nav>
@@ -3250,24 +3250,37 @@
                 </div>
                 <template v-else-if="syncBox.data">
                     <p class="text-gray-400 mb-3">
-                        <template v-if="syncBox.kind === 'push'">{{ $t('Commits every change shown below and pushes') }}</template><template v-else>{{ $t('Brings in GitHub\'s new commits for') }}</template>
-                        <span v-html="$th('the branch <span class=&quot;font-mono text-gray-200&quot;>{v}</span>', { v: syncBox.data.target || syncBox.data.branch })"></span>
-                        <template v-if="syncBox.data.remote"> <span v-html="$th('of <span class=&quot;font-mono text-gray-200 break-all&quot;>{remote}</span>', { remote: syncBox.data.remote })"></span><copy-btn :text="syncBox.data.remote" class="ml-1"></copy-btn></template>.
+                        <template v-if="syncBox.kind === 'push'">{{ syncBox.data.files.length && syncBox.commitToo ? $t('Commits every change shown below and pushes') : $t('Pushes') }}</template><template v-else>{{ $t('Brings in GitHub\'s new commits for') }}</template>{{ ' ' }}
+                        <span v-html="$th('the branch <span class=&quot;font-mono text-gray-200&quot;>{v}</span>', { v: syncBox.data.target || syncBox.data.branch })"></span>{{ ' ' }}
+                        <template v-if="syncBox.data.remote"><span v-html="$th('of <span class=&quot;font-mono text-gray-200 break-all&quot;>{remote}</span>', { remote: syncBox.data.remote })"></span><copy-btn :text="syncBox.data.remote" class="ml-1"></copy-btn></template>.
                         <template v-if="syncBox.data.copy_of"> <span v-html="$th('This is a copy of <span class=&quot;font-mono text-gray-200&quot;>{copy_of}</span>, so it uses its own branch and never changes {copy_of2}\'s.', { copy_of: syncBox.data.copy_of, copy_of2: syncBox.data.copy_of })"></span></template>
                     </p>
-                    <div v-for="(pr, i) in syncBox.data.problems" :key="'p' + i" class="mb-2 rounded-lg border border-red-900/70 bg-red-950/30 text-red-200 px-3 py-2">⛔ {{ pr }}</div>
-                    <div v-for="(w, i) in (syncBox.data.warnings || [])" :key="'w' + i" class="mb-2 rounded-lg border border-yellow-800 bg-yellow-900/20 text-yellow-100 px-3 py-2">⚠ {{ w }}</div>
+                    <!-- v0.8: commits were already made here: push just those, or commit what is left as well -->
+                    <div v-if="syncCanChoose" class="mb-3 grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" :aria-label="$t('What Push does')" data-sync-choice>
+                        <button type="button" role="radio" :aria-checked="!syncBox.commitToo ? 'true' : 'false'" @click="syncBox.commitToo = false; syncBox.confirmed = false"
+                                :class="['text-left rounded-lg border px-3 py-2', !syncBox.commitToo ? 'border-blue-500 bg-blue-950/40 text-gray-100' : 'border-gray-700 text-gray-300 hover:border-gray-500']">
+                            <div class="font-bold">{{ syncBox.data.commits === 1 ? $t('Push the 1 commit already made') : $t('Push the {n} commits already made', { n: syncBox.data.commits }) }}</div>
+                            <div class="text-[12px] text-gray-400">{{ $t('The files below stay as they are, not committed.') }}</div>
+                        </button>
+                        <button type="button" role="radio" :aria-checked="syncBox.commitToo ? 'true' : 'false'" @click="syncBox.commitToo = true; syncBox.confirmed = false"
+                                :class="['text-left rounded-lg border px-3 py-2', syncBox.commitToo ? 'border-blue-500 bg-blue-950/40 text-gray-100' : 'border-gray-700 text-gray-300 hover:border-gray-500']">
+                            <div class="font-bold">{{ $t('Commit the files below too, then push') }}</div>
+                            <div class="text-[12px] text-gray-400">{{ $t('One more commit with every file listed, then everything is pushed.') }}</div>
+                        </button>
+                    </div>
+                    <div v-for="(pr, i) in syncProblems" :key="'p' + i" class="mb-2 rounded-lg border border-red-900/70 bg-red-950/30 text-red-200 px-3 py-2">⛔ {{ pr }}</div>
+                    <div v-for="(w, i) in syncWarnings" :key="'w' + i" class="mb-2 rounded-lg border border-yellow-800 bg-yellow-900/20 text-yellow-100 px-3 py-2">⚠ {{ w }}</div>
 
                     <template v-if="syncBox.kind === 'push'">
-                        <div v-if="syncBox.data.files.length" class="mt-3 border border-gray-800 rounded-lg bg-gray-950/60 px-3 py-2 text-[12px] font-mono">
-                            <div class="text-gray-500 mb-1">{{ $t('Files to commit ({v})', { v: syncBox.data.files.length + (syncBox.data.more || 0) }) }}</div>
+                        <div v-if="syncBox.data.files.length" :class="['mt-3 border border-gray-800 rounded-lg bg-gray-950/60 px-3 py-2 text-[12px] font-mono', syncCommits ? 'opacity-60' : '']">
+                            <div class="text-gray-500 mb-1">{{ syncCommits ? $t('Not committed, and left as they are ({v})', { v: syncBox.data.files.length + (syncBox.data.more || 0) }) : $t('Files to commit ({v})', { v: syncBox.data.files.length + (syncBox.data.more || 0) }) }}</div>
                             <div v-for="f in syncBox.data.files" :key="f.path" :class="['flex items-baseline gap-3', f.warn ? 'text-red-300' : 'text-gray-300']" :title="changeTitle(f)">
                                 <span class="truncate flex-1">{{ f.path }}</span><span class="flex-shrink-0">{{ changeLabel(f) }}</span>
                             </div>
                             <div v-if="syncBox.data.more" class="text-gray-500">{{ $t('and {more} more', { more: syncBox.data.more }) }}</div>
                         </div>
                         <div v-else-if="syncBox.data.ahead" class="text-gray-400 mt-2">{{ $t('No new changes; {ahead} commit{v} not on GitHub yet will be pushed.', { ahead: syncBox.data.ahead, v: syncBox.data.ahead === 1 ? '' : 's' }) }}</div>
-                        <div v-if="syncBox.data.files.length && !syncBox.data.problems.length" class="mt-3">
+                        <div v-if="syncBox.data.files.length && syncBox.commitToo && !syncBox.data.problems.length" class="mt-3">
                             <div class="flex items-center gap-2 mb-1">
                                 <label class="text-gray-400 flex-1">{{ $t('Commit message') }} <span v-if="syncBox.data.template" class="text-gray-500">{{ $t('(this project has a commit template)') }}</span></label>
                                 <button @click="writeCommitMessage" :disabled="syncBox.writing || syncBox.busy" class="text-[13px] px-2 py-1 rounded border border-gray-700 text-purple-300 hover:border-gray-500 disabled:opacity-50" :title="$t('The Simple model reads ') + (syncBox.data.template ? $t('the commit template and ') : '') + $t('the changes and writes the message (one small paid call)')">{{ syncBox.writing ? $t('Writing…') : $t('✨ Write it') }}</button>
@@ -3290,12 +3303,12 @@
                         </div>
                     </template>
 
-                    <label v-if="(syncBox.data.warnings || []).length && !syncBox.data.problems.length" class="flex items-center gap-2 text-yellow-200 mt-3"><input type="checkbox" v-model="syncBox.confirmed" class="w-3.5 h-3.5"> {{ $t('I checked the warnings above') }}</label>
+                    <label v-if="syncWarnings.length && !syncProblems.length" class="flex items-center gap-2 text-yellow-200 mt-3"><input type="checkbox" v-model="syncBox.confirmed" class="w-3.5 h-3.5"> {{ $t('I checked the warnings above') }}</label>
                     <p class="text-[12px] text-gray-500 mt-3">{{ syncBox.kind === 'push' ? $t('Never forced: if GitHub has newer commits, Optimux stops and asks you to update first.') : $t('Fast-forward only: your changes are never merged, overwritten or reset.') }}</p>
                 </template>
                 <div class="flex justify-end gap-3 mt-4">
                     <button @click="closeSync" class="px-4 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500">{{ syncBox.result ? $t('Close') : $t('Cancel') }}</button>
-                    <button v-if="syncBox.data && !syncBox.result && !syncBox.loading" @click="runSync" :disabled="!syncReady || syncBox.busy" class="px-4 py-1.5 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50">{{ syncBox.busy ? (syncBox.kind === 'push' ? $t('Pushing…') : $t('Updating…')) : (syncBox.kind === 'push' ? $t('Commit and push') : $t('Update')) }}</button>
+                    <button v-if="syncBox.data && !syncBox.result && !syncBox.loading" @click="runSync" :disabled="!syncReady || syncBox.busy" class="px-4 py-1.5 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50">{{ syncBox.busy ? (syncBox.kind === 'push' ? $t('Pushing…') : $t('Updating…')) : syncButton }}</button>
                 </div>
             </div>
         </div>

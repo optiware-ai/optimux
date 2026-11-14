@@ -1834,9 +1834,12 @@ const optimuxApp = createApp({
         // ---- Push / Update from GitHub (v0.4-5t): prepare (nothing changes), then run on confirm
         const syncBox = Vue.reactive({ open: false, kind: '', project: '', loading: false, data: null, error: '', pass: '',
             message: '', confirmed: false, busy: false, writing: false, writeNote: '', result: null,
-            tool: false });   // v0.8: opened by the model (push_project / update_project); the chat waits for it
+            tool: false,     // v0.8: opened by the model (push_project / update_project); the chat waits for it
+            commitToo: true });   // v0.8: commit the files left uncommitted before pushing (a choice when commits wait)
         const chatProject = Vue.computed(() => (currentSession.value && currentSession.value.project) || appSettings.value.active_project || '');
-        const openSync = async (project, kind, fromTool = null) => {
+        // `opts.commitsOnly`: opened from the Git pane, where commits are made by hand. When
+        // commits wait there, Push starts on "the commits already made" and leaves the rest.
+        const openSync = async (project, kind, fromTool = null, opts = {}) => {
             if (syncBox.tool && !fromTool) answerSyncTool(false);   // the button replaces a window the model opened
             Object.assign(syncBox, { open: true, kind, project, loading: true, data: null, error: '', message: '',
                 confirmed: false, busy: false, writing: false, writeNote: '', result: null, tool: !!fromTool,
@@ -1849,7 +1852,13 @@ const optimuxApp = createApp({
                 const d = await r.json();
                 if (!syncBox.open || syncBox.project !== project) return;
                 if (!r.ok) syncBox.error = d.detail || tr('Could not read the project.');
-                else { syncBox.data = d; if (kind === 'push') syncBox.message = (fromTool && fromTool.message) || d.default_message || ''; }
+                else {
+                    syncBox.data = d;
+                    if (kind === 'push') {
+                        syncBox.message = (fromTool && fromTool.message) || d.default_message || '';
+                        syncBox.commitToo = !(opts.commitsOnly && d.files.length && d.commits > 0);
+                    }
+                }
             } catch (_) { syncBox.error = tr('Could not reach Optimux.'); }
             syncBox.loading = false;
         };
@@ -1870,12 +1879,34 @@ const optimuxApp = createApp({
             syncBox.open = false;
             answerSyncTool(false);
         };
+        // Pushing only the commits already made: what is wrong with the uncommitted files
+        // does not count (the server keeps those apart: file_problems, file_warnings).
+        const syncCommits = Vue.computed(() => syncBox.kind === 'push' && !!syncBox.data && !!syncBox.data.files.length && !syncBox.commitToo);
+        const syncCanChoose = Vue.computed(() => syncBox.kind === 'push' && !!syncBox.data && !!syncBox.data.files.length && syncBox.data.commits > 0);
+        const syncProblems = Vue.computed(() => {
+            const d = syncBox.data;
+            if (!d) return [];
+            return syncCommits.value ? d.problems.filter((p) => !(d.file_problems || []).includes(p)) : d.problems;
+        });
+        const syncWarnings = Vue.computed(() => {
+            const d = syncBox.data;
+            if (!d) return [];
+            return syncCommits.value ? (d.warnings || []).filter((w) => !(d.file_warnings || []).includes(w)) : (d.warnings || []);
+        });
         const syncReady = Vue.computed(() => {
             const d = syncBox.data;
-            if (!d || d.problems.length) return false;
-            if ((d.warnings || []).length && !syncBox.confirmed) return false;
-            if (syncBox.kind === 'push' && d.files.length && !syncBox.message.trim()) return false;
+            if (!d || syncProblems.value.length) return false;
+            if (syncWarnings.value.length && !syncBox.confirmed) return false;
+            if (syncBox.kind === 'push' && d.files.length && syncBox.commitToo && !syncBox.message.trim()) return false;
             return true;
+        });
+        // What the button does, in its own words: "Commit and push" only when it commits
+        const syncButton = Vue.computed(() => {
+            const d = syncBox.data;
+            if (syncBox.kind !== 'push') return tr('Update');
+            if (d && d.files.length && syncBox.commitToo) return tr('Commit and push');
+            const n = d ? d.commits : 0;
+            return n === 1 ? tr('Push 1 commit') : (n ? tr('Push {n} commits', { n: n }) : tr('Push'));
         });
         const writeCommitMessage = async () => {
             syncBox.writing = true; syncBox.writeNote = '';
@@ -1891,7 +1922,8 @@ const optimuxApp = createApp({
             if (!syncReady.value || syncBox.busy) return;
             syncBox.busy = true;
             const body = syncBox.kind === 'push'
-                ? { message: syncBox.message, tree: syncBox.data.tree, confirmed: syncBox.confirmed }
+                ? { message: syncBox.message, tree: syncBox.data.tree, confirmed: syncBox.confirmed,
+                    commit: !syncCommits.value, head: syncBox.data.head }
                 : { sha: syncBox.data.sha };
             if (syncBox.tool && syncBox.pass) body.sync_pass = syncBox.pass;
             try {
@@ -6345,7 +6377,7 @@ const optimuxApp = createApp({
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
             sentBox, openSent, browseSent, showSent, sentGroups, sentKindLabel, sentKindClass, sentRoleClass, sentPeek, sentOpenAll, copySent,
-            syncBox, chatProject, openSync, reopenSync, closeSync, syncReady, writeCommitMessage, runSync, link, linkNote,
+            syncBox, chatProject, openSync, reopenSync, closeSync, syncReady, syncCommits, syncCanChoose, syncProblems, syncWarnings, syncButton, writeCommitMessage, runSync, link, linkNote,
             startClone, cancelClone, projectLocations, loadProjectLocations, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,
             removeSkill, saveAsSkill, skillDialog, confirmSkillDialog,

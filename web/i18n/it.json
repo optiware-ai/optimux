@@ -2564,5 +2564,17 @@
  "long diffs are cut": "i diff lunghi sono tagliati",
  "{n} files": "{n} file",
  "{n} more lines are not shown. Open the file to see it whole.": "Altre {n} righe non sono mostrate. Apri il file per vederlo intero.",
- "{path} has no change to show.": "{path} non ha modifiche da mostrare."
+ "{path} has no change to show.": "{path} non ha modifiche da mostrare.",
+ "Commit the files below too, then push": "Fai commit anche dei file qui sotto, poi push",
+ "Not committed, and left as they are ({v})": "Non nel commit, e lasciati come sono ({v})",
+ "One more commit with every file listed, then everything is pushed.": "Un altro commit con tutti i file elencati, poi viene inviato tutto.",
+ "Push 1 commit": "Push di 1 commit",
+ "Push the 1 commit already made": "Push del commit già fatto",
+ "Push the {n} commits already made": "Push dei {n} commit già fatti",
+ "Push {n} commits": "Push di {n} commit",
+ "Pushes": "Invia",
+ "The commits changed since you opened this. Open Push again to see them.": "I commit sono cambiati da quando hai aperto questa finestra. Apri di nuovo Push per vederli.",
+ "The files below stay as they are, not committed.": "I file qui sotto restano come sono, fuori dal commit.",
+ "There is no commit to push yet. Commit first, or let Push commit these files.": "Non c'è ancora nessun commit da inviare. Fai prima commit, o lascia che Push faccia il commit di questi file.",
+ "What Push does": "Cosa fa Push"
 }
