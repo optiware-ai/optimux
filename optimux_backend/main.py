@@ -1123,6 +1123,16 @@ class CommitPayload(BaseModel):
     message: str = ""
     tree: str | None = None
     confirmed: bool = False
+    staged_tree: str | None = None    # files were added in the pane: commit exactly those
+
+
+class StagePayload(BaseModel):
+    paths: list[str] = []             # empty: every file
+    staged: bool = True
+
+
+class CommitMessagePayload(BaseModel):
+    staged: bool = False              # write it for the added files only
 
 
 @app.get("/api/projects/{name}/git-state")
@@ -1147,7 +1157,19 @@ async def project_git_mark(name: str):
 async def project_commit(name: str, payload: CommitPayload):
     """Commit here, without pushing (the Studio's Git pane)."""
     return _git_busy(name) or await _gitsync(gitsync.commit_run, name, payload.message, payload.tree,
-                                              payload.confirmed)
+                                              payload.confirmed, payload.staged_tree)
+
+
+@app.post("/api/projects/{name}/stage")
+async def project_stage(name: str, payload: StagePayload):
+    """The + in front of a file in the Git pane: add it to the next commit, or take
+    it back. Returns the pane's new state."""
+    if (busy := _git_busy(name)):
+        return busy
+    result = await _gitsync(gitsync.stage_run, name, payload.paths[:5000], payload.staged)
+    if isinstance(result, dict):
+        result["busy"] = bool(BUSY_PROJECTS.get(name))
+    return result
 
 
 @app.get("/api/projects/{name}/status")
@@ -1179,16 +1201,17 @@ async def project_update(name: str, payload: UpdatePayload):
 
 
 @app.post("/api/projects/{name}/commit-message")
-async def project_commit_message(name: str):
-    """The Simple model writes the commit message for what Push would commit,
-    following the project's commit template if it has one. One paid call."""
+async def project_commit_message(name: str, payload: CommitMessagePayload | None = None):
+    """The Simple model writes the commit message for what Push would commit (or
+    for the files added in the Git pane), following the project's commit template
+    if it has one. One paid call."""
     model = routing_for(name).get("simple_model", "")
     if not model:
         return JSONResponse({"detail": tr("No Simple model is configured (Dashboard → Routing).")}, status_code=422)
     if (b := budgets.blocks(name)):
         return JSONResponse({"detail": tr("{v} New model calls are blocked until you raise it.", v=budget_text(b))},
                             status_code=422)
-    material = await _gitsync(gitsync.message_material, name)
+    material = await _gitsync(gitsync.message_material, name, bool(payload and payload.staged))
     if not isinstance(material, dict):
         return material
     started = time.monotonic()

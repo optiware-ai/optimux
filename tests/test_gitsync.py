@@ -505,3 +505,107 @@ def test_git_mark_api(ws, mocker, tmp_path):
     (ws["proj"] / "n.txt").write_text("n\n")
     assert client.get("/api/projects/site/git-mark", headers=H).json()["mark"] != a
     assert client.get("/api/projects/nope/git-mark", headers=H).status_code == 422
+
+
+# ---- v0.8: add files one by one in the Git pane, and commit only those
+
+def flags(state):
+    return {f["path"]: (f["staged"], f["again"]) for f in state["files"]}
+
+
+def test_files_are_added_one_by_one_and_committed_separately(ws):
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    (ws["proj"] / "old.txt").write_text("x\n")
+    s = gitsync.local_state("site")
+    assert flags(s) == {"index.html": (False, False), "menu.js": (False, False), "old.txt": (False, False)}
+    assert s["staged"] == 0 and s["staged_tree"] is None
+    s = gitsync.stage_run("site", ["menu.js"], True)             # the + in front of the file
+    assert flags(s)["menu.js"] == (True, False) and flags(s)["index.html"] == (False, False)
+    assert s["staged"] == 1 and s["staged_tree"] and s["can_commit"]
+    r = gitsync.commit_run("site", "Add the menu", s["tree"], False, staged_tree=s["staged_tree"])
+    assert r["ok"] and r["files"] == 1
+    assert git("show", "--name-only", "--format=", "HEAD", cwd=ws["proj"]).split() == ["menu.js"]
+    s = gitsync.local_state("site")                              # the rest is still there, not committed
+    assert sorted(flags(s)) == ["index.html", "old.txt"] and s["staged"] == 0
+    r = gitsync.commit_run("site", "The rest", s["tree"], False)  # nothing added: Commit takes everything, as before
+    assert r["files"] == 2 and gitsync.local_state("site")["files"] == []
+
+
+def test_a_file_is_taken_back_and_all_are_added_at_once(ws):
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    s = gitsync.stage_run("site", [], True)                      # Add all
+    assert s["staged"] == 2 and all(f["staged"] for f in s["files"])
+    s = gitsync.stage_run("site", ["menu.js"], False)            # take one back
+    assert flags(s) == {"index.html": (True, False), "menu.js": (False, False)}
+    s = gitsync.stage_run("site", [], False)                     # take all back
+    assert s["staged"] == 0 and (ws["proj"] / "menu.js").read_text() == "// menu\n"    # the files are untouched
+
+
+def test_a_deleted_file_and_a_file_changed_again_after_adding(ws):
+    (ws["proj"] / "index.html").unlink()
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    s = gitsync.stage_run("site", ["index.html", "menu.js"], True)
+    assert flags(s) == {"index.html": (True, False), "menu.js": (True, False)}
+    (ws["proj"] / "menu.js").write_text("// menu, edited after it was added\n")
+    s = gitsync.local_state("site")
+    assert flags(s)["menu.js"] == (True, True)                   # the commit would take the earlier version
+    pinned = s["staged_tree"]
+    gitsync.stage_run("site", ["menu.js"], True)                 # added again: what is committed changed
+    with pytest.raises(gitsync.GitSyncError, match="changed since"):
+        gitsync.commit_run("site", "msg", s["tree"], False, staged_tree=pinned)
+
+
+def test_only_paths_with_a_change_can_be_added(ws):
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    for bad in ("nope.txt", "*.js", ":(top)menu.js", "../other", "-A"):
+        with pytest.raises(gitsync.GitSyncError, match="no change"):
+            gitsync.stage_run("site", [bad], True)
+    assert gitsync.local_state("site")["staged"] == 0
+
+
+def test_the_checks_look_at_what_the_commit_takes(ws):
+    (ws["proj"] / "config.py").write_text("KEY = 'sk-ant-very-secret-123'\n")
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    s = gitsync.local_state("site")
+    assert any("ANTHROPIC_API_KEY" in p for p in s["problems"])            # nothing added: everything would go
+    s = gitsync.stage_run("site", ["menu.js"], True)
+    assert s["problems"] == [] and s["can_commit"]                         # the key file is not part of this commit
+    assert gitsync.commit_run("site", "menu", s["tree"], False, staged_tree=s["staged_tree"])["ok"]
+    s = gitsync.stage_run("site", ["config.py"], True)
+    assert any("ANTHROPIC_API_KEY" in p for p in s["problems"]) and "sk-ant" not in str(s)
+    with pytest.raises(gitsync.GitSyncError, match="ANTHROPIC_API_KEY"):
+        gitsync.commit_run("site", "key", s["tree"], True, staged_tree=s["staged_tree"])
+
+
+def test_the_message_is_written_for_the_added_files_only(ws):
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    gitsync.stage_run("site", ["menu.js"], True)
+    m = gitsync.message_material("site", staged=True)
+    assert m["files"] == ["menu.js"] and "menu" in m["diff"] and "2026" not in m["diff"]
+    assert sorted(gitsync.message_material("site")["files"]) == ["index.html", "menu.js"]
+
+
+def test_adding_through_the_api(ws, mocker, tmp_path):
+    import optimux_backend.main as main
+    from tests.ws_helpers import make_client
+    client = make_client(mocker, tmp_path)
+    H = {"Authorization": "Bearer test-token"}
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    main.BUSY_PROJECTS["site"] = 1
+    try:
+        r = client.post("/api/projects/site/stage", json={"paths": ["menu.js"], "staged": True}, headers=H)
+        assert r.status_code == 422 and "A request is running" in r.json()["detail"]
+    finally:
+        main.BUSY_PROJECTS.pop("site", None)
+    s = client.post("/api/projects/site/stage", json={"paths": ["menu.js"], "staged": True}, headers=H).json()
+    assert s["staged"] == 1 and s["busy"] is False
+    r = client.post("/api/projects/site/stage", json={"paths": ["nope"], "staged": True}, headers=H)
+    assert r.status_code == 422
+    r = client.post("/api/projects/site/commit", headers=H,
+                    json={"message": "menu", "tree": s["tree"], "staged_tree": s["staged_tree"]}).json()
+    assert r["ok"] and r["files"] == 1
+    assert [f["path"] for f in client.get("/api/projects/site/git-state", headers=H).json()["files"]] == ["index.html"]

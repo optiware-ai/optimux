@@ -1834,6 +1834,7 @@ const optimuxApp = createApp({
             try {
                 syncBox.result = await postJson(`/api/projects/${encodeURIComponent(syncBox.project)}/${syncBox.kind}`, body);
                 answerSyncTool(true);
+                gitReminder.value = null;
                 pushToast(syncBox.kind === 'push'
                     ? { title: tr('Pushed · {project}', { project: syncBox.project }), text: `${syncBox.result.branch} · ${syncBox.result.commit}`, link: syncBox.result.url || '', linkLabel: tr('Open on GitHub') }
                     : { title: tr('Updated · {project}', { project: syncBox.project }), text: tr('{commits} new commit{v}', { commits: syncBox.result.commits, v: syncBox.result.commits === 1 ? '' : 's' }) });
@@ -4250,7 +4251,7 @@ const optimuxApp = createApp({
         // (by you or by the model, in any reply), and Commit / Push / Update.
         // Local only: it never fetches, so it can refresh after every reply.
         const studioGit = Vue.reactive({ open: true, loading: false, data: null, error: '', message: '',
-            confirmed: false, busy: false, writing: false, note: '', h: null, mark: '', markFor: '' });
+            confirmed: false, busy: false, writing: false, staging: false, note: '', h: null, mark: '', markFor: '' });
         try {
             studioGit.open = localStorage.getItem('optimux.studio.git') !== '0';
             studioGit.h = Number(localStorage.getItem('optimux.studio.gitH')) || null;   // null: its natural height
@@ -4322,7 +4323,7 @@ const optimuxApp = createApp({
                 if (seq !== gitSeq) return;
                 if (m) { studioGit.mark = m.mark; studioGit.markFor = project; }
                 if (!studioGit.data || studioGit.data.project !== d.project) { studioGit.message = ''; studioGit.note = ''; }
-                if (!studioGit.data || studioGit.data.tree !== d.tree) studioGit.confirmed = false;
+                if (!studioGit.data || studioGit.data.tree !== d.tree || studioGit.data.staged_tree !== d.staged_tree) studioGit.confirmed = false;
                 studioGit.data = d; studioGit.error = '';
             } catch (e) { if (seq === gitSeq) { studioGit.data = null; studioGit.error = e.message; } }
             if (seq === gitSeq) studioGit.loading = false;
@@ -4338,11 +4339,65 @@ const optimuxApp = createApp({
             if (!studioGit.message.trim()) return tr('Write a commit message first.');
             return '';
         });
+        // v0.8: the + in front of a file: add it to the next commit (git add), or take it back.
+        // An empty list is every file. The server answers with the pane's new state.
+        const studioGitStageOff = Vue.computed(() => studioGit.staging || studioGit.busy || isGenerating.value || !!(studioGit.data && studioGit.data.busy));
+        const stageStudio = async (paths, on) => {
+            const project = studio.project;
+            if (studioGitStageOff.value || !studioGit.data) return;
+            studioGit.staging = true; studioGit.note = '';
+            try {
+                const d = await postJson(`/api/projects/${encodeURIComponent(project)}/stage`, { paths: paths, staged: on });
+                if (project === studio.project) { studioGit.data = d; studioGit.confirmed = false; }
+            } catch (e) { studioGit.note = e.message; loadStudioGit(); }
+            studioGit.staging = false;
+        };
+        // v0.8: back in a project, or a new chat, with changes not yet committed: a card above
+        // the chat box lists them. "I know" is kept for this exact state (the git-mark
+        // fingerprint, in this browser session), so it returns only when the files change.
+        const gitReminder = ref(null);   // { project, files, more, total, branch, mark }
+        const REMIND_FILES = 8;
+        const remindUncommitted = async (again) => {
+            const project = appSettings.value.active_project;
+            if (!project) {
+                gitReminder.value = null;
+                if (!again) setTimeout(() => remindUncommitted(true), 1500);   // the settings may still be loading
+                return;
+            }
+            try {
+                const at = encodeURIComponent(project);
+                const [m, d] = await Promise.all([studioFetch(`/api/projects/${at}/git-mark`), studioFetch(`/api/projects/${at}/git-state`)]);
+                if (project !== appSettings.value.active_project) return;
+                const total = d.files.length + (d.more || 0);
+                let seen = '';
+                try { seen = sessionStorage.getItem('optimux.gitseen.' + project) || ''; } catch (_) {}
+                gitReminder.value = total && m.mark !== seen
+                    ? { project: project, files: d.files.slice(0, REMIND_FILES), more: total - Math.min(REMIND_FILES, d.files.length), total: total, branch: d.branch || '', mark: m.mark }
+                    : null;
+            } catch (_) { gitReminder.value = null; }    // no git in this project: nothing to say
+        };
+        const knowUncommitted = () => {
+            const r = gitReminder.value;
+            if (r) { try { sessionStorage.setItem('optimux.gitseen.' + r.project, r.mark); } catch (_) {} }
+            gitReminder.value = null;
+        };
+        const commitNow = async () => {
+            gitReminder.value = null;
+            await openStudio();
+            if (!studio.showTree) toggleStudioTree();      // the Git pane lives under the file list
+            if (!studioGit.open) toggleStudioGit();
+            for (let i = 0; i < 20; i++) {                 // the pane's list arrives a moment later
+                await nextTick();
+                const box = document.querySelector('[data-git-pane] textarea');
+                if (box) { box.focus(); break; }
+                await new Promise((r) => setTimeout(r, 150));
+            }
+        };
         const writeStudioCommitMessage = async () => {
             const project = studio.project;
             studioGit.writing = true; studioGit.note = '';
             try {
-                const d = await postJson(`/api/projects/${encodeURIComponent(project)}/commit-message`, {});
+                const d = await postJson(`/api/projects/${encodeURIComponent(project)}/commit-message`, { staged: !!(studioGit.data && studioGit.data.staged) });
                 studioGit.message = d.message;
                 countCallInHeader({ project, cost: d.cost });
                 studioGit.note = tr('Written by {model}{v} · {v2}. Check it before pushing.', { model: d.model, v: d.template ? tr(', following the commit template') : '', v2: d.cost != null ? fmtCost(d.cost) : tr('cost unknown') });
@@ -4355,8 +4410,10 @@ const optimuxApp = createApp({
             studioGit.busy = true; studioGit.note = '';
             try {
                 const r = await postJson(`/api/projects/${encodeURIComponent(project)}/commit`,
-                    { message: studioGit.message, tree: studioGit.data.tree, confirmed: studioGit.confirmed });
+                    { message: studioGit.message, tree: studioGit.data.tree, confirmed: studioGit.confirmed,
+                      staged_tree: studioGit.data.staged ? studioGit.data.staged_tree : null });
                 studioGit.message = '';
+                gitReminder.value = null;
                 pushToast({ title: tr('Committed · {project}', { project }), text: tr('{branch} · {commit} · not pushed yet', { branch: r.branch || '—', commit: r.commit }) });
             } catch (e) { studioGit.note = e.message; }
             studioGit.busy = false;
@@ -5543,6 +5600,7 @@ const optimuxApp = createApp({
                     if (projectOffer.value && projectOffer.value === appSettings.value.active_project) projectOffer.value = '';
                     loadSession(data);
                     link.everUp = true;
+                    if (!data.running) remindUncommitted();     // back in this project: anything left uncommitted?
                     if (data.running) {
                         isGenerating.value = true; isStopping.value = false;
                         lastWsAt = Date.now();
@@ -5684,6 +5742,7 @@ const optimuxApp = createApp({
                 else if (data.type === "chat_reset") {
                     messages.value = [welcomeMessage(tr('New chat started. The model no longer sees the previous conversation.'))];
                     currentSession.value = null;
+                    if (!replay) remindUncommitted();      // a new chat: anything left uncommitted?
                 }
                 else if (data.type === "approval_request") {
                     pendingOutside.value = data.outside_paths || [];
@@ -6163,7 +6222,7 @@ const optimuxApp = createApp({
             planAction, planStepMark, planStuckStep, projectOffer, openOfferedProject, planEdit, stepFolded, stepItems,
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
-            studio, studioGit, toggleStudioGit, startGitResize, keyGitResize, resetGitHeight, loadStudioGit, studioGitCount, studioGitBlocked, writeStudioCommitMessage, commitStudio, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
+            studio, studioGit, toggleStudioGit, startGitResize, keyGitResize, resetGitHeight, loadStudioGit, studioGitCount, studioGitBlocked, writeStudioCommitMessage, commitStudio, stageStudio, studioGitStageOff, gitReminder, knowUncommitted, commitNow, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
             saveStudioFile, reloadStudioFile, previewSrc, previewMarkdown, previewKind, studioOpenInTab,
             gitTerm, openGitTerm, closeGitTerm, gitTermLines, copyGitTerm,
             studioLayout, studioPanes, startResize, resizeKey, resetResize, toggleStudioTree, expandAllStudio, collapseAllStudio,

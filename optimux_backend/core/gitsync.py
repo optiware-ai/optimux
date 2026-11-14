@@ -411,14 +411,30 @@ def push_run(name: str, message: str, tree: str | None, confirmed: bool) -> dict
         lock.release()
 
 
+def _added(top: str) -> tuple[set[str], set[str], str | None]:
+    """(paths added to git's index, those changed again since, the index as a tree).
+    Read-only: write-tree stores tree objects, the index and the files stay."""
+    staged = _git(top, "diff", "--cached", "--name-only", "--no-renames", "-z", timeout=10)
+    paths = {p for p in staged["output"].split("\0") if p} if staged["ok"] else set()
+    if not paths:
+        return set(), set(), None
+    later = _git(top, "diff", "--name-only", "--no-renames", "-z", timeout=10)
+    again = {p for p in later["output"].split("\0") if p} & paths if later["ok"] else set()
+    return paths, again, _ok(_git(top, "write-tree", timeout=10)) or None
+
+
 def local_state(name: str) -> dict:
     """The Studio's Git pane (v0.8): uncommitted files, branch and ahead/behind
     against the last known GitHub branch. Never fetches: it is refreshed after
-    every reply, so it must be fast and work offline. Nothing changes."""
+    every reply, so it must be fast and work offline. Nothing changes.
+    Each file says whether it was added (`staged`: in git's index) and whether it
+    changed again since (`again`). With files added, Commit takes only those:
+    `staged` counts them, `staged_tree` pins them, and the problems, warnings and
+    can_commit are about them alone."""
     path = _project(name)
     out = _basics(name, path, fetch=False)
     out.update(files=[], more=0, ahead=0, behind=0, tree=None, problems=[], warnings=[],
-               identity=True, can_commit=False)
+               identity=True, can_commit=False, staged=0, staged_tree=None)
     top = _ok(_git(path, "rev-parse", "--show-toplevel", timeout=5)) or path
     tree = changes_lib._tree(top)
     head = _ok(_git(path, "rev-parse", "--verify", "--quiet", "HEAD^{tree}", timeout=5)) or EMPTY_TREE
@@ -426,6 +442,20 @@ def local_state(name: str) -> dict:
     if tree and tree != head:
         diff = changes_lib.compare({"git": True, "top": top, "tree": head})
         out["files"], out["more"] = diff.get("files", []), diff.get("more", 0)
+    staged, again, staged_tree = _added(top)
+    if staged and staged_tree and staged_tree != head:
+        shown = {f["path"] for f in out["files"]}
+        if staged - shown and not out["more"]:
+            # added, then put back as it was: git would still commit the added version
+            extra = changes_lib.compare({"git": True, "top": top, "tree": head}, staged_tree).get("files", [])
+            out["files"] += [f for f in extra if f["path"] not in shown]
+            again |= staged - shown
+        out["staged"], out["staged_tree"] = len(staged), staged_tree
+    else:
+        staged, again = set(), set()
+    for f in out["files"]:
+        f["staged"], f["again"] = f["path"] in staged, f["path"] in again
+    taken = [f for f in out["files"] if f["staged"]] if out["staged"] else out["files"]
     out["ahead"], out["behind"] = _counts(path, out["upstream"])
     if not out["upstream"]:
         out["ahead"] = 0                # no GitHub branch to compare with: nothing is "ahead"
@@ -435,11 +465,40 @@ def local_state(name: str) -> dict:
                                   "(Who commits)."))
     if not out["branch"]:
         out["problems"].append(tr("HEAD isn't on a branch (detached). Check out a branch first."))
-    problems, warnings = _scan(path, out["files"])
+    problems, warnings = _scan(path, taken)
     out["problems"] += problems
     out["warnings"] += warnings
-    out["can_commit"] = bool(out["files"]) and not out["problems"]
+    out["can_commit"] = bool(taken) and not out["problems"]
     return out
+
+
+def stage_run(name: str, paths: list[str], staged: bool = True) -> dict:
+    """The + in front of a file in the Git pane: add it to what the next commit
+    takes (git add), or take it back (the file itself is never touched). An empty
+    list means every file. Only paths the pane shows are accepted, and they are
+    passed to git literally, never as patterns or options. Returns local_state."""
+    lock = _lock(name)
+    if not lock.acquire(blocking=False):
+        raise GitSyncError(tr("A push or update of this project is already running."))
+    try:
+        path = _project(name)
+        top = _ok(_git(path, "rev-parse", "--show-toplevel", timeout=5)) or path
+        state = local_state(name)
+        known = {f["path"] for f in state["files"]}
+        for p in paths:
+            if p not in known:
+                raise GitSyncError(tr("{path} has no change to add.", path=str(p)[:200]))
+        if staged:
+            r = _git(top, "--literal-pathspecs", "add", "-A", "--", *(paths or ["."]), timeout=60)
+        elif _ok(_git(top, "rev-parse", "--verify", "--quiet", "HEAD", timeout=5)):
+            r = _git(top, "--literal-pathspecs", "reset", "-q", "HEAD", "--", *(paths or ["."]), timeout=60)
+        else:               # no commit yet: nothing to reset to
+            r = _git(top, "--literal-pathspecs", "rm", "-r", "-q", "--cached", "--", *(paths or ["."]), timeout=60)
+        if not r["ok"]:
+            raise GitSyncError(tr("git add failed: {v}", v=r["output"][-300:]))
+        return local_state(name)
+    finally:
+        lock.release()
 
 
 MARK_FILES = 3000      # files whose size and time go into local_mark; more only count by name
@@ -470,17 +529,23 @@ def local_mark(name: str) -> str:
     return h.hexdigest()
 
 
-def commit_run(name: str, message: str, tree: str | None, confirmed: bool) -> dict:
-    """Commit every change shown by local_state, here only (no push)."""
+def commit_run(name: str, message: str, tree: str | None, confirmed: bool,
+               staged_tree: str | None = None) -> dict:
+    """Commit here only (no push): every change shown by local_state, or, with
+    `staged_tree` (files were added in the pane), exactly those added files."""
     lock = _lock(name)
     if not lock.acquire(blocking=False):
         raise GitSyncError(tr("A push or update of this project is already running."))
     try:
         state = local_state(name)
         path = _project(name)
-        if state["tree"] != tree:
+        only_added = bool(staged_tree or state["staged"])
+        # Added files: what is committed is the index, so that is what must not have moved
+        # (the other files may change freely). Else everything shown, as before.
+        if (state["staged_tree"] != staged_tree) if only_added else (state["tree"] != tree):
             raise GitSyncError(tr("The files changed since this list was shown. Check the new list, then commit."))
-        if not state["files"]:
+        taken = [f for f in state["files"] if f["staged"]] if only_added else state["files"]
+        if not taken:
             raise GitSyncError(tr("Nothing to commit."))
         if state["problems"]:
             raise GitSyncError(state["problems"][0])
@@ -489,9 +554,10 @@ def commit_run(name: str, message: str, tree: str | None, confirmed: bool) -> di
         message = (message or "").strip()
         if not message:
             raise GitSyncError(tr("Write a commit message first."))
-        add = _git(path, "add", "-A", timeout=60)
-        if not add["ok"]:
-            raise GitSyncError(tr("git add failed: {v}", v=add["output"][-300:]))
+        if not only_added:
+            add = _git(path, "add", "-A", timeout=60)
+            if not add["ok"]:
+                raise GitSyncError(tr("git add failed: {v}", v=add["output"][-300:]))
         with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
             f.write(message + "\n")
             msg_file = f.name
@@ -502,7 +568,8 @@ def commit_run(name: str, message: str, tree: str | None, confirmed: bool) -> di
         if not c["ok"]:
             raise GitSyncError(tr("git commit failed: {v}", v=c["output"][-300:]))
         return {"ok": True, "project": name, "commit": _ok(_git(path, "rev-parse", "--short", "HEAD", timeout=5)),
-                "branch": state["branch"], "files": len(state["files"]) + state["more"]}
+                "branch": state["branch"],
+                "files": state["staged"] if only_added else len(state["files"]) + state["more"]}
     finally:
         lock.release()
 
@@ -585,17 +652,18 @@ def update_run(name: str, sha: str | None) -> dict:
         lock.release()
 
 
-def message_material(name: str) -> dict:
+def message_material(name: str, staged: bool = False) -> dict:
     """What the model gets to write a commit message: the project's template,
-    recent commit subjects (for style) and the diff of what Push would commit.
+    recent commit subjects (for style) and the diff of what Push would commit
+    (with `staged`: of the files added in the Git pane only).
     Refused while a file holds a saved key, so a key never reaches a model."""
     path = _project(name)
     top = _ok(_git(path, "rev-parse", "--show-toplevel", timeout=5)) or path
-    tree = changes_lib._tree(top)
+    tree = (_added(top)[2] if staged else None) or changes_lib._tree(top)
     head = _ok(_git(path, "rev-parse", "--verify", "--quiet", "HEAD^{tree}", timeout=5)) or EMPTY_TREE
     if tree == head:
         raise GitSyncError(tr("There's nothing to commit, so there's no message to write."))
-    diff = changes_lib.compare({"git": True, "top": top, "tree": head})
+    diff = changes_lib.compare({"git": True, "top": top, "tree": head}, tree)
     problems, _ = _scan(path, diff.get("files", []))
     if problems:
         raise GitSyncError(problems[0])

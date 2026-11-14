@@ -86,8 +86,9 @@ def _removed_lines(top: str, old: str, new: str, path: str) -> list[str]:
     return [r for r in dict.fromkeys(rules(old)) if r not in after]
 
 
-def compare(before: dict) -> dict:
-    """What changed since `snapshot()`: {"git": False}, {"error"}, or
+def compare(before: dict, new: str | None = None) -> dict:
+    """What changed since `snapshot()` (or, with `new`, up to that tree and not
+    the project's files as they are: the Git pane's added files): {"git": False}, {"error"}, or
     {"files": [...], "more": n}. Each file: path, status (new | deleted |
     changed), added, removed (None for binary), lines_before, lines_after,
     warn (deleted, emptied or shrunk by half or more, or a file of secrets git
@@ -99,7 +100,7 @@ def compare(before: dict) -> dict:
         return {"git": True, "error": before["error"]}
     top, old = before["top"], before["tree"]
     try:
-        new = _tree(top)
+        new = new or _tree(top)
         if new == old:
             return {"git": True, "files": [], "more": 0}
         env = _clean_env()
