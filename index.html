@@ -191,7 +191,7 @@
                                 </div>
                                 <div v-if="studio.edit.error" class="text-[12px] text-red-400 mt-0.5 ml-4 break-words" role="alert">{{ studio.edit.error }}</div>
                             </div>
-                            <button v-else type="button" @click="r.e.type === 'dir' ? toggleStudioDir(r.e.path) : (r.e.type === 'file' ? openStudioFile(r.e.path) : null)" :disabled="r.e.type === 'outside'"
+                            <button v-else type="button" @click="r.e.type === 'dir' ? toggleStudioDir(r.e.path) : (r.e.type === 'file' ? openStudioFile(r.e.path, { show: true }) : null)" :disabled="r.e.type === 'outside'"
                                     @contextmenu.stop="onTreeMenu($event, r.e)" @keydown="treeKey($event, r.e)" :data-path="r.e.path"
                                     :class="['w-full text-left flex items-center gap-1.5 py-0.5 pr-2 hover:bg-gray-800/60 disabled:opacity-40', studio.file && studio.file.path === r.e.path ? 'bg-blue-950/60 text-blue-100' : (r.e.ignored ? 'text-gray-500' : 'text-gray-300'), studio.menuPath === r.e.path ? 'cm-tree-menu' : '']"
                                     :style="{ paddingLeft: (10 + r.depth * 14) + 'px' }" :title="r.e.type === 'outside' ? r.e.path + $t(': a link that leads outside the project') : r.e.path + (r.e.ignored ? $t(' (ignored by git)') : '')">
@@ -238,7 +238,7 @@
                                                     :class="['w-5 h-5 flex-shrink-0 rounded border font-bold leading-none flex items-center justify-center disabled:opacity-40', f.staged ? 'bg-green-700 border-green-600 text-white' : 'border-gray-600 text-gray-400 hover:border-green-500 hover:text-green-300']"
                                                     :title="f.staged ? $t('Added to the next commit. Click to take it back (the file stays as it is).') : $t('Add this file to the next commit')"
                                                     :aria-label="f.staged ? $t('Take {path} back', { path: f.path }) : $t('Add {path}', { path: f.path })">{{ f.staged ? '✓' : '+' }}</button>
-                                            <button type="button" @click="f.status !== 'deleted' && openStudioFile(f.path)" class="truncate min-w-0 flex-1 text-left" :title="f.path">{{ f.warn ? '⚠ ' : '' }}{{ f.path }}</button>
+                                            <button type="button" @click="openGitFile(f)" :class="['truncate min-w-0 flex-1 text-left hover:underline underline-offset-2', studio.file && studio.file.path === f.path ? 'text-blue-300' : '']" :title="f.status === 'deleted' ? f.path : $t('Open {path} in the editor', { path: f.path })">{{ f.warn ? '⚠ ' : '' }}{{ f.path }}</button>
                                             <span v-if="f.again" class="flex-shrink-0 text-amber-300 cursor-help" :title="$t('Changed again after it was added: the commit takes the earlier version. Take it back and add it again to take this one.')">↻</span>
                                             <span :class="['flex-shrink-0 whitespace-nowrap', f.status === 'new' ? 'text-green-400' : (f.status === 'deleted' ? 'text-red-400' : 'text-gray-400')]">{{ changeLabel(f) }}</span>
                                         </div>

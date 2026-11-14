@@ -2519,5 +2519,7 @@
  "Take all back": "Togli tutti",
  "Take {path} back": "Togli {path}",
  "{n} of {total} added: Commit takes only these.": "{n} di {total} aggiunti: Commit prende solo questi.",
- "{path} has no change to add.": "{path} non ha modifiche da aggiungere."
+ "{path} has no change to add.": "{path} non ha modifiche da aggiungere.",
+ "{path} was deleted: there is nothing to open.": "{path} è stato eliminato: non c'è nulla da aprire.",
+ "Open {path} in the editor": "Apri {path} nell'editor"
 }

@@ -4494,6 +4494,7 @@ const optimuxApp = createApp({
             if (studio.dirty && studio.file && studio.file.path !== path
                 && !confirm(tr('{path} has unsaved changes. Open {path2} and drop them?', { path: studio.file.path, path2: path }))) return;
             studio.msg = null; studio.conflict = false;
+            if (opts.show) studio.showEditor = true;       // a click on a file: the editor column may be hidden
             try {
                 const f = await studioFetch(`/api/files/read?path=${encodeURIComponent(path)}`);
                 const ok = await ensureEditor();
@@ -4528,6 +4529,14 @@ const optimuxApp = createApp({
                 studio.msg = { ok: false, text: e.message };
             }
             studio.saving = false;
+        };
+        // A click on a file in the Git pane: open it in the editor (shown if it was hidden) and
+        // unfold the file list down to it. A deleted file has nothing to open: say so.
+        const openGitFile = async (f) => {
+            if (f.status === 'deleted') { studio.msg = { ok: false, text: tr('{path} was deleted: there is nothing to open.', { path: f.path }) }; return; }
+            const parent = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : '';
+            if (parent) { try { await revealStudioPath(parent); } catch (_) {} }
+            await openStudioFile(f.path, { show: true });
         };
         const reloadStudioFile = () => { if (studio.file) { studio.dirty = false; openStudioFile(studio.file.path); } };
         // v0.8: a running dev server, opened directly at http://localhost:<port> (on a server
@@ -4599,7 +4608,7 @@ const optimuxApp = createApp({
             if (r.type === 'dir') { studio.find = ''; await revealStudioPath(r.path); return; }
             const parent = r.path.includes('/') ? r.path.slice(0, r.path.lastIndexOf('/')) : '';
             if (parent) revealStudioPath(parent);
-            openStudioFile(r.path);
+            openStudioFile(r.path, { show: true });
         };
         const findKey = (e) => {
             if (e.key === 'Escape') { e.preventDefault(); studio.find = ''; }
@@ -4736,7 +4745,7 @@ const optimuxApp = createApp({
                 }
                 studio.edit = null;
                 await reloadStudioTree();
-                if (ed.mode === 'new-file') openStudioFile(target);
+                if (ed.mode === 'new-file') openStudioFile(target, { show: true });
                 if (ed.mode === 'new-folder') studio.opened[target] = true;
             } catch (e) {
                 if (studio.edit === ed) { ed.busy = false; ed.error = e.message; }
@@ -4778,7 +4787,7 @@ const optimuxApp = createApp({
             if (studio.edit) cancelStudioEdit();
             const items = [];
             if (entry && entry.type === 'file') {
-                items.push({ icon: '↗', label: tr('Open'), run: () => openStudioFile(entry.path) });
+                items.push({ icon: '↗', label: tr('Open'), run: () => openStudioFile(entry.path, { show: true }) });
                 if (previewKind(entry.path)) items.push({ icon: '◩', label: tr('Show in the preview'), run: () => { studio.preview.path = entry.path; studio.preview.stamp++; studio.showPreview = true; } });
             }
             if (entry && entry.type !== 'outside') {
@@ -6222,7 +6231,7 @@ const optimuxApp = createApp({
             planAction, planStepMark, planStuckStep, projectOffer, openOfferedProject, planEdit, stepFolded, stepItems,
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
-            studio, studioGit, toggleStudioGit, startGitResize, keyGitResize, resetGitHeight, loadStudioGit, studioGitCount, studioGitBlocked, writeStudioCommitMessage, commitStudio, stageStudio, studioGitStageOff, gitReminder, knowUncommitted, commitNow, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
+            studio, studioGit, toggleStudioGit, startGitResize, keyGitResize, resetGitHeight, loadStudioGit, studioGitCount, studioGitBlocked, writeStudioCommitMessage, commitStudio, stageStudio, openGitFile, studioGitStageOff, gitReminder, knowUncommitted, commitNow, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
             saveStudioFile, reloadStudioFile, previewSrc, previewMarkdown, previewKind, studioOpenInTab,
             gitTerm, openGitTerm, closeGitTerm, gitTermLines, copyGitTerm,
             studioLayout, studioPanes, startResize, resizeKey, resetResize, toggleStudioTree, expandAllStudio, collapseAllStudio,
