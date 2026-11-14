@@ -1039,16 +1039,24 @@ const optimuxApp = createApp({
             closeAttentionNote();
             nextTick(() => scrollToBottom(true));
         };
+        // Inside Optimux the notice is its own card (index.html), shown for as long as the
+        // question waits and the chat is covered; the browser's notification is only for
+        // when the tab itself is not in front.
+        const attentionDismissed = ref(false);
+        const attentionCard = Vue.computed(() => pendingApproval.value && !!waitingText.value && !attentionDismissed.value
+            && ATT.chatOutOfSight({ settingsOpen: showSettingsModal.value, studioOpen: studio.open, studioChat: studio.chat }));
         const askedForAttention = (data, replay) => {
             waitingText.value = ATT.attentionText(data, tr);
-            if (!ATT.shouldNotify({ hidden: document.hidden, settingsOpen: showSettingsModal.value,
-                                    studioOpen: studio.open, studioChat: studio.chat, replay: replay,
-                                    enabled: notifyWaiting.value, permission: notifyPermission.value })) return;
+            attentionDismissed.value = false;
+            const where = ATT.noticeFor({ hidden: document.hidden, settingsOpen: showSettingsModal.value,
+                                          studioOpen: studio.open, studioChat: studio.chat, replay: replay,
+                                          enabled: notifyWaiting.value, permission: notifyPermission.value });
+            if (where !== 'desktop') return;
             closeAttentionNote();
             try {
                 const project = appSettings.value.active_project || tr('Workspace');
-                attentionNote = new Notification(tr('{project} needs you', { project: project }),
-                    { body: waitingText.value, tag: 'optimux-attention', requireInteraction: true, icon: '/static/logo.svg' });
+                attentionNote = new Notification('Optimux · ' + tr('{project} needs you', { project: project }),
+                    { body: waitingText.value, tag: 'optimux-attention', requireInteraction: true, icon: ATT.ICON, badge: ATT.ICON });
                 attentionNote.onclick = jumpToChat;
             } catch (e) { console.warn('[Optimux] notification failed', e); }
         };
@@ -6056,7 +6064,7 @@ const optimuxApp = createApp({
             showSetupModal, modalInstructions, closeModal,
             keyInput, isSavingKey, saveKey,
             pendingApproval, pendingCommand, pendingFile, pendingFallback,
-            waitingText, notifyWaiting, notifyPermission, turnNotifyOn, jumpToChat, confirmSignOut,
+            waitingText, notifyWaiting, notifyPermission, turnNotifyOn, jumpToChat, attentionCard, attentionDismissed, confirmSignOut,
             pendingSteps, moreSteps, answerStepLimit, backTo, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
             MEMORY_MAX_CHARS, pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
             pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, followChat, onChatScroll, scrollToBottom, waitText, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,

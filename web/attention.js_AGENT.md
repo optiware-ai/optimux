@@ -1,11 +1,13 @@
 # attention.js Agent Details
 
 ## File Overview
-`web/attention.js` (v0.8) decides what to say, and whether to say it outside the page, when a reply stops and waits for the user. Plain functions so Node can test them (`tests/test_attention.py`); loaded before `app.js` as `window.OptimuxAttention`, and `module.exports` under Node.
+`web/attention.js` (v0.8) decides what to say, and where to say it (Optimux's own card inside the page, or the browser's notification), when a reply stops and waits for the user. Plain functions so Node can test them (`tests/test_attention.py`); loaded before `app.js` as `window.OptimuxAttention`, and `module.exports` under Node.
 
 ## Core Functionality
 - `attentionText(data, translate)`: one short line for the `approval_request` message — a form, a `model_fallback` (quota or stuck), a push or update window, a file change, or a command (`data.command`, flattened to one line, newlines as `⏎`, cut at 120 characters). `translate` is the page's `tr`; without it the placeholders are filled as they are, which is what the Node tests read.
-- `shouldNotify({hidden, settingsOpen, studioOpen, studioChat, replay, enabled, permission})`: true only when the chat is out of sight (hidden tab, the Dashboard over it, or the Studio without its chat column), the event isn't a replay, the checkbox is on and the browser granted permission.
+- `chatOutOfSight({settingsOpen, studioOpen, studioChat})`: the chat is covered by the Dashboard, or by the Studio without its chat column. `app.js` shows Optimux's own card (`attentionCard`, `[data-attention-card]` in `index.html`) for as long as a question waits and this is true.
+- `noticeFor({hidden, settingsOpen, studioOpen, studioChat, replay, enabled, permission})`: `'page'` when the tab is in front and the chat is covered (the card; no setting, no permission), `'desktop'` when the tab itself is hidden, the checkbox is on and the browser granted permission (the browser's `Notification`), else `'none'`. A replay is always `'none'`.
+- `ICON`: `/static/logo-192.png`, the notification's icon and badge. A PNG on purpose: browsers show their own generic icon for an SVG.
 - `tabTitle(base, project, waiting)`: `⚠ <project> · Optimux` while a reply waits, else the base title.
 
 ## Notes

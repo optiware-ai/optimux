@@ -20,10 +20,10 @@ def text(data: dict):
     return run(f"A.attentionText({json.dumps(data)})")
 
 
-def notify(**state):
+def notice(**state):
     full = {"hidden": False, "settingsOpen": False, "studioOpen": False, "studioChat": False,
             "replay": False, "enabled": True, "permission": "granted"}
-    return run(f"A.shouldNotify({json.dumps({**full, **state})})")
+    return run(f"A.noticeFor({json.dumps({**full, **state})})")
 
 
 def test_it_says_what_is_waiting():
@@ -41,16 +41,38 @@ def test_it_says_what_is_waiting():
     assert text({}) == "The chat needs your answer."
 
 
-def test_only_when_the_chat_is_out_of_sight():
-    assert notify(hidden=True)                                  # another tab or window
-    assert notify(settingsOpen=True)                            # the Dashboard covers the chat
-    assert notify(studioOpen=True, studioChat=False)            # the Studio without its chat column
-    assert not notify()                                         # looking right at it
-    assert not notify(studioOpen=True, studioChat=True)
-    assert not notify(hidden=True, replay=True)                 # reopening an old chat replays its events
-    assert not notify(hidden=True, enabled=False)               # turned off in the Dashboard
-    assert not notify(hidden=True, permission="default")        # never allowed in this browser
-    assert not notify(hidden=True, permission="denied")
+def test_inside_optimux_the_notice_is_its_own_card():
+    # the tab is in front but the chat is covered: Optimux's own card, no permission needed
+    assert notice(settingsOpen=True) == "page"                          # the Dashboard covers the chat
+    assert notice(studioOpen=True, studioChat=False) == "page"          # the Studio without its chat column
+    assert notice(settingsOpen=True, enabled=False) == "page"
+    assert notice(settingsOpen=True, permission="default") == "page"
+    assert notice(settingsOpen=True, permission="unsupported") == "page"
+    assert notice() == "none"                                           # looking right at it
+    assert notice(studioOpen=True, studioChat=True) == "none"
+    assert notice(settingsOpen=True, replay=True) == "none"             # reopening an old chat replays its events
+
+
+def test_the_browser_notifies_only_when_the_tab_is_not_in_front():
+    assert notice(hidden=True) == "desktop"                             # another tab or window
+    assert notice(hidden=True, settingsOpen=True) == "desktop"          # the card can't be seen from there
+    assert notice(hidden=True, replay=True) == "none"
+    assert notice(hidden=True, enabled=False) == "none"                 # turned off in the Dashboard
+    assert notice(hidden=True, permission="default") == "none"          # never allowed in this browser
+    assert notice(hidden=True, permission="denied") == "none"
+
+
+def test_the_card_follows_where_you_are():
+    out = lambda **s: run(f"A.chatOutOfSight({json.dumps(s)})")
+    assert out(settingsOpen=True) and out(studioOpen=True, studioChat=False)
+    assert not out() and not out(studioOpen=True, studioChat=True)
+
+
+def test_the_notification_icon_is_a_png():
+    # browsers draw their own generic icon when a notification's icon is an SVG
+    assert run("A.ICON") == "/static/logo-192.png"
+    png = JS.parent / "logo-192.png"
+    assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_the_tab_title_says_it_too():

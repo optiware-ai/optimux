@@ -2472,12 +2472,12 @@
                     </div>
                     <!-- v0.8: a desktop notification when a reply is waiting for you -->
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                        <h3 class="font-bold text-gray-200 mb-3 flex items-center">{{ $t('When a reply needs you') }}<help-tip>{{ $t('A reply can stop and wait for your answer: a command to approve, a file change, a form, a model that isn\'t answering. The browser tab always shows ⚠ and the project; a notification can also reach you outside the browser.') }}</help-tip></h3>
+                        <h3 class="font-bold text-gray-200 mb-3 flex items-center">{{ $t('When a reply needs you') }}<help-tip>{{ $t('A reply can stop and wait for your answer: a command to approve, a file change, a form, a model that isn\'t answering. The browser tab always shows ⚠ and the project, and inside Optimux a card with a Go to the chat button appears over the Dashboard or the Studio. A notification from the browser can also reach you when Optimux is not the tab in front.') }}</help-tip></h3>
                         <label class="flex items-center gap-2 text-[15px] text-gray-200 cursor-pointer">
                             <input type="checkbox" v-model="notifyWaiting" @change="turnNotifyOn" :disabled="notifyPermission === 'unsupported' || notifyPermission === 'denied'" class="w-4 h-4">
                             {{ $t('Notify me on this computer') }}
                         </label>
-                        <p class="text-[13px] text-gray-400 mt-2">{{ $t('Clicking the notification opens the chat at the question. It is kept in this browser, so turn it on again on your other devices.') }}</p>
+                        <p class="text-[13px] text-gray-400 mt-2">{{ $t('Only for when another tab or window is in front: the browser draws that notification, so it looks like the browser\'s. Clicking it opens the chat at the question. It is kept in this browser, so turn it on again on your other devices.') }}</p>
                         <p v-if="notifyPermission === 'denied'" class="text-[13px] text-yellow-400 mt-1">{{ $t('This browser blocks notifications for Optimux. Allow them in the site settings (the icon next to the address), then come back.') }}</p>
                         <p v-else-if="notifyPermission === 'unsupported'" class="text-[13px] text-yellow-400 mt-1">{{ $t('This browser has no notifications. The tab\'s title still shows when a reply is waiting.') }}</p>
                     </div>
@@ -3033,6 +3033,23 @@
                 </div>
             </div>
         </div>
+
+        <!-- v0.8: a reply waits for you while the chat is covered (the Dashboard, or the Studio without its chat) -->
+        <transition name="cm-attention" type="transition">
+            <div v-if="attentionCard" role="alertdialog" :aria-label="$t('The chat needs you')" data-attention-card
+                 class="cm-attention fixed top-4 left-1/2 z-[70] w-[30rem] max-w-[calc(100vw-2rem)] rounded-xl border border-amber-600 bg-gray-900 shadow-2xl p-4 flex gap-3 text-sm">
+                <img src="/static/logo.svg" alt="" class="w-9 h-9 flex-shrink-0 mt-0.5">
+                <div class="min-w-0 flex-1">
+                    <div class="text-[11px] font-mono uppercase tracking-wider text-amber-400">Optimux · {{ $t('Action needed') }}</div>
+                    <div class="font-bold text-gray-100 break-words">{{ $t('{project} needs you', { project: appSettings.active_project || $t('Workspace') }) }}</div>
+                    <div class="text-gray-300 mt-0.5 break-words">{{ waitingText }}</div>
+                    <div class="mt-3 flex justify-end">
+                        <button @click="jumpToChat" class="px-4 py-1.5 rounded-lg font-bold text-white bg-amber-600 hover:bg-amber-500">{{ $t('Go to the chat') }}</button>
+                    </div>
+                </div>
+                <button @click="attentionDismissed = true" class="text-gray-500 hover:text-gray-200 self-start leading-none text-lg" :title="$t('Hide this. The reply keeps waiting, and the tab\'s title still says so.')" :aria-label="$t('Dismiss')">×</button>
+            </div>
+        </transition>
 
         <!-- Feature 25: toasts -->
         <div class="fixed top-20 right-6 z-[65] flex flex-col gap-2 items-end pointer-events-none">

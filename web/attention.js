@@ -2,8 +2,9 @@
 // Node (tests/test_attention.py).
 //  - attentionText: one short line saying what is waiting, for a desktop
 //    notification, a toast or the tab's title.
-//  - shouldNotify: whether a desktop notification is right, i.e. the chat is out
-//    of sight and this browser allowed it.
+//  - noticeFor: where to say it: Optimux's own card inside the page (the chat is
+//    covered), the browser's notification (the tab is not in front), or nowhere.
+//  - chatOutOfSight: the chat is covered by the Dashboard or the Studio.
 //  - tabTitle: the browser tab says it too, with no permission needed.
 (function (root) {
     const LINE = 120;
@@ -36,10 +37,20 @@
                            : tr('May it run: {command}', { command: command });
     }
 
-    function shouldNotify(state) {
+    // The chat is covered: the Dashboard over it, or the Studio without its chat column.
+    function chatOutOfSight(state) {
         state = state || {};
-        if (state.replay || !state.enabled || state.permission !== 'granted') return false;
-        return !!(state.hidden || state.settingsOpen || (state.studioOpen && !state.studioChat));
+        return !!(state.settingsOpen || (state.studioOpen && !state.studioChat));
+    }
+
+    // Where to say it. 'page': Optimux's own card, when the tab is in front but the chat
+    // is covered (no permission needed). 'desktop': the browser's notification, only when
+    // the tab itself is out of sight, the checkbox is on and the browser allowed it.
+    function noticeFor(state) {
+        state = state || {};
+        if (state.replay) return 'none';
+        if (state.hidden) return state.enabled && state.permission === 'granted' ? 'desktop' : 'none';
+        return chatOutOfSight(state) ? 'page' : 'none';
     }
 
     function tabTitle(base, project, waiting) {
@@ -47,7 +58,10 @@
         return project ? '⚠ ' + project + ' · ' + base : '⚠ ' + base;
     }
 
-    const api = { attentionText, shouldNotify, tabTitle };
+    // A PNG: browsers show their own generic icon for an SVG one
+    const ICON = '/static/logo-192.png';
+
+    const api = { attentionText, chatOutOfSight, noticeFor, tabTitle, ICON };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.OptimuxAttention = api;
 })(typeof window !== 'undefined' ? window : globalThis);
