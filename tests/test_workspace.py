@@ -1266,6 +1266,8 @@ def test_the_window_the_model_opened_can_push_while_its_request_waits(mocker, cl
     run = lambda *a, cwd: subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True)
     run("init", "-q", "--bare", "-b", "main", str(remote), cwd=r.parent)
     run("init", "-q", "-b", "main", cwd=r / "alpha")
+    # its own identity: a CI runner has no global git name and email, and Push refuses without one
+    run("config", "user.name", "T", cwd=r / "alpha"); run("config", "user.email", "t@x", cwd=r / "alpha")
     (r / "alpha" / "a.txt").write_text("a\n")
     run("add", "-A", cwd=r / "alpha"); run("commit", "-qm", "first", cwd=r / "alpha")
     run("remote", "add", "origin", str(remote), cwd=r / "alpha"); run("push", "-q", "-u", "origin", "main", cwd=r / "alpha")
