@@ -259,6 +259,7 @@
                                     <button v-if="studioGit.data.files.length" @click="commitStudio" :disabled="!!studioGitBlocked || studioGit.busy" :title="studioGitBlocked || $t('Commit these changes here. Nothing is sent to GitHub.')"
                                             class="px-2.5 py-0.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold">{{ studioGit.busy ? $t('Committing…') : (studioGit.data.staged ? $t('Commit {n} added', { n: studioGit.data.staged }) : $t('Commit all')) }}</button>
                                     <button v-if="studioGit.data.files.length" @click="writeStudioCommitMessage" :disabled="studioGit.writing || studioGit.data.problems.length > 0" class="px-2 py-0.5 rounded border border-gray-700 hover:border-gray-500 text-gray-300 disabled:opacity-40" :title="$t('A model writes the message from the changes (a paid call)')">{{ studioGit.writing ? $t('Writing…') : $t('✨ Write it') }}</button>
+                                    <button v-if="studioGit.data.files.length" @click="openDiff(false)" data-git-diff class="px-2.5 py-0.5 rounded border border-gray-700 hover:border-gray-500 text-gray-200" :title="$t('Show every changed line of every file: added, removed and where')">{{ $t('Diff') }}</button>
                                 </div>
                                 <div v-if="studioGit.note" class="text-[11px] text-gray-400 mt-1 break-words" role="status">{{ studioGit.note }}</div>
                             </template>
@@ -3126,6 +3127,56 @@
         </div>
 
         <!-- Push / Update from GitHub (v0.4-5t): shown first, runs only on confirm -->
+        <!-- v0.8: the Git pane's Diff: every changed line of every uncommitted file, in one scrolling window -->
+        <div v-if="diffBox.open" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="diffBox.open = false" @keydown.esc="diffBox.open = false" data-diff-box>
+            <div class="w-full max-w-5xl h-[88vh] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl text-sm flex flex-col" role="dialog" aria-modal="true" :aria-label="$t('Changes not yet committed')">
+                <div class="flex items-start gap-3 px-5 pt-4 pb-3 border-b border-gray-800 flex-shrink-0">
+                    <div class="flex-1 min-w-0">
+                        <h3 class="text-gray-100 font-bold">{{ $t('Changes in {project}', { project: diffBox.project }) }}</h3>
+                        <p v-if="diffBox.data" class="text-[12px] text-gray-400 font-mono">
+                            {{ diffBox.data.files.length === 1 ? $t('1 file') : $t('{n} files', { n: diffBox.data.files.length + diffBox.data.more_files }) }} ·
+                            <span class="text-green-400">+{{ diffBox.data.added }}</span> <span class="text-red-400">−{{ diffBox.data.removed }}</span>
+                            <span v-if="diffBox.data.cut" class="text-amber-300"> · {{ $t('long diffs are cut') }}</span>
+                        </p>
+                    </div>
+                    <div v-if="studioGit.data && studioGit.data.staged" class="flex rounded-lg border border-gray-700 overflow-hidden text-[12px] flex-shrink-0" role="group" :aria-label="$t('Which changes')">
+                        <button @click="openDiff(false)" :aria-pressed="!diffBox.staged ? 'true' : 'false'" :class="['px-2.5 py-1', !diffBox.staged ? 'bg-blue-700 text-white' : 'text-gray-300 hover:bg-gray-800']">{{ $t('All changes') }}</button>
+                        <button @click="openDiff(true)" :aria-pressed="diffBox.staged ? 'true' : 'false'" :class="['px-2.5 py-1', diffBox.staged ? 'bg-blue-700 text-white' : 'text-gray-300 hover:bg-gray-800']">{{ $t('Only added') }}</button>
+                    </div>
+                    <button @click="diffBox.open = false" class="text-gray-500 hover:text-gray-200" :title="$t('Close')" :aria-label="$t('Close')">✕</button>
+                </div>
+                <!-- jump to a file -->
+                <div v-if="diffBox.data && diffBox.data.files.length > 1" class="flex flex-wrap gap-1.5 px-5 py-2 border-b border-gray-800 flex-shrink-0 max-h-24 overflow-auto">
+                    <button v-for="(f, i) in diffBox.data.files" :key="f.path" @click="jumpDiff(i)" class="font-mono text-[11px] rounded border border-gray-700 hover:border-gray-500 px-1.5 py-0.5 text-gray-300 max-w-[16rem] truncate" :title="f.path">{{ f.path.split('/').pop() }}</button>
+                </div>
+                <div class="flex-1 min-h-0 overflow-y-auto px-5 py-3" data-diff-scroll tabindex="0">
+                    <div v-if="diffBox.loading" class="text-gray-400">{{ $t('Loading…') }}</div>
+                    <div v-else-if="diffBox.error" class="text-red-300" role="alert">{{ diffBox.error }}</div>
+                    <div v-else-if="diffBox.data && !diffBox.data.files.length" class="text-gray-400">{{ $t('Nothing to commit.') }}</div>
+                    <template v-else-if="diffBox.data">
+                        <section v-for="(f, i) in diffBox.data.files" :key="f.path" class="mb-4 border border-gray-800 rounded-lg overflow-hidden" data-diff-file :aria-label="f.path">
+                            <div class="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-gray-800 border-b border-gray-700">
+                                <button type="button" @click="diffBox.folded[i] = !diffBox.folded[i]" :aria-expanded="diffBox.folded[i] ? 'false' : 'true'" class="text-gray-400 hover:text-gray-200 flex-shrink-0" :title="$t('Fold or unfold this file')">{{ diffBox.folded[i] ? '▸' : '▾' }}</button>
+                                <span :class="['font-mono text-[12px] truncate min-w-0 flex-1', f.warn ? 'text-red-300' : 'text-gray-100']" :title="f.path">{{ f.warn ? '⚠ ' : '' }}{{ f.path }}</span>
+                                <span :class="['text-[11px] flex-shrink-0', f.status === 'new' ? 'text-green-400' : (f.status === 'deleted' ? 'text-red-400' : 'text-gray-400')]">{{ f.status === 'new' ? $t('new') : (f.status === 'deleted' ? $t('deleted') : $t('changed')) }}</span>
+                                <span class="font-mono text-[11px] flex-shrink-0"><span class="text-green-400">+{{ f.added }}</span> <span class="text-red-400">−{{ f.removed }}</span></span>
+                                <button v-if="f.status !== 'deleted'" type="button" @click="diffBox.open = false; openGitFile(f)" class="text-[11px] text-blue-300 hover:text-blue-200 flex-shrink-0">{{ $t('Open') }}</button>
+                            </div>
+                            <div v-if="!diffBox.folded[i]" class="overflow-x-auto bg-gray-950">
+                                <div v-if="f.binary" class="px-3 py-2 text-gray-500">{{ $t('A binary file: there are no lines to show.') }}</div>
+                                <div v-else-if="!f.lines.length" class="px-3 py-2 text-gray-500">{{ $t('No lines changed (an empty file, or only its mode).') }}</div>
+                                <div v-else class="font-mono text-[12px] leading-5 min-w-max">
+                                    <div v-for="(ln, n) in f.lines" :key="n" :class="['px-3 whitespace-pre', ln.k === '+' ? 'bg-green-950/50 text-green-200' : (ln.k === '-' ? 'bg-red-950/50 text-red-200' : (ln.k === '@' ? 'bg-blue-950/40 text-blue-300' : 'text-gray-400'))]"><span class="inline-block w-4 select-none opacity-70">{{ ln.k === '@' ? '' : ln.k }}</span>{{ ln.t || ' ' }}</div>
+                                </div>
+                                <div v-if="f.more" class="px-3 py-1.5 text-amber-300 text-[12px] border-t border-gray-800">{{ $t('{n} more lines are not shown. Open the file to see it whole.', { n: f.more }) }}</div>
+                            </div>
+                        </section>
+                        <div v-if="diffBox.data.more_files" class="text-gray-500">{{ $t('and {more} more', { more: diffBox.data.more_files }) }}</div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
         <!-- v0.8: What was sent: every model call of one reply, part by part, as it left the machine -->
         <div v-if="sentBox.open" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="sentBox.open = false" @keydown.esc="sentBox.open = false" data-sent-box>
             <div class="w-full max-w-5xl h-[85vh] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl text-sm flex flex-col" role="dialog" aria-modal="true" :aria-label="$t('What was sent')">

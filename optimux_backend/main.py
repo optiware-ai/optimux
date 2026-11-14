@@ -1177,6 +1177,12 @@ async def project_commit(name: str, payload: CommitPayload):
                                               payload.confirmed, payload.staged_tree)
 
 
+@app.get("/api/projects/{name}/diff")
+async def project_diff(name: str, staged: bool = False, path: str | None = None):
+    """The Git pane's Diff: every changed line of the uncommitted files. Nothing changes."""
+    return await _gitsync(gitsync.diff_view, name, staged, path)
+
+
 @app.post("/api/projects/{name}/stage")
 async def project_stage(name: str, payload: StagePayload):
     """The + in front of a file in the Git pane: add it to the next commit, or take

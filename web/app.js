@@ -4456,6 +4456,24 @@ const optimuxApp = createApp({
                 await new Promise((r) => setTimeout(r, 150));
             }
         };
+        // v0.8: the Git pane's Diff: every changed line of every uncommitted file, in one window
+        const diffBox = Vue.reactive({ open: false, project: '', staged: false, loading: false, error: '', data: null, folded: {} });
+        const openDiff = async (staged) => {
+            const project = studio.project;
+            Object.assign(diffBox, { open: true, project: project, staged: !!staged, loading: true, error: '', data: null, folded: {} });
+            try {
+                const d = await studioFetch(`/api/projects/${encodeURIComponent(project)}/diff` + (staged ? '?staged=true' : ''));
+                if (diffBox.project === project && diffBox.staged === !!staged) diffBox.data = d;
+            } catch (e) { diffBox.error = e.message; }
+            diffBox.loading = false;
+            await nextTick();
+            const box = document.querySelector('[data-diff-scroll]');
+            if (box) box.focus();              // the arrow keys and Page Down scroll it at once
+        };
+        const jumpDiff = (i) => {
+            diffBox.folded[i] = false;
+            nextTick(() => { const el = document.querySelectorAll('[data-diff-file]')[i]; if (el) el.scrollIntoView({ block: 'start' }); });
+        };
         const writeStudioCommitMessage = async () => {
             const project = studio.project;
             studioGit.writing = true; studioGit.note = '';
@@ -6297,7 +6315,7 @@ const optimuxApp = createApp({
             planAction, planStepMark, planStuckStep, projectOffer, openOfferedProject, planEdit, stepFolded, stepItems,
             projectUsage, callsLabel, copyExchange, copiedIndex,
             budgetStatus, budgets, budgetEdits, budgetRows, saveBudget, openBudgets,
-            studio, studioGit, toggleStudioGit, startGitResize, keyGitResize, resetGitHeight, loadStudioGit, studioGitCount, studioGitBlocked, writeStudioCommitMessage, commitStudio, stageStudio, openGitFile, studioGitStageOff, gitReminder, knowUncommitted, commitNow, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
+            studio, studioGit, toggleStudioGit, startGitResize, keyGitResize, resetGitHeight, loadStudioGit, studioGitCount, studioGitBlocked, writeStudioCommitMessage, commitStudio, stageStudio, openGitFile, diffBox, openDiff, jumpDiff, studioGitStageOff, gitReminder, knowUncommitted, commitNow, editorHost, openStudio, closeStudio, refreshStudio, toggleStudioDir, studioRows, studioMark, openStudioFile,
             saveStudioFile, reloadStudioFile, previewSrc, previewMarkdown, previewKind, studioOpenInTab,
             gitTerm, openGitTerm, closeGitTerm, gitTermLines, copyGitTerm,
             studioLayout, studioPanes, startResize, resizeKey, resetResize, toggleStudioTree, expandAllStudio, collapseAllStudio,

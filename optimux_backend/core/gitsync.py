@@ -501,6 +501,68 @@ def stage_run(name: str, paths: list[str], staged: bool = True) -> dict:
         lock.release()
 
 
+DIFF_FILE_LINES = 600       # lines of one file's diff that are shown; the rest is counted
+DIFF_TOTAL_LINES = 4000     # lines shown in all
+
+
+def diff_view(name: str, staged: bool = False, path: str | None = None) -> dict:
+    """The Git pane's Diff (v0.8): every changed line of every uncommitted file (with
+    `staged`, of the added files only; with `path`, of that file). Nothing changes.
+    {"files": [{path, status, added, removed, binary, lines: [{"k", "t"}], more}],
+    "added", "removed", "more_files", "cut"}; a line's k is "@" (where in the file),
+    "+", "-" or " " (unchanged, for context). git's own header lines are left out,
+    saved keys are hidden, and long diffs are cut (`more`: lines not shown)."""
+    from optimux_backend.core.security import mask_secrets
+    project = _project(name)
+    top = _ok(_git(project, "rev-parse", "--show-toplevel", timeout=5)) or project
+    head = _ok(_git(project, "rev-parse", "--verify", "--quiet", "HEAD^{tree}", timeout=5)) or EMPTY_TREE
+    tree = (_added(top)[2] if staged else None) or changes_lib._tree(top)
+    out = {"files": [], "added": 0, "removed": 0, "more_files": 0, "cut": False, "staged": bool(staged)}
+    if not tree or tree == head:
+        if path is not None:
+            raise GitSyncError(tr("{path} has no change to show.", path=str(path)[:200]))
+        return out
+    listed = changes_lib.compare({"git": True, "top": top, "tree": head}, tree)
+    files = listed.get("files", [])
+    out["more_files"] = listed.get("more", 0)
+    if path is not None:
+        files = [f for f in files if f["path"] == path]
+        if not files:
+            raise GitSyncError(tr("{path} has no change to show.", path=str(path)[:200]))
+        out["more_files"] = 0
+    room = DIFF_TOTAL_LINES
+    for f in files:
+        r = _git(top, "--literal-pathspecs", "diff", "--no-color", "--no-ext-diff", "--no-renames", "-U3",
+                 head, tree, "--", f["path"], timeout=20)
+        text = mask_secrets(r["output"])[0] if r["ok"] else ""
+        body = text.split("\n")
+        if body and body[-1] == "":
+            body.pop()                         # the output's last line break, not a line of the file
+        start = next((i for i, ln in enumerate(body) if ln.startswith("@@")), None)
+        entry = {"path": f["path"], "status": f.get("status", "changed"), "added": 0, "removed": 0,
+                 "binary": start is None and "Binary files" in text, "lines": [], "more": 0,
+                 "warn": bool(f.get("warn"))}
+        for ln in (body[start:] if start is not None else []):
+            if ln.startswith("\\"):           # "\ No newline at end of file"
+                continue
+            kind = ln[:1] if ln[:1] in "@+-" and ln else " "
+            if kind == "+":
+                entry["added"] += 1
+            elif kind == "-":
+                entry["removed"] += 1
+            if len(entry["lines"]) < min(DIFF_FILE_LINES, room):
+                entry["lines"].append({"k": kind, "t": ln if kind == "@" else ln[1:]})
+            else:
+                entry["more"] += 1
+        room = max(0, room - len(entry["lines"]))
+        out["added"] += entry["added"]
+        out["removed"] += entry["removed"]
+        out["cut"] = out["cut"] or bool(entry["more"])
+        out["files"].append(entry)
+    out["cut"] = out["cut"] or bool(out["more_files"])
+    return out
+
+
 MARK_FILES = 3000      # files whose size and time go into local_mark; more only count by name
 
 

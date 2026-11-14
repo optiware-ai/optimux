@@ -1,5 +1,6 @@
 """Push and Update from GitHub (v0.4-5t), on real repositories with a local
 bare repository as "GitHub"."""
+import json
 import os
 import subprocess
 
@@ -609,3 +610,65 @@ def test_adding_through_the_api(ws, mocker, tmp_path):
                     json={"message": "menu", "tree": s["tree"], "staged_tree": s["staged_tree"]}).json()
     assert r["ok"] and r["files"] == 1
     assert [f["path"] for f in client.get("/api/projects/site/git-state", headers=H).json()["files"]] == ["index.html"]
+
+
+# ---- v0.8: the Git pane's Diff: every changed line of every file, before committing
+
+def test_the_diff_lists_every_file_with_its_lines(ws):
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n<p>new line</p>\n")      # was <p>2024</p>
+    (ws["proj"] / "menu.js").write_text("// menu\nconst items = [];\n")
+    (ws["proj"] / "old.txt").write_text("x\n")
+    d = gitsync.diff_view("site")
+    files = {f["path"]: f for f in d["files"]}
+    assert list(files) == ["index.html", "menu.js", "old.txt"] and d["cut"] is False
+    page = files["index.html"]
+    assert page["status"] == "changed" and (page["added"], page["removed"]) == (2, 1)
+    kinds = [(ln["k"], ln["t"]) for ln in page["lines"]]
+    assert ("-", "<p>2024</p>") in kinds and ("+", "<p>2026</p>") in kinds and ("+", "<p>new line</p>") in kinds
+    assert kinds[0][0] == "@" and kinds[0][1].startswith("@@ -1")              # where in the file
+    assert not any(t.startswith(("diff --git", "index ", "--- ", "+++ ")) for _, t in kinds)   # git's own header is left out
+    assert files["menu.js"]["status"] == "new" and [ln["k"] for ln in files["menu.js"]["lines"]] == ["@", "+", "+"]
+    assert d["added"] == 5 and d["removed"] == 1
+
+
+def test_the_diff_of_a_deleted_a_binary_and_one_file(ws):
+    (ws["proj"] / "index.html").unlink()
+    (ws["proj"] / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(256)))
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    files = {f["path"]: f for f in gitsync.diff_view("site")["files"]}
+    assert files["index.html"]["status"] == "deleted" and files["index.html"]["lines"][-1] == {"k": "-", "t": "<p>2024</p>"}
+    assert files["logo.png"]["binary"] is True and files["logo.png"]["lines"] == []
+    one = gitsync.diff_view("site", path="menu.js")                             # the diff of a single file
+    assert [f["path"] for f in one["files"]] == ["menu.js"]
+    with pytest.raises(gitsync.GitSyncError, match="no change"):
+        gitsync.diff_view("site", path="../etc/passwd")
+
+
+def test_the_diff_of_the_added_files_only(ws):
+    (ws["proj"] / "index.html").write_text("<p>2026</p>\n")
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    gitsync.stage_run("site", ["menu.js"], True)
+    assert [f["path"] for f in gitsync.diff_view("site", staged=True)["files"]] == ["menu.js"]
+    assert [f["path"] for f in gitsync.diff_view("site")["files"]] == ["index.html", "menu.js"]
+
+
+def test_a_saved_key_is_hidden_in_the_diff_and_a_long_one_is_cut(ws, mocker):
+    (ws["proj"] / "config.py").write_text("KEY = 'sk-ant-very-secret-123'\n")
+    (ws["proj"] / "big.txt").write_text("".join(f"line {i}\n" for i in range(5000)))
+    mocker.patch.object(gitsync, "DIFF_FILE_LINES", 200)
+    d = gitsync.diff_view("site")
+    files = {f["path"]: f for f in d["files"]}
+    assert "sk-ant-very-secret" not in json.dumps(d) and "••••(ANTHROPIC_API_KEY)" in files["config.py"]["lines"][-1]["t"]
+    big = files["big.txt"]
+    assert len(big["lines"]) == 200 and big["more"] == 4801 and big["added"] == 5000    # counted in full, shown in part
+
+
+def test_the_diff_through_the_api(ws, mocker, tmp_path):
+    from tests.ws_helpers import make_client
+    client = make_client(mocker, tmp_path)
+    H = {"Authorization": "Bearer test-token"}
+    (ws["proj"] / "menu.js").write_text("// menu\n")
+    d = client.get("/api/projects/site/diff", headers=H).json()
+    assert [f["path"] for f in d["files"]] == ["menu.js"]
+    assert client.get("/api/projects/site/diff?path=nope", headers=H).status_code == 422
+    assert client.get("/api/projects/site/diff").status_code in (401, 403)
