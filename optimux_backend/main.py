@@ -222,8 +222,9 @@ def security_headers(request, response) -> None:
     if is_https(request):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
     path = request.url.path
-    if path.startswith("/static/vendor/"):
-        # Third-party files carry their version in the name, so a file never changes
+    if path.startswith(("/static/vendor/", "/static/tutorial/")):
+        # Third-party files and the video tutorial carry their version in the name,
+        # so a file never changes
         response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
     elif path.startswith("/static/"):
         # Optimux's own files (app.js, app.css, ...): kept, but checked on every load

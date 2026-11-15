@@ -3687,7 +3687,41 @@ const optimuxApp = createApp({
             { id: 'system', label: tk('System'), icon: '≡', group: tk('Configuration'), hint: tk('Files, storage, backups, access token and model cooldowns.') },
             { id: 'start', label: tk('Getting started'), icon: '✓', group: tk('Help'), hint: tk('The setup steps in order; each one ticks itself when it is done.') },
             { id: 'guide', label: tk('Guide'), icon: '?', group: tk('Help'), hint: tk('Everything about Optimux: getting started, routing, memory, skills, costs, and how to spend less.') },
+            { id: 'video', label: tk('Video tutorial'), icon: '▶', group: tk('Help'), hint: tk('A short film: from a fresh install to your first commit.') },
         ];
+        // The video tutorial (v0.8): one file shipped with the app, its version in the name
+        // (a new film gets a new name). Times are seconds into the film.
+        const TUTORIAL = {
+            src: '/static/tutorial/optimux-tutorial-1.mp4',
+            poster: '/static/tutorial/optimux-tutorial-1.jpg',
+            length: 224.7,
+            chapters: [
+                { t: 0, title: tk('Install') },
+                { t: 11.1, title: tk('The first sign-in') },
+                { t: 34.1, title: tk('Add a model key') },
+                { t: 64.2, title: tk('Choose who does what') },
+                { t: 89.6, title: tk('Create a project') },
+                { t: 119.6, title: tk('Your first request') },
+                { t: 159.2, title: tk('The Studio') },
+                { t: 188.8, title: tk('Commit your work') },
+            ],
+        };
+        const tutorialAt = ref(0);              // seconds played, to mark the chapter on screen
+        const tutorialChapter = Vue.computed(() => {
+            let at = 0;
+            TUTORIAL.chapters.forEach((c, i) => { if (tutorialAt.value >= c.t - 0.05) at = i; });
+            return at;
+        });
+        const tutorialClock = (t) => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
+        const tutorialTick = (event) => { tutorialAt.value = event.target.currentTime || 0; };
+        const tutorialGo = (c) => {
+            const film = document.querySelector('[data-tutorial-video]');
+            if (!film) return;
+            film.currentTime = c.t;
+            tutorialAt.value = c.t;
+            const played = film.play();
+            if (played && played.catch) played.catch(() => {});   // the browser may refuse to start it; the controls still work
+        };
         const dashboardGroups = [...new Set(dashboardSections.map(x => x.group))];
         // v0.8: the page's language (Dashboard -> System, and the flag at the top)
         const langs = window.OptimuxI18n.LANGS;
@@ -6423,6 +6457,7 @@ const optimuxApp = createApp({
             curateNow, viewMemoryFromToast, undoFromToast,
             confirmBox, confirmOkRef, answerConfirm, costEstimates, memoryStatus,
             guide, guideQuery, guideActive, guideResults, goGuide, onDashScroll, loadGuide,
+            TUTORIAL, tutorialAt, tutorialChapter, tutorialClock, tutorialTick, tutorialGo,
             sandboxInfo, sandboxPathsText, fetchSandbox, saveSandboxPaths, pendingSandboxed, toggleSandbox,
             pendingSandboxProblem, sandboxProblem,
             langs, uiLang, pickLanguage,

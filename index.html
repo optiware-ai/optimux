@@ -1137,6 +1137,23 @@
                     </template>
                 </div>
 
+                <!-- v0.8: the video tutorial, under Help. Leaving the page removes the player, which stops it -->
+                <div v-if="settingsTab === 'video'" class="space-y-4 max-w-4xl">
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                        <p class="text-[14px] text-gray-400 mb-3">{{ $t('From a fresh install to your first commit, in under four minutes. No sound: the captions say what happens. Filmed in English.') }}</p>
+                        <video data-tutorial-video controls preload="metadata" playsinline :src="TUTORIAL.src" :poster="TUTORIAL.poster" @timeupdate="tutorialTick" @seeked="tutorialTick"
+                               class="w-full aspect-video rounded-lg border border-gray-800 bg-black"></video>
+                        <h3 class="text-[12px] font-semibold tracking-widest uppercase text-gray-500 mt-4 mb-2">{{ $t('Chapters') }}</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                            <button v-for="(c, i) in TUTORIAL.chapters" :key="c.t" data-tutorial-chapter @click="tutorialGo(c)"
+                                    :class="['flex items-center gap-3 text-left px-3 py-2 rounded-lg border text-[14px]', tutorialChapter === i ? 'border-blue-700 bg-blue-950/30 text-gray-100' : 'border-gray-800 text-gray-300 hover:bg-gray-800/60']">
+                                <span class="font-mono text-[12px] text-gray-500 w-9 shrink-0">{{ tutorialClock(c.t) }}</span>
+                                <span>{{ $t(c.title) }}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- v0.8: Getting started, its own page under Help -->
                 <div v-if="settingsTab === 'start'" class="space-y-4 max-w-2xl">
                     <div v-if="onboard" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
