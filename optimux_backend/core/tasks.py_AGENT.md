@@ -18,3 +18,4 @@
 - Uses `store.py`. Used by `main.py` (hooks above; `GET /api/tasks`, `GET /api/tasks.csv`, `DELETE /api/tasks`, `POST /api/tasks/{id}/rating`; `session_loaded` carries `ratings`; the `task_done` event gives the page the id for 👍 / 👎) and by `analytics.unlinked_escalations`.
 - Escalations also zero the stuck model's reference cost: `usage.zero_reference(task_id, role, step)`.
 - Tests: `tests/test_tasks.py`.
+- **`judged(project, since)` (v0.8):** every request that ran on a model, with its rating (None when not rated), tier, escalated, cost and times: what `analytics.quality_of` counts from.

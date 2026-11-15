@@ -564,6 +564,31 @@
                             </template>
                         </div>
                         </template>
+                        <!-- v0.8: answer quality from your 👍 / 👎, against the time and the cost of an answer -->
+                        <template v-for="P in [perfOf('qTime')]" :key="'pf-qTime'">
+                        <div :class="perfBusy.qTime ? 'cm-pf-loading' : ''" class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" :aria-label="$t('Answer quality and response time')" data-quality-time>
+                            <div class="flex items-start justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">{{ $t('Answer quality and response time') }}</h3><chart-pick :model-value="perfPick.qTime" @update:model-value="setPerfPick('qTime', $event)" :options="perfProjects" :label="$t('Answer quality and response time: project')"></chart-pick></div>
+                            <p class="text-xs text-gray-500 mb-3">{{ $t('Each bubble is a model in the role it did the job in: the share of its answers you rated 👍, against the median time of those requests. Bigger bubble, more rated answers. Upper left is good and fast.') }} <span class="whitespace-nowrap"><span class="cm-pf-key cm-q-simple"></span> {{ $t('Simple') }}</span> <span class="whitespace-nowrap"><span class="cm-pf-key cm-q-complex"></span> {{ $t('Complex') }}</span></p>
+                            <p v-if="!P" class="text-[14px] text-gray-500 italic">{{ $t("Loading…") }}</p>
+                            <p v-else-if="!P.quality.time.length" class="text-[14px] text-gray-500 italic">{{ $t('No rated answers in {v} in this period. Rate a reply with 👍 or 👎 under it.', { v: projectLabel(perfPick.qTime) }) }}</p>
+                            <template v-else>
+                            <scatter-plot :label="$t('Share of answers rated good against median response time, one bubble per model and role')" :x-name="$t('Response time')" :y-name="$t('Rated 👍')" :fmt-x="fmtSec" :fmt-y="fmtPct" :y-max="1" :points="P.quality.time"></scatter-plot>
+                            <p class="text-xs text-gray-500 mt-2">{{ $t('{rated} of {requests} requests rated.', { rated: P.quality.rated, requests: P.quality.requests }) }} {{ $t('The time is the whole request, from your message to the end of the reply; each approval counts 2 s.') }}</p>
+                            </template>
+                        </div>
+                        </template>
+                        <template v-for="P in [perfOf('qCost')]" :key="'pf-qCost'">
+                        <div :class="perfBusy.qCost ? 'cm-pf-loading' : ''" class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" :aria-label="$t('Answer quality and cost')" data-quality-cost>
+                            <div class="flex items-start justify-between gap-3 mb-3"><h3 class="text-[15px] font-bold text-gray-200">{{ $t('Answer quality and cost') }}</h3><chart-pick :model-value="perfPick.qCost" @update:model-value="setPerfPick('qCost', $event)" :options="perfProjects" :label="$t('Answer quality and cost: project')"></chart-pick></div>
+                            <p class="text-xs text-gray-500 mb-3">{{ $t('The same bubbles against the median cost of those requests. Upper left is good and cheap: the models worth keeping.') }} <span class="whitespace-nowrap"><span class="cm-pf-key cm-q-simple"></span> {{ $t('Simple') }}</span> <span class="whitespace-nowrap"><span class="cm-pf-key cm-q-complex"></span> {{ $t('Complex') }}</span></p>
+                            <p v-if="!P" class="text-[14px] text-gray-500 italic">{{ $t("Loading…") }}</p>
+                            <p v-else-if="!P.quality.cost.length" class="text-[14px] text-gray-500 italic">{{ P.quality.time.length ? $t('The rated answers have no known price.') : $t('No rated answers in {v} in this period. Rate a reply with 👍 or 👎 under it.', { v: projectLabel(perfPick.qCost) }) }}</p>
+                            <template v-else>
+                            <scatter-plot :label="$t('Share of answers rated good against median cost of a request, one bubble per model and role')" :x-name="$t('Cost of a request')" :y-name="$t('Rated 👍')" :fmt-x="fmtUsd" :fmt-y="fmtPct" :y-max="1" :points="P.quality.cost"></scatter-plot>
+                            <p class="text-xs text-gray-500 mt-2">{{ $t('The cost is the whole request: the model\'s calls and the Conductor\'s.') }}<span v-if="P.quality.unpriced"> {{ $t('{n} not shown: no known price.', { n: P.quality.unpriced }) }}</span></p>
+                            </template>
+                        </div>
+                        </template>
                         <!-- v0.8: working time per request -->
                         <template v-for="P in [perfOf('wt')]" :key="'pf-wt'">
                         <div :class="perfBusy.wt ? 'cm-pf-loading' : ''" v-if="perf.wt" class="bg-gray-900 border border-gray-800 rounded-xl p-4" role="region" :aria-label="$t('Working time')">
@@ -851,6 +876,11 @@
                                             <td class="py-2 px-2 text-right font-mono" :title="Object.entries(m.error_kinds).map(e => e[1] + ' ' + e[0]).join(', ')">
                                                 <span :class="m.reliability === null ? 'text-gray-500' : m.reliability >= 0.99 ? 'text-gray-300' : m.reliability >= 0.95 ? 'cm-pf-warn' : 'cm-pf-bad'">{{ m.reliability !== null && m.reliability < 0.99 ? (m.reliability >= 0.95 ? '! ' : '✕ ') : '' }}{{ m.reliability === null ? $t('unavailable') : fmtPct(m.reliability, m.reliability < 1 ? 1 : 0) }}</span>
                                                 <div v-if="m.errors" class="text-xs text-gray-500">{{ $t('{errors} failed', { errors: m.errors }) }}</div>
+                                            </td>
+                                            <td class="py-2 px-2 text-right font-mono" data-quality-cell>
+                                                <span :class="m.quality === null || m.quality === undefined ? 'text-gray-500' : m.quality >= 0.8 ? 'text-green-300' : m.quality >= 0.5 ? 'cm-pf-warn' : 'cm-pf-bad'">{{ m.quality === null || m.quality === undefined ? $t('not rated') : fmtPct(m.quality) }}</span>
+                                                <div v-if="m.rated" class="text-xs text-gray-500">{{ $t('{up} of {rated}', { up: m.up, rated: m.rated }) }}</div>
+                                                <div v-for="(q, role) in (Object.keys(m.quality_roles || {}).length > 1 ? m.quality_roles : {})" :key="role" class="text-xs text-gray-500">{{ perfRole(role) }} {{ q.up }}/{{ q.rated }}</div>
                                             </td>
                                             <td class="py-2 px-2 text-right font-mono text-gray-300">{{ m.escalations }}<div v-if="m.escalations" class="text-xs text-gray-500">{{ fmtPct(m.escalation_rate, 1) }}</div></td>
                                         </tr>

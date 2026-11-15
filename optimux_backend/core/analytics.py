@@ -310,6 +310,37 @@ def time_of(entries: list[dict], project: str | None, since: float, keys: list[s
             "model_calls_ms": sum(int(e.get("duration_ms") or 0) for e in entries)}
 
 
+def quality_of(rows: list[dict]) -> dict:
+    """Answer quality from the user's 👍 / 👎 (v0.8), per model and role that did the
+    job. A request the Simple model got stuck on and the Complex model finished counts
+    for the Complex model, in the Complex role. {"rated", "requests", "rows": [{model,
+    role, requests, rated, up, down, share (👍 of the rated; None with none rated),
+    time_ms (median working time of the rated requests: the approvals' real wait is
+    replaced by 2 s each, as in Working time), cost (median cost of the rated requests
+    with a known price), priced}]}, most rated first."""
+    groups: dict[tuple, dict] = {}
+    for r in rows:
+        role = "complex" if r.get("escalated") else (r.get("tier") or "?")
+        g = groups.setdefault((r["model"], role), {"model": r["model"], "role": role, "requests": 0, "rated": 0,
+                                                    "up": 0, "down": 0, "_ms": [], "_cost": []})
+        g["requests"] += 1
+        if r.get("rating") not in (1, -1):
+            continue
+        g["rated"] += 1
+        g["up" if r["rating"] == 1 else "down"] += 1
+        g["_ms"].append(tasks.counted(r.get("duration_ms"), r.get("wait_ms"), r.get("waits")))
+        priced = r.get("cost") is not None and not (r.get("calls") and r.get("calls_without_cost") == r.get("calls"))
+        if priced:
+            g["_cost"].append(float(r["cost"]))
+    out = []
+    for g in groups.values():
+        ms, cost = g.pop("_ms"), g.pop("_cost")
+        out.append({**g, "share": (g["up"] / g["rated"]) if g["rated"] else None,
+                    "time_ms": percentile(ms, 0.5), "cost": percentile(cost, 0.5), "priced": len(cost)})
+    out.sort(key=lambda g: (-g["rated"], -g["requests"], g["model"], g["role"]))
+    return {"rated": sum(g["rated"] for g in out), "requests": sum(g["requests"] for g in out), "rows": out}
+
+
 def analytics(days: int = 30, project: str | None = None, now: float | None = None) -> dict:
     """Per-model cost and performance for the last `days` days (0 = all time),
     optionally for one project."""
@@ -374,6 +405,13 @@ def analytics(days: int = 30, project: str | None = None, now: float | None = No
             "escalation_rate": (m["escalations"] / calls) if calls else None,
         })
     rows.sort(key=lambda r: (-r["cost"], -r["calls"], r["model"]))
+    # v0.8: how the user rated each model's answers (👍 / 👎), all its roles together and each apart
+    quality = quality_of(tasks.judged(project, since))
+    for r in rows:
+        mine = [q for q in quality["rows"] if q["model"] == r["model"] and q["rated"]]
+        r["rated"], r["up"] = sum(q["rated"] for q in mine), sum(q["up"] for q in mine)
+        r["quality"] = (r["up"] / r["rated"]) if r["rated"] else None
+        r["quality_roles"] = {q["role"]: {"rated": q["rated"], "up": q["up"]} for q in mine}
     cards = _cards()
     for r in rows:
         r.update(provider_of(r["model"], cards))
@@ -435,4 +473,5 @@ def analytics(days: int = 30, project: str | None = None, now: float | None = No
             "matrix": matrix, "roles": role_rows, "top": TOP_MODELS,
             "savings": savings_of(entries, unlinked_escalations(events)), "color_order": color_order(),
             "time": time_of(entries, project, since, keys, weekly),
+            "quality": quality,
             "projects": known_projects()}

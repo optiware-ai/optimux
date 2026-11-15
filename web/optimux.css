@@ -341,3 +341,6 @@ body.cm-resizing iframe { pointer-events: none; }
 .cm-copy-done .cm-copy-ok { opacity: 1; transform: none; transition: opacity .12s ease, transform .2s ease; }
 .cm-copy-done .cm-copy-icon { opacity: 0; transition: opacity .1s ease; }
 @media (prefers-reduced-motion: reduce) { .cm-copy svg { transition: none; } }
+/* v0.8: the answer-quality charts' key: the role that did the job */
+.cm-q-simple { background: #3b82f6; }
+.cm-q-complex { background: #f59e0b; }

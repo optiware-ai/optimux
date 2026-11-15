@@ -230,3 +230,57 @@ def test_call_success_unavailable_without_a_judgeable_call():
     m = {x["model"]: x for x in r["models"]}["cheap"]
     assert m["reliability"] is None and m["reliability_calls"] == 0
     assert r["totals"]["reliability"] is None
+
+
+# ---- v0.8: answer quality from the 👍 / 👎 the user gives, by the model (and role) that did the job
+
+def rated(model, rating, tier="simple", cost=0.02, ms=20000, project="alpha", ts=NOW - 3600, escalated=0, wait_ms=0, waits=0):
+    conn = store.connect()
+    with conn:
+        conn.execute("INSERT INTO tasks (id, ts, session, project, kind, tier, model, escalated, outcome, calls, cost, "
+                     "duration_ms, rating, rated_ts, wait_ms, waits) VALUES (?, ?, 's', ?, 'prompt', ?, ?, ?, 'ok', 2, ?, ?, ?, ?, ?, ?)",
+                     (f"t{conn.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]}", ts, project, tier, model, escalated,
+                      cost, ms, rating, ts if rating else None, wait_ms, waits))
+    conn.close()
+
+
+def test_ratings_are_counted_for_the_model_and_role_that_did_the_job():
+    add("gemini/flash", role="simple"); add("anthropic/opus", role="complex")
+    for r in (1, 1, 1, -1, None):                    # 3 of 4 rated good, one not rated
+        rated("gemini/flash", r)
+    rated("gemini/flash", -1, tier="complex")        # the same model as the Complex one: its own line
+    rated("anthropic/opus", 1, tier="simple", escalated=1)   # routed Simple, Complex did the job
+    rated("anthropic/opus", 1, tier="complex", project="beta")
+    q = an.analytics(days=30, now=NOW)["quality"]
+    rows = {(r["model"], r["role"]): r for r in q["rows"]}
+    assert set(rows) == {("gemini/flash", "simple"), ("gemini/flash", "complex"), ("anthropic/opus", "complex")}
+    flash = rows[("gemini/flash", "simple")]
+    assert (flash["requests"], flash["rated"], flash["up"], flash["down"]) == (5, 4, 3, 1) and flash["share"] == 0.75
+    assert rows[("anthropic/opus", "complex")]["rated"] == 2 and rows[("anthropic/opus", "complex")]["share"] == 1.0
+    assert (q["rated"], q["requests"]) == (7, 8)
+    assert [r["rated"] for r in q["rows"]] == sorted((r["rated"] for r in q["rows"]), reverse=True)
+    # one project only, as every Performance card can ask
+    alpha = an.analytics(days=30, project="alpha", now=NOW)["quality"]
+    assert {(r["model"], r["role"]): r["rated"] for r in alpha["rows"]}[("anthropic/opus", "complex")] == 1
+    assert an.analytics(days=30, project="gamma", now=NOW)["quality"] == {"rated": 0, "requests": 0, "rows": []}
+
+
+def test_the_time_and_cost_of_a_rated_answer():
+    add("gemini/flash")
+    rated("gemini/flash", 1, cost=0.01, ms=10000)
+    rated("gemini/flash", 1, cost=0.03, ms=30000)
+    rated("gemini/flash", -1, cost=None, ms=90000, wait_ms=70000, waits=1)   # 70 s of it was you, at an approval
+    rated("gemini/flash", None, cost=5.0, ms=999000)                         # not rated: says nothing about quality
+    row = an.analytics(days=30, now=NOW)["quality"]["rows"][0]
+    assert row["time_ms"] == 22000            # the median of 10 s, 30 s and 20 s + 2 s for the approval
+    assert row["cost"] == pytest.approx(0.02) and row["priced"] == 2          # the median of the priced ones
+
+
+def test_the_models_table_says_how_its_answers_were_rated():
+    add("gemini/flash", role="simple"); add("gemini/flash", role="complex"); add("openai/gpt", role="simple")
+    rated("gemini/flash", 1); rated("gemini/flash", -1); rated("gemini/flash", 1, tier="complex")
+    models = {m["model"]: m for m in an.analytics(days=30, now=NOW)["models"]}
+    flash = models["gemini/flash"]
+    assert (flash["rated"], flash["up"]) == (3, 2) and flash["quality"] == pytest.approx(2 / 3)
+    assert flash["quality_roles"] == {"simple": {"rated": 2, "up": 1}, "complex": {"rated": 1, "up": 1}}
+    assert models["openai/gpt"]["rated"] == 0 and models["openai/gpt"]["quality"] is None

@@ -573,12 +573,14 @@ const ConnectedScatter = {
 // A dot per model; the axes say only what they are and their largest value. points: [{name, x, y, lines?}]
 const ScatterPlot = {
     mixins: [boxWidth],
+    // v0.8: a point may bring its own radius (p.r: a bubble) and colour (p.color), and
+    // yMax fixes the top of the y axis (a share: 1) instead of the highest point
     props: { label: String, points: { type: Array, default: () => [] }, xName: String, yName: String,
-             fmtX: { type: Function, required: true }, fmtY: { type: Function, required: true } },
+             fmtX: { type: Function, required: true }, fmtY: { type: Function, required: true }, yMax: { type: Number, default: 0 } },
     computed: {
         g() {
             const W = this.boxW, H = 240, top = 22, bottom = 24, left = 8, right = 16, plotH = H - top - bottom, plotW = W - left - right;
-            const mx = Math.max(...this.points.map(p => p.x), 0) * 1.05 || 1, my = Math.max(...this.points.map(p => p.y), 0) * 1.05 || 1;
+            const mx = Math.max(...this.points.map(p => p.x), 0) * 1.05 || 1, my = this.yMax || Math.max(...this.points.map(p => p.y), 0) * 1.05 || 1;
             return { W, H, top, left, right, plotH, mx, my, x: (v) => left + (v / mx) * plotW, y: (v) => top + plotH - (v / my) * plotH };
         },
         shown() { return this.hover == null ? null : this.points[this.hover]; },
@@ -591,7 +593,8 @@ const ScatterPlot = {
             <text class="cm-chart-label" :x="g.left" :y="g.top - 8">{{ yName }} · {{ fmtY(g.my) }}</text>
             <text class="cm-chart-label" :x="g.W - g.right" :y="g.H - 6" text-anchor="end">{{ xName }} · {{ fmtX(g.mx) }}</text>
             <g v-for="(p, i) in points" :key="p.name">
-                <circle :cx="g.x(p.x)" :cy="g.y(p.y)" :r="hover === i ? 8 : 6" :fill="hover === i ? '${CHART_BLUE_ON}' : '${CHART_BLUE}'" fill-opacity="0.85" class="cm-ring"></circle>
+                <circle :cx="g.x(p.x)" :cy="g.y(p.y)" :r="(p.r || 6) + (hover === i ? 2 : 0)" :fill="p.color || (hover === i ? '${CHART_BLUE_ON}' : '${CHART_BLUE}')" :fill-opacity="p.r ? (hover === i ? 0.9 : 0.6) : 0.85" class="cm-ring"></circle>
+                <text v-if="p.tag" class="cm-chart-label" :x="g.x(p.x) + (g.x(p.x) > g.W * 0.7 ? -1 : 1) * ((p.r || 6) + 5)" :y="g.y(p.y) + 4" :text-anchor="g.x(p.x) > g.W * 0.7 ? 'end' : 'start'">{{ p.tag }}</text>
                 <circle class="cm-hit" :cx="g.x(p.x)" :cy="g.y(p.y)" r="16" tabindex="0" :data-name="p.name" :aria-label="p.name + ': ' + fmtX(p.x) + ', ' + fmtY(p.y)"
                         @mouseenter="hover = i" @focus="hover = i" @blur="hover = null"></circle>
             </g>
@@ -2904,7 +2907,7 @@ const optimuxApp = createApp({
         const perfCache = Vue.reactive({});
         const perfData = Vue.computed(() => perfCache[''] || null);
         const perfDays = ref(30);
-        const PERF_CARDS = ['sv', 'callsCost', 'tokensCost', 'callsTokens', 'wt', 'tl', 'sc', 'work', 'lat', 'mix', 'kpi', 'ins', 'models', 'roles'];
+        const PERF_CARDS = ['sv', 'callsCost', 'tokensCost', 'callsTokens', 'qTime', 'qCost', 'wt', 'tl', 'sc', 'work', 'lat', 'mix', 'kpi', 'ins', 'models', 'roles'];
         const perfPick = Vue.reactive(Object.fromEntries(PERF_CARDS.map(k => [k, ''])));
         const perfMetric = ref('cost');
         const perfSort = ref({ key: 'cost', desc: true });
@@ -3408,7 +3411,25 @@ const optimuxApp = createApp({
                 tokensCost: withTokens.map(m => ({ name: m.name, x: tokensOf(m), y: m.cost || 0, lines: [m.cost ? fmtUsd(m.cost / tokensOf(m) * 1000) + tr(' per 1K tokens') : tr('no known price')] })),
                 callsTokens: withTokens.map(m => ({ name: m.name, x: m.calls, y: tokensOf(m), lines: [Math.round(tokensOf(m) / m.calls).toLocaleString(appLocale()) + tr(' tokens per call')] })),
             };
-            return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, sv, wt, scatters, empty: !models.length,
+            // v0.8: answer quality from your 👍 / 👎: a bubble per model and role that did the job.
+            // y: the share rated 👍; x: the median working time, or the median cost, of the rated
+            // requests; the bubble grows with the number of rated answers.
+            const qRows = ((d.quality || {}).rows || []).filter(q => q.rated > 0);
+            const qMax = Math.max(1, ...qRows.map(q => q.rated));
+            const Q_COLORS = { simple: '#3b82f6', complex: '#f59e0b' };
+            const qPoint = (q, x) => ({
+                name: ((byId[q.model] || {}).name || base(q.model)) + ' · ' + perfRole(q.role), x: x, y: q.share,
+                tag: (byId[q.model] || {}).name || base(q.model),
+                r: 6 + 12 * Math.sqrt(q.rated / qMax), color: Q_COLORS[q.role] || '#9ca3af',
+                lines: [tr('👍 {up} · 👎 {down}', { up: q.up, down: q.down }),
+                        q.rated === q.requests ? tr('every request rated') : tr('{rated} of {requests} requests rated', { rated: q.rated, requests: q.requests })] });
+            const quality = {
+                rated: (d.quality || {}).rated || 0, requests: (d.quality || {}).requests || 0,
+                time: qRows.filter(q => q.time_ms !== null).map(q => qPoint(q, q.time_ms)),
+                cost: qRows.filter(q => q.cost !== null).map(q => qPoint(q, q.cost)),
+                unpriced: qRows.filter(q => q.cost === null).length,
+            };
+            return { kpis, insights, series, tl, sc, lat, mix, heat, work, table, wide, sinceEvents, sv, wt, scatters, quality, empty: !models.length,
                      maxShare: Math.max(0.0001, ...models.map(m => m.share)), data: d };
         };
         // Every fetched project's view (all of them recompute together: there are only a few)
@@ -3452,6 +3473,7 @@ const optimuxApp = createApp({
             ['speed_tps', tk('Speed'), tk('Median output tokens per second, over answers of 20 tokens or more.')],
             ['cache_share', tk('Cache'), tk('Part of the input tokens read from the provider\'s cache (cheaper).')],
             ['reliability', tk('Call success'), tk('Calls the provider answered without an error / all attempts, failed ones included. It says nothing about whether the answer or the task was right. Only calls made since failures are recorded count; "unavailable" when there are none.')],
+            ['quality', tk('Rated 👍'), tk('Your own verdict: of this model\'s answers you rated with 👍 or 👎 under a reply, the share that got 👍, and how many you rated. Each role it played is counted apart below. An answer the Complex model finished after the Simple one got stuck counts for the Complex model.')],
             ['escalations', tk('Stuck'), tk('Times this model got stuck and the task moved to the Complex model.')],
         ];
 

@@ -247,6 +247,22 @@ def timed(project: str | None = None, since: float = 0) -> list[dict]:
         conn.close()
 
 
+def judged(project: str | None = None, since: float = 0) -> list[dict]:
+    """Every request that ran on a model, with the user's 👍 / 👎 (rating None when
+    not rated): what Performance's answer quality is counted from (v0.8)."""
+    conn = store.connect()
+    try:
+        sql = ("SELECT model, tier, escalated, rating, cost, calls, calls_without_cost, duration_ms, wait_ms, waits "
+               "FROM tasks WHERE model IS NOT NULL AND model != '' AND ts >= ?")
+        args: list = [since]
+        if project is not None:
+            sql += " AND COALESCE(project, '(no project)') = ?"
+            args.append(project)
+        return [dict(r) for r in conn.execute(sql + " ORDER BY ts", args).fetchall()]
+    finally:
+        conn.close()
+
+
 def first_timed_ts() -> float | None:
     conn = store.connect()
     try:
