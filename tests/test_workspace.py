@@ -429,7 +429,7 @@ def test_create_project_api(client, root):
     assert settings["active_project"] == ""          # switching is the page's job (it asks the server like a manual switch)
     assert client.post("/api/projects", headers=AUTH, json={"name": "viaform"}).status_code == 422
     assert client.post("/api/projects", headers=AUTH, json={"name": "../x"}).status_code == 422
-    assert client.post("/api/projects", headers=AUTH, json={"name": "y", "template": "rust"}).status_code == 422
+    assert client.post("/api/projects", headers=AUTH, json={"name": "y", "template": "cobol"}).status_code == 422
 
 
 def test_github_api(mocker, client, monkeypatch):

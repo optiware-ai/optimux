@@ -27,18 +27,83 @@ from optimux_backend.core.i18n import tr
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 ARCHIVE_DIR = ".archive"
-TEMPLATES = ("basic", "python")
 VISIBILITIES = ("private", "public")
 DESCRIPTION_MAX = 350          # GitHub's limit
 GITHUB_API = "https://api.github.com"
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_]{20,255}$")
 
 COMMIT_TEMPLATE = "[Tag] Short summary\n\nDetailed description:\n- \n"
-GITIGNORE = {
-    "basic": "# OS generated files\n.DS_Store\nThumbs.db\n.env\n",
-    "python": ("# OS generated files\n.DS_Store\nThumbs.db\n.env\n\n# Python\n__pycache__/\n*.py[cod]\n"
-               ".venv/\nvenv/\n.pytest_cache/\n*.egg-info/\ndist/\nbuild/\n"),
+_OS_IGNORE = "# OS generated files\n.DS_Store\nThumbs.db\n.env\n"
+# The kinds of project the New project form and the create_project tool offer (v0.8).
+# Each one: its name, the folders it makes, what its .gitignore adds, and one line for the
+# project's memory, so the models know from the first request what they are working in.
+# Only folders and a .gitignore: no build file and no source, those are the project's own choice.
+TEMPLATE_SPECS = {
+    "basic": {"label": "Basic", "dirs": [], "ignore": "", "memory": ""},
+    "python": {"label": "Python", "dirs": ["src", "tests"],
+               "ignore": "\n# Python\n__pycache__/\n*.py[cod]\n.venv/\nvenv/\n.pytest_cache/\n*.egg-info/\ndist/\nbuild/\n",
+               "memory": "Python: code in src/, tests in tests/."},
+    "web": {"label": "Web page", "dirs": ["css", "js", "assets"],
+            "ignore": "\n# Web\nnode_modules/\ndist/\n.cache/\n",
+            "memory": "Web page (HTML, CSS, JavaScript): styles in css/, scripts in js/, images and fonts in assets/."},
+    "node": {"label": "Node.js", "dirs": ["src", "tests"],
+             "ignore": "\n# Node.js\nnode_modules/\ndist/\ncoverage/\nnpm-debug.log*\n",
+             "memory": "Node.js (JavaScript or TypeScript): code in src/, tests in tests/."},
+    "java": {"label": "Java", "dirs": ["src/main/java", "src/test/java"],
+             "ignore": "\n# Java\n*.class\ntarget/\nbuild/\n.gradle/\n.idea/\n*.iml\n",
+             "memory": "Java: code in src/main/java/, tests in src/test/java/."},
+    "c": {"label": "C", "dirs": ["src", "include", "tests"],
+          "ignore": "\n# C\nbuild/\n*.o\n*.a\n*.so\n*.out\n",
+          "memory": "C: sources in src/, headers in include/, tests in tests/. Build output goes to build/."},
+    "cpp": {"label": "C++", "dirs": ["src", "include", "tests"],
+            "ignore": "\n# C++\nbuild/\n*.o\n*.a\n*.so\n*.out\nCMakeCache.txt\nCMakeFiles/\ncompile_commands.json\n",
+            "memory": "C++: sources in src/, headers in include/, tests in tests/. Build output goes to build/."},
+    "rust": {"label": "Rust", "dirs": ["src", "tests"],
+             "ignore": "\n# Rust\ntarget/\n",
+             "memory": "Rust: code in src/, integration tests in tests/."},
+    "go": {"label": "Go", "dirs": ["cmd", "internal"],
+           "ignore": "\n# Go\nbin/\n*.test\n*.out\n",
+           "memory": "Go: programs in cmd/, packages in internal/."},
+    "firmware": {"label": "Firmware", "dirs": ["src", "include", "lib", "test", "docs"],
+                 "ignore": "\n# Firmware\nbuild/\n.pio/\n*.o\n*.elf\n*.hex\n*.bin\n*.map\n*.lst\n",
+                 "memory": ("Firmware (embedded C or C++): sources in src/, headers in include/, libraries in lib/, "
+                            "tests in test/, datasheets and notes in docs/. Build output goes to build/.")},
 }
+TEMPLATES = tuple(TEMPLATE_SPECS)
+GITIGNORE = {k: _OS_IGNORE + v["ignore"] for k, v in TEMPLATE_SPECS.items()}
+KEEP_FILE = ".gitkeep"          # git keeps no empty folder
+
+
+def template_list() -> list:
+    """The kinds, for the New project form."""
+    return [{"id": k, "label": v["label"],
+             "creates": ", ".join(d + "/" for d in v["dirs"]) or "README, .gitignore"}
+            for k, v in TEMPLATE_SPECS.items()]
+
+
+def starter_memory(template: str, description: str = "") -> str:
+    """The first lines of a new project's memory: its kind and what it is for.
+    Empty when there is nothing to say (a Basic project without a description)."""
+    lines = []
+    if TEMPLATE_SPECS[template]["memory"]:
+        lines.append("- Kind of project: " + TEMPLATE_SPECS[template]["memory"])
+    if description.strip():
+        lines.append("- Purpose: " + " ".join(description.split()))
+    return "\n".join(lines)
+
+
+def _seed_memory(name: str, template: str, description: str) -> bool:
+    """Write the starter memory, only where the project has none yet (never over existing notes)."""
+    from optimux_backend.core import curator, memory_manager
+    text = starter_memory(template, description)
+    path = os.path.join(memory_manager.PROJECTS_DIR, f"{name}.md")
+    if not text or os.path.exists(path):
+        return False
+    after = memory_manager.DEFAULT_PROJECT + "\n" + text + "\n"
+    os.makedirs(memory_manager.PROJECTS_DIR, exist_ok=True)
+    memory_manager.write_atomic(path, after)
+    curator.record_version(name, "user", "", after, "Starter memory from the new project form")
+    return True
 
 
 class WorkspaceError(Exception):
@@ -290,11 +355,16 @@ def create_project(name: str, template: str = "basic", git_init: bool = True,
         f.write(f"# {name}\n" + (f"\n{description}\n" if description else ""))
     with open(os.path.join(path, ".gitignore"), "w") as f:
         f.write(GITIGNORE[template])
-    if template == "python":
-        os.makedirs(os.path.join(path, "src"))
-        os.makedirs(os.path.join(path, "tests"))
-        open(os.path.join(path, "tests", "__init__.py"), "w").close()
+    for folder in TEMPLATE_SPECS[template]["dirs"]:
+        os.makedirs(os.path.join(path, *folder.split("/")))
+        keep = "__init__.py" if (template, folder) == ("python", "tests") else KEEP_FILE
+        open(os.path.join(path, *folder.split("/"), keep), "w").close()
     steps.append({"step": "write starter files", "ok": True, "output": ", ".join(sorted(os.listdir(path)))})
+    try:
+        if _seed_memory(name, template, description):
+            steps.append({"step": "write the project's starter memory", "ok": True, "output": starter_memory(template, description)})
+    except Exception as e:        # the project is made either way; memory can be written later
+        steps.append({"step": "write the project's starter memory", "ok": True, "output": f"skipped: {e}"})
 
     github_url = None
     if git_init:
@@ -887,7 +957,8 @@ WORKSPACE_TOOLS = [
                         "description, switching to it) and confirm. Don't ask them these questions first."),
         "parameters": {"type": "object", "properties": {
             "name": {"type": "string", "description": "Folder and repository name: letters, digits, . _ - (empty if the user gave none)"},
-            "template": {"type": "string", "enum": list(TEMPLATES), "description": "basic (README, .gitignore) or python (adds src/ and tests/)"},
+            "template": {"type": "string", "enum": list(TEMPLATES), "description": ("The kind of project: basic (README, .gitignore only) or one that also gets its usual "
+                                                               "folders and .gitignore: " + ", ".join(TEMPLATES[1:]))},
             "git_init": {"type": "boolean", "description": "Create a git repository with an initial commit (default true)"},
             "github": {"type": "string", "enum": list(VISIBILITIES), "description": "Also create and push a GitHub repository with this visibility; omit for none"},
             "description": {"type": "string", "description": "Short description for the README and GitHub"},

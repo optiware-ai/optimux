@@ -123,13 +123,15 @@
 
         <!-- v0.8: the Studio, full page over the chat: the project's files, a code editor and a preview -->
         <div v-show="studio.open" class="fixed inset-0 z-40 bg-gray-950 flex flex-col text-gray-200" :style="studio.chat ? { right: 'var(--cm-dock)' } : null" role="region" :aria-label="$t('Studio')">
-            <div class="flex items-center gap-3 px-4 py-2 border-b border-gray-800 flex-shrink-0">
-                <a href="#/" @click.prevent="closeStudio()" :title="$t('Close the Studio and go back to the chat')" class="text-lg font-bold tracking-wide flex items-center gap-2 rounded hover:opacity-80"><img src="/static/logo.svg" alt="" class="w-6 h-6"><span><span class="text-gray-100">Opti</span><span class="text-blue-400">mux</span></span></a>
-                <span class="text-xs text-gray-500 font-mono">{{ $t('Studio') }}</span>
-                <span class="text-[15px] font-bold text-gray-100 truncate">{{ studio.project || appSettings.active_project }}</span>
-                <span v-if="studio.branch" class="text-xs font-mono text-gray-500" :title="$t('The git branch')">⑂ {{ studio.branch }}</span>
-                <span v-if="studio.msg" :class="['text-[13px] truncate min-w-0', studio.msg.ok ? 'text-green-400' : 'text-red-400']" role="status">{{ studio.msg.text }}</span>
-                <span class="flex-1"></span>
+            <!-- The bar never wraps: when it gets narrow (a small window, or the chat column open) the
+                 buttons keep their icons and lose their words, and the name is cut with "…" (optimux.css) -->
+            <div data-studio-bar class="cm-studio-bar flex items-center gap-3 px-4 py-2 border-b border-gray-800 flex-shrink-0">
+                <a href="#/" @click.prevent="closeStudio()" :title="$t('Close the Studio and go back to the chat')" class="text-lg font-bold tracking-wide flex items-center gap-2 rounded hover:opacity-80"><img src="/static/logo.svg" alt="" class="w-6 h-6"><span class="cm-bar-wide"><span class="text-gray-100">Opti</span><span class="text-blue-400">mux</span></span></a>
+                <span class="cm-bar-wide text-xs text-gray-500 font-mono">{{ $t('Studio') }}</span>
+                <span class="cm-bar-name text-[15px] font-bold text-gray-100 truncate" :title="studio.project || appSettings.active_project">{{ studio.project || appSettings.active_project }}</span>
+                <span v-if="studio.branch" class="cm-bar-wide text-xs font-mono text-gray-500" :title="$t('The git branch')">⑂ {{ studio.branch }}</span>
+                <span v-if="studio.msg" :class="['cm-bar-name text-[13px] truncate min-w-0', studio.msg.ok ? 'text-green-400' : 'text-red-400']" role="status">{{ studio.msg.text }}</span>
+                <span class="cm-bar-gap flex-1"></span>
                 <div class="cm-seg" role="group" :aria-label="$t('Panes')">
                     <button @click="toggleStudioTree" :aria-pressed="studio.showTree" :class="studio.showTree ? 'cm-seg-on' : ''" :title="$t('Show or hide the file list')">{{ $t('Files') }}</button>
                     <button @click="studio.showEditor = !studio.showEditor || !studio.showPreview" :aria-pressed="studio.showEditor" :class="studio.showEditor ? 'cm-seg-on' : ''" :title="$t('Show or hide the code editor')">{{ $t('Editor') }}</button>
@@ -137,11 +139,11 @@
                     <button @click="toggleStudioChat" :aria-pressed="studio.chat" :class="studio.chat ? 'cm-seg-on' : ''" :title="studio.chat ? $t('Hide the chat column') : $t('Show the chat beside the Studio. Right-click code, a file or the preview to send it to the chat')">
                         {{ $t('Chat') }}<span v-if="chatContext.length" class="cm-ctx-count">{{ chatContext.length }}</span></button>
                 </div>
-                <button @click="refreshStudio" class="text-[13px] px-2 py-1 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500" :title="$t('Read the files again (after a model changed them)')">{{ $t('↻ Refresh') }}</button>
-                <button @click="openSettings()" class="text-[13px] px-3 py-1 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500 flex items-center gap-1.5" :title="$t('Dashboard: usage, budgets, models and settings')">
+                <button @click="refreshStudio" class="text-[13px] px-2 py-1 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500" :title="$t('Read the files again (after a model changed them)')" :aria-label="$t('Refresh')">↻<span class="cm-bar-label">{{ ' ' + $t('Refresh') }}</span></button>
+                <button @click="openSettings()" class="cm-bar-opt text-[13px] px-3 py-1 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500 flex items-center gap-1.5" :title="$t('Dashboard: usage, budgets, models and settings')" :aria-label="$t('Dashboard')">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 12a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z"></path></svg>
-                    {{ $t('Dashboard') }}</button>
-                <button @click="closeStudio()" class="text-[13px] px-3 py-1 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500" :title="$t('Close the Studio and go back to the chat')">{{ $t('← Back to chat') }}</button>
+                    <span class="cm-bar-label">{{ $t('Dashboard') }}</span></button>
+                <button @click="closeStudio()" class="text-[13px] px-3 py-1 rounded-lg border border-gray-700 text-gray-200 hover:border-gray-500" :title="$t('Close the Studio and go back to the chat')" :aria-label="$t('Back to chat')">←<span class="cm-bar-label">{{ ' ' + $t('Back to chat') }}</span></button>
                 <sign-out-btn @go="confirmSignOut"></sign-out-btn>
             </div>
             <div class="flex-1 flex min-h-0">
@@ -3620,7 +3622,8 @@
                             {{ $t('{v} · {v2}{v3} tok{v4} · {v5} · {v6}', { v: callsLabel(msg.usage), v2: msg.usage.estimated ? '≈' : '', v3: fmtTokens(msg.usage.tokens), v4: msg.usage.reasoning ? $t(' ({tokens} thinking)', { tokens: fmtTokens(msg.usage.reasoning) }) : '', v5: msg.usage.costKnown ? fmtCost(msg.usage.cost) : (msg.usage.cost > 0 ? fmtCost(msg.usage.cost) + '+' : $t('cost ?')), v6: fmtMs(msg.usage.ms) }) }}<span v-if="msg.usage.scout" :title="$t('Of which the scout (the Simple model reading the project before Complex started): ') + msg.usage.scout.calls + (msg.usage.scout.calls === 1 ? $t(' call · ') : $t(' calls · ')) + fmtTokens(msg.usage.scout.tokens) + $t(' tok. Included in the totals.')">{{ ' ' + $t('· scout {v}', { v: fmtCost(msg.usage.scout.cost) }) }}</span>
                         </span>
                         <span v-else></span>
-                        <span class="flex items-center gap-2">
+                        <!-- wraps inside the bubble when the chat is narrow (the column beside the Studio) -->
+                        <span data-reply-actions class="flex flex-wrap items-center justify-end gap-2 min-w-0">
                             <span v-if="msg.taskId" class="flex items-center gap-1" role="group" :aria-label="$t('Rate this reply')">
                                 <button @click="rateReply(msg, 1)" :aria-pressed="msg.rating === 1" :class="['rounded px-1.5 py-0.5 border', msg.rating === 1 ? 'border-green-700 bg-green-950/50 text-green-300' : 'border-gray-700 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 hover:border-gray-500']" :title="msg.rating === 1 ? $t('You rated this reply good. Click again to clear.') : $t('Good reply. Kept on this machine only, to improve routing later.')">👍</button>
                                 <button @click="rateReply(msg, -1)" :aria-pressed="msg.rating === -1" :class="['rounded px-1.5 py-0.5 border', msg.rating === -1 ? 'border-red-800 bg-red-950/50 text-red-300' : 'border-gray-700 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 hover:border-gray-500']" :title="msg.rating === -1 ? $t('You rated this reply bad. Click again to clear.') : $t('Bad reply. Kept on this machine only, to improve routing later.')">👎</button>
@@ -3835,9 +3838,10 @@
                     </div>
                     <textarea v-model="userInput" ref="chatInputRef" @keydown="handleEnter" :placeholder="chatContext.length ? $t('What should happen with the selection?') : null" class="w-full bg-transparent px-5 pt-5 pb-3 focus:outline-none font-mono text-sm disabled:opacity-50 resize-none overflow-y-auto max-h-60 leading-tight min-h-[52px]" :disabled="isGenerating || pendingApproval || !!readOnlyChat" rows="1"></textarea>
                     
-                    <div class="flex items-center justify-between px-3 pb-3">
-                        <div class="relative flex items-center">
-                            <span class="relative flex items-center">
+                    <!-- in a narrow chat column the choices wrap to a second line; Send never leaves the box -->
+                    <div data-composer-row class="flex items-center justify-between gap-2 px-3 pb-3">
+                        <div class="relative flex flex-wrap items-center min-w-0">
+                            <span class="relative flex items-center min-w-0">
                             <select v-model="selectedModel" @change="handleModelChange" class="appearance-none bg-transparent border-0 rounded-lg pl-3 pr-8 py-2 focus:outline-none transition text-xs max-w-[200px] truncate cursor-pointer text-gray-400 hover:text-gray-200 focus:text-gray-200" :disabled="isGenerating">
                                 <option value="auto" class="bg-gray-900 text-gray-200">{{ $t('⚡ Auto-Router') }}</option>
                                 <optgroup v-if="availableModels.length > 0" label="Available Models" class="bg-gray-900 text-gray-400">
@@ -3860,10 +3864,10 @@
                             </button>
                         </div>
                         
-                        <button v-if="isGenerating || pendingApproval" type="button" @click="stopGeneration" :disabled="isStopping" :title="$t('Stop (Esc)')" :aria-label="$t('Stop')" class="bg-red-600 hover:bg-red-500 text-white px-3 py-2 rounded-lg font-bold transition disabled:opacity-50 flex items-center text-sm shadow-sm">
+                        <button v-if="isGenerating || pendingApproval" type="button" @click="stopGeneration" :disabled="isStopping" :title="$t('Stop (Esc)')" :aria-label="$t('Stop')" class="flex-shrink-0 bg-red-600 hover:bg-red-500 text-white px-3 py-2 rounded-lg font-bold transition disabled:opacity-50 flex items-center text-sm shadow-sm">
                             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
                         </button>
-                        <button v-else type="submit" :title="$t('Send')" :aria-label="$t('Send')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg font-bold transition disabled:opacity-50 flex items-center text-sm shadow-sm" :disabled="!userInput.trim() || isGenerating || pendingApproval">
+                        <button v-else type="submit" :title="$t('Send')" :aria-label="$t('Send')" class="flex-shrink-0 bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg font-bold transition disabled:opacity-50 flex items-center text-sm shadow-sm" :disabled="!userInput.trim() || isGenerating || pendingApproval">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                         </button>
                     </div>

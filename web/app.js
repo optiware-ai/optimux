@@ -40,6 +40,20 @@ const ROLE_HELP = {
     planner: tk('plan mode: the Complex model splitting a big task into steps before any work starts (one call per plan).'),
     commit_message: tk('not a routing role, a job: the Simple model writing a commit message when you click "Write it for me" in Push….'),
 };
+// The kinds of project the New project form offers: the same list, in the same order, as
+// TEMPLATE_SPECS in core/workspace.py (tests/test_templates.py compares them).
+const PROJECT_KINDS = [
+    { id: 'basic', label: tk('Basic'), folders: '' },
+    { id: 'python', label: 'Python', folders: 'src/, tests/' },
+    { id: 'web', label: tk('Web page'), folders: 'css/, js/, assets/' },
+    { id: 'node', label: 'Node.js', folders: 'src/, tests/' },
+    { id: 'java', label: 'Java', folders: 'src/main/java/, src/test/java/' },
+    { id: 'c', label: 'C', folders: 'src/, include/, tests/' },
+    { id: 'cpp', label: 'C++', folders: 'src/, include/, tests/' },
+    { id: 'rust', label: 'Rust', folders: 'src/, tests/' },
+    { id: 'go', label: 'Go', folders: 'cmd/, internal/' },
+    { id: 'firmware', label: tk('Firmware'), folders: 'src/, include/, lib/, test/, docs/' },
+];
 const PROJECT_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 // The logo while Optimux works: a green ball runs along the trunk and takes one of the
 // two lanes, picked at random each time, like a request routed to a model. SMIL
@@ -308,6 +322,8 @@ const ProjectForm = {
     },
     computed: {
         ghReady() { return !!(this.github && this.github.ready); },
+        kinds() { return PROJECT_KINDS; },
+        kind() { return PROJECT_KINDS.find(k => k.id === this.f.template) || PROJECT_KINDS[0]; },
         nameProblem() {
             const n = this.f.name.trim();
             if (!n) return '';
@@ -346,11 +362,12 @@ const ProjectForm = {
   </div>
   <div>
     <label class="block text-xs uppercase tracking-wider text-gray-400 mb-1">{{ $t('Starter files') }}</label>
-    <div class="grid grid-cols-2 gap-2">
-      <button type="button" v-for="t in [['basic',$t('Basic'),$t('README and .gitignore')],['python','Python',$t('also src/ and tests/')]]" :key="t[0]" @click="f.template = t[0]"
-              :class="['text-left rounded-lg border px-3 py-2 transition', f.template === t[0] ? 'border-blue-500 bg-blue-950/40' : 'border-gray-700 hover:border-gray-500']">
-        <div class="font-bold text-gray-100">{{ t[1] }}</div><div class="text-xs text-gray-400">{{ t[2] }}</div>
-      </button>
+    <div class="grid grid-cols-5 gap-1.5" data-project-kinds>
+      <button type="button" v-for="k in kinds" :key="k.id" @click="f.template = k.id" :aria-pressed="f.template === k.id"
+              :class="['rounded-lg border px-1 py-1.5 text-[13px] font-bold text-center truncate transition', f.template === k.id ? 'border-blue-500 bg-blue-950/40 text-gray-100' : 'border-gray-700 text-gray-300 hover:border-gray-500']">{{ $t(k.label) }}</button>
+    </div>
+    <div class="mt-1.5 text-xs text-gray-400" data-project-kind-note>
+      <span class="font-mono text-gray-300">{{ kind.folders ? 'README, .gitignore, ' + kind.folders : 'README, .gitignore' }}</span><template v-if="kind.folders"><span>{{ ' · ' + $t('The kind is also written in the memory of the project, so the models know it.') }}</span></template>
     </div>
   </div>
   <div class="flex items-center justify-between gap-3">
@@ -4818,7 +4835,7 @@ const optimuxApp = createApp({
         const studioPanes = ref(null);
         const LIMITS = {
             tree: () => [140, Math.max(200, window.innerWidth * 0.45)],
-            dock: () => [320, Math.max(360, window.innerWidth * 0.7)],
+            dock: () => [380, Math.max(400, Math.min(window.innerWidth * 0.7, window.innerWidth - 520))],   // 380: below it the chat cannot be read; the Studio keeps 520
             split: () => [0.15, 0.85],
         };
         const setLayout = (kind, value) => { const [lo, hi] = LIMITS[kind](); studioLayout[kind] = clampNum(value, lo, hi); };

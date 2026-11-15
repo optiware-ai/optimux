@@ -304,7 +304,7 @@ The form has:
 | Field | What it does |
 |---|---|
 | **Name** | The folder (and GitHub repository) name: letters, digits, `.`, `_`, `-`. The path is shown under it; a name that exists already is flagged as you type. |
-| **Starter files** | *Basic*: README and `.gitignore`. *Python*: also `src/` and `tests/`. |
+| **Starter files** | The kind of project. *Basic*: README and `.gitignore` only. The others also get their usual folders and a `.gitignore` for their build files: *Python* (`src/`, `tests/`), *Web page* (`css/`, `js/`, `assets/`), *Node.js* (`src/`, `tests/`), *Java* (`src/main/java/`, `src/test/java/`), *C* and *C++* (`src/`, `include/`, `tests/`), *Rust* (`src/`, `tests/`), *Go* (`cmd/`, `internal/`), *Firmware* (`src/`, `include/`, `lib/`, `test/`, `docs/`). Only folders are made, no build file and no code: that stays your choice. The kind, and the description if you wrote one, also become the **first lines of the project's memory** (two short lines, sent with every request), so the models know what they are working in from the first message. Memory that is already there for that name is never replaced; you can edit or remove the lines in **Dashboard → Memory**. |
 | **Git repository** | `git init`, a commit template and a first commit. |
 | **Also on GitHub** | Creates the repository with `gh` and pushes the first commit. **Private** or **Public**. Greyed out, with the reason and a *Set up GitHub* link, until GitHub is set up. |
 | **Description** | Optional (up to 350 characters): goes in the README and on GitHub. Leave it empty for now if you like. |

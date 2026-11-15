@@ -346,3 +346,24 @@ body.cm-resizing iframe { pointer-events: none; }
 /* v0.8: the answer-quality charts' key: the role that did the job */
 .cm-q-simple { background: #3b82f6; }
 .cm-q-complex { background: #f59e0b; }
+
+/* The Studio's top bar (v0.8). It never wraps and nothing in it is squeezed: the project name and the
+   status message are the only parts that give way (cut with "…"). The bar measures itself, so it does
+   not matter why it is narrow (a small window, or the chat column open beside the Studio): below 1040px
+   the buttons keep their icons and lose their words, below 760px the logo's name and the branch go too, below 600px the Dashboard button. */
+.cm-studio-bar { container-type: inline-size; container-name: studio-bar; flex-wrap: nowrap; min-width: 0; }
+.cm-studio-bar > * { flex-shrink: 0; white-space: nowrap; }
+.cm-studio-bar > .cm-bar-name { flex-shrink: 1; min-width: 2.5rem; }
+.cm-studio-bar > .cm-bar-gap { flex-shrink: 1; min-width: 0; }
+@container studio-bar (max-width: 1040px) {
+    .cm-studio-bar .cm-bar-label { display: none; }
+}
+@container studio-bar (max-width: 760px) {
+    .cm-studio-bar .cm-bar-wide { display: none; }
+    .cm-studio-bar { gap: .5rem; padding-left: .75rem; padding-right: .75rem; }
+}
+@container studio-bar (max-width: 600px) {       /* the Dashboard is one click away from the chat too */
+    .cm-studio-bar .cm-bar-opt { display: none; }
+}
+/* In a narrow chat column the buttons under a reply and in the message box wrap as whole buttons */
+[data-reply-actions] button, [data-composer-row] button { white-space: nowrap; }
