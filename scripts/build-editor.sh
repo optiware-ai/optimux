@@ -7,7 +7,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VIEW=6.43.15
-BUILD=5
+BUILD=6
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 npm install --prefix "$tmp" --no-save --silent esbuild@0.28.2 \
@@ -15,7 +15,9 @@ npm install --prefix "$tmp" --no-save --silent esbuild@0.28.2 \
   @codemirror/search@6.7.2 @codemirror/autocomplete@6.20.4 @codemirror/lang-javascript@6.2.5 \
   @codemirror/lang-html@6.4.12 @codemirror/lang-css@6.3.1 @codemirror/lang-json@6.0.2 \
   @codemirror/lang-markdown@6.5.2 @codemirror/lang-python@6.2.1 @codemirror/lang-xml@6.1.0 \
-  @codemirror/lang-yaml@6.1.3 @codemirror/lang-sql@6.10.0 @codemirror/legacy-modes@6.5.5 @lezer/highlight@1.2.5
+  @codemirror/lang-yaml@6.1.3 @codemirror/lang-sql@6.10.0 @codemirror/legacy-modes@6.5.5 @lezer/highlight@1.2.5 \
+  @codemirror/lang-cpp@6.0.3 @codemirror/lang-java@6.0.2 @codemirror/lang-rust@6.0.2 @codemirror/lang-php@6.0.2 \
+  @codemirror/lang-go@6.0.1
 cp scripts/editor/entry.js "$tmp/entry.js"
 out="web/vendor/codemirror-$VIEW-$BUILD.min.js"
 "$tmp/node_modules/.bin/esbuild" "$tmp/entry.js" --bundle --minify --format=iife --global-name=OptimuxEditor \

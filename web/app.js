@@ -1258,14 +1258,29 @@ const optimuxApp = createApp({
             ['javascript', 'JavaScript'], ['typescript', 'TypeScript'], ['json', 'JSON'], ['xml', 'HTML / XML / Vue'],
             ['css', 'CSS'], ['markdown', 'Markdown'], ['yaml', 'YAML'], ['ini', 'INI / TOML'], ['diff', 'Diff'],
             ['sql', 'SQL'], ['go', 'Go'], ['rust', 'Rust'], ['java', 'Java'], ['c', 'C'], ['cpp', 'C++'],
+            // v0.8: more of highlight.js's own, and those of vendor/highlight-*-more-*.min.js
+            ['x86asm', 'Assembly (x86)'], ['armasm', 'Assembly (ARM)'], ['avrasm', 'Assembly (AVR)'], ['csharp', 'C#'],
+            ['kotlin', 'Kotlin'], ['swift', 'Swift'], ['objectivec', 'Objective-C'], ['php', 'PHP'], ['ruby', 'Ruby'],
+            ['lua', 'Lua'], ['perl', 'Perl'], ['r', 'R'], ['scala', 'Scala'], ['dart', 'Dart'], ['haskell', 'Haskell'],
+            ['powershell', 'PowerShell'], ['dockerfile', 'Dockerfile'], ['makefile', 'Makefile'], ['cmake', 'CMake'],
+            ['verilog', 'Verilog'], ['vhdl', 'VHDL'], ['protobuf', 'Protocol Buffers'], ['nginx', 'nginx'],
         ];
         const EXT_LANG = { py: 'python', js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
             ts: 'typescript', tsx: 'typescript', json: 'json', html: 'xml', htm: 'xml', vue: 'xml', xml: 'xml', svg: 'xml',
             css: 'css', md: 'markdown', yml: 'yaml', yaml: 'yaml', toml: 'ini', ini: 'ini', cfg: 'ini', env: 'bash',
             sh: 'bash', bash: 'bash', zsh: 'bash', diff: 'diff', patch: 'diff', sql: 'sql', go: 'go', rs: 'rust',
-            java: 'java', c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', hpp: 'cpp' };
+            java: 'java', c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', hpp: 'cpp',
+            cxx: 'cpp', hh: 'cpp', hxx: 'cpp', ino: 'cpp', s: 'x86asm', asm: 'x86asm', inc: 'x86asm', cs: 'csharp',
+            kt: 'kotlin', kts: 'kotlin', swift: 'swift', m: 'objectivec', mm: 'objectivec', php: 'php', rb: 'ruby',
+            lua: 'lua', pl: 'perl', pm: 'perl', r: 'r', scala: 'scala', dart: 'dart', hs: 'haskell', ps1: 'powershell',
+            psm1: 'powershell', cmake: 'cmake', v: 'verilog', sv: 'verilog', vhd: 'vhdl', vhdl: 'vhdl', proto: 'protobuf',
+            scss: 'scss', less: 'less', graphql: 'graphql', bat: 'dos', cmd: 'dos', tex: 'latex', ex: 'elixir', exs: 'elixir',
+            erl: 'erlang', groovy: 'groovy', gradle: 'groovy', jl: 'julia', f90: 'fortran', pas: 'delphi', clj: 'clojure',
+            ml: 'ocaml', fs: 'fsharp', tcl: 'tcl', ll: 'llvm' };
         const LANG_ALIAS = { sh: 'bash', shell: 'bash', zsh: 'bash', console: 'bash', py: 'python', js: 'javascript',
-            ts: 'typescript', html: 'xml', vue: 'xml', yml: 'yaml', toml: 'ini', text: 'plaintext', txt: 'plaintext', md: 'markdown', term: 'bash' };
+            ts: 'typescript', html: 'xml', vue: 'xml', yml: 'yaml', toml: 'ini', text: 'plaintext', txt: 'plaintext', md: 'markdown', term: 'bash',
+            'c++': 'cpp', 'c#': 'csharp', cs: 'csharp', kt: 'kotlin', rb: 'ruby', rs: 'rust', golang: 'go', objc: 'objectivec',
+            ps: 'powershell', ps1: 'powershell', docker: 'dockerfile', make: 'makefile', arm: 'armasm', avr: 'avrasm' };
         const escHtml = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         // Guess the language of a command's output from the command itself
         const guessOutputLang = (command, output) => {
@@ -4279,7 +4294,7 @@ const optimuxApp = createApp({
         const openBudgets = () => openSettings('budgets');
 
         // ---- v0.8: the Studio. The active project's files (tree), a code editor and a sandboxed preview.
-        const EDITOR_SCRIPT = '/static/vendor/codemirror-6.43.15-5.min.js';   // built by scripts/build-editor.sh
+        const EDITOR_SCRIPT = '/static/vendor/codemirror-6.43.15-6.min.js';   // built by scripts/build-editor.sh
         const studio = Vue.reactive({
             open: false, project: '', dirs: {}, opened: { '': true }, status: {}, branch: '', msg: null,
             file: null,        // {path, text (as opened), digest, hidden, binary, too_large, size, lang}

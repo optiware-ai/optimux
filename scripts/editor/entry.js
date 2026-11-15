@@ -22,10 +22,29 @@ import { sql } from '@codemirror/lang-sql';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { toml } from '@codemirror/legacy-modes/mode/toml';
 import { dockerFile } from '@codemirror/legacy-modes/mode/dockerfile';
-import { go } from '@codemirror/legacy-modes/mode/go';
-import { rust } from '@codemirror/legacy-modes/mode/rust';
 import { properties } from '@codemirror/legacy-modes/mode/properties';
 import { nginx } from '@codemirror/legacy-modes/mode/nginx';
+// v0.8: the other major languages. C, C++, Java, Rust, PHP and Go have full parsers;
+// the rest are CodeMirror's stream modes (colours, no folding by syntax).
+import { cpp } from '@codemirror/lang-cpp';
+import { java } from '@codemirror/lang-java';
+import { rust as rustLang } from '@codemirror/lang-rust';
+import { php } from '@codemirror/lang-php';
+import { go as goLang } from '@codemirror/lang-go';
+import { csharp, kotlin, scala, objectiveC, dart } from '@codemirror/legacy-modes/mode/clike';
+import { gas } from '@codemirror/legacy-modes/mode/gas';
+import { swift } from '@codemirror/legacy-modes/mode/swift';
+import { ruby } from '@codemirror/legacy-modes/mode/ruby';
+import { lua } from '@codemirror/legacy-modes/mode/lua';
+import { perl } from '@codemirror/legacy-modes/mode/perl';
+import { r } from '@codemirror/legacy-modes/mode/r';
+import { powerShell } from '@codemirror/legacy-modes/mode/powershell';
+import { haskell } from '@codemirror/legacy-modes/mode/haskell';
+import { verilog } from '@codemirror/legacy-modes/mode/verilog';
+import { vhdl } from '@codemirror/legacy-modes/mode/vhdl';
+import { cmake } from '@codemirror/legacy-modes/mode/cmake';
+import { diff } from '@codemirror/legacy-modes/mode/diff';
+import { protobuf } from '@codemirror/legacy-modes/mode/protobuf';
 
 // Keywords purple, types teal, strings green, numbers amber, function calls blue, comments grey italic
 const colours = HighlightStyle.define([
@@ -78,11 +97,24 @@ const BY_EXT = {
   yml: () => yaml(), yaml: () => yaml(),
   sql: () => sql(),
   sh: () => legacy(shell), bash: () => legacy(shell), zsh: () => legacy(shell),
-  toml: () => legacy(toml), go: () => legacy(go), rs: () => legacy(rust),
+  toml: () => legacy(toml), go: () => goLang(), rs: () => rustLang(),
   ini: () => legacy(properties), cfg: () => legacy(properties), conf: () => legacy(nginx), env: () => legacy(properties),
+  // v0.8
+  c: () => cpp(), h: () => cpp(), cpp: () => cpp(), cc: () => cpp(), cxx: () => cpp(), hpp: () => cpp(), hh: () => cpp(), hxx: () => cpp(),
+  ino: () => cpp(), java: () => java(), php: () => php(), phtml: () => php(),
+  s: () => legacy(gas), asm: () => legacy(gas), inc: () => legacy(gas),     // GNU assembler syntax, read for every assembly file
+  cs: () => legacy(csharp), kt: () => legacy(kotlin), kts: () => legacy(kotlin), scala: () => legacy(scala), sc: () => legacy(scala),
+  m: () => legacy(objectiveC), mm: () => legacy(objectiveC), dart: () => legacy(dart), swift: () => legacy(swift),
+  rb: () => legacy(ruby), rake: () => legacy(ruby), gemspec: () => legacy(ruby), lua: () => legacy(lua),
+  pl: () => legacy(perl), pm: () => legacy(perl), r: () => legacy(r), ps1: () => legacy(powerShell), psm1: () => legacy(powerShell),
+  hs: () => legacy(haskell), v: () => legacy(verilog), sv: () => legacy(verilog), svh: () => legacy(verilog), vh: () => legacy(verilog),
+  vhd: () => legacy(vhdl), vhdl: () => legacy(vhdl), cmake: () => legacy(cmake), diff: () => legacy(diff), patch: () => legacy(diff),
+  proto: () => legacy(protobuf),
 };
 const BY_NAME = { dockerfile: () => legacy(dockerFile), makefile: () => legacy(shell), '.env': () => legacy(properties),
-                  '.bashrc': () => legacy(shell), '.gitignore': () => legacy(properties) };
+                  '.bashrc': () => legacy(shell), '.gitignore': () => legacy(properties),
+                  'cmakelists.txt': () => legacy(cmake), gemfile: () => legacy(ruby), rakefile: () => legacy(ruby) };
+
 
 /** The language support for a file path, or null (plain text). */
 export function languageFor(path) {
@@ -100,8 +132,17 @@ export function languageName(path) {
   const names = { js: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', jsx: 'JSX', ts: 'TypeScript', mts: 'TypeScript', tsx: 'TSX',
                   html: 'HTML', htm: 'HTML', vue: 'Vue', svelte: 'Svelte', css: 'CSS', scss: 'SCSS', less: 'Less', json: 'JSON',
                   md: 'Markdown', markdown: 'Markdown', py: 'Python', xml: 'XML', svg: 'SVG', yml: 'YAML', yaml: 'YAML', sql: 'SQL',
-                  sh: 'Shell', bash: 'Shell', toml: 'TOML', go: 'Go', rs: 'Rust', ini: 'INI', conf: 'Config' };
+                  sh: 'Shell', bash: 'Shell', toml: 'TOML', go: 'Go', rs: 'Rust', ini: 'INI', conf: 'Config',
+                  c: 'C', h: 'C', cpp: 'C++', cc: 'C++', cxx: 'C++', hpp: 'C++', hh: 'C++', hxx: 'C++', ino: 'C++', java: 'Java',
+                  php: 'PHP', phtml: 'PHP', s: 'Assembly', asm: 'Assembly', inc: 'Assembly', cs: 'C#', kt: 'Kotlin', kts: 'Kotlin',
+                  scala: 'Scala', sc: 'Scala', m: 'Objective-C', mm: 'Objective-C', dart: 'Dart', swift: 'Swift', rb: 'Ruby',
+                  rake: 'Ruby', gemspec: 'Ruby', lua: 'Lua', pl: 'Perl', pm: 'Perl', r: 'R', ps1: 'PowerShell', psm1: 'PowerShell',
+                  hs: 'Haskell', v: 'Verilog', vh: 'Verilog', sv: 'SystemVerilog', svh: 'SystemVerilog', vhd: 'VHDL', vhdl: 'VHDL',
+                  cmake: 'CMake', diff: 'Diff', patch: 'Diff', proto: 'Protocol Buffers', zsh: 'Shell', pyi: 'Python' };
   if (name === 'dockerfile') return 'Dockerfile';
+  if (name === 'makefile') return 'Makefile';
+  if (name === 'cmakelists.txt') return 'CMake';
+  if (name === 'gemfile' || name === 'rakefile') return 'Ruby';
   return names[ext] || 'Plain text';
 }
 
