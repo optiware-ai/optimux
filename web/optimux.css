@@ -1,3 +1,5 @@
+/* Until Vue has taken the page over, hide it: otherwise the raw {{ … }} template shows for a moment on every load */
+[v-cloak] { display: none !important; }
 /* Chat scroll area: thin scrollbar with its own gutter, so it never sits on the prompts */
 #chat-container { scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #374151 transparent; }
 #chat-container::-webkit-scrollbar { width: 8px; }

@@ -3687,23 +3687,26 @@ const optimuxApp = createApp({
             { id: 'system', label: tk('System'), icon: '≡', group: tk('Configuration'), hint: tk('Files, storage, backups, access token and model cooldowns.') },
             { id: 'start', label: tk('Getting started'), icon: '✓', group: tk('Help'), hint: tk('The setup steps in order; each one ticks itself when it is done.') },
             { id: 'guide', label: tk('Guide'), icon: '?', group: tk('Help'), hint: tk('Everything about Optimux: getting started, routing, memory, skills, costs, and how to spend less.') },
-            { id: 'video', label: tk('Video tutorial'), icon: '▶', group: tk('Help'), hint: tk('A short film: from a fresh install to your first commit.') },
+            { id: 'video', label: tk('Video tutorial'), icon: '▶', group: tk('Help'), hint: tk('An eight-minute film: from the installer to a change asked from the Studio.') },
         ];
         // The video tutorial (v0.8): one file shipped with the app, its version in the name
         // (a new film gets a new name). Times are seconds into the film.
         const TUTORIAL = {
             src: '/static/tutorial/optimux-tutorial-1.mp4',
             poster: '/static/tutorial/optimux-tutorial-1.jpg',
-            length: 224.7,
+            length: 479.1,
             chapters: [
                 { t: 0, title: tk('Install') },
-                { t: 11.1, title: tk('The first sign-in') },
-                { t: 34.1, title: tk('Add a model key') },
-                { t: 64.2, title: tk('Choose who does what') },
-                { t: 89.6, title: tk('Create a project') },
-                { t: 119.6, title: tk('Your first request') },
-                { t: 159.2, title: tk('The Studio') },
-                { t: 188.8, title: tk('Commit your work') },
+                { t: 31.3, title: tk('The first sign-in') },
+                { t: 61.1, title: tk('Add a model') },
+                { t: 105.6, title: tk('Choose who does what') },
+                { t: 140.9, title: tk('Set the Workspace') },
+                { t: 159.9, title: tk('Set up Git and GitHub') },
+                { t: 204.4, title: tk('Create a project') },
+                { t: 247.2, title: tk('Your first request') },
+                { t: 332.3, title: tk('The Studio') },
+                { t: 364.9, title: tk('Commit your work') },
+                { t: 398.7, title: tk('Ask for a change from the Studio') },
             ],
         };
         const tutorialAt = ref(0);              // seconds played, to mark the chapter on screen

@@ -18,7 +18,7 @@ The ideas in one minute:
 - **Everything is metered:** every model call is recorded with its tokens, cost and time, and nothing is ever lost when the server restarts. How well real models do real tasks is a separate question: see [docs/evaluations](https://github.com/optiware-ai/optimux/blob/main/docs/evaluations/README.md) for what has been measured.
 - **You decide what runs.** By default (*Supervised*) every command and file change waits for your approval; a project can be given more freedom (*Autonomy levels*), and risky commands always ask.
 
-> **Rather watch?** **Dashboard → Video tutorial** (under Help, below Guide) is a film of under four minutes: a fresh install, the first sign-in, a model key, routing, a new project and a first request, then the Studio with its files, editor, preview and git pane. The **Chapters** under the player jump to each part. It has no sound, the captions say what happens, and it is in English.
+> **Rather watch?** **Dashboard → Video tutorial** (under Help, below Guide) is a film of eight minutes: what the installer prints and where the access token is, the first sign-in, adding a model from zero, routing, the Workspace, Git and GitHub, a new project and a first request with its approvals, the cost counter and the thumbs; then the Studio with its files, editor, preview and git pane, and a change asked by right-clicking the page. The **Chapters** under the player jump to each part. It has no sound, the captions under the picture say what happens, and it is in English.
 >
 > **New here?** Read *Getting started* first, then *The chat screen*. *How to spend less* is the chapter to come back to once you have used Optimux for a few days.
 

@@ -22,7 +22,7 @@
     <script src="/static/i18n.js"></script>
 </head>
 <body class="bg-gray-950 text-gray-200 font-sans h-screen flex flex-col">
-    <div id="app" class="flex flex-col h-full max-w-6xl mx-auto w-full p-4 relative">
+    <div id="app" v-cloak class="flex flex-col h-full max-w-6xl mx-auto w-full p-4 relative">
         
         <!-- IM-06: the server was updated while this tab was open -->
         <div v-if="pageUpdated" role="alert" class="fixed top-3 left-1/2 -translate-x-1/2 z-[80] w-[min(42rem,calc(100vw-2rem))] rounded-xl border border-blue-500/60 bg-gray-900 shadow-2xl px-4 py-3 flex flex-wrap items-center gap-3">
@@ -1140,7 +1140,7 @@
                 <!-- v0.8: the video tutorial, under Help. Leaving the page removes the player, which stops it -->
                 <div v-if="settingsTab === 'video'" class="space-y-4 max-w-4xl">
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                        <p class="text-[14px] text-gray-400 mb-3">{{ $t('From a fresh install to your first commit, in under four minutes. No sound: the captions say what happens. Filmed in English.') }}</p>
+                        <p class="text-[14px] text-gray-400 mb-3">{{ $t('From the installer to a change asked from the Studio, in eight minutes. No sound: the captions under the picture say what happens. Filmed in English.') }}</p>
                         <video data-tutorial-video controls preload="metadata" playsinline :src="TUTORIAL.src" :poster="TUTORIAL.poster" @timeupdate="tutorialTick" @seeked="tutorialTick"
                                class="w-full aspect-video rounded-lg border border-gray-800 bg-black"></video>
                         <h3 class="text-[12px] font-semibold tracking-widest uppercase text-gray-500 mt-4 mb-2">{{ $t('Chapters') }}</h3>
@@ -1555,7 +1555,7 @@
                                     <label class="flex items-center gap-1.5"><input type="checkbox" v-model="catHideRetired" class="w-3.5 h-3.5"> {{ $t('Hide retired models') }}</label>
                                     <label v-if="catInfo && catInfo.models_refreshed" class="flex items-center gap-1.5"><input type="checkbox" v-model="catMineOnly" class="w-3.5 h-3.5"> {{ $t('Only models my key can use') }}</label>
                                 </div>
-                                <p v-if="catInfo && !catInfo.models_refreshed && catProvider.env" class="mt-2 text-[13px] text-gray-400">{{ $t('This list comes from LiteLLM\'s price list, so it can include models {label} no longer serves. To keep only the models your key can use,', { label: catProvider.label }) }} <template v-if="!(cat && cat.online)">{{ $t('turn on the online catalog below, then') }} </template><span v-html="$th('click <b class=&quot;text-gray-300&quot;>Refresh {label} models</b>.', { label: catProvider.label })"></span></p>
+                                <p v-if="catInfo && !catInfo.models_refreshed && catProvider.env" class="mt-2 text-[13px] text-gray-400">{{ $t('This list comes from LiteLLM\'s price list, so it can include models {label} no longer serves. To keep only the models your key can use,', { label: catProvider.label }) }} <template v-if="!(cat && cat.online)">{{ $t('turn on the online catalog below, then') }}{{ ' ' }}</template><span v-html="$th('click <b class=&quot;text-gray-300&quot;>Refresh {label} models</b>.', { label: catProvider.label })"></span></p>
                                 <p v-if="catPid === 'gemini'" class="mt-1 text-[13px] text-gray-400">{{ $t('Google\'s free tier: with a key from a Google project without billing, many Gemini models cost nothing within rate limits. The prices here are the paid ones, and Optimux counts costs with them.') }}</p>
                             </div>
 
@@ -3770,8 +3770,8 @@
                     <button @click="sendApprovalResponse(true)" class="px-5 py-2 bg-amber-700 hover:bg-amber-600 text-white font-bold rounded transition text-sm">{{ $t('Use {alt} for this request', { alt: pendingFallback.alt }) }}</button>
                 </div>
             </div>
-            <div v-if="pendingApproval && !pendingForm && pendingAction !== 'push_project' && pendingAction !== 'update_project' && pendingAction !== 'model_fallback' && pendingAction !== 'step_limit'" class="mb-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 flex flex-col gap-3">
-                <div class="flex items-start gap-3">
+            <div v-if="pendingApproval && !pendingForm && pendingAction !== 'push_project' && pendingAction !== 'update_project' && pendingAction !== 'model_fallback' && pendingAction !== 'step_limit'" data-approval-card class="mb-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 flex flex-col gap-3 max-h-[calc(100vh-17rem)] overflow-y-auto">
+                <div class="flex items-start gap-3 flex-shrink-0">
                     <svg class="w-6 h-6 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                     <div class="flex-1 min-w-0"><!-- min-w-0: long lines wrap inside the box, never past the page -->
                         <h3 class="text-yellow-400 font-bold mb-1 flex items-center gap-2">{{ $t('Approval Required') }}
@@ -3781,8 +3781,8 @@
                         <p class="text-sm text-gray-300 mb-2">{{ pendingAction ? $t('The assistant wants to do this (always asked, at every level):') : (pendingFile ? $t('The assistant wants to change this file in the project:') : $t('The assistant wants to run this command on your machine:')) }}</p>
                         <p v-if="pendingFile && pendingStillAsking" class="text-[12px] text-yellow-300/90 mb-2">{{ $t('This rewrites a file that already exists, so it asks even after "Approve all edits": check that nothing important is dropped.') }}</p>
                         <p v-else-if="pendingAskReason && !pendingAskReason.startsWith('Supervised')" class="text-[12px] text-yellow-300/90 mb-2">{{ pendingAskReason }}</p>
-                        <div class="relative"><div class="bg-black/60 p-3 pr-10 rounded font-mono text-sm text-yellow-200 whitespace-pre-wrap break-all max-h-96 overflow-y-auto">{{ pendingCommand }}</div><copy-btn :text="pendingCommand" :label="$t('Copy the command')" class="absolute top-2 right-2"></copy-btn></div>
-                        <pre v-if="pendingFile && pendingFile.diff" class="mt-2 bg-black/60 p-3 rounded font-mono text-xs whitespace-pre-wrap break-all overflow-y-auto max-h-96"><span v-for="(l, i) in pendingFile.diff.split('\n')" :key="i" :class="diffLineClass(l)">{{ l }}
+                        <div class="relative"><div class="bg-black/60 p-3 pr-10 rounded font-mono text-sm text-yellow-200 whitespace-pre-wrap break-all max-h-[min(24rem,38vh)] overflow-y-auto">{{ pendingCommand }}</div><copy-btn :text="pendingCommand" :label="$t('Copy the command')" class="absolute top-2 right-2"></copy-btn></div>
+                        <pre v-if="pendingFile && pendingFile.diff" class="mt-2 bg-black/60 p-3 rounded font-mono text-xs whitespace-pre-wrap break-all overflow-y-auto max-h-[min(24rem,38vh)]"><span v-for="(l, i) in pendingFile.diff.split('\n')" :key="i" :class="diffLineClass(l)">{{ l }}
 </span></pre>
                         <div v-if="!pendingAction && !pendingFile" class="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-gray-300">
                             <span>{{ $t('⏱ Time limit') }}</span>
@@ -3798,7 +3798,8 @@
                         </div>
                     </div>
                 </div>
-                <div class="flex flex-wrap justify-end items-center gap-3 mt-2">
+                <!-- always in sight: the card scrolls under its buttons on a short window or in the Studio's narrow chat column -->
+                <div data-approval-buttons class="flex flex-wrap justify-end items-center gap-3 flex-shrink-0 sticky -bottom-4 -mx-4 -mb-4 px-4 pb-4 pt-2 bg-[#191212]">
                     <input v-model="rejectReason" @keydown.enter.prevent="sendApprovalResponse(false)" maxlength="500" :aria-label="$t('Reason for rejecting (optional)')"
                            :placeholder="$t('Why reject? (optional, sent to the model, e.g. “no pipes”)')"
                            :title="$t('Optional. Typed text goes to the model with Reject, so it knows what to do instead. Enter rejects.')"
