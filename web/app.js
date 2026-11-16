@@ -916,6 +916,83 @@ const OnboardSteps = {
     </ol>`,
 };
 
+// v0.8: What was sent (Dashboard -> History, and under a reply): the parts of one model call
+const SENT_KINDS = {     // kind: [label, the bar's colour, the text's colour]
+    instructions: [() => tr('Optimux\'s instructions'), 'bg-gray-500', 'text-gray-300'],
+    memory: [() => tr('Your memory'), 'bg-purple-500', 'text-purple-300'],
+    user: [() => tr('You'), 'bg-blue-500', 'text-blue-300'],
+    assistant: [() => tr('The model, earlier'), 'bg-green-600', 'text-green-300'],
+    call: [() => tr('Tool the model asked for'), 'bg-teal-600', 'text-teal-300'],
+    result: [() => tr('Tool result'), 'bg-amber-600', 'text-amber-300'],
+    tools: [() => tr('Tools offered'), 'bg-pink-600', 'text-pink-300'],
+};
+// what Optimux wrote to the model itself (not the user): its one message is a request, not "You"
+const SENT_OWN = ['commit_message', 'curator', 'skill_draft'];
+const sentKindLabel = (k, role) => (k === 'user' && SENT_OWN.includes(role) ? tr('Optimux\'s request') : SENT_KINDS[k] ? SENT_KINDS[k][0]() : k);
+const sentKindClass = (k, bar) => (SENT_KINDS[k] || [null, 'bg-gray-600', 'text-gray-300'])[bar ? 1 : 2];
+const sentPeek = (t) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+const sentGroupsOf = (d) => {
+    if (!d || !d.chars) return [];
+    const sums = {};
+    d.parts.forEach((p) => { sums[p.kind] = (sums[p.kind] || 0) + p.chars; });
+    return Object.keys(SENT_KINDS).filter((k) => sums[k]).map((k) => ({ kind: k, chars: sums[k], share: Math.max(1, Math.round(100 * sums[k] / d.chars)) }));
+};
+// what a reader looks for first is open: the memory, and the last thing said
+const sentShownAtFirst = (d) => {
+    const shown = {};
+    const last = d.parts.map((p) => p.kind).lastIndexOf('user');
+    d.parts.forEach((p, n) => { shown[n] = p.kind === 'memory' || n === last; });
+    return shown;
+};
+const sentAsText = (d) => d.parts.map((p) => '===== ' + sentKindLabel(p.kind, d.role) + ' =====\n' + p.text).join('\n\n');
+// The rows of one call: Optimux's instructions and memory first, then one group per request of the user (the
+// request, what the model did for it, what it answered), then the tools offered. A request starts a group
+// unless it only continues the one before (a message cut in two by the memory).
+const sentPartItems = (d) => {
+    const rows = [];
+    let group = null;
+    d.parts.forEach((p, i) => {
+        if (p.kind === 'tools' || p.kind === 'instructions') group = null;
+        if (p.kind === 'user' && (!group || group.worked)) {
+            group = { head: true, n: rows.length, title: p.text, parts: 0, chars: 0, worked: false };
+            rows.push(group);
+        }
+        if (group) {
+            group.parts++; group.chars += p.chars;
+            if (['assistant', 'call', 'result'].includes(p.kind)) group.worked = true;
+        }
+        rows.push({ head: false, p, i, g: group ? group.n : -1 });
+    });
+    const heads = rows.filter((r) => r.head);
+    if (heads.length) heads[heads.length - 1].last = true;
+    return rows;
+};
+const SentCall = {
+    props: { data: Object, fmt: Function, tokens: Number },
+    data() {
+        const open = {};
+        sentPartItems(this.data).filter((r) => r.head).forEach((r) => { open[r.n] = !!r.last; });   // the last request is open
+        return { shown: sentShownAtFirst(this.data), open, copied: false };
+    },
+    computed: {
+        rows() { return sentPartItems(this.data); },
+        kinds() { return sentGroupsOf(this.data); },
+    },
+    methods: {
+        label(k) { return sentKindLabel(k, this.data.role); },
+        klass: sentKindClass,
+        peek: sentPeek,
+        setAll(on) {
+            this.data.parts.forEach((p, n) => { this.shown[n] = on; });
+            this.rows.filter((r) => r.head).forEach((r) => { this.open[r.n] = on; });
+        },
+        async copy() {
+            try { await navigator.clipboard.writeText(sentAsText(this.data)); this.copied = true; setTimeout(() => { this.copied = false; }, 1500); } catch (_) {}
+        },
+    },
+    template: '#sent-call-tpl',
+};
+
 const optimuxApp = createApp({
     setup() {
         const ws = ref(null);
@@ -953,35 +1030,14 @@ const optimuxApp = createApp({
         const moreSteps = ref(10);             // how many more, in that card
         const pendingForm = ref(null);   // Feature 25: { form, error, github, active_project, key } for create_project
         // v0.8: What was sent: the model calls of one reply, each read from /api/sent/<id> when picked
-        const sentBox = Vue.reactive({ open: false, calls: [], at: 0, loading: false, error: '', data: null, shown: {}, copied: false });
-        const SENT_KINDS = {     // kind: [label, the bar's colour, the text's colour]
-            instructions: [() => tr('Optimux\'s instructions'), 'bg-gray-500', 'text-gray-300'],
-            memory: [() => tr('Your memory'), 'bg-purple-500', 'text-purple-300'],
-            user: [() => tr('You'), 'bg-blue-500', 'text-blue-300'],
-            assistant: [() => tr('The model, earlier'), 'bg-green-600', 'text-green-300'],
-            call: [() => tr('Tool the model asked for'), 'bg-teal-600', 'text-teal-300'],
-            result: [() => tr('Tool result'), 'bg-amber-600', 'text-amber-300'],
-            tools: [() => tr('Tools offered'), 'bg-pink-600', 'text-pink-300'],
-        };
-        const sentKindLabel = (k) => (SENT_KINDS[k] ? SENT_KINDS[k][0]() : k);
-        const sentKindClass = (k, bar) => (SENT_KINDS[k] || [null, 'bg-gray-600', 'text-gray-300'])[bar ? 1 : 2];
+        const sentBox = Vue.reactive({ open: false, calls: [], at: 0, loading: false, error: '', data: null });
         const sentRoleClass = (r) => (r === 'complex' ? 'bg-amber-900/60 text-amber-200' : r === 'simple' ? 'bg-blue-900/60 text-blue-200' : 'bg-gray-800 text-gray-300');
-        const sentPeek = (t) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 140);
-        const sentGroupsOf = (d) => {
-            if (!d || !d.chars) return [];
-            const sums = {};
-            d.parts.forEach((p) => { sums[p.kind] = (sums[p.kind] || 0) + p.chars; });
-            return Object.keys(SENT_KINDS).filter((k) => sums[k]).map((k) => ({ kind: k, chars: sums[k], share: Math.max(1, Math.round(100 * sums[k] / d.chars)) }));
-        };
-        const sentGroups = Vue.computed(() => sentGroupsOf(sentBox.data));
-        // what a reader looks for first is open: the memory, and the last thing said
-        const sentShownAtFirst = (d) => {
-            const shown = {};
-            const last = d.parts.map((p) => p.kind).lastIndexOf('user');
-            d.parts.forEach((p, n) => { shown[n] = p.kind === 'memory' || n === last; });
-            return shown;
-        };
-        // The calls of one reply, each model once with its calls under it (numbers keep the order they were made in)
+        // who made a call, for a list: the Conductor, the executor (with its tier), the scout, a commit message...
+        const sentRoleName = (r, tier) => ({ conductor: tr('Conductor'), simple: tr('Executor · SIMPLE'), complex: tr('Executor · COMPLEX'),
+            scout: tr('Scout'), planner: tr('Planner'), curator: tr('Memory update'), commit_message: tr('Commit message'),
+            skill_draft: tr('Skill draft') })[r] || r;
+        // a date and time down to the second, so calls can be followed one after another
+        const sentWhen = (ts) => new Date(ts * 1000).toLocaleString(appLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const sentModels = Vue.computed(() => {
             const order = [], by = {};
             sentBox.calls.forEach((c, i) => {
@@ -994,11 +1050,11 @@ const optimuxApp = createApp({
         const showSent = async (i) => {
             const call = sentBox.calls[i];
             if (!call) return;
-            sentBox.at = i; sentBox.loading = true; sentBox.error = ''; sentBox.data = null; sentBox.copied = false;
+            sentBox.at = i; sentBox.loading = true; sentBox.error = ''; sentBox.data = null;
             try {
                 const d = await studioFetch('/api/sent/' + call.id);
                 if (sentBox.calls[sentBox.at] !== call) return;
-                sentBox.data = d; sentBox.shown = sentShownAtFirst(d);
+                sentBox.data = d;
             } catch (e) { sentBox.error = e.message; }
             sentBox.loading = false;
         };
@@ -1009,12 +1065,6 @@ const optimuxApp = createApp({
             let at = sentBox.calls.length - 1;
             while (at > 0 && ['conductor', 'scout', 'planner'].includes(sentBox.calls[at].role)) at--;
             showSent(Math.max(0, at));
-        };
-        const sentOpenAll = (on) => { if (sentBox.data) sentBox.data.parts.forEach((p, n) => { sentBox.shown[n] = on; }); };
-        const sentAsText = (d) => d.parts.map((p) => '===== ' + sentKindLabel(p.kind) + ' =====\n' + p.text).join('\n\n');
-        const copySent = async () => {
-            if (!sentBox.data) return;
-            try { await navigator.clipboard.writeText(sentAsText(sentBox.data)); sentBox.copied = true; setTimeout(() => { sentBox.copied = false; }, 1500); } catch (_) {}
         };
         const pendingSync = ref(null);   // v0.8: the Push / Update window the model asked for: { project, kind, message, sync_pass }
         const reopenSync = () => {       // the card's button: the same window, with the pass that lets it through
@@ -2105,67 +2155,62 @@ const optimuxApp = createApp({
             historyBlock.value = historyBlock.value === name ? '' : name;
             if (historyBlock.value === 'sent') fetchSentChats();
         };
-        const historySearchHint = Vue.computed(() => (historyBlock.value === 'sent' ? tr('Words in the title or a model\'s name') : tr('Words in the title')));
+        const historySearchHint = Vue.computed(() => (historyBlock.value === 'sent' ? tr('Title, model or request') : tr('Words in the title')));
         const historySince = () => {      // the start of the period (Today, 7 days, 30 days), in seconds; 0 = any time
             const period = historyPage.value.period;
             if (period === 'all') return 0;
             const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (Number(period) - 1));
             return d.getTime() / 1000;
         };
-        // The kept prompts: chat (+) → the models it used, each once → its calls, each opened where it is
-        const sentTree = Vue.reactive({ chats: [], loading: false, error: '', loaded: false, open: {}, calls: {}, busy: {}, call: {} });
+        // The kept prompts: chat (+) → each request of the user → the Conductor and the executor that answered
+        // it → their calls, each opened where it is
+        const sentTree = Vue.reactive({ chats: [], loading: false, error: '', loaded: false, open: {}, turns: {}, turnOpen: {}, callOpen: {}, detail: {} });
         let sentChatsSeq = 0;
+        const sentQuery = () => historyPage.value.q.trim();
         const fetchSentChats = async () => {
             const h = historyPage.value, mine = ++sentChatsSeq;
             const params = new URLSearchParams();
             if (h.project) params.set('project', h.project === NO_PROJECT ? '' : h.project); else params.set('all_projects', 'true');
             if (h.archived) params.set('archived', 'true');
-            if (h.q.trim()) params.set('q', h.q.trim());
+            if (sentQuery()) params.set('q', sentQuery());
             if (historySince()) params.set('since', String(historySince()));
             sentTree.loading = true; sentTree.error = '';
             try {
                 const d = await studioFetch('/api/sent/chats?' + params.toString());
                 if (mine !== sentChatsSeq) return;                  // a newer search is on its way
-                sentTree.chats = d.chats; sentTree.loaded = true; sentTree.calls = {};
-                sentTree.chats.filter((c) => sentTree.open[c.session]).forEach((c) => loadSentCalls(c.session));
+                sentTree.chats = d.chats; sentTree.loaded = true; sentTree.turns = {};
+                sentTree.chats.filter((c) => sentTree.open[c.session]).forEach((c) => loadSentTurns(c.session));   // an open chat reads the new words too
             } catch (e) { if (mine === sentChatsSeq) sentTree.error = e.message; }
             if (mine === sentChatsSeq) sentTree.loading = false;
         };
         watch(() => historyPage.value.period, () => { if (historyBlock.value === 'sent') fetchSentChats(); });
-        const loadSentCalls = async (sid) => {
-            sentTree.busy[sid] = true;
+        const loadSentTurns = async (sid) => {
             try {
-                const d = await studioFetch('/api/sent?limit=500&session=' + encodeURIComponent(sid));
-                sentTree.calls[sid] = d.calls.map((c) => ({ ...c, when: new Date(c.ts * 1000).toLocaleString(appLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }));
-            } catch (e) { sentTree.calls[sid] = []; sentTree.error = e.message; }
-            sentTree.busy[sid] = false;
+                const d = await studioFetch('/api/sent/turns?session=' + encodeURIComponent(sid) + '&q=' + encodeURIComponent(sentQuery()));
+                sentTree.turns[sid] = d.turns.map((t) => ({ ...t, when: sentWhen(t.ts), calls: t.calls.map((c) => ({ ...c, when: sentWhen(c.ts) })) }));
+            } catch (e) { sentTree.turns[sid] = []; sentTree.error = e.message; }
         };
         const toggleSentChat = (c) => {
             sentTree.open[c.session] = !sentTree.open[c.session];
-            if (sentTree.open[c.session] && !sentTree.calls[c.session]) loadSentCalls(c.session);
+            if (sentTree.open[c.session] && !sentTree.turns[c.session]) loadSentTurns(c.session);
         };
-        const sentModelsOf = (sid) => {   // each model once; its calls in the order they were made
+        // The calls of one request, by who made them: the Conductor, then the executor (SIMPLE and COMPLEX apart), the scout...
+        const sentTurnGroups = (t) => {
             const order = [], by = {};
-            [...(sentTree.calls[sid] || [])].sort((a, b) => a.id - b.id).forEach((c) => {
-                const k = c.model || '?';
-                if (!by[k]) { by[k] = { model: k, items: [] }; order.push(k); }
+            t.calls.forEach((c) => {
+                const k = c.role + '|' + c.model;
+                if (!by[k]) { by[k] = { key: k, role: c.role, model: c.model || '?', items: [] }; order.push(k); }
                 by[k].items.push(c);
             });
-            return order.map((k) => by[k]);
+            return order.map((k) => by[k]).sort((a, b) => (a.role === 'conductor' ? 0 : 1) - (b.role === 'conductor' ? 0 : 1));
         };
         const toggleSentCall = async (c) => {
-            const had = sentTree.call[c.id];
-            if (had) { had.open = !had.open; return; }
-            const st = Vue.reactive({ open: true, loading: true, error: '', data: null, shown: {}, copied: false });
-            sentTree.call[c.id] = st;
-            try { const d = await studioFetch('/api/sent/' + c.id); st.data = d; st.shown = sentShownAtFirst(d); }
-            catch (e) { st.error = e.message; }
-            st.loading = false;
-        };
-        const sentCallAll = (st, on) => { if (st.data) st.data.parts.forEach((p, n) => { st.shown[n] = on; }); };
-        const copySentCall = async (st) => {
-            if (!st.data) return;
-            try { await navigator.clipboard.writeText(sentAsText(st.data)); st.copied = true; setTimeout(() => { st.copied = false; }, 1500); } catch (_) {}
+            sentTree.callOpen[c.id] = !sentTree.callOpen[c.id];
+            if (!sentTree.callOpen[c.id] || sentTree.detail[c.id]) return;
+            sentTree.detail[c.id] = { loading: true, error: '', data: null };
+            try { sentTree.detail[c.id].data = await studioFetch('/api/sent/' + c.id); }
+            catch (e) { sentTree.detail[c.id].error = e.message; }
+            sentTree.detail[c.id].loading = false;
         };
         const historySorted = Vue.computed(() => {
             const { sort, desc } = historyPage.value;
@@ -6542,8 +6587,8 @@ const optimuxApp = createApp({
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
-            sentBox, openSent, showSent, sentGroups, sentGroupsOf, sentModels, historyBlock, toggleHistoryBlock, historySearchHint,
-            sentTree, toggleSentChat, sentModelsOf, toggleSentCall, sentCallAll, copySentCall, sentKindLabel, sentKindClass, sentRoleClass, sentPeek, sentOpenAll, copySent,
+            sentBox, openSent, showSent, sentModels, historyBlock, toggleHistoryBlock, historySearchHint,
+            sentTree, toggleSentChat, sentTurnGroups, toggleSentCall, sentRoleClass, sentRoleName, sentWhen,
             syncBox, chatProject, openSync, reopenSync, closeSync, syncReady, syncCommits, syncCanChoose, syncProblems, syncWarnings, syncButton, writeCommitMessage, runSync, link, linkNote,
             startClone, cancelClone, projectLocations, loadProjectLocations, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,
@@ -6562,7 +6607,7 @@ const optimuxApp = createApp({
     }
 }).component('help-tip', HelpTip).component('busy-logo', BusyLogo).component('route-trail', RouteTrail).component('odo-digit', OdoDigit).component('odo-text', OdoText).component('project-form', ProjectForm).component('deleted-tag', DeletedTag).component('copy-btn', CopyBtn).component('onboard-steps', OnboardSteps)
   .component('day-columns', DayColumns).component('tree-map', Treemap).component('connected-dots', ConnectedScatter)
-  .component('scatter-plot', ScatterPlot).component('chart-pick', ChartPick)
+  .component('scatter-plot', ScatterPlot).component('chart-pick', ChartPick).component('sent-call', SentCall)
   .component('lang-flag', LangFlag).component('lang-badge', LangBadge).component('sign-out-btn', SignOutBtn)
   .use({ install(app) { app.config.globalProperties.$t = window.tr; app.config.globalProperties.$th = window.trh; app.config.globalProperties.$locale = window.appLocale; } });
 // v0.8: start once the remembered language is loaded, so texts made at start are translated

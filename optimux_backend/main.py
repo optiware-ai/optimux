@@ -823,6 +823,13 @@ async def sent_calls(limit: int = 100, role: str | None = None, session: str | N
     return {"calls": await asyncio.to_thread(sent_lib.recent, limit, role or None, None, session)}
 
 
+@app.get("/api/sent/turns")
+async def sent_turns(session: str = "", q: str = ""):
+    """One chat's kept calls grouped by the request that made them (Dashboard → History); session ""
+    is the calls made outside any chat. `q` marks the requests holding those words."""
+    return {"turns": await asyncio.to_thread(sent_lib.turns, session, q)}
+
+
 @app.get("/api/sent/chats")
 async def sent_chats(project: str | None = None, all_projects: bool = False, archived: bool = False,
                      since: float = 0, q: str = "", limit: int = 300):

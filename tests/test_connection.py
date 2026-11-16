@@ -6,12 +6,14 @@ from pathlib import Path
 
 import pytest
 
+from tests.jsmod import prologue
+
 JS = Path(__file__).resolve().parent.parent / "web" / "connection.js"
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 
 
 def run(expr: str):
-    code = f"const C = require({json.dumps(str(JS))}); console.log(JSON.stringify({expr}));"
+    code = prologue(JS, "C") + f"console.log(JSON.stringify({expr}));"
     out = subprocess.run(["node", "-e", code], capture_output=True, text=True, check=True).stdout
     return json.loads(out)
 

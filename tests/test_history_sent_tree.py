@@ -41,19 +41,71 @@ def test_the_filters_at_the_top_reach_the_open_block():
     assert "historySearchHint" in search                                            # title only, or title and model
 
 
-def test_the_kept_prompts_are_a_tree_of_chat_then_models_then_calls():
-    sent = HISTORY[HISTORY.index("historyBlock === 'sent'"):]
-    chat = sent[sent.index("data-sent-chat"):]
-    assert ":aria-expanded=" in chat[:600] and "toggleSentChat" in chat[:600]
-    assert "data-sent-model" in sent and "data-sent-call" in sent and "data-sent-part" in sent
-    assert sent.index("data-sent-chat") < sent.index("data-sent-model") < sent.index("data-sent-call") < sent.index("data-sent-part")
-    assert "sentModelsOf(" in sent                                                  # each model once, its calls under it
+def _sent_block():
+    return HISTORY[HISTORY.index("historyBlock === 'sent'"):]
+
+
+def test_the_kept_prompts_are_a_tree_chat_then_request_then_conductor_and_executor_then_calls():
+    sent = _sent_block()
+    for marker in ("data-sent-chat", "data-sent-turn", "data-sent-model", "data-sent-call", "<sent-call"):
+        assert marker in sent, marker
+    order = [sent.index(m) for m in ("data-sent-chat", "data-sent-turn", "data-sent-model", "data-sent-call", "<sent-call")]
+    assert order == sorted(order)
     assert "keep_sent_days" in sent and "showSettingsSaved" in sent                  # the days setting stays with the block
+    row = sent[sent.index("data-sent-turn"):][:1400]
+    assert "t.prompt" in row and "sentRoleName(" in row                              # the request, or what made the call
+    group = sent[sent.index("data-sent-model"):][:900]
+    assert "sentRoleName(g.role" in group and "g.model" in group                     # "Conductor · model", "Executor · SIMPLE · model"
+    assert "k.when" in sent[sent.index("data-sent-call"):][:1500]
 
 
-def test_a_chat_that_is_gone_and_calls_outside_any_chat_are_named():
-    sent = HISTORY[HISTORY.index("historyBlock === 'sent'"):]
-    assert "Outside a chat" in sent and "Deleted chat" in sent
+def test_the_name_of_a_chat_opens_it_in_the_list_and_does_not_leave_the_page():
+    sent = _sent_block()
+    chat = sent[sent.index("data-sent-chat"):sent.index("data-sent-turn")]
+    assert "openChatFromDashboard" not in chat
+    assert chat.count("toggleSentChat(c)") >= 2                                       # the + and the name
+
+
+def test_every_call_shows_its_date_and_time_with_seconds():
+    when = APP[APP.index("const sentWhen"):][:400]
+    assert "second: '2-digit'" in when and "hour: '2-digit'" in when and "month: 'short'" in when
+    assert "sentWhen(" in APP[APP.index("const loadSentTurns"):][:900]
+
+
+def test_the_search_reaches_the_requests_and_the_open_chat_gets_it_too():
+    assert "'/api/sent/turns?session='" in APP.replace('"', "'") or "/api/sent/turns?" in APP
+    load = APP[APP.index("const loadSentTurns"):][:700]
+    assert "sentQuery()" in load
+    assert "request" in APP[APP.index("const historySearchHint"):][:300]
+    assert "sentTree.turns" in APP[APP.index("const fetchSentChats"):][:1500]          # an open chat is read again with the new words
+
+
+def test_the_parts_of_a_call_are_grouped_by_the_request_they_answer():
+    assert "const sentPartItems" in APP
+    items = APP[APP.index("const sentPartItems"):][:1800]
+    assert "'user'" in items and "'assistant'" in items and "'tools'" in items
+    tpl = PAGE[PAGE.index('id="sent-call-tpl"'):PAGE.index("</script>", PAGE.index('id="sent-call-tpl"'))]
+    for marker in ("data-sent-group", "data-sent-part", ":aria-expanded"):
+        assert marker in tpl, marker
+    assert ".component('sent-call'" in APP
+
+
+def test_the_peek_of_a_part_takes_half_the_row_and_ends_in_dots():
+    tpl = PAGE[PAGE.index('id="sent-call-tpl"'):PAGE.index("</script>", PAGE.index('id="sent-call-tpl"'))]
+    at = tpl.index("peek(r.p.text)")
+    row = tpl[tpl.rindex("<span", 0, at):at]
+    assert "max-w-[50%]" in row and "truncate" in row and "flex-1" not in row           # not the whole row
+    assert "ml-auto" in tpl                                                              # the size and arrow go right
+
+
+def test_the_calls_made_by_optimux_itself_are_not_called_you():
+    assert r"Optimux\'s request" in APP and "commit_message" in APP[APP.index("const SENT_OWN"):][:200]
+
+
+def test_one_shared_template_serves_the_dialog_and_the_history():
+    assert PAGE.count("<sent-call") == 2
+    start = PAGE.index('<!-- v0.8: the parts of one model call')
+    assert PAGE[:start].rstrip().endswith("</div>") and PAGE[start:].count("<script") == 2   # after the app's root, which would drop a script
 
 
 def test_a_model_is_listed_once_in_the_dialog_of_one_reply():

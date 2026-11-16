@@ -17,6 +17,7 @@ import time
 from optimux_backend.core import store
 
 KEEP_DAYS = 14            # the default of the keep_sent_days setting; 0 keeps nothing
+PROMPT_CUT = 300          # characters of a request shown in a list
 PRUNE_EVERY = 6 * 3600    # seconds between clean-ups, done on the way by record()
 _last_prune = 0.0
 
@@ -145,30 +146,86 @@ def recent(limit: int = 100, role: str | None = None, project: str | None = None
         conn.close()
 
 
+def _like(text: str) -> str:
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def _prompt_terms(conn, query: str) -> tuple[str, list]:
+    """SQL (and its arguments) for "one of this call's user messages holds `query`". The parts are stored by
+    hash and a call lists [kind, hash]: the parts holding the words are found first (the newest 300), then the
+    calls that list one of them as a user message. Optimux's own text, in every call, is never the match."""
+    hashes = [r["hash"] for r in conn.execute(
+        "SELECT hash FROM sent_parts WHERE text LIKE ? ESCAPE '\\' ORDER BY rowid DESC LIMIT 300", (_like(query),))]
+    if not hashes:
+        return "", []
+    return " OR (" + " OR ".join(["instr(parts, ?) > 0"] * len(hashes)) + ")", [f'["user", "{h}"]' for h in hashes]
+
+
+def _last_user_text(conn, refs: list) -> str:
+    for kind, h in reversed(refs):
+        if kind == "user":
+            row = conn.execute("SELECT text FROM sent_parts WHERE hash = ?", (h,)).fetchone()
+            if row and row["text"].strip():
+                return row["text"]
+    return ""
+
+
+def turns(session: str, query: str = "") -> list[dict]:
+    """The kept calls of one chat ("" = those outside any chat), grouped by the request that made them, in the
+    order they were asked: [{key, reply, prompt, hit, ts, calls: [{id, ts, role, model, chars}]}]. A reply's calls
+    share a task id (the Conductor's, the executor's, the scout's); a call made on its own (the memory update, a
+    commit message) is a turn of its own with no prompt (`reply` false). `prompt` is the last thing the user said
+    in the executor's call, cut for a list; `hit` says whether it holds `query`."""
+    conn = store.connect()
+    try:
+        rows = conn.execute("SELECT id, ts, task_id, role, model, chars, parts FROM sent_calls "
+                            "WHERE COALESCE(session, '') = ? ORDER BY id", (session,)).fetchall()
+        groups: dict[str, list] = {}
+        for r in rows:
+            groups.setdefault(r["task_id"] or f"call-{r['id']}", []).append(r)
+        out = []
+        for key, calls in groups.items():
+            reply = not key.startswith("call-")
+            prompt = ""
+            if reply:
+                first = next((c for c in calls if c["role"] in ("simple", "complex")), calls[0])
+                prompt = " ".join(_last_user_text(conn, json.loads(first["parts"])).split())[:PROMPT_CUT]
+            out.append({"key": key, "reply": reply, "prompt": prompt,
+                        "hit": bool(query.strip()) and query.strip().lower() in prompt.lower(), "ts": calls[0]["ts"],
+                        "calls": [{"id": c["id"], "ts": c["ts"], "role": c["role"], "model": c["model"], "chars": c["chars"]}
+                                  for c in calls]})
+    finally:
+        conn.close()
+    return out
+
+
 def chats(project: str | None = None, since: float | None = None, archived: bool = False,
           query: str = "", limit: int = 300) -> list[dict]:
     """The kept calls by chat, the most recently used chat first (Dashboard -> History):
     {session, title, known, project, archived, last, calls, chars, models}. The filters are
     the chat list's: a project ("" = the Workspace), calls since a time, archived chats,
-    words in the title or in a model's name. Calls made outside any chat (a commit
+    words in the title, in a model's name or in one of the user's requests (the whole chat is listed, not only the matching calls). `since` keeps the chats used since then. Calls made outside any chat (a commit
     message, a memory update) come as one row with session "" and no title; those of a
     chat that was deleted keep their id, with known false and no title."""
     from optimux_backend.core.security import mask_secrets
     where, args = ["COALESCE(s.archived, 0) = ?"], [int(archived)]
     if project is not None:
         where.append("COALESCE(c.project, '') = ?"); args.append(project)
-    if since is not None:
-        where.append("c.ts >= ?"); args.append(since)
-    if query.strip():
-        where.append("(s.title LIKE ? OR c.model LIKE ?)"); args += [f"%{query.strip()}%"] * 2
-    sql = ("SELECT COALESCE(c.session, '') AS session, MAX(s.title) AS title, MAX(s.archived) AS archived, "
-           "MAX(c.ts) AS last, COUNT(*) AS calls, SUM(c.chars) AS chars, GROUP_CONCAT(DISTINCT c.model) AS models, "
-           "MAX(COALESCE(c.project, '')) AS project, MAX(s.id) AS known "
-           "FROM sent_calls c LEFT JOIN sessions s ON s.id = c.session WHERE " + " AND ".join(where)
-           + " GROUP BY COALESCE(c.session, '') ORDER BY last DESC LIMIT ?")
     conn = store.connect()
     try:
-        found = conn.execute(sql, (*args, max(1, min(int(limit), 1000)))).fetchall()
+        if query.strip():
+            # a chat whose title, a model's name or one of whose requests holds the words: the whole chat is listed
+            terms, hit_args = _prompt_terms(conn, query.strip())
+            where.append("(s.title LIKE ? OR COALESCE(c.session, '') IN (SELECT COALESCE(session, '') FROM sent_calls "
+                         "WHERE model LIKE ?" + terms + "))")
+            args += [f"%{query.strip()}%"] * 2 + hit_args
+        sql = ("SELECT COALESCE(c.session, '') AS session, MAX(s.title) AS title, MAX(s.archived) AS archived, "
+               "MAX(c.ts) AS last, COUNT(*) AS calls, SUM(c.chars) AS chars, GROUP_CONCAT(DISTINCT c.model) AS models, "
+               "MAX(COALESCE(c.project, '')) AS project, MAX(s.id) AS known "
+               "FROM sent_calls c LEFT JOIN sessions s ON s.id = c.session WHERE " + " AND ".join(where)
+               + " GROUP BY COALESCE(c.session, '')" + (" HAVING MAX(c.ts) >= ?" if since is not None else "")
+               + " ORDER BY last DESC LIMIT ?")
+        found = conn.execute(sql, (*args, *([since] if since is not None else []), max(1, min(int(limit), 1000)))).fetchall()
     finally:
         conn.close()
     return [{"session": r["session"], "title": mask_secrets(r["title"] or "")[0], "project": r["project"],
