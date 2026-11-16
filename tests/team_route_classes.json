@@ -1,0 +1,737 @@
+{
+ "_about": "Team-version audit (p82): who may call what. Classes: P public; T own token; S any signed-in user, own account or own data (filtered by owner); R any signed-in user may read (nothing secret), only the admin changes; M member of the project (read, or write where the note says); A admin only. Not read by the app: tests/test_team_route_classes.py keeps it in step with the real endpoints.",
+ "routes": {
+  "DELETE /api/github": {
+   "class": "A",
+   "note": "one shared token held by the admin; commit identity per user comes later"
+  },
+  "DELETE /api/github/clone/{job_id}": {
+   "class": "A",
+   "note": "one shared token held by the admin; commit identity per user comes later"
+  },
+  "DELETE /api/keys/{env_key}": {
+   "class": "A",
+   "note": "API keys: never shown to users"
+  },
+  "DELETE /api/models/{model_id:path}": {
+   "class": "A",
+   "note": "/api/models/test spends real money"
+  },
+  "DELETE /api/tasks": {
+   "class": "A",
+   "note": "deletes cost records"
+  },
+  "GET /": {
+   "class": "S",
+   "note": "the page itself; the guard sends strangers to /login"
+  },
+  "GET /api/analytics": {
+   "class": "S",
+   "note": "filtered by user; the admin sees everyone (?user=)"
+  },
+  "GET /api/auth": {
+   "class": "S",
+   "note": "own account: password, 2-step code, other sign-ins; team: admin can also end any user's sign-ins"
+  },
+  "GET /api/autonomy": {
+   "class": "R",
+   "note": "the level of each project, so a user sees what runs without asking"
+  },
+  "GET /api/autonomy/check": {
+   "class": "R",
+   "note": "what a command would do at a level; no command runs"
+  },
+  "GET /api/backups": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/budgets": {
+   "class": "S",
+   "note": "the user's own cap and the budgets of their projects"
+  },
+  "GET /api/catalog": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/catalog/{pid}": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/config": {
+   "class": "R",
+   "note": "the models' names and roles, never their keys"
+  },
+  "GET /api/cooldowns": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/costs/estimates": {
+   "class": "R",
+   "note": "typical prices of paid one-off actions"
+  },
+  "GET /api/files/delete": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "GET /api/files/expand": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "GET /api/files/preview": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "GET /api/files/read": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "GET /api/files/search": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "GET /api/files/status": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "GET /api/files/styles": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "GET /api/files/tree": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "GET /api/github": {
+   "class": "A",
+   "note": "one shared token held by the admin; commit identity per user comes later"
+  },
+  "GET /api/github/clone/{job_id}": {
+   "class": "A",
+   "note": "one shared token held by the admin; commit identity per user comes later"
+  },
+  "GET /api/github/repos": {
+   "class": "A",
+   "note": "one shared token held by the admin; commit identity per user comes later"
+  },
+  "GET /api/guide": {
+   "class": "S",
+   "note": ""
+  },
+  "GET /api/memory/project/{name}": {
+   "class": "M",
+   "note": "write calls need write access; /curate spends a model call"
+  },
+  "GET /api/memory/project/{name}/versions": {
+   "class": "M",
+   "note": "write calls need write access; /curate spends a model call"
+  },
+  "GET /api/memory/{file_type}": {
+   "class": "S",
+   "note": "personal and professional memory: one per user"
+  },
+  "GET /api/models/key-suggestion": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/onboarding": {
+   "class": "A",
+   "note": "first-run checklist is the admin's"
+  },
+  "GET /api/projects": {
+   "class": "S",
+   "note": "team: only the projects the user is on"
+  },
+  "GET /api/projects/archived": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/projects/archived/{folder}/github": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/projects/deleted": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/projects/overview": {
+   "class": "S",
+   "note": "team: only the projects the user is on"
+  },
+  "GET /api/projects/{name}/diff": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "GET /api/projects/{name}/git-commands": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "GET /api/projects/{name}/git-mark": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "GET /api/projects/{name}/git-state": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "GET /api/projects/{name}/identity": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "GET /api/projects/{name}/locations": {
+   "class": "A",
+   "note": "disk paths"
+  },
+  "GET /api/projects/{name}/push": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "GET /api/projects/{name}/settings": {
+   "class": "M",
+   "note": ""
+  },
+  "GET /api/projects/{name}/status": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "GET /api/projects/{name}/update": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "GET /api/restore/status": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/routing": {
+   "class": "R",
+   "note": "which models the router picks; read only"
+  },
+  "GET /api/routing/projects": {
+   "class": "R",
+   "note": "team: only projects the user is on"
+  },
+  "GET /api/sandbox": {
+   "class": "R",
+   "note": "whether commands are sandboxed here"
+  },
+  "GET /api/savings": {
+   "class": "S",
+   "note": "filtered by user; the admin sees everyone (?user=)"
+  },
+  "GET /api/security": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/sent": {
+   "class": "S",
+   "note": "own kept prompts; admin sees them only if the visibility policy says so"
+  },
+  "GET /api/sent/prune-preview": {
+   "class": "A",
+   "note": "retention is global"
+  },
+  "GET /api/sent/request": {
+   "class": "S",
+   "note": "own kept prompts; admin sees them only if the visibility policy says so"
+  },
+  "GET /api/sent/requests": {
+   "class": "S",
+   "note": "own kept prompts; admin sees them only if the visibility policy says so"
+  },
+  "GET /api/sent/{sid}": {
+   "class": "S",
+   "note": "own kept prompts; admin sees them only if the visibility policy says so"
+  },
+  "GET /api/sessions": {
+   "class": "S",
+   "note": "own chats (does the admin read others' chats? a policy decision)"
+  },
+  "GET /api/settings": {
+   "class": "R",
+   "note": "team: without the admin-only fields (retention, snapshots, keys)"
+  },
+  "GET /api/skills": {
+   "class": "R",
+   "note": "global skills plus those of the user's projects"
+  },
+  "GET /api/skills/template": {
+   "class": "S",
+   "note": "draft spends a model call on the user's own chat"
+  },
+  "GET /api/skills/{scope}/{name}": {
+   "class": "R",
+   "note": "global: read only; project: needs membership"
+  },
+  "GET /api/snapshots": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/snapshots/exports/{token}": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/snapshots/{sid}/download": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/snapshots/{sid}/readme": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/snapshots/{sid}/restore": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/storage": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/system": {
+   "class": "A",
+   "note": ""
+  },
+  "GET /api/tasks": {
+   "class": "S",
+   "note": "filtered by user; the admin sees everyone (?user=)"
+  },
+  "GET /api/tasks.csv": {
+   "class": "S",
+   "note": "filtered by user; the admin sees everyone (?user=)"
+  },
+  "GET /api/usage": {
+   "class": "S",
+   "note": "filtered by user; the admin sees everyone (?user=)"
+  },
+  "GET /api/usage/daily": {
+   "class": "S",
+   "note": "filtered by user; the admin sees everyone (?user=)"
+  },
+  "GET /auth/status": {
+   "class": "P",
+   "note": "says whether a password is set"
+  },
+  "GET /favicon.ico": {
+   "class": "P",
+   "note": ""
+  },
+  "GET /login": {
+   "class": "P",
+   "note": "sign-in page"
+  },
+  "GET /preview/{project}/{token}/{path:path}": {
+   "class": "T",
+   "note": "checks its own token; the token must only be issued to a member of the project"
+  },
+  "POST /api/auth/password": {
+   "class": "S",
+   "note": "own account: password, 2-step code, other sign-ins; team: admin can also end any user's sign-ins"
+  },
+  "POST /api/auth/signout-others": {
+   "class": "S",
+   "note": "own account: password, 2-step code, other sign-ins; team: admin can also end any user's sign-ins"
+  },
+  "POST /api/auth/totp/confirm": {
+   "class": "S",
+   "note": "own account: password, 2-step code, other sign-ins; team: admin can also end any user's sign-ins"
+  },
+  "POST /api/auth/totp/disable": {
+   "class": "S",
+   "note": "own account: password, 2-step code, other sign-ins; team: admin can also end any user's sign-ins"
+  },
+  "POST /api/auth/totp/start": {
+   "class": "S",
+   "note": "own account: password, 2-step code, other sign-ins; team: admin can also end any user's sign-ins"
+  },
+  "POST /api/autonomy": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/backups": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/backups/keep": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/backups/{name}/check": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/backups/{name}/delete": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/backups/{name}/export": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/backups/{name}/restore": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/budgets": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/catalog/online": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/catalog/refresh": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/cooldowns/clear": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/files/definition": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "POST /api/files/delete": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "POST /api/files/folder": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "POST /api/files/locate": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "POST /api/files/rename": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "POST /api/files/save": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "POST /api/files/scripts": {
+   "class": "M",
+   "note": "uses the ACTIVE project: must become the user's own active project; write calls need write access"
+  },
+  "POST /api/github": {
+   "class": "A",
+   "note": "one shared token held by the admin; commit identity per user comes later"
+  },
+  "POST /api/github/check": {
+   "class": "A",
+   "note": "one shared token held by the admin; commit identity per user comes later"
+  },
+  "POST /api/github/clone": {
+   "class": "A",
+   "note": "one shared token held by the admin; commit identity per user comes later"
+  },
+  "POST /api/github/identity": {
+   "class": "A",
+   "note": "one shared token held by the admin; commit identity per user comes later"
+  },
+  "POST /api/keys": {
+   "class": "A",
+   "note": "API keys: never shown to users"
+  },
+  "POST /api/language": {
+   "class": "S",
+   "note": "today a global setting; team: one per user"
+  },
+  "POST /api/memory": {
+   "class": "S",
+   "note": "personal and professional memory: one per user"
+  },
+  "POST /api/memory/project/{name}": {
+   "class": "M",
+   "note": "write calls need write access; /curate spends a model call"
+  },
+  "POST /api/memory/project/{name}/curate": {
+   "class": "M",
+   "note": "write calls need write access; /curate spends a model call"
+  },
+  "POST /api/memory/versions/{version_id}/undo": {
+   "class": "M",
+   "note": "the version belongs to a project: look it up, then check membership"
+  },
+  "POST /api/models": {
+   "class": "A",
+   "note": "/api/models/test spends real money"
+  },
+  "POST /api/models/test": {
+   "class": "A",
+   "note": "/api/models/test spends real money"
+  },
+  "POST /api/models/thinking": {
+   "class": "A",
+   "note": "/api/models/test spends real money"
+  },
+  "POST /api/models/update": {
+   "class": "A",
+   "note": "/api/models/test spends real money"
+  },
+  "POST /api/onboarding": {
+   "class": "A",
+   "note": "first-run checklist is the admin's"
+  },
+  "POST /api/plans/{pid}/edit": {
+   "class": "S",
+   "note": "own plan"
+  },
+  "POST /api/projects": {
+   "class": "A",
+   "note": "creating a project; users cannot"
+  },
+  "POST /api/projects/archived/{folder}/delete": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/projects/archived/{folder}/restore": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/projects/{name}/archive": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/projects/{name}/commit": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "POST /api/projects/{name}/commit-message": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "POST /api/projects/{name}/push": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "POST /api/projects/{name}/settings": {
+   "class": "A",
+   "note": "a project's models, limits, autonomy"
+  },
+  "POST /api/projects/{name}/stage": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "POST /api/projects/{name}/update": {
+   "class": "M",
+   "note": "git panel; push, update, commit-message spend a model call and need write access"
+  },
+  "POST /api/restore/cancel": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/restore/dismiss": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/restore/import": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/restore/restart": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/restore/upload": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/routing": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/sent/prune": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/sessions/{sid}/archive": {
+   "class": "S",
+   "note": "own chats (does the admin read others' chats? a policy decision)"
+  },
+  "POST /api/sessions/{sid}/delete": {
+   "class": "S",
+   "note": "own chats (does the admin read others' chats? a policy decision)"
+  },
+  "POST /api/sessions/{sid}/rename": {
+   "class": "S",
+   "note": "own chats (does the admin read others' chats? a policy decision)"
+  },
+  "POST /api/settings": {
+   "class": "A",
+   "note": "budget-wide switches, sandbox, retention, autonomy defaults"
+  },
+  "POST /api/skills/draft": {
+   "class": "S",
+   "note": "draft spends a model call on the user's own chat"
+  },
+  "POST /api/skills/{scope}/{name}": {
+   "class": "A",
+   "note": "scope=global is admin; scope=project needs write access to that project (decide per scope)"
+  },
+  "POST /api/skills/{scope}/{name}/mode": {
+   "class": "A",
+   "note": "scope=global is admin; scope=project needs write access to that project (decide per scope)"
+  },
+  "POST /api/skills/{scope}/{name}/remove": {
+   "class": "A",
+   "note": "scope=global is admin; scope=project needs write access to that project (decide per scope)"
+  },
+  "POST /api/snapshots": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/snapshots/limit": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/snapshots/preview": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/snapshots/{sid}/delete": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/snapshots/{sid}/export": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/snapshots/{sid}/restore": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/system/rotate-token": {
+   "class": "A",
+   "note": ""
+  },
+  "POST /api/tasks/{task_id}/rating": {
+   "class": "S",
+   "note": "own replies"
+  },
+  "POST /auth/login": {
+   "class": "P",
+   "note": "team: login by user name; /auth/setup stays for the first admin"
+  },
+  "POST /auth/logout": {
+   "class": "P",
+   "note": "already public (it only ends the caller's own sign-in)"
+  },
+  "POST /auth/setup": {
+   "class": "P",
+   "note": "team: login by user name; /auth/setup stays for the first admin"
+  },
+  "WEBSOCKET /ws": {
+   "class": "S",
+   "note": "signed in; every message type below is checked on its own"
+  }
+ },
+ "ws_messages": {
+  "prompt": {
+   "class": "M",
+   "note": "a message with no 'type': a request in the chat's project; spends the user's budget"
+  },
+  "new_chat": {
+   "class": "S",
+   "note": "team: in a project the user is on"
+  },
+  "open_session": {
+   "class": "S",
+   "note": "own chats only; switches the active project (today a global setting)"
+  },
+  "escalate": {
+   "class": "M",
+   "note": "asks the Complex model for the last request"
+  },
+  "plan_action": {
+   "class": "M",
+   "note": "run, edit or cancel a plan of the user's own chat"
+  },
+  "approval_response": {
+   "class": "M",
+   "note": "approves a command or change: who may approve on a project is a policy decision"
+  },
+  "limit_response": {
+   "class": "M",
+   "note": "answers 'budget reached'"
+  },
+  "stop": {
+   "class": "S",
+   "note": "stops the user's own run"
+  },
+  "ping": {
+   "class": "S",
+   "note": ""
+  }
+ },
+ "model_tools": {
+  "execute_bash": {
+   "class": "M",
+   "note": "write access; the sandbox may change only the active project"
+  },
+  "write_file": {
+   "class": "M",
+   "note": "write access"
+  },
+  "edit_file": {
+   "class": "M",
+   "note": "write access"
+  },
+  "read_file": {
+   "class": "M",
+   "note": "read access"
+  },
+  "list_files": {
+   "class": "M",
+   "note": "read access"
+  },
+  "search_files": {
+   "class": "M",
+   "note": "read access"
+  },
+  "load_skill": {
+   "class": "R",
+   "note": ""
+  },
+  "update_markdown_memory": {
+   "class": "S",
+   "note": "personal/professional: the user's; project memory needs write access"
+  },
+  "finish_step": {
+   "class": "S",
+   "note": "plan bookkeeping"
+  },
+  "finish_check": {
+   "class": "S",
+   "note": "plan bookkeeping"
+  },
+  "list_projects": {
+   "class": "S",
+   "note": "team: only the projects the user is on"
+  },
+  "switch_project": {
+   "class": "M",
+   "note": "only to a project the user is on; per user, not global"
+  },
+  "project_status": {
+   "class": "M",
+   "note": "read access"
+  },
+  "push_project": {
+   "class": "M",
+   "note": "write access; uses the admin's GitHub token"
+  },
+  "update_project": {
+   "class": "M",
+   "note": "write access"
+  },
+  "create_project": {
+   "class": "A",
+   "note": "creates a folder and maybe a GitHub repository"
+  },
+  "archive_project": {
+   "class": "A",
+   "note": "moves a project's folder aside"
+  }
+ }
+}

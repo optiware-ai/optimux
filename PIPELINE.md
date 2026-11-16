@@ -10,6 +10,7 @@ Optimux relies heavily on decentralized context to feed different LLMs.
 - **`MANIFEST.md`**: Optimux's purpose and design in one page.
 - **`README.md`**: What it is, how to install it, how it works; the roadmap.
 - **`docs/GUIDE.md`**: The user guide (also shown in the app).
+- **`docs/TEAM_AUDIT.md`**: The team-version audit (every endpoint, socket message and model tool classified; `tests/team_route_classes.json` is its data).
 - **`docs/evaluations/`**: What each kind of check proves (unit, fake-model integration, install smoke tests) and the real-model evaluations, with a template. A result goes there only with its evidence; planned ones say NOT RUN.
 - **`SECURITY.md`**: How to report a vulnerability.
 - **`commit-template.txt`**: **[CRITICAL]** The strict convention for Optimux commits.
@@ -33,6 +34,7 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 ├── scripts/smoke-test.py        (end-to-end check of an install with a fake model; CI "install" job)
 ├── docs/
 │   ├── GUIDE.md                 (User guide, shown in Dashboard → Guide)
+│   ├── TEAM_AUDIT.md            (Team version, step 0: who may do what; checked by tests/test_team_route_classes.py)
 │   └── evaluations/             (What has been checked and how: test layers, real-model evaluations, template)
 ├── optimux_backend/
 │   ├── __init__.py              (runs first: settings other libraries read on import)
