@@ -33,3 +33,30 @@ def test_send_stays_inside_the_message_box():
     left = re.search(r'<div class="([^"]*)">\s*<span class="relative flex items-center min-w-0">', block).group(1).split()
     assert "flex-wrap" in left and "min-w-0" in left         # model, New chat and Plan wrap
     assert block.count('class="flex-shrink-0 bg-') == 2      # Stop and Send keep their size
+
+
+def test_the_studio_never_opens_with_an_empty_editor():
+    """On a first visit nothing is open: the editor shows the page the preview shows, not an empty box."""
+    js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    body = js[js.index("const openStudio = async"):js.index("const resetStudio")]
+    assert "!studio.file" in body and "studio.preview.index" in body
+    assert re.search(r"openStudioFile\(studio\.preview\.index, \{[^}]*noFollow: true", body)   # the preview stays where it is
+
+
+def test_the_new_project_window_can_be_scrolled_to_its_top_on_a_short_screen():
+    """A centred flex box that is taller than the screen cuts its top off for good; margin auto centres it only when it fits."""
+    at = PAGE.index('v-if="newProject.open"')
+    outer = PAGE[PAGE.rindex("<div", 0, at):PAGE.index(">", at)]
+    inner_at = PAGE.index("<div :class=", at)
+    inner = PAGE[inner_at:PAGE.index(">", inner_at)]
+    assert "overflow-y-auto" in outer and "items-center" not in outer
+    assert "my-auto" in inner
+
+
+def test_two_calls_at_once_make_one_editor():
+    """The editor is loaded and built once: a second call while the first is still loading waits for it."""
+    js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    body = js[js.index("const ensureEditor"):js.index("const studioFetch")]
+    assert "editorMaking" in body                    # the shared promise
+    assert body.count("OptimuxEditor.create(") == 1
+    assert re.search(r"if \(editorMaking\)|editorMaking \|\|", body) or "if (!editorMaking)" in body

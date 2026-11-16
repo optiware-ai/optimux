@@ -3709,21 +3709,21 @@ const optimuxApp = createApp({
         // The video tutorial (v0.8): one file shipped with the app, its version in the name
         // (a new film gets a new name). Times are seconds into the film.
         const TUTORIAL = {
-            src: '/static/tutorial/optimux-tutorial-1.mp4',
-            poster: '/static/tutorial/optimux-tutorial-1.jpg',
-            length: 479.1,
+            src: '/static/tutorial/optimux-tutorial-2.mp4',
+            poster: '/static/tutorial/optimux-tutorial-2.jpg',
+            length: 510.5,
             chapters: [
                 { t: 0, title: tk('Install') },
-                { t: 31.3, title: tk('The first sign-in') },
-                { t: 61.1, title: tk('Add a model') },
-                { t: 105.6, title: tk('Choose who does what') },
-                { t: 140.9, title: tk('Set the Workspace') },
-                { t: 159.9, title: tk('Set up Git and GitHub') },
-                { t: 204.4, title: tk('Create a project') },
-                { t: 247.2, title: tk('Your first request') },
-                { t: 332.3, title: tk('The Studio') },
-                { t: 364.9, title: tk('Commit your work') },
-                { t: 398.7, title: tk('Ask for a change from the Studio') },
+                { t: 31.5, title: tk('The first sign-in') },
+                { t: 68.5, title: tk('Add a model') },
+                { t: 126.0, title: tk('Choose who does what') },
+                { t: 161.7, title: tk('Set the Workspace') },
+                { t: 180.7, title: tk('Set up Git and GitHub') },
+                { t: 225.2, title: tk('Create a project') },
+                { t: 281.3, title: tk('Your first request') },
+                { t: 365.0, title: tk('The Studio') },
+                { t: 398.8, title: tk('Commit your work') },
+                { t: 432.6, title: tk('Ask for a change from the Studio') },
             ],
         };
         const tutorialAt = ref(0);              // seconds played, to mark the chapter on screen
@@ -4402,7 +4402,13 @@ const optimuxApp = createApp({
             });
             return editorLoading;
         };
-        const ensureEditor = async () => {
+        let editorMaking = null;     // the editor being built: a second caller waits for it instead of building another
+        const ensureEditor = () => {
+            if (editor) return Promise.resolve(true);
+            if (!editorMaking) editorMaking = makeEditor().finally(() => { editorMaking = null; });
+            return editorMaking;
+        };
+        const makeEditor = async () => {
             if (editor) return true;
             try { await loadEditor(); } catch (e) { studio.editorError = String(e.message || e); return false; }
             await nextTick();
@@ -4645,6 +4651,8 @@ const optimuxApp = createApp({
             if (studio.project !== appSettings.value.active_project) resetStudio();
             await refreshStudio();
             ensureEditor();
+            // First visit: nothing is open. The editor shows the page the preview shows, not an empty box
+            if (!studio.file && studio.preview.index && studio.showEditor) await openStudioFile(studio.preview.index, { noFollow: true });
         };
         const resetStudio = () => {
             studio.devFor = null;          // the dev-server setting is loaded with the project's files

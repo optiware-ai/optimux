@@ -1142,7 +1142,7 @@
                 <!-- v0.8: the video tutorial, under Help. Leaving the page removes the player, which stops it -->
                 <div v-if="settingsTab === 'video'" class="space-y-4 max-w-4xl">
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                        <p class="text-[14px] text-gray-400 mb-3">{{ $t('From the installer to a change asked from the Studio, in eight minutes. No sound: the captions under the picture say what happens. Filmed in English.') }}</p>
+                        <p class="text-[14px] text-gray-400 mb-3">{{ $t('From the installer to a change asked from the Studio, in eight minutes. No sound: the captions above the picture say what happens. Filmed in English.') }}</p>
                         <video data-tutorial-video controls preload="metadata" playsinline :src="TUTORIAL.src" :poster="TUTORIAL.poster" @timeupdate="tutorialTick" @seeked="tutorialTick"
                                class="w-full aspect-video rounded-lg border border-gray-800 bg-black"></video>
                         <h3 class="text-[12px] font-semibold tracking-widest uppercase text-gray-500 mt-4 mb-2">{{ $t('Chapters') }}</h3>
@@ -3036,8 +3036,8 @@
         </div>
 
         <!-- Feature 25: New project dialog (no model involved) -->
-        <div v-if="newProject.open" class="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 overflow-y-auto" @click.self="newProject.open = false">
-            <div :class="['w-full bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 cm-pop', newProject.tab === 'github' ? 'max-w-2xl' : 'max-w-lg']">
+        <div v-if="newProject.open" class="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto" @click.self="newProject.open = false">
+            <div :class="['w-full bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 my-auto cm-pop', newProject.tab === 'github' ? 'max-w-2xl' : 'max-w-lg']">
                 <div class="flex items-start justify-between mb-4">
                     <div>
                         <h2 class="text-lg font-bold text-gray-100">{{ $t('New project') }}</h2>
