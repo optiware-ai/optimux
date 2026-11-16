@@ -5750,14 +5750,14 @@ const optimuxApp = createApp({
             ms = ms || 0;
             return ms >= 1000 ? (ms / 1000).toFixed(ms >= 10000 ? 0 : 1) + 's' : ms + 'ms';
         };
-        // "Gemini 8 + Claude Sonnet 5.5 1 calls" when a reply used several models
+        // "Gemini 8 calls + Claude Sonnet 5.5 1 call" when a reply used several models: each count says what it counts
         const callsLabel = (u) => {
             const entries = Object.entries(u.byModel || {});
             if (entries.length <= 1) {
                 const name = entries.length ? modelName(entries[0][0]) + ' · ' : '';
                 return name + (u.calls === 1 ? tr('1 call') : tr('{n} calls', { n: u.calls }));
             }
-            return entries.map(([m, n]) => `${modelName(m)} ${n}`).join(' + ') + ' calls';
+            return entries.map(([m, n]) => `${modelName(m)} ${n === 1 ? tr('1 call') : tr('{n} calls', { n })}`).join(' + ');
         };
         const modelName = (id) => {
             const m = [...availableModels.value, ...setupModels.value].find(x => x.id === id);

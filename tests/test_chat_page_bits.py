@@ -45,3 +45,10 @@ def test_the_pinned_prompt_takes_half_the_row_then_dots():
     text = bar[bar.index("pinnedPrompt.text") - 260:bar.index("pinnedPrompt.text")]
     assert "max-w-[50%]" in text and "truncate" in text
     assert "whitespace-pre-wrap" in text                                  # More still opens it whole
+
+
+def test_each_model_in_a_replys_line_says_how_many_calls_it_made():
+    fn = APP[APP.index("const callsLabel"):][:700]
+    many = fn[fn.index("entries.map"):]
+    assert "tr('1 call')" in many and "tr('{n} calls'" in many        # "gpt-5-nano 1 call + claude-opus-5-5 4 calls"
+    assert "' calls'" not in many                                      # no English word glued on the end, untranslated
