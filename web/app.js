@@ -989,7 +989,7 @@ const optimuxApp = createApp({
             } catch (e) { sentBox.error = e.message; }
             sentBox.loading = false;
         };
-        // Dashboard → Execution → Browse: every kept call, also those outside a reply
+        // Dashboard → History → Browse: every kept call, also those outside a reply
         // (the memory update, a commit message, a skill draft)
         const browseSent = async () => {
             sentBox.browse = true; sentBox.calls = []; sentBox.data = null; sentBox.error = ''; sentBox.open = true; sentBox.loading = true;

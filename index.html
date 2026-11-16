@@ -1382,6 +1382,16 @@
                             </tbody>
                         </table>
                     </div>
+                    <!-- v0.8: the prompts sent to the models are kept so they can be read ("What was sent") -->
+                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                        <h3 class="font-bold text-gray-200 mb-3 flex items-center">{{ $t('What was sent to the models') }}<help-tip>{{ $t('Optimux keeps the prompt of every model call exactly as it left this machine (saved keys already hidden): its own instructions, your memory, the conversation, the tool results and the tools offered. Under a reply, "What was sent" shows them. They are kept in Optimux\'s own data on this machine, never anywhere else.') }}</help-tip></h3>
+                        <label class="flex flex-wrap items-center gap-2 text-[15px] text-gray-200">{{ $t('Keep them for') }}
+                            <input v-model.number="appSettings.keep_sent_days" @change="saveSettings" type="number" min="0" max="365" :aria-label="$t('Days the sent prompts are kept')" class="w-20 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-gray-200 outline-none focus:border-blue-500">
+                            {{ $t('days') }}
+                            <span v-if="showSettingsSaved" class="text-green-400 font-bold text-[13px]">{{ $t('Saved!') }}</span></label>
+                        <p class="text-[13px] text-gray-400 mt-2">{{ $t('0 keeps nothing: "What was sent" then has nothing to show for new replies. Text sent again with every call (the instructions, the earlier conversation) is stored once.') }}</p>
+                        <button @click="browseSent" data-sent-browse class="mt-3 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-200 text-[14px]" :title="$t('Every kept call, newest first: replies, the scout, plans, memory updates, commit messages, skill drafts')">{{ $t('Browse the kept prompts') }}</button>
+                    </div>
                 </div>
 
                 <!-- Section: Skills -->
@@ -2546,15 +2556,6 @@
                         <p class="text-[13px] text-gray-400 mt-2">{{ $t('Only for when another tab or window is in front: the browser draws that notification, so it looks like the browser\'s. Clicking it opens the chat at the question. It is kept in this browser, so turn it on again on your other devices.') }}</p>
                         <p v-if="notifyPermission === 'denied'" class="text-[13px] text-yellow-400 mt-1">{{ $t('This browser blocks notifications for Optimux. Allow them in the site settings (the icon next to the address), then come back.') }}</p>
                         <p v-else-if="notifyPermission === 'unsupported'" class="text-[13px] text-yellow-400 mt-1">{{ $t('This browser has no notifications. The tab\'s title still shows when a reply is waiting.') }}</p>
-                    </div>
-                    <!-- v0.8: the prompts sent to the models are kept so they can be read ("What was sent") -->
-                    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 mt-6">
-                        <h3 class="font-bold text-gray-200 mb-3 flex items-center">{{ $t('What was sent to the models') }}<help-tip>{{ $t('Optimux keeps the prompt of every model call exactly as it left this machine (saved keys already hidden): its own instructions, your memory, the conversation, the tool results and the tools offered. Under a reply, "What was sent" shows them. They are kept in Optimux\'s own data on this machine, never anywhere else.') }}</help-tip></h3>
-                        <label class="flex flex-wrap items-center gap-2 text-[15px] text-gray-200">{{ $t('Keep them for') }}
-                            <input v-model.number="appSettings.keep_sent_days" @change="saveSettings" type="number" min="0" max="365" :aria-label="$t('Days the sent prompts are kept')" class="w-20 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-gray-200 outline-none focus:border-blue-500">
-                            {{ $t('days') }}</label>
-                        <p class="text-[13px] text-gray-400 mt-2">{{ $t('0 keeps nothing: "What was sent" then has nothing to show for new replies. Text sent again with every call (the instructions, the earlier conversation) is stored once.') }}</p>
-                        <button @click="browseSent" data-sent-browse class="mt-3 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-200 text-[14px]" :title="$t('Every kept call, newest first: replies, the scout, plans, memory updates, commit messages, skill drafts')">{{ $t('Browse the kept prompts') }}</button>
                     </div>
                 </div>
                 <!-- Tab Content: Memory -->
