@@ -968,14 +968,16 @@ const sentPartItems = (d) => {
     return rows;
 };
 const SentCall = {
-    props: { data: Object, fmt: Function, tokens: Number },
+    // flat: just the parts as rows (a request's timeline shows only what each call added), no groups or toolbar
+    props: { data: Object, fmt: Function, tokens: Number, flat: Boolean },
     data() {
         const open = {};
-        sentPartItems(this.data).filter((r) => r.head).forEach((r) => { open[r.n] = !!r.last; });   // the last request is open
-        return { shown: sentShownAtFirst(this.data), open, copied: false };
+        if (!this.flat) sentPartItems(this.data).filter((r) => r.head).forEach((r) => { open[r.n] = !!r.last; });   // the last request is open
+        const shown = this.flat ? Object.fromEntries(this.data.parts.map((p, n) => [n, p.kind === 'user' || p.kind === 'assistant'])) : sentShownAtFirst(this.data);
+        return { shown, open, copied: false };
     },
     computed: {
-        rows() { return sentPartItems(this.data); },
+        rows() { return this.flat ? this.data.parts.map((p, i) => ({ head: false, p, i, g: -1 })) : sentPartItems(this.data); },
         kinds() { return sentGroupsOf(this.data); },
     },
     methods: {
@@ -2119,7 +2121,7 @@ const optimuxApp = createApp({
             refreshProjectLists();
         };
         const fetchHistoryPage = async () => {
-            if (historyBlock.value === 'sent') fetchSentChats();
+            if (historyBlock.value === 'sent') fetchSentRequests();
             const h = historyPage.value;
             const params = new URLSearchParams();
             if (h.project) params.set('project', h.project === NO_PROJECT ? '' : h.project); else params.set('all_projects', 'true');
@@ -2153,7 +2155,7 @@ const optimuxApp = createApp({
         const historyBlock = ref('');
         const toggleHistoryBlock = (name) => {
             historyBlock.value = historyBlock.value === name ? '' : name;
-            if (historyBlock.value === 'sent') fetchSentChats();
+            if (historyBlock.value === 'sent') fetchSentRequests();
         };
         const historySearchHint = Vue.computed(() => (historyBlock.value === 'sent' ? tr('Title, model or request') : tr('Words in the title')));
         const historySince = () => {      // the start of the period (Today, 7 days, 30 days), in seconds; 0 = any time
@@ -2162,13 +2164,14 @@ const optimuxApp = createApp({
             const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (Number(period) - 1));
             return d.getTime() / 1000;
         };
-        // The kept prompts: chat (+) → each request of the user → the Conductor and the executor that answered
-        // it → their calls, each opened where it is
-        const sentTree = Vue.reactive({ chats: [], loading: false, error: '', loaded: false, open: {}, turns: {}, turnOpen: {}, callOpen: {}, detail: {} });
-        let sentChatsSeq = 0;
+        // The kept prompts: a flat list of requests (no chat level); a row opens to its timeline, the meta-prompt,
+        // the Conductor and the executor, each call with only what it added
+        const sentTree = Vue.reactive({ requests: [], loading: false, error: '', loaded: false, open: {}, detail: {}, wholePrompt: {} });
+        let sentSeq = 0;
         const sentQuery = () => historyPage.value.q.trim();
-        const fetchSentChats = async () => {
-            const h = historyPage.value, mine = ++sentChatsSeq;
+        const sentRowKey = (r) => r.session + '|' + r.key;
+        const fetchSentRequests = async () => {
+            const h = historyPage.value, mine = ++sentSeq;
             const params = new URLSearchParams();
             if (h.project) params.set('project', h.project === NO_PROJECT ? '' : h.project); else params.set('all_projects', 'true');
             if (h.archived) params.set('archived', 'true');
@@ -2176,41 +2179,37 @@ const optimuxApp = createApp({
             if (historySince()) params.set('since', String(historySince()));
             sentTree.loading = true; sentTree.error = '';
             try {
-                const d = await studioFetch('/api/sent/chats?' + params.toString());
-                if (mine !== sentChatsSeq) return;                  // a newer search is on its way
-                sentTree.chats = d.chats; sentTree.loaded = true; sentTree.turns = {};
-                sentTree.chats.filter((c) => sentTree.open[c.session]).forEach((c) => loadSentTurns(c.session));   // an open chat reads the new words too
-            } catch (e) { if (mine === sentChatsSeq) sentTree.error = e.message; }
-            if (mine === sentChatsSeq) sentTree.loading = false;
+                const d = await studioFetch('/api/sent/requests?' + params.toString());
+                if (mine !== sentSeq) return;                       // a newer search is on its way
+                sentTree.requests = d.requests.map((r) => ({ ...r, when: sentWhen(r.ts) }));
+                sentTree.loaded = true; sentTree.detail = {};
+                sentTree.requests.filter((r) => sentTree.open[sentRowKey(r)]).forEach(loadSentRequest);
+            } catch (e) { if (mine === sentSeq) sentTree.error = e.message; }
+            if (mine === sentSeq) sentTree.loading = false;
         };
-        watch(() => historyPage.value.period, () => { if (historyBlock.value === 'sent') fetchSentChats(); });
-        const loadSentTurns = async (sid) => {
+        watch(() => historyPage.value.period, () => { if (historyBlock.value === 'sent') fetchSentRequests(); });
+        const loadSentRequest = async (r) => {
+            const k = sentRowKey(r);
             try {
-                const d = await studioFetch('/api/sent/turns?session=' + encodeURIComponent(sid) + '&q=' + encodeURIComponent(sentQuery()));
-                sentTree.turns[sid] = d.turns.map((t) => ({ ...t, when: sentWhen(t.ts), calls: t.calls.map((c) => ({ ...c, when: sentWhen(c.ts) })) }));
-            } catch (e) { sentTree.turns[sid] = []; sentTree.error = e.message; }
+                const d = await studioFetch('/api/sent/request?session=' + encodeURIComponent(r.session) + '&key=' + encodeURIComponent(r.key));
+                const view = (role, parts) => ({ role, chars: parts.reduce((n, p) => n + p.chars, 0), parts });
+                sentTree.detail[k] = { metaView: d.meta.length ? view('meta', d.meta) : null,
+                                       steps: d.steps.map((st) => ({ ...st, when: sentWhen(st.ts), view: view(st.role, st.parts) })) };
+            } catch (e) { sentTree.detail[k] = { metaView: null, steps: [], error: e.message }; }
         };
-        const toggleSentChat = (c) => {
-            sentTree.open[c.session] = !sentTree.open[c.session];
-            if (sentTree.open[c.session] && !sentTree.turns[c.session]) loadSentTurns(c.session);
+        const toggleSentRequest = (r) => {
+            const k = sentRowKey(r);
+            sentTree.open[k] = !sentTree.open[k];
+            if (sentTree.open[k] && !sentTree.detail[k]) loadSentRequest(r);
         };
-        // The calls of one request, by who made them: the Conductor, then the executor (SIMPLE and COMPLEX apart), the scout...
-        const sentTurnGroups = (t) => {
-            const order = [], by = {};
-            t.calls.forEach((c) => {
-                const k = c.role + '|' + c.model;
-                if (!by[k]) { by[k] = { key: k, role: c.role, model: c.model || '?', items: [] }; order.push(k); }
-                by[k].items.push(c);
-            });
-            return order.map((k) => by[k]).sort((a, b) => (a.role === 'conductor' ? 0 : 1) - (b.role === 'conductor' ? 0 : 1));
-        };
-        const toggleSentCall = async (c) => {
-            sentTree.callOpen[c.id] = !sentTree.callOpen[c.id];
-            if (!sentTree.callOpen[c.id] || sentTree.detail[c.id]) return;
-            sentTree.detail[c.id] = { loading: true, error: '', data: null };
-            try { sentTree.detail[c.id].data = await studioFetch('/api/sent/' + c.id); }
-            catch (e) { sentTree.detail[c.id].error = e.message; }
-            sentTree.detail[c.id].loading = false;
+        // The whole prompt of one call (what it was sent, the earlier conversation too), on request
+        const showWholePrompt = async (st) => {
+            const had = sentTree.wholePrompt[st.id];
+            if (had) { had.open = !had.open; return; }
+            const w = Vue.reactive({ open: true, loading: true, error: '', data: null });
+            sentTree.wholePrompt[st.id] = w;
+            try { w.data = await studioFetch('/api/sent/' + st.id); } catch (e) { w.error = e.message; }
+            w.loading = false;
         };
         const historySorted = Vue.computed(() => {
             const { sort, desc } = historyPage.value;
@@ -6588,7 +6587,7 @@ const optimuxApp = createApp({
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
             sentBox, openSent, showSent, sentModels, historyBlock, toggleHistoryBlock, historySearchHint,
-            sentTree, toggleSentChat, sentTurnGroups, toggleSentCall, sentRoleClass, sentRoleName, sentWhen,
+            sentTree, sentRowKey, toggleSentRequest, showWholePrompt, sentRoleClass, sentRoleName, sentWhen,
             syncBox, chatProject, openSync, reopenSync, closeSync, syncReady, syncCommits, syncCanChoose, syncProblems, syncWarnings, syncButton, writeCommitMessage, runSync, link, linkNote,
             startClone, cancelClone, projectLocations, loadProjectLocations, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,

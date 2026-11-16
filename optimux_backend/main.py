@@ -823,21 +823,23 @@ async def sent_calls(limit: int = 100, role: str | None = None, session: str | N
     return {"calls": await asyncio.to_thread(sent_lib.recent, limit, role or None, None, session)}
 
 
-@app.get("/api/sent/turns")
-async def sent_turns(session: str = "", q: str = ""):
-    """One chat's kept calls grouped by the request that made them (Dashboard → History); session ""
-    is the calls made outside any chat. `q` marks the requests holding those words."""
-    return {"turns": await asyncio.to_thread(sent_lib.turns, session, q)}
+@app.get("/api/sent/requests")
+async def sent_requests(project: str | None = None, all_projects: bool = False, archived: bool = False,
+                        since: float = 0, q: str = "", limit: int = 300):
+    """The kept calls as a flat list of requests, the most recent first (Dashboard → History): one
+    row per thing the user asked, with its chat's title. The filters are the chat list's (since:
+    seconds, 0 = any time); `q` looks in the title, the models and the whole request."""
+    return {"requests": await asyncio.to_thread(sent_lib.requests, None if all_projects else project,
+                                                since or None, archived, q, limit)}
 
 
-@app.get("/api/sent/chats")
-async def sent_chats(project: str | None = None, all_projects: bool = False, archived: bool = False,
-                     since: float = 0, q: str = "", limit: int = 300):
-    """The kept calls by chat, the most recent first (Dashboard → History): one row per
-    chat with its title, number of calls and models. The filters are the chat list's
-    (since: seconds, 0 = any time)."""
-    return {"chats": await asyncio.to_thread(sent_lib.chats, None if all_projects else project,
-                                             since or None, archived, q, limit)}
+@app.get("/api/sent/request")
+async def sent_request(session: str = "", key: str = ""):
+    """One request as a timeline (meta-prompt, Conductor, executor), each call with only what it added."""
+    found = await asyncio.to_thread(sent_lib.request_detail, session, key)
+    if found is None:
+        return JSONResponse({"detail": tr("This prompt is no longer kept.")}, status_code=404)
+    return found
 
 
 @app.get("/api/sent/{sid}")

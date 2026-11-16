@@ -1397,7 +1397,7 @@
                         <button type="button" @click="toggleHistoryBlock('sent')" :aria-expanded="historyBlock === 'sent' ? 'true' : 'false'" data-history-block="sent" class="w-full flex items-center gap-3 px-4 py-3 text-left rounded-xl hover:bg-gray-800/50">
                             <span class="font-mono text-gray-400 w-4 text-center" aria-hidden="true">{{ historyBlock === 'sent' ? '−' : '+' }}</span>
                             <span class="font-bold text-gray-200">{{ $t('What was sent to the models') }}</span>
-                            <span v-if="historyBlock === 'sent' && sentTree.loaded" class="text-[13px] text-gray-500">{{ $t('{length} chat{v}', { length: sentTree.chats.length, v: sentTree.chats.length === 1 ? '' : 's' }) }}</span>
+                            <span v-if="historyBlock === 'sent' && sentTree.loaded" class="text-[13px] text-gray-500">{{ $t('{length} request{v}', { length: sentTree.requests.length, v: sentTree.requests.length === 1 ? '' : 's' }) }}</span>
                         </button>
                         <div v-if="historyBlock === 'sent'" class="px-4 pb-4 space-y-3">
                             <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -1410,46 +1410,44 @@
                             <p class="text-[13px] text-gray-400">{{ $t('0 keeps nothing: "What was sent" then has nothing to show for new replies. Text sent again with every call (the instructions, the earlier conversation) is stored once.') }}</p>
                             <div v-if="sentTree.error" class="text-red-300 text-[13px]" role="alert">{{ sentTree.error }}</div>
                             <div v-else-if="sentTree.loading && !sentTree.loaded" class="text-gray-400 text-[13px]">{{ $t('Loading…') }}</div>
-                            <div v-else-if="!sentTree.chats.length" class="text-gray-500 italic text-[13px] py-3">{{ $t('Nothing kept matches. Prompts are kept from the next model call on.') }}</div>
-                            <ul v-else class="divide-y divide-gray-800/70 border border-gray-800 rounded-lg" :aria-label="$t('Chats with kept prompts')">
-                                <li v-for="c in sentTree.chats" :key="c.session || '-'" data-sent-chat>
-                                    <div class="flex items-center gap-3 px-3 py-2 hover:bg-gray-800/30">
-                                        <button type="button" @click="toggleSentChat(c)" :aria-expanded="sentTree.open[c.session] ? 'true' : 'false'" :aria-label="$t('Show the requests of this chat')" class="font-mono w-6 h-6 flex-shrink-0 rounded border border-gray-700 text-gray-300 hover:border-gray-500">{{ sentTree.open[c.session] ? '−' : '+' }}</button>
-                                        <button type="button" @click="toggleSentChat(c)" :class="['truncate min-w-0 flex-1 text-left hover:text-blue-300', c.known ? 'text-gray-100' : 'text-gray-400 italic']" :title="c.title">{{ c.known ? (c.title || $t('Untitled chat')) : (c.session ? $t('Deleted chat') : $t('Outside a chat')) }}</button>
-                                        <span class="font-mono text-[12px] text-gray-400 flex-shrink-0">{{ projectLabel(c.project) }}</span>
-                                        <span class="font-mono text-[12px] text-gray-400 flex-shrink-0" :title="new Date(c.last * 1000).toLocaleString($locale())">{{ fmtAgo(c.last) }}</span>
-                                        <span class="font-mono text-[12px] text-gray-400 flex-shrink-0 w-24 text-right">{{ $t('{length} call{v}', { length: c.calls, v: c.calls === 1 ? '' : 's' }) }}</span>
-                                    </div>
-                                    <div v-if="sentTree.open[c.session]" class="pl-12 pr-3 pb-3 space-y-1.5">
-                                        <div v-if="!sentTree.turns[c.session]" class="text-gray-400 text-[13px]">{{ $t('Loading…') }}</div>
-                                        <!-- one row per request of the user -->
-                                        <div v-for="t in sentTree.turns[c.session]" :key="t.key" :class="['border rounded-lg', t.hit ? 'border-amber-600/70' : 'border-gray-800']" data-sent-turn>
-                                            <button type="button" @click="sentTree.turnOpen[t.key] = !sentTree.turnOpen[t.key]" :aria-expanded="sentTree.turnOpen[t.key] ? 'true' : 'false'" class="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-800/50 rounded-lg">
-                                                <span class="font-mono text-gray-400 w-3 flex-shrink-0">{{ sentTree.turnOpen[t.key] ? '−' : '+' }}</span>
-                                                <span :class="['truncate min-w-0 flex-1', t.reply ? 'text-gray-100' : 'text-gray-300 italic']" :title="t.prompt">{{ t.reply ? (t.prompt || $t('(no text)')) : sentRoleName(t.calls[0].role) }}</span>
-                                                <span v-if="t.hit" class="text-[11px] text-amber-300 flex-shrink-0">{{ $t('match') }}</span>
-                                                <span class="font-mono text-[12px] text-gray-500 flex-shrink-0">{{ t.when }}</span>
-                                                <span class="font-mono text-[12px] text-gray-500 flex-shrink-0 w-20 text-right">{{ $t('{length} call{v}', { length: t.calls.length, v: t.calls.length === 1 ? '' : 's' }) }}</span>
-                                            </button>
-                                            <div v-if="sentTree.turnOpen[t.key]" class="px-3 pb-2">
-                                                <!-- the Conductor, then the executor: each with every call it made for this request -->
-                                                <div v-for="g in sentTurnGroups(t)" :key="g.key" class="mt-2" data-sent-model>
-                                                    <div class="font-mono text-[13px] text-gray-200 truncate" :title="g.model"><span :class="['text-[11px] uppercase tracking-wide rounded px-1 mr-1', sentRoleClass(g.role)]">{{ sentRoleName(g.role, true) }}</span>{{ g.model }} <span class="text-gray-500">· {{ $t('{length} call{v}', { length: g.items.length, v: g.items.length === 1 ? '' : 's' }) }}</span></div>
-                                                    <div v-for="k in g.items" :key="k.id" class="ml-3 mt-1 border border-gray-800 rounded-lg overflow-hidden" data-sent-call>
-                                                        <button type="button" @click="toggleSentCall(k)" :aria-expanded="sentTree.callOpen[k.id] ? 'true' : 'false'" class="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-800/60">
-                                                            <span class="font-mono text-gray-500 w-3 flex-shrink-0">{{ sentTree.callOpen[k.id] ? '−' : '+' }}</span>
-                                                            <span class="text-[12px] font-mono text-gray-300 flex-1 min-w-0 truncate">{{ k.when }}</span>
-                                                            <span class="text-[11px] font-mono text-gray-500 flex-shrink-0">≈{{ fmtTokens(Math.round(k.chars / 4)) }} tok</span>
-                                                        </button>
-                                                        <div v-if="sentTree.callOpen[k.id]" class="border-t border-gray-800 p-3">
-                                                            <div v-if="!sentTree.detail[k.id] || sentTree.detail[k.id].loading" class="text-gray-400 text-[13px]">{{ $t('Loading…') }}</div>
-                                                            <div v-else-if="sentTree.detail[k.id].error" class="text-red-300 text-[13px]" role="alert">{{ sentTree.detail[k.id].error }}</div>
-                                                            <sent-call v-else :data="sentTree.detail[k.id].data" :fmt="fmtTokens"></sent-call>
-                                                        </div>
-                                                    </div>
+                            <div v-else-if="!sentTree.requests.length" class="text-gray-500 italic text-[13px] py-3">{{ $t('Nothing kept matches. Prompts are kept from the next model call on.') }}</div>
+                            <ul v-else class="divide-y divide-gray-800/70 border border-gray-800 rounded-lg" :aria-label="$t('Requests with kept prompts')">
+                                <li v-for="r in sentTree.requests" :key="sentRowKey(r)" data-sent-request>
+                                    <button type="button" @click="toggleSentRequest(r)" :aria-expanded="sentTree.open[sentRowKey(r)] ? 'true' : 'false'" class="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-800/40">
+                                        <span class="font-mono w-5 h-5 leading-[18px] text-center flex-shrink-0 rounded border border-gray-700 text-gray-300">{{ sentTree.open[sentRowKey(r)] ? '−' : '+' }}</span>
+                                        <span :class="['truncate min-w-0 max-w-[50%]', r.reply ? 'text-gray-100' : 'text-gray-300 italic']" :title="r.prompt">{{ r.reply ? (r.prompt || $t('(no text)')) : sentRoleName(r.role) }}</span>
+                                        <span :class="['ml-auto truncate min-w-0 max-w-[22%] text-[12px]', r.known ? 'text-gray-400' : 'text-gray-500 italic']" :title="r.title">{{ r.known ? (r.title || $t('Untitled chat')) : (r.session ? $t('Deleted chat') : $t('Outside a chat')) }}</span>
+                                        <span class="font-mono text-[12px] text-gray-500 flex-shrink-0">{{ projectLabel(r.project) }}</span>
+                                        <span class="font-mono text-[12px] text-gray-400 flex-shrink-0">{{ r.when }}</span>
+                                        <span class="font-mono text-[12px] text-gray-500 flex-shrink-0 w-20 text-right">{{ $t('{length} call{v}', { length: r.calls, v: r.calls === 1 ? '' : 's' }) }}</span>
+                                    </button>
+                                    <div v-if="sentTree.open[sentRowKey(r)]" class="pl-11 pr-3 pb-3 space-y-3">
+                                        <div v-if="!sentTree.detail[sentRowKey(r)]" class="text-gray-400 text-[13px]">{{ $t('Loading…') }}</div>
+                                        <div v-else-if="sentTree.detail[sentRowKey(r)].error" class="text-red-300 text-[13px]" role="alert">{{ sentTree.detail[sentRowKey(r)].error }}</div>
+                                        <template v-else>
+                                            <!-- 1. Optimux's own prompt for the executor -->
+                                            <div v-if="sentTree.detail[sentRowKey(r)].metaView" data-sent-meta>
+                                                <div class="text-[12px] uppercase tracking-wider text-gray-500 mb-1">{{ $t('Meta-prompt: Optimux\'s instructions and your memory') }}</div>
+                                                <sent-call :flat="true" :data="sentTree.detail[sentRowKey(r)].metaView" :fmt="fmtTokens"></sent-call>
+                                            </div>
+                                            <!-- 2. the Conductor, then the executor: each call with only what it added -->
+                                            <div v-for="st in sentTree.detail[sentRowKey(r)].steps" :key="st.id" data-sent-step>
+                                                <div class="flex items-center gap-2 mb-1 text-[13px]">
+                                                    <span :class="['text-[11px] font-mono uppercase tracking-wide rounded px-1 flex-shrink-0', sentRoleClass(st.role)]">{{ sentRoleName(st.role, true) }}</span>
+                                                    <span class="font-mono text-gray-200 truncate min-w-0" :title="st.model">{{ st.model }}</span>
+                                                    <span class="font-mono text-[12px] text-gray-400 flex-shrink-0">{{ st.when }}</span>
+                                                    <span class="font-mono text-[11px] text-gray-500 flex-shrink-0">≈{{ fmtTokens(Math.round(st.chars / 4)) }} tok</span>
+                                                    <button type="button" @click="showWholePrompt(st)" :aria-expanded="sentTree.wholePrompt[st.id] && sentTree.wholePrompt[st.id].open ? 'true' : 'false'" class="ml-auto text-[12px] text-blue-300 hover:text-blue-200 flex-shrink-0">{{ sentTree.wholePrompt[st.id] && sentTree.wholePrompt[st.id].open ? $t('Hide the whole prompt') : $t('Whole prompt') }}</button>
+                                                </div>
+                                                <div v-if="st.earlier" class="text-[12px] text-gray-500 mb-1">{{ $t('Earlier in this chat: {count} part{v} (≈{tok} tok), sent again with this call', { count: st.earlier.count, v: st.earlier.count === 1 ? '' : 's', tok: fmtTokens(Math.round(st.earlier.chars / 4)) }) }}</div>
+                                                <sent-call :flat="true" :data="st.view" :fmt="fmtTokens"></sent-call>
+                                                <div v-if="sentTree.wholePrompt[st.id] && sentTree.wholePrompt[st.id].open" class="mt-2 border border-gray-800 rounded-lg p-3">
+                                                    <div v-if="sentTree.wholePrompt[st.id].loading" class="text-gray-400 text-[13px]">{{ $t('Loading…') }}</div>
+                                                    <div v-else-if="sentTree.wholePrompt[st.id].error" class="text-red-300 text-[13px]" role="alert">{{ sentTree.wholePrompt[st.id].error }}</div>
+                                                    <sent-call v-else :data="sentTree.wholePrompt[st.id].data" :fmt="fmtTokens"></sent-call>
                                                 </div>
                                             </div>
-                                        </div>
+                                        </template>
                                     </div>
                                 </li>
                             </ul>
@@ -3920,13 +3918,13 @@
     <!-- v0.8: the parts of one model call (What was sent), shared by the dialog under a reply and Dashboard -> History -->
     <script type="text/x-template" id="sent-call-tpl">
         <div>
-            <div class="flex h-2.5 rounded overflow-hidden bg-gray-800 mb-2" aria-hidden="true">
+            <div v-if="!flat" class="flex h-2.5 rounded overflow-hidden bg-gray-800 mb-2" aria-hidden="true">
                 <span v-for="g in kinds" :key="g.kind" :class="klass(g.kind, true)" :style="{ width: g.share + '%' }" :title="label(g.kind) + ' · ' + g.share + '%'"></span>
             </div>
-            <div class="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-gray-300 mb-3">
+            <div v-if="!flat" class="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-gray-300 mb-3">
                 <span v-for="g in kinds" :key="g.kind" class="flex items-center gap-1.5"><span :class="['inline-block w-2.5 h-2.5 rounded-sm', klass(g.kind, true)]"></span>{{ label(g.kind) }} <span class="font-mono text-gray-500">≈{{ fmt(Math.round(g.chars / 4)) }} · {{ g.share }}%</span></span>
             </div>
-            <div class="flex flex-wrap items-center gap-2 mb-3 text-[12px] text-gray-500">
+            <div v-if="!flat" class="flex flex-wrap items-center gap-2 mb-3 text-[12px] text-gray-500">
                 <span class="flex-1 min-w-0">{{ tokens ? $t('Sizes are estimates (4 characters ≈ 1 token); the provider counted {v} tokens in for this call.', { v: fmt(tokens) }) : $t('Sizes are estimates (4 characters ≈ 1 token).') }}</span>
                 <button type="button" @click="setAll(true)" class="text-blue-300 hover:text-blue-200">{{ $t('Open all') }}</button>
                 <button type="button" @click="setAll(false)" class="text-gray-400 hover:text-gray-200">{{ $t('Fold all') }}</button>

@@ -32,55 +32,57 @@ def test_there_is_no_browse_button_any_more():
 
 
 def test_the_filters_at_the_top_reach_the_open_block():
-    assert "/api/sent/chats?" in APP
+    assert "/api/sent/requests?" in APP
     fetch = APP[APP.index("const fetchHistoryPage"):][:900]
-    assert "historyBlock.value === 'sent'" in fetch and "fetchSentChats" in fetch   # project, status and search
+    assert "historyBlock.value === 'sent'" in fetch and "fetchSentRequests" in fetch   # project, status and search
     assert "watch(() => historyPage.value.period" in APP                       # the period too
     assert "historyBlock.value === 'sent'" in APP[APP.index("const toggleHistoryBlock"):][:500]
     search = HISTORY[HISTORY.index("$t('Search')"):][:700]
-    assert "historySearchHint" in search                                            # title only, or title and model
+    assert "historySearchHint" in search                                            # title only, or title, model and request
 
 
 def _sent_block():
     return HISTORY[HISTORY.index("historyBlock === 'sent'"):]
 
 
-def test_the_kept_prompts_are_a_tree_chat_then_request_then_conductor_and_executor_then_calls():
+def test_the_kept_prompts_are_a_flat_list_of_requests_with_no_chat_level():
     sent = _sent_block()
-    for marker in ("data-sent-chat", "data-sent-turn", "data-sent-model", "data-sent-call", "<sent-call"):
+    assert "data-sent-chat" not in sent and "toggleSentChat" not in sent and "sentTurnGroups" not in sent + APP
+    for marker in ("data-sent-request", "data-sent-meta", "data-sent-step", "<sent-call"):
         assert marker in sent, marker
-    order = [sent.index(m) for m in ("data-sent-chat", "data-sent-turn", "data-sent-model", "data-sent-call", "<sent-call")]
+    order = [sent.index(m) for m in ("data-sent-request", "data-sent-meta", "data-sent-step")]
     assert order == sorted(order)
     assert "keep_sent_days" in sent and "showSettingsSaved" in sent                  # the days setting stays with the block
-    row = sent[sent.index("data-sent-turn"):][:1400]
-    assert "t.prompt" in row and "sentRoleName(" in row                              # the request, or what made the call
-    group = sent[sent.index("data-sent-model"):][:900]
-    assert "sentRoleName(g.role" in group and "g.model" in group                     # "Conductor · model", "Executor · SIMPLE · model"
-    assert "k.when" in sent[sent.index("data-sent-call"):][:1500]
+    row = sent[sent.index("data-sent-request"):][:2200]
+    assert "r.prompt" in row and "sentRoleName(" in row                              # the request, or what made a lone call
+    assert "r.title" in row                                                          # the chat it came from, as a small label
+    assert "openChatFromDashboard" not in sent                                       # a row opens in the list, it never leaves
 
 
-def test_the_name_of_a_chat_opens_it_in_the_list_and_does_not_leave_the_page():
+def test_an_opened_request_is_meta_then_conductor_then_executor_with_no_drilling():
     sent = _sent_block()
-    chat = sent[sent.index("data-sent-chat"):sent.index("data-sent-turn")]
-    assert "openChatFromDashboard" not in chat
-    assert chat.count("toggleSentChat(c)") >= 2                                       # the + and the name
+    opened = sent[sent.index("data-sent-meta"):]
+    assert opened.index("data-sent-meta") < opened.index("data-sent-step")
+    step = opened[opened.index("data-sent-step"):][:1800]
+    assert "sentRoleName(st.role" in step and "st.model" in step and "sentWhen(" in step + APP   # who, which model, when (seconds)
+    assert ':flat="true"' in step and "st.view" in step                             # only what the call added, as rows right away
+    assert "st.earlier" in step                                                      # the earlier conversation is counted, not repeated
+    assert "wholePrompt" in step                                                     # and the whole prompt is one click away
 
 
 def test_every_call_shows_its_date_and_time_with_seconds():
     when = APP[APP.index("const sentWhen"):][:400]
     assert "second: '2-digit'" in when and "hour: '2-digit'" in when and "month: 'short'" in when
-    assert "sentWhen(" in APP[APP.index("const loadSentTurns"):][:900]
 
 
-def test_the_search_reaches_the_requests_and_the_open_chat_gets_it_too():
-    assert "'/api/sent/turns?session='" in APP.replace('"', "'") or "/api/sent/turns?" in APP
-    load = APP[APP.index("const loadSentTurns"):][:700]
-    assert "sentQuery()" in load
+def test_the_search_reads_requests_and_an_open_row_is_read_again_with_the_new_words():
+    load = APP[APP.index("const loadSentRequest"):][:900]
+    assert "/api/sent/request?session=" in load and "sentTree.detail" in load
     assert "request" in APP[APP.index("const historySearchHint"):][:300]
-    assert "sentTree.turns" in APP[APP.index("const fetchSentChats"):][:1500]          # an open chat is read again with the new words
+    assert "sentTree.detail = {}" in APP[APP.index("const fetchSentRequests"):][:1800]
 
 
-def test_the_parts_of_a_call_are_grouped_by_the_request_they_answer():
+def test_the_parts_of_a_whole_prompt_are_grouped_by_the_request_they_answer():
     assert "const sentPartItems" in APP
     items = APP[APP.index("const sentPartItems"):][:1800]
     assert "'user'" in items and "'assistant'" in items and "'tools'" in items
@@ -88,14 +90,19 @@ def test_the_parts_of_a_call_are_grouped_by_the_request_they_answer():
     for marker in ("data-sent-group", "data-sent-part", ":aria-expanded"):
         assert marker in tpl, marker
     assert ".component('sent-call'" in APP
+    assert "flat: Boolean" in APP[APP.index("const SentCall"):][:300]               # a call's new parts only, without the grouping
 
 
-def test_the_peek_of_a_part_takes_half_the_row_and_ends_in_dots():
+def test_the_peek_of_a_prompt_takes_half_the_row_and_ends_in_dots():
     tpl = PAGE[PAGE.index('id="sent-call-tpl"'):PAGE.index("</script>", PAGE.index('id="sent-call-tpl"'))]
     at = tpl.index("peek(r.p.text)")
     row = tpl[tpl.rindex("<span", 0, at):at]
     assert "max-w-[50%]" in row and "truncate" in row and "flex-1" not in row           # not the whole row
     assert "ml-auto" in tpl                                                              # the size and arrow go right
+    sent = _sent_block()
+    at = sent.index("r.prompt")
+    line = sent[sent.rindex("<span", 0, at):at]
+    assert "max-w-[50%]" in line and "truncate" in line                                 # the request in the list too
 
 
 def test_the_calls_made_by_optimux_itself_are_not_called_you():
@@ -103,7 +110,7 @@ def test_the_calls_made_by_optimux_itself_are_not_called_you():
 
 
 def test_one_shared_template_serves_the_dialog_and_the_history():
-    assert PAGE.count("<sent-call") == 2
+    assert PAGE.count("<sent-call") == 4                                  # the dialog, the meta-prompt, a step's rows, a whole prompt
     start = PAGE.index('<!-- v0.8: the parts of one model call')
     assert PAGE[:start].rstrip().endswith("</div>") and PAGE[start:].count("<script") == 2   # after the app's root, which would drop a script
 

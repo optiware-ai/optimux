@@ -146,91 +146,125 @@ def recent(limit: int = 100, role: str | None = None, project: str | None = None
         conn.close()
 
 
-def _like(text: str) -> str:
-    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+EXECUTORS = ("simple", "complex")
 
 
-def _prompt_terms(conn, query: str) -> tuple[str, list]:
-    """SQL (and its arguments) for "one of this call's user messages holds `query`". The parts are stored by
-    hash and a call lists [kind, hash]: the parts holding the words are found first (the newest 300), then the
-    calls that list one of them as a user message. Optimux's own text, in every call, is never the match."""
-    hashes = [r["hash"] for r in conn.execute(
-        "SELECT hash FROM sent_parts WHERE text LIKE ? ESCAPE '\\' ORDER BY rowid DESC LIMIT 300", (_like(query),))]
-    if not hashes:
-        return "", []
-    return " OR (" + " OR ".join(["instr(parts, ?) > 0"] * len(hashes)) + ")", [f'["user", "{h}"]' for h in hashes]
+def _user_start(refs: list) -> int:
+    """Where this request starts in an executor's call: its last user message (everything before is
+    Optimux's instructions and memory, then the earlier conversation sent again)."""
+    return max((i for i, (kind, _) in enumerate(refs) if kind == "user"), default=0)
 
 
-def _last_user_text(conn, refs: list) -> str:
-    for kind, h in reversed(refs):
-        if kind == "user":
-            row = conn.execute("SELECT text FROM sent_parts WHERE hash = ?", (h,)).fetchone()
-            if row and row["text"].strip():
-                return row["text"]
+def _prefix(a: list, b: list) -> int:
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+def _request_text(conn, refs: list) -> str:
+    start = _user_start(refs)
+    if start < len(refs) and refs[start][0] == "user":
+        row = conn.execute("SELECT text FROM sent_parts WHERE hash = ?", (refs[start][1],)).fetchone()
+        return row["text"] if row else ""
     return ""
 
 
-def turns(session: str, query: str = "") -> list[dict]:
-    """The kept calls of one chat ("" = those outside any chat), grouped by the request that made them, in the
-    order they were asked: [{key, reply, prompt, hit, ts, calls: [{id, ts, role, model, chars}]}]. A reply's calls
-    share a task id (the Conductor's, the executor's, the scout's); a call made on its own (the memory update, a
-    commit message) is a turn of its own with no prompt (`reply` false). `prompt` is the last thing the user said
-    in the executor's call, cut for a list; `hit` says whether it holds `query`."""
-    conn = store.connect()
-    try:
-        rows = conn.execute("SELECT id, ts, task_id, role, model, chars, parts FROM sent_calls "
-                            "WHERE COALESCE(session, '') = ? ORDER BY id", (session,)).fetchall()
-        groups: dict[str, list] = {}
-        for r in rows:
-            groups.setdefault(r["task_id"] or f"call-{r['id']}", []).append(r)
-        out = []
-        for key, calls in groups.items():
-            reply = not key.startswith("call-")
-            prompt = ""
-            if reply:
-                first = next((c for c in calls if c["role"] in ("simple", "complex")), calls[0])
-                prompt = " ".join(_last_user_text(conn, json.loads(first["parts"])).split())[:PROMPT_CUT]
-            out.append({"key": key, "reply": reply, "prompt": prompt,
-                        "hit": bool(query.strip()) and query.strip().lower() in prompt.lower(), "ts": calls[0]["ts"],
-                        "calls": [{"id": c["id"], "ts": c["ts"], "role": c["role"], "model": c["model"], "chars": c["chars"]}
-                                  for c in calls]})
-    finally:
-        conn.close()
-    return out
-
-
-def chats(project: str | None = None, since: float | None = None, archived: bool = False,
-          query: str = "", limit: int = 300) -> list[dict]:
-    """The kept calls by chat, the most recently used chat first (Dashboard -> History):
-    {session, title, known, project, archived, last, calls, chars, models}. The filters are
-    the chat list's: a project ("" = the Workspace), calls since a time, archived chats,
-    words in the title, in a model's name or in one of the user's requests (the whole chat is listed, not only the matching calls). `since` keeps the chats used since then. Calls made outside any chat (a commit
-    message, a memory update) come as one row with session "" and no title; those of a
-    chat that was deleted keep their id, with known false and no title."""
+def requests(project: str | None = None, since: float | None = None, archived: bool = False,
+             query: str = "", limit: int = 300) -> list[dict]:
+    """The kept calls as a flat list of requests, the most recent first (Dashboard -> History): one row per
+    thing the user asked, whatever its chat: {key, session, title, known, project, reply, role, prompt, ts, last,
+    calls, chars, models}. A reply's calls (the Conductor's, the executor's, the scout's) share a task id; a
+    call made on its own (the memory update, a commit message) is a row of its own (`reply` false, no prompt).
+    `prompt` is what the user said, cut for a list. The filters are the chat list's (a project, "" = the
+    Workspace; requests used since a time; archived chats); `query` keeps the requests whose chat title, a
+    model's name or whole request holds the words (Optimux's own text, in every call, never matches)."""
     from optimux_backend.core.security import mask_secrets
     where, args = ["COALESCE(s.archived, 0) = ?"], [int(archived)]
     if project is not None:
         where.append("COALESCE(c.project, '') = ?"); args.append(project)
     conn = store.connect()
     try:
-        if query.strip():
-            # a chat whose title, a model's name or one of whose requests holds the words: the whole chat is listed
-            terms, hit_args = _prompt_terms(conn, query.strip())
-            where.append("(s.title LIKE ? OR COALESCE(c.session, '') IN (SELECT COALESCE(session, '') FROM sent_calls "
-                         "WHERE model LIKE ?" + terms + "))")
-            args += [f"%{query.strip()}%"] * 2 + hit_args
-        sql = ("SELECT COALESCE(c.session, '') AS session, MAX(s.title) AS title, MAX(s.archived) AS archived, "
-               "MAX(c.ts) AS last, COUNT(*) AS calls, SUM(c.chars) AS chars, GROUP_CONCAT(DISTINCT c.model) AS models, "
-               "MAX(COALESCE(c.project, '')) AS project, MAX(s.id) AS known "
-               "FROM sent_calls c LEFT JOIN sessions s ON s.id = c.session WHERE " + " AND ".join(where)
-               + " GROUP BY COALESCE(c.session, '')" + (" HAVING MAX(c.ts) >= ?" if since is not None else "")
-               + " ORDER BY last DESC LIMIT ?")
-        found = conn.execute(sql, (*args, *([since] if since is not None else []), max(1, min(int(limit), 1000)))).fetchall()
+        rows = conn.execute("SELECT c.id, c.ts, COALESCE(c.session, '') AS session, c.task_id, c.role, c.model, c.chars, "
+                            "COALESCE(c.project, '') AS project, s.title AS title, s.id AS known "
+                            "FROM sent_calls c LEFT JOIN sessions s ON s.id = c.session WHERE " + " AND ".join(where)
+                            + " ORDER BY c.id", args).fetchall()
+        groups: dict[tuple, list] = {}
+        for r in rows:
+            groups.setdefault((r["session"], r["task_id"] or f"call-{r['id']}"), []).append(r)
+        found = [(g[-1]["ts"], key, g) for key, g in groups.items() if since is None or g[-1]["ts"] >= since]
+        found.sort(key=lambda f: f[0], reverse=True)
+        words = " ".join(query.lower().split())
+        out = []
+        for last, (session, key), calls in found:
+            first = next((c for c in calls if c["role"] in EXECUTORS), calls[0])
+            reply = not key.startswith("call-")
+            title = mask_secrets(calls[0]["title"] or "")[0]
+            models = sorted({c["model"] for c in calls if c["model"]})
+            prompt = ""
+            if reply:
+                refs = json.loads(conn.execute("SELECT parts FROM sent_calls WHERE id = ?", (first["id"],)).fetchone()["parts"])
+                prompt = " ".join(_request_text(conn, refs).split())
+            if words and not (words in title.lower() or any(words in m.lower() for m in models) or words in prompt.lower()):
+                continue
+            out.append({"key": key, "session": session, "title": title, "known": calls[0]["known"] is not None,
+                        "project": calls[0]["project"], "reply": reply, "role": first["role"], "prompt": prompt[:PROMPT_CUT], "ts": calls[0]["ts"],
+                        "last": last, "calls": len(calls), "chars": sum(c["chars"] or 0 for c in calls), "models": models})
+            if len(out) >= max(1, min(int(limit), 1000)):
+                break
     finally:
         conn.close()
-    return [{"session": r["session"], "title": mask_secrets(r["title"] or "")[0], "project": r["project"],
-             "archived": bool(r["archived"]), "known": r["known"] is not None, "last": r["last"], "calls": r["calls"], "chars": r["chars"] or 0,
-             "models": sorted(m for m in (r["models"] or "").split(",") if m)} for r in found]
+    return out
+
+
+def request_detail(session: str, key: str) -> dict | None:
+    """One request as a timeline, for opening a row: {meta, steps}. `meta` is Optimux's own prompt for the
+    executor, once (its instructions and your memory). `steps` are the calls in the order they were made (the
+    Conductor, then the executor, the scout...): each {id, ts, role, model, chars, parts, earlier}, where
+    `parts` is only what that call added (the request, the tool calls and results so far; instructions, memory
+    and tools shown before are not repeated) and `earlier` counts the conversation of the chats before it,
+    sent again with the first executor call ({count, chars}, else None). Whole prompts: get(id)."""
+    conn = store.connect()
+    try:
+        if key.startswith("call-") and key[5:].isdigit():
+            rows = conn.execute("SELECT * FROM sent_calls WHERE id = ? AND COALESCE(session, '') = ?", (int(key[5:]), session)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM sent_calls WHERE task_id = ? AND COALESCE(session, '') = ? ORDER BY id", (key, session)).fetchall()
+        if not rows:
+            return None
+        refs_of = {r["id"]: json.loads(r["parts"]) for r in rows}
+        wanted = sorted({h for refs in refs_of.values() for _, h in refs})
+        texts = {}
+        for i in range(0, len(wanted), 500):
+            chunk = wanted[i:i + 500]
+            for t in conn.execute(f"SELECT hash, text FROM sent_parts WHERE hash IN ({','.join('?' * len(chunk))})", chunk):
+                texts[t["hash"]] = t["text"]
+    finally:
+        conn.close()
+    part = lambda ref: {"kind": ref[0], "text": texts.get(ref[1], ""), "chars": len(texts.get(ref[1], ""))}
+    meta, steps, prev_exec, prev_role, seen_tools = [], [], None, {}, set()
+    for r in rows:
+        refs, earlier = refs_of[r["id"]], None
+        if r["role"] in EXECUTORS:
+            start = _user_start(refs)
+            if prev_exec is None:
+                meta = [part(x) for x in refs[:start] if x[0] in ("instructions", "memory")]
+                history = [part(x) for x in refs[:start] if x[0] not in ("instructions", "memory")]
+                earlier = {"count": len(history), "chars": sum(p["chars"] for p in history)} if history else None
+                new = refs[start:]
+            else:
+                new = refs[max(_prefix(refs, prev_exec), start):]
+            prev_exec = refs
+        else:
+            new = refs[_prefix(refs, prev_role[r["role"]]):] if r["role"] in prev_role else refs
+            prev_role[r["role"]] = refs
+        new = [x for x in new if not (x[0] == "tools" and x[1] in seen_tools)]
+        seen_tools.update(x[1] for x in new if x[0] == "tools")
+        steps.append({"id": r["id"], "ts": r["ts"], "role": r["role"], "model": r["model"], "chars": r["chars"],
+                      "parts": [part(x) for x in new], "earlier": earlier})
+    return {"meta": meta, "steps": steps}
 
 
 def prune(days: int) -> int:

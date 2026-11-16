@@ -19,5 +19,5 @@ def test_the_kept_prompts_card_is_in_history_not_in_execution():
 
 def test_the_card_shows_that_the_days_were_saved():
     """Execution had the Saved! tick for the whole tab; History has none, so the card carries its own."""
-    card = PAGE[PAGE.index("data-history-sent"):PAGE.index("data-sent-chat")]
+    card = PAGE[PAGE.index("data-history-sent"):PAGE.index("data-sent-request")]
     assert "showSettingsSaved" in card
