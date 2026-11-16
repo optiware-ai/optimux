@@ -839,6 +839,11 @@ async def sent_request(session: str = "", key: str = ""):
     found = await asyncio.to_thread(sent_lib.request_detail, session, key)
     if found is None:
         return JSONResponse({"detail": tr("This prompt is no longer kept.")}, status_code=404)
+    if session:                                     # what each call answered, from the chat's own log
+        said = await asyncio.to_thread(chat_store.answers, session)
+        for step in found["steps"]:
+            if said.get(step["id"]):
+                step["answer"] = said[step["id"]]
     return found
 
 

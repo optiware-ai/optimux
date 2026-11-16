@@ -121,3 +121,39 @@ def test_the_api_lists_requests_and_one_timeline(mocker, tmp_path):
     assert [s["role"] for s in d["steps"]] == ["conductor", "simple", "simple"]
     assert client.get(f"/api/sent/request?session={a}&key=zzz", headers=H).status_code == 404
     assert client.get("/api/sent/requests").status_code in (401, 403)
+
+
+def _replied(a, ids):
+    """What the page recorded for the chat: text streams in before each call's usage event."""
+    ev = lambda **k: k
+    sessions.append_events(a, [
+        ev(type="prompt", content="make the pattern pentagon like"),
+        ev(type="usage", sent=ids["c1"]),
+        ev(type="token", content="Looking at "), ev(type="token", content="the css."),
+        ev(type="usage", sent=ids["s1"]),
+        ev(type="usage", sent=ids["s2"]),                       # a step that wrote nothing
+        ev(type="token", content="Done. Key sk-ant-very-secret-123 is hidden."),
+        ev(type="usage", sent=ids["x1"]),
+    ])
+
+
+def test_what_each_call_answered_comes_from_the_chat_log_masked(mocker):
+    mocker.patch("optimux_backend.core.security.secret_values", return_value=[("ANTHROPIC_API_KEY", "sk-ant-very-secret-123")])
+    a, ids = _chat()
+    _replied(a, ids)
+    got = sessions.answers(a)
+    assert got[ids["s1"]] == "Looking at the css."
+    assert ids["c1"] not in got and ids["s2"] not in got      # empty answers are left out
+    assert "very-secret" not in got[ids["x1"]]
+    assert sessions.answers("missing-chat") == {}
+
+
+def test_the_timeline_puts_the_answer_with_the_call_that_wrote_it(mocker, tmp_path):
+    client = make_client(mocker, tmp_path)
+    a, ids = _chat()
+    _replied(a, ids)
+    steps = client.get(f"/api/sent/request?session={a}&key=T1", headers=H).json()["steps"]
+    assert [s.get("answer", "") for s in steps] == ["", "Looking at the css.", ""]
+    out = sent.record("", "commit_message", "m", [{"role": "user", "content": "msg"}], None)
+    lone = client.get(f"/api/sent/request?session=&key=call-{out}", headers=H).json()["steps"]
+    assert lone[0].get("answer", "") == ""                    # outside a chat nothing is logged

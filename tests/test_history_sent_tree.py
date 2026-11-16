@@ -122,3 +122,23 @@ def test_a_model_is_listed_once_in_the_dialog_of_one_reply():
     assert 'v-for="(c, i) in sentBox.calls"' not in nav                              # not one line per call in order
     grouped = APP[APP.index("const sentModels"):][:600]
     assert "c.model" in grouped
+
+
+def test_a_request_row_has_a_go_to_chat_icon_right_after_its_prompt():
+    row = _sent_block()[_sent_block().index("data-sent-request"):]
+    row = row[:row.index("data-sent-meta")]
+    assert "<button" in row and "goToSentChat(r)" in row and "@click.stop" in row     # not a button inside a button
+    assert row.index("r.prompt") < row.index("goToSentChat(r)") < row.index("r.title")    # right after the dots
+    assert 'v-if="r.known && r.session"' in row                                         # a deleted chat has nowhere to go
+    assert "role=\"button\"" in row or "aria-expanded" in row
+
+
+def test_going_to_the_chat_leaves_a_way_back_to_the_history():
+    go = APP[APP.index("const goToSentChat"):][:700]
+    assert "openSession(" in go and "fromHistory.value = true" in go and "closeSettings()" in go
+    back = APP[APP.index("const backToHistory"):][:400]
+    assert "fromHistory.value = false" in back and "openSettings('history')" in back
+    assert "fromHistory.value = false" in APP[APP.index("const newChat"):][:300]          # any other way on ends it
+    assert "fromHistory.value = false" in APP[APP.index("const goHome"):][:300]
+    assert "data-back-to-history" in PAGE and "backToHistory" in PAGE and "v-if=\"fromHistory\"" in PAGE
+    assert "fromHistory, backToHistory, goToSentChat" in APP

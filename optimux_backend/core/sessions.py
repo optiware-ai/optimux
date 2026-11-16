@@ -39,6 +39,30 @@ def create(project: str, first_prompt: str = "") -> str:
     return sid
 
 
+def answers(sid: str) -> dict[int, str]:
+    """What each kept model call wrote, read from the chat's log (v0.8): {sent id: text}. The page streams a
+    call's text before the usage event that names the call, so the text after one usage event and before the
+    next belongs to the second. Calls that wrote nothing are left out; saved keys are hidden."""
+    conn = store.connect()
+    try:
+        rows = conn.execute("SELECT data FROM session_events WHERE session_id = ? ORDER BY id", (sid,)).fetchall()
+    finally:
+        conn.close()
+    out, text = {}, ""
+    for r in rows:
+        try:
+            e = json.loads(r["data"])
+        except (ValueError, TypeError):
+            continue
+        if e.get("type") == "token" and isinstance(e.get("content"), str):
+            text += e["content"]
+        elif e.get("type") == "usage":
+            if e.get("sent") and text.strip():
+                out[int(e["sent"])] = mask_secrets(text)[0]
+            text = ""
+    return out
+
+
 def exists(sid: str) -> bool:
     conn = store.connect()
     try:

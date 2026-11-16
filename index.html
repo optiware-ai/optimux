@@ -17,6 +17,7 @@
     <script src="/static/vendor/qrcode-generator-1.4.4.js"></script>
     <script src="/static/boot.js"></script>
     <script src="/static/chat-input.js"></script>
+    <script src="/static/sent-view.js"></script>
     <script src="/static/attention.js"></script>
     <script src="/static/connection.js"></script>
     <script src="/static/i18n.js"></script>
@@ -1413,14 +1414,18 @@
                             <div v-else-if="!sentTree.requests.length" class="text-gray-500 italic text-[13px] py-3">{{ $t('Nothing kept matches. Prompts are kept from the next model call on.') }}</div>
                             <ul v-else class="divide-y divide-gray-800/70 border border-gray-800 rounded-lg" :aria-label="$t('Requests with kept prompts')">
                                 <li v-for="r in sentTree.requests" :key="sentRowKey(r)" data-sent-request>
-                                    <button type="button" @click="toggleSentRequest(r)" :aria-expanded="sentTree.open[sentRowKey(r)] ? 'true' : 'false'" class="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-800/40">
-                                        <span class="font-mono w-5 h-5 leading-[18px] text-center flex-shrink-0 rounded border border-gray-700 text-gray-300">{{ sentTree.open[sentRowKey(r)] ? '−' : '+' }}</span>
+                                    <!-- the whole row opens it; the go-to icon is a button of its own, never inside another -->
+                                    <div @click="toggleSentRequest(r)" class="w-full flex items-center gap-3 px-3 py-2 text-left cursor-pointer hover:bg-gray-800/40">
+                                        <button type="button" :aria-expanded="sentTree.open[sentRowKey(r)] ? 'true' : 'false'" :aria-label="$t('Open this request')" class="font-mono w-5 h-5 leading-[18px] text-center flex-shrink-0 rounded border border-gray-700 text-gray-300">{{ sentTree.open[sentRowKey(r)] ? '−' : '+' }}</button>
                                         <span :class="['truncate min-w-0 max-w-[50%]', r.reply ? 'text-gray-100' : 'text-gray-300 italic']" :title="r.prompt">{{ r.reply ? (r.prompt || $t('(no text)')) : sentRoleName(r.role) }}</span>
+                                        <button v-if="r.known && r.session" type="button" @click.stop="goToSentChat(r)" :title="$t('Go to this chat')" :aria-label="$t('Go to this chat')" class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded border border-gray-700 text-gray-400 hover:text-blue-200 hover:border-blue-500">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>
+                                        </button>
                                         <span :class="['ml-auto truncate min-w-0 max-w-[22%] text-[12px]', r.known ? 'text-gray-400' : 'text-gray-500 italic']" :title="r.title">{{ r.known ? (r.title || $t('Untitled chat')) : (r.session ? $t('Deleted chat') : $t('Outside a chat')) }}</span>
                                         <span class="font-mono text-[12px] text-gray-500 flex-shrink-0">{{ projectLabel(r.project) }}</span>
                                         <span class="font-mono text-[12px] text-gray-400 flex-shrink-0">{{ r.when }}</span>
                                         <span class="font-mono text-[12px] text-gray-500 flex-shrink-0 w-20 text-right">{{ $t('{length} call{v}', { length: r.calls, v: r.calls === 1 ? '' : 's' }) }}</span>
-                                    </button>
+                                    </div>
                                     <div v-if="sentTree.open[sentRowKey(r)]" class="pl-11 pr-3 pb-3 space-y-3">
                                         <div v-if="!sentTree.detail[sentRowKey(r)]" class="text-gray-400 text-[13px]">{{ $t('Loading…') }}</div>
                                         <div v-else-if="sentTree.detail[sentRowKey(r)].error" class="text-red-300 text-[13px]" role="alert">{{ sentTree.detail[sentRowKey(r)].error }}</div>
@@ -3475,6 +3480,8 @@
         <!-- One line above the chat (v0.4-5r): the chat's name, or, once a prompt has scrolled
              away, that prompt; in the page's flow, so it never covers the chat -->
         <div v-if="currentSession || pinnedPrompt" class="pt-3 pr-4 flex items-start gap-2">
+            <!-- v0.8: you came here from Dashboard → History -->
+            <button v-if="fromHistory" type="button" data-back-to-history @click="backToHistory" :title="$t('Go back to the History in the Dashboard')" class="flex-shrink-0 text-[13px] px-3 py-1.5 rounded-lg border border-blue-800/70 bg-blue-950/30 text-blue-200 hover:border-blue-500">←<span class="cm-bar-label">{{ ' ' + $t('Back to History') }}</span></button>
             <div v-if="pinnedPrompt" class="flex-1 min-w-0 bg-gray-950 border border-blue-800/60 rounded-lg text-[13px] text-gray-200">
                 <div class="flex items-start gap-2 px-3 py-1.5">
                     <span v-if="chatRenamed" class="flex-shrink-0 max-w-[220px] truncate text-xs font-mono text-gray-500 border border-gray-700 rounded px-1.5" :title="$t('Chat: ') + currentSession.title">{{ currentSession.title }}</span>
@@ -3947,7 +3954,14 @@
                         <span class="ml-auto text-[11px] font-mono text-gray-500 flex-shrink-0">≈{{ fmt(Math.round(r.p.chars / 4)) }} tok</span>
                         <span class="text-gray-500 flex-shrink-0">{{ shown[r.i] ? '▾' : '▸' }}</span>
                     </button>
-                    <pre v-if="shown[r.i]" class="px-3 py-2 border-t border-gray-800 bg-gray-950 text-[12px] leading-relaxed text-gray-200 whitespace-pre-wrap break-words max-h-[50vh] overflow-auto">{{ r.p.text }}</pre>
+                    <div v-if="shown[r.i]" class="border-t border-gray-800 bg-gray-950">
+                        <div class="flex items-center justify-end gap-2 px-2 pt-1.5">
+                            <button v-if="viewKind(r.p)" type="button" data-sent-view @click="viewed[r.i] = !viewed[r.i]" :aria-pressed="viewed[r.i] ? 'true' : 'false'" :title="viewed[r.i] ? $t('Show the text as it was sent') : $t('Show it formatted')" class="text-[11px] font-mono rounded border border-gray-700 px-1.5 py-0.5 text-gray-300 hover:text-white hover:border-gray-500">{{ viewed[r.i] ? $t('Original') : $t('View') }}</button>
+                            <copy-btn :text="r.p.text" :label="$t('Copy this text')"></copy-btn>
+                        </div>
+                        <div v-if="viewed[r.i] && viewKind(r.p)" class="px-3 pb-2 text-[13px] text-gray-200 max-h-[50vh] overflow-auto" v-html="viewHtml(r.p)"></div>
+                        <pre v-else class="px-3 pb-2 text-[12px] leading-relaxed text-gray-200 whitespace-pre-wrap break-words max-h-[50vh] overflow-auto">{{ r.p.text }}</pre>
+                    </div>
                 </div>
             </template>
         </div>

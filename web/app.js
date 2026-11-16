@@ -922,9 +922,10 @@ const SENT_KINDS = {     // kind: [label, the bar's colour, the text's colour]
     memory: [() => tr('Your memory'), 'bg-purple-500', 'text-purple-300'],
     user: [() => tr('You'), 'bg-blue-500', 'text-blue-300'],
     assistant: [() => tr('The model, earlier'), 'bg-green-600', 'text-green-300'],
+    answer: [() => tr('What the model answered'), 'bg-emerald-400', 'text-emerald-300'],
     call: [() => tr('Tool the model asked for'), 'bg-teal-600', 'text-teal-300'],
     result: [() => tr('Tool result'), 'bg-amber-600', 'text-amber-300'],
-    tools: [() => tr('Tools offered'), 'bg-pink-600', 'text-pink-300'],
+    tools: [() => tr('Tools Optimux offers the model'), 'bg-pink-600', 'text-pink-300'],
 };
 // what Optimux wrote to the model itself (not the user): its one message is a request, not "You"
 const SENT_OWN = ['commit_message', 'curator', 'skill_draft'];
@@ -967,14 +968,15 @@ const sentPartItems = (d) => {
     if (heads.length) heads[heads.length - 1].last = true;
     return rows;
 };
+const sentKindOf = new Map();       // text -> what View would show (the same text is in many calls)
 const SentCall = {
     // flat: just the parts as rows (a request's timeline shows only what each call added), no groups or toolbar
     props: { data: Object, fmt: Function, tokens: Number, flat: Boolean },
     data() {
         const open = {};
         if (!this.flat) sentPartItems(this.data).filter((r) => r.head).forEach((r) => { open[r.n] = !!r.last; });   // the last request is open
-        const shown = this.flat ? Object.fromEntries(this.data.parts.map((p, n) => [n, p.kind === 'user' || p.kind === 'assistant'])) : sentShownAtFirst(this.data);
-        return { shown, open, copied: false };
+        const shown = this.flat ? Object.fromEntries(this.data.parts.map((p, n) => [n, ['user', 'assistant', 'answer'].includes(p.kind)])) : sentShownAtFirst(this.data);
+        return { shown, open, copied: false, viewed: {} };
     },
     computed: {
         rows() { return this.flat ? this.data.parts.map((p, i) => ({ head: false, p, i, g: -1 })) : sentPartItems(this.data); },
@@ -984,6 +986,24 @@ const SentCall = {
         label(k) { return sentKindLabel(k, this.data.role); },
         klass: sentKindClass,
         peek: sentPeek,
+        // View: JSON, Markdown or code made readable; None for plain words. Clicking again shows the text as it is.
+        viewKind(p) {
+            if (sentKindOf.size > 500) sentKindOf.clear();
+            if (!sentKindOf.has(p.text)) sentKindOf.set(p.text, window.OptimuxSentView.detect(p.text));
+            return sentKindOf.get(p.text);
+        },
+        viewHtml(p) {
+            const k = this.viewKind(p), V = window.OptimuxSentView, hl = window.hljs;
+            const code = (text, lang) => {
+                let html;
+                try { html = lang && hl.getLanguage(lang) ? hl.highlight(text, { language: lang }).value : hl.highlightAuto(text).value; }
+                catch (_) { html = text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]); }
+                return '<pre class="hljs whitespace-pre-wrap break-words"><code>' + html + '</code></pre>';
+            };
+            const html = k === 'md' ? '<div class="prose prose-invert prose-blue max-w-none leading-relaxed">' + marked.parse(p.text) + '</div>'
+                : k === 'json' ? code(V.pretty(p.text), 'json') : code(p.text);
+            return optimuxSafeHtml(html);
+        },
         setAll(on) {
             this.data.parts.forEach((p, n) => { this.shown[n] = on; });
             this.rows.filter((r) => r.head).forEach((r) => { this.open[r.n] = on; });
@@ -2193,8 +2213,10 @@ const optimuxApp = createApp({
             try {
                 const d = await studioFetch('/api/sent/request?session=' + encodeURIComponent(r.session) + '&key=' + encodeURIComponent(r.key));
                 const view = (role, parts) => ({ role, chars: parts.reduce((n, p) => n + p.chars, 0), parts });
+                // what the call answered is the last thing it did: it closes the call's own box
+                const withAnswer = (st) => (st.answer ? [...st.parts, { kind: 'answer', text: st.answer, chars: st.answer.length }] : st.parts);
                 sentTree.detail[k] = { metaView: d.meta.length ? view('meta', d.meta) : null,
-                                       steps: d.steps.map((st) => ({ ...st, when: sentWhen(st.ts), view: view(st.role, st.parts) })) };
+                                       steps: d.steps.map((st) => ({ ...st, when: sentWhen(st.ts), view: view(st.role, withAnswer(st)) })) };
             } catch (e) { sentTree.detail[k] = { metaView: null, steps: [], error: e.message }; }
         };
         const toggleSentRequest = (r) => {
@@ -2867,6 +2889,18 @@ const optimuxApp = createApp({
             if (await saveSettings()) { await reloadSettings(); commandEnvText.value = (appSettings.value.command_env || []).join('\n'); }
         };
 
+        // v0.8: from a request in History to its chat, with a way back (the Dashboard keeps where it was)
+        const fromHistory = ref(false);
+        const goToSentChat = (r) => {
+            if (!r.session || isGenerating.value || pendingApproval.value) return;
+            closeSettings();
+            openSession(r.session);
+            fromHistory.value = true;
+        };
+        const backToHistory = () => {
+            fromHistory.value = false;
+            openSettings('history');
+        };
         const openChatFromDashboard = (sid) => {
             closeSettings();
             openSession(sid);
@@ -2888,6 +2922,7 @@ const optimuxApp = createApp({
             } catch (e) { projectLocations.value[name] = { error: String(e.message || e) }; }
         };
         const switchProject = async (name) => {
+            fromHistory.value = false;
             appSettings.value.active_project = name;
             await changeProject();
             fetchProjectsOverview();
@@ -5663,6 +5698,7 @@ const optimuxApp = createApp({
         // ---- Chat controls
         const welcomeMessage = (text) => ({ role: 'agent', content: text, system_note: tk('System'), commands: [] });
         const newChat = () => {
+            fromHistory.value = false;
             if (isGenerating.value || pendingApproval.value) return;
             currentSession.value = null;
             readOnlyChat.value = null;
@@ -5755,12 +5791,14 @@ const optimuxApp = createApp({
         };
         const openSession = (sid) => {
             if (isGenerating.value || pendingApproval.value) return;
+            fromHistory.value = false;               // goToSentChat sets it again right after
             historyOpen.value = false;
             isGenerating.value = true;
             ws.value.send(JSON.stringify({ type: 'open_session', id: sid }));
         };
         // The logo and the name: back to the most recent chat (any project), or the Workspace
         const goHome = () => {
+            fromHistory.value = false;
             if (showSettingsModal.value) closeSettings();
             historyOpen.value = false;
             if (isGenerating.value || pendingApproval.value || !ws.value) return;
@@ -6587,7 +6625,7 @@ const optimuxApp = createApp({
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
             sentBox, openSent, showSent, sentModels, historyBlock, toggleHistoryBlock, historySearchHint,
-            sentTree, sentRowKey, toggleSentRequest, showWholePrompt, sentRoleClass, sentRoleName, sentWhen,
+            fromHistory, backToHistory, goToSentChat, sentTree, sentRowKey, toggleSentRequest, showWholePrompt, sentRoleClass, sentRoleName, sentWhen,
             syncBox, chatProject, openSync, reopenSync, closeSync, syncReady, syncCommits, syncCanChoose, syncProblems, syncWarnings, syncButton, writeCommitMessage, runSync, link, linkNote,
             startClone, cancelClone, projectLocations, loadProjectLocations, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,
