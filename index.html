@@ -369,7 +369,7 @@
                 <nav class="flex-1 overflow-y-auto py-3">
                     <template v-for="group in dashboardGroups" :key="group">
                         <div class="px-5 pt-3 pb-1 text-[11px] uppercase tracking-wider text-gray-600">{{ $t(group) }}</div>
-                        <button v-for="sec in dashboardSections.filter(x => x.group === group)" :key="sec.id" @click="openSettings(sec.id)"
+                        <button v-for="sec in dashboardSections.filter(x => x.group === group && (x.id !== 'team' || teamInfo.mode === 'team'))" :key="sec.id" @click="openSettings(sec.id)"
                                 :class="['w-full text-left px-5 py-2 text-[15px] flex items-center gap-3 border-l-2 transition', settingsTab === sec.id ? 'border-blue-500 bg-blue-950/40 text-blue-300' : 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-800/50']">
                             <span class="w-4 text-center">{{ sec.icon }}</span>{{ $t(sec.label) }}
                         </button>
@@ -1141,6 +1141,73 @@
                 </div>
 
                 <!-- v0.8: the video tutorial, under Help. Leaving the page removes the player, which stops it -->
+                <!-- Section: Team (the admin's page; team step 1) -->
+                <div v-if="settingsTab === 'team'" class="space-y-4 max-w-5xl">
+                    <div v-if="teamInfo.mode !== 'team'" class="bg-gray-900 border border-gray-800 rounded-xl p-4 text-[15px] text-gray-300 space-y-2">
+                        <p>{{ $t('Team mode is off: Optimux is for one person.') }}</p>
+                        <p class="text-gray-400">{{ $t('To invite other people, run this on the computer or server where Optimux runs:') }} <code class="text-gray-200">optimux enable-team</code></p>
+                    </div>
+                    <template v-else>
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                            <h3 class="text-[15px] font-bold text-gray-200">{{ $t('Invite someone') }}</h3>
+                            <p class="text-[13px] text-gray-400 leading-relaxed">{{ $t('Optimux does not send email: copy the message into your own email or chat. The link works once, for 7 days.') }}</p>
+                            <form @submit.prevent="teamInvite" class="flex gap-2">
+                                <input v-model="team.name" type="text" maxlength="40" :placeholder="$t('Their name, for example anna')" :aria-label="$t('Their name')" class="flex-1 max-w-xs bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-[15px] focus:outline-none focus:border-blue-500">
+                                <button type="submit" :disabled="!team.name.trim()" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-[15px] font-semibold">{{ $t('Invite') }}</button>
+                            </form>
+                            <p v-if="team.error" class="text-[13px] text-red-300">{{ team.error }}</p>
+                            <div v-if="team.invite" class="border border-blue-900 bg-blue-950/30 rounded-lg p-3 space-y-2">
+                                <div class="text-[13px] text-yellow-300">{{ $t('Shown once: copy it now. Making a new link for {name} replaces this one.', { name: team.invite.name }) }}</div>
+                                <textarea readonly rows="7" :value="teamMessage" class="w-full font-mono text-[13px] bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-[15px] focus:outline-none focus:border-blue-500"></textarea>
+                                <copy-btn :text="teamMessage" :label="$t('Copy the message')"></copy-btn>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-x-auto">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-2">{{ $t('People') }}</h3>
+                            <table class="w-full text-[14px]">
+                                <thead><tr class="text-left text-gray-500 text-[12px] uppercase tracking-wider">
+                                    <th class="py-1 pr-3 font-normal">{{ $t('Name') }}</th><th class="py-1 pr-3 font-normal">{{ $t('Role') }}</th><th class="py-1 pr-3 font-normal">{{ $t('Account') }}</th>
+                                    <th class="py-1 pr-3 font-normal">{{ $t('Signed in') }}</th><th class="py-1 pr-3 font-normal">{{ $t('Last sign-in') }}</th><th class="py-1 pr-3 font-normal">{{ $t('May read chats') }}</th><th></th>
+                                </tr></thead>
+                                <tbody>
+                                    <tr v-for="u in team.users" :key="u.id" class="border-t border-gray-800" :data-user="u.name">
+                                        <td class="py-1.5 pr-3 text-gray-100">{{ u.name }}</td>
+                                        <td class="py-1.5 pr-3 text-gray-400">{{ u.role === 'admin' ? $t('Admin') : $t('Member') }}</td>
+                                        <td class="py-1.5 pr-3" :class="u.status === 'active' ? 'text-green-400' : u.status === 'disabled' ? 'text-red-300' : 'text-yellow-300'">{{ teamStatus(u) }}</td>
+                                        <td class="py-1.5 pr-3"><span :class="u.signed_in ? 'text-green-400' : 'text-gray-500'">{{ u.signed_in ? '● ' + $t('Yes') : $t('No') }}</span></td>
+                                        <td class="py-1.5 pr-3 text-gray-400">{{ teamWhen(u.last_login) }}</td>
+                                        <td class="py-1.5 pr-3 text-gray-300">{{ teamReads(u) }}</td>
+                                        <td class="py-1.5 text-right whitespace-nowrap">
+                                            <template v-if="u.role !== 'admin'">
+                                                <button @click="teamReinvite(u)" class="px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">{{ $t('New link') }}</button>
+                                                <button v-if="u.status !== 'disabled'" @click="teamDisable(u, true)" class="ml-1 px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">{{ $t('Disable') }}</button>
+                                                <button v-else @click="teamDisable(u, false)" class="ml-1 px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">{{ $t('Enable') }}</button>
+                                            </template>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-x-auto">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-1">{{ $t('Access log') }}</h3>
+                            <p class="text-[13px] text-gray-400 mb-2">{{ $t('Every time an admin opened a member\'s data. Members can read their own lines. Nobody can change or delete this log.') }}</p>
+                            <p v-if="!team.audit.length" class="text-[13px] text-gray-500 italic">{{ $t('Nothing opened so far.') }}</p>
+                            <table v-else class="w-full text-[14px]">
+                                <thead><tr class="text-left text-gray-500 text-[12px] uppercase tracking-wider">
+                                    <th class="py-1 pr-3 font-normal">{{ $t('When') }}</th><th class="py-1 pr-3 font-normal">{{ $t('Admin') }}</th><th class="py-1 pr-3 font-normal">{{ $t('Member') }}</th><th class="py-1 pr-3 font-normal">{{ $t('What') }}</th><th class="py-1 font-normal">{{ $t('Item') }}</th>
+                                </tr></thead>
+                                <tbody>
+                                    <tr v-for="(l, i) in team.audit" :key="i" class="border-t border-gray-800">
+                                        <td class="py-1 pr-3 text-gray-400">{{ teamWhen(l.at) }}</td><td class="py-1 pr-3 text-gray-300">{{ l.admin }}</td><td class="py-1 pr-3 text-gray-300">{{ l.user }}</td><td class="py-1 pr-3 text-gray-300">{{ teamKind(l.kind) }}</td><td class="py-1 text-gray-500 font-mono text-[12px]">{{ l.ref }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
+                </div>
+
                 <div v-if="settingsTab === 'video'" class="space-y-4 max-w-4xl">
                     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
                         <p class="text-[14px] text-gray-400 mb-3">{{ $t('From the installer to a change asked from the Studio, in eight minutes. No sound: the captions above the picture say what happens. Filmed in English.') }}</p>

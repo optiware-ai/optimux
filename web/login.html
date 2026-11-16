@@ -33,6 +33,39 @@
             <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg py-2 text-sm" data-i18n>Set password and sign in</button>
         </form>
 
+        <form id="member-form" class="hidden bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+            <label class="block">
+                <span class="text-xs text-gray-400" data-i18n>Your name</span>
+                <input id="member-name" type="text" required autocomplete="username" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            </label>
+            <label class="block">
+                <span class="text-xs text-gray-400" data-i18n>Password</span>
+                <input id="member-password" type="password" required autocomplete="current-password" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            </label>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg py-2 text-sm" data-i18n>Sign in</button>
+            <p class="text-[12px] text-gray-500 leading-relaxed"><span data-i18n>Lost your password? Ask your admin for a new invitation.</span> <a href="/login?admin=1" id="to-admin" class="text-blue-400 hover:text-blue-300" data-i18n>Admin sign-in</a></p>
+        </form>
+
+        <form id="invite-form" class="hidden bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4" autocomplete="off">
+            <p class="text-sm text-gray-200"><span data-i18n>Welcome,</span> <b id="invite-name"></b></p>
+            <p id="invite-consent" class="text-[13px] text-gray-400 leading-relaxed"></p>
+            <fieldset class="space-y-2">
+                <legend class="text-xs text-gray-400 mb-1" data-i18n>Your choice</legend>
+                <label class="flex items-start gap-2 text-sm"><input type="radio" name="invite-chats" value="0" checked class="mt-1"><span data-i18n>Admin sees usage and cost only</span></label>
+                <label class="flex items-start gap-2 text-sm"><input type="radio" name="invite-chats" value="1" class="mt-1"><span data-i18n>Admin may also read my chats</span></label>
+            </fieldset>
+            <label class="block">
+                <span class="text-xs text-gray-400" data-i18n>Choose a password (12 characters or more)</span>
+                <input id="invite-password" type="password" required minlength="12" autocomplete="new-password" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            </label>
+            <label class="block">
+                <span class="text-xs text-gray-400" data-i18n>Repeat the password</span>
+                <input id="invite-password2" type="password" required minlength="12" autocomplete="new-password" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            </label>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg py-2 text-sm" data-i18n>Create my account</button>
+            <p class="text-[12px] text-gray-500 leading-relaxed" data-i18n>You can change this choice at any time from your account page.</p>
+        </form>
+
         <form id="login-form" class="hidden bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
             <label class="block">
                 <span class="text-xs text-gray-400" data-i18n>Password</span>
@@ -43,6 +76,7 @@
                 <input id="login-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-sm tracking-widest focus:outline-none focus:border-blue-500">
             </label>
             <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg py-2 text-sm" data-i18n>Sign in</button>
+            <p id="to-member-row" class="hidden text-[12px]"><a href="/login" id="to-member" class="text-blue-400 hover:text-blue-300" data-i18n>Member sign-in</a></p>
             <p class="text-[12px] text-gray-500 leading-relaxed" data-i18n>Forgot the password? On the server, delete <code>~/.optimux/auth.json</code> and reload this page: you can set a new one with the access token.</p>
         </form>
 

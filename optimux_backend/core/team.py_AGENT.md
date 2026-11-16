@@ -9,7 +9,7 @@
 - **Invitations:** `invite(name)` / `reinvite(id)` return a random token once; `users.invite_hash` stores its SHA-256, `invite_expires` is 7 days. `activate(token, password, chat_access)` works once, sets the password (≥ 12 characters via `auth.check_new_password`), records the consent (`chat_access`, `consent_version`, `consent_at`, plus a `consent_history` line). A new invitation clears the password and signs the member out.
 - **Consent:** default is usage and cost only. `CONSENT_TEXT` (translated with `tr`) is what the member sees; change its meaning, then bump `CONSENT_VERSION`. `set_chat_access` records every change. `admin_may_read_chats(id)` is what later steps check before showing a chat or a prompt.
 - **Access log:** `log_admin_access(admin_id, user_id, kind, ref)` with kind `chat`, `sent` or `usage`; the reference is an id, never content. `audit_for_user`, `audit_all`. Triggers in the database refuse UPDATE and DELETE on `admin_access`.
-- **Sessions:** `logins.user_id` is NULL for the install's own browsers (solo, or signed in before team mode: they are the admin's). `session_user(login_id)` returns the member or admin row; `me(login_id)` is what `/api/me` sends.
+- **Sessions:** `logins.user_id` is NULL for the install's own browsers (solo, or signed in before team mode: they are the admin's). `session_user(login_id)` returns the member or admin row; `me(login_id)` is what `/api/me` sends (members also get `consent_text`).
 
 ## Links & Dependencies
 - `auth.py` (passwords, sessions), `store.py` (tables, `meta`), `i18n.py`.

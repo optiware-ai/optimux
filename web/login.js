@@ -51,19 +51,76 @@
         try { st = await (await fetch('/auth/status', { credentials: 'same-origin' })).json(); }
         catch (_) { await translate(early); $('subtitle').textContent = tr('The server is not reachable.'); return; }
         await translate(st.language || early);
-        if (st.signed_in) { location.replace(next()); return; }
         show($('http-warning'), location.protocol !== 'https:' && !local);
+        // An invitation link keeps its token after the "#", which browsers never send to the server
+        if (await openInvitation()) return;
+        if (st.signed_in) { location.replace(next()); return; }
+        teamMode = !!st.team;
         if (st.setup_needed) {
             $('subtitle').textContent = tr('Set up your password');
             show($('setup-form'), true);
             $('setup-token').focus();
-        } else {
+        } else if (teamMode && !new URLSearchParams(location.search).has('admin')) {
             $('subtitle').textContent = tr('Sign in');
+            show($('member-form'), true);
+            $('member-name').focus();
+        } else {
+            $('subtitle').textContent = teamMode ? tr('Admin sign-in') : tr('Sign in');
             show($('login-form'), true);
+            show($('to-member-row'), teamMode);
             show($('code-row'), !!st.totp);
             $('login-password').focus();
         }
     }
+    let teamMode = false;
+    let inviteToken = '';
+
+    // The link's token is read once and removed from the address. Opening a link while this page is
+    // already showing changes only the part after "#", so that is watched too.
+    async function openInvitation() {
+        const invite = new URLSearchParams(location.hash.slice(1)).get('invite');
+        if (!invite) return false;
+        history.replaceState(null, '', location.pathname);
+        for (const id of ['setup-form', 'member-form', 'login-form']) show($(id), false);
+        show($('error'), false);
+        await showInvitation(invite);
+        return true;
+    }
+    window.addEventListener('hashchange', openInvitation);
+
+    async function showInvitation(token) {
+        const { res, data } = await post('/auth/invite', { token });
+        if (!res.ok) {
+            $('subtitle').textContent = tr('Invitation');
+            fail(data.detail || tr('This invitation does not work.'));
+            return;
+        }
+        inviteToken = token;
+        $('subtitle').textContent = tr('Create your account');
+        $('invite-name').textContent = data.name;
+        $('invite-consent').textContent = data.consent.text;
+        show($('invite-form'), true);
+        $('invite-password').focus();
+    }
+
+    $('invite-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        show($('error'), false);
+        if ($('invite-password').value !== $('invite-password2').value) { fail(tr('The two passwords differ.')); return; }
+        const chats = document.querySelector('input[name="invite-chats"]:checked').value === '1';
+        const { res, data } = await post('/auth/activate', { token: inviteToken, password: $('invite-password').value, chat_access: chats });
+        if (res.ok) location.replace('/');
+        else fail(data.detail || tr('This invitation does not work.'));
+    });
+
+    $('member-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        show($('error'), false);
+        const { res, data } = await post('/auth/login', { name: $('member-name').value.trim(), password: $('member-password').value });
+        if (res.ok) { location.replace(next()); return; }
+        fail(data.detail || tr('Sign-in failed.'));
+        $('member-password').value = '';
+    });
 
     $('setup-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -77,7 +134,7 @@
     $('login-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         show($('error'), false);
-        const { res, data } = await post('/auth/login', { password: $('login-password').value, code: $('login-code').value.trim() });
+        const { res, data } = await post('/auth/login', { password: $('login-password').value, code: $('login-code').value.trim(), admin: teamMode });
         if (res.ok) { location.replace(next()); return; }
         if (data.need_code) {
             show($('code-row'), true);

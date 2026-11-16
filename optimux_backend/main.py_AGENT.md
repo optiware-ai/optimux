@@ -188,4 +188,5 @@
 - `PUBLIC_PATHS` adds `/auth/invite` and `/auth/activate` (the invitation token is the credential; limited per address). `/auth/login` takes `name` and `admin`: in team mode, without `admin` it is the members' door (`_member_login`), with it the old admin check. `/auth/status` also says `team`.
 - The guard adds `MEMBER_PATHS`: a signed-in member (role `user`) reaches only `/` and `/api/me*`; everything else is 403 until step 2. `/ws` closes members with 4403.
 - Endpoints: `GET /api/me`, `POST /api/me/consent`, `GET /api/me/audit` (members); `GET|POST /api/team/users`, `POST /api/team/users/{id}/invite|disabled`, `GET /api/team/audit` (admin). All are in `tests/team_route_classes.json`.
+- `GET /` returns `web/account.html` to a member (the account page: consent choice and the access log); `/api/me` adds `consent_text` for members.
 - Details in `core/team.py_AGENT.md`.

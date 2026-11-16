@@ -2849,6 +2849,55 @@ const optimuxApp = createApp({
             pendingCommand.value = ''; pendingFile.value = null;
         };
         const signinNotice = ref(null);
+
+        // ---- Team version (step 1): the admin's Team page. Solo installs never show it.
+        const teamInfo = ref({ mode: 'solo', admin: true, user: null });
+        const team = Vue.reactive({ users: [], audit: [], name: '', error: '', invite: null });
+        const fetchMe = async () => { try { teamInfo.value = await (await fetch('/api/me')).json(); } catch (_) {} };
+        const fetchTeam = async () => {
+            await fetchMe();
+            if (teamInfo.value.mode !== 'team') return;
+            try { team.users = (await (await fetch('/api/team/users')).json()).users || []; } catch (_) {}
+            try { team.audit = (await (await fetch('/api/team/audit')).json()).lines || []; } catch (_) {}
+        };
+        const teamPost = async (url, body) => {
+            team.error = '';
+            try {
+                const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { team.error = data.detail || tr('That did not work.'); return null; }
+                return data;
+            } catch (_) { team.error = tr('The server is not reachable.'); return null; }
+        };
+        // The link keeps the token after the "#", which browsers never send to the server
+        const showInvitation = (data) => { team.invite = { name: data.name, link: `${location.origin}/login#invite=${data.token}`, expires: data.expires }; };
+        const teamInvite = async () => {
+            const name = team.name.trim();
+            if (!name) return;
+            const data = await teamPost('/api/team/users', { name });
+            if (!data) return;
+            team.name = '';
+            showInvitation(data);
+            await fetchTeam();
+        };
+        const teamReinvite = async (u) => {
+            if (!await askConfirm({ title: tr('Make a new link for {name}?', { name: u.name }),
+                text: tr('The old link stops working, the password is removed and {name} is signed out.', { name: u.name }), ok: tr('New link'), danger: true })) return;
+            const data = await teamPost(`/api/team/users/${u.id}/invite`);
+            if (data) { showInvitation(data); await fetchTeam(); }
+        };
+        const teamDisable = async (u, disabled) => {
+            if (disabled && !await askConfirm({ title: tr('Disable {name}?', { name: u.name }),
+                text: tr('{name} is signed out and cannot sign in until you enable the account again. Their chats and data are kept.', { name: u.name }), ok: tr('Disable'), danger: true })) return;
+            if (await teamPost(`/api/team/users/${u.id}/disabled`, { disabled })) await fetchTeam();
+        };
+        const teamMessage = Vue.computed(() => !team.invite ? '' : tr(
+            'Hello {name}, you are invited to Optimux. Open this link within {days} days to choose your password and what I may see:\n\n{link}\n\nI always see how much you use the models (time, model, cost). Reading your chats needs your own yes, which you give or refuse when you create the account and can change at any time.',
+            { name: team.invite.name, days: 7, link: team.invite.link }));
+        const teamStatus = (u) => u.status === 'active' ? tr('Active') : u.status === 'invited' ? tr('Invited') : tr('Disabled');
+        const teamWhen = (ts) => ts ? stampOf(ts) : '—';
+        const teamKind = (k) => k === 'chat' ? tr('A chat') : k === 'sent' ? tr('What was sent to the models') : k === 'usage' ? tr('Usage') : k;
+        const teamReads = (u) => u.role === 'admin' || u.status === 'invited' ? '—' : (u.chat_access ? tr('Yes') : tr('No'));
         // "Firefox on Linux" from a user-agent string (good enough to recognise your own browsers)
         const browserLabel = (ua) => {
             if (!ua) return tr('Unknown browser');
@@ -3913,6 +3962,7 @@ const optimuxApp = createApp({
             { id: 'memory', label: tk('Memory'), icon: '✎', group: tk('Configuration'), hint: tk('What every model is told about you and your work.') },
             { id: 'skills', label: tk('Skills'), icon: '✦', group: tk('Configuration'), hint: tk('Reusable instructions loaded only when a task needs them.') },
             { id: 'execution', label: tk('Execution'), icon: '›', group: tk('Configuration'), hint: tk('Command approval and how many steps a request may take.') },
+            { id: 'team', label: tk('Team'), icon: '☻', group: tk('Configuration'), hint: tk('Invite people, see who is signed in, and read the log of every time you opened a member\'s data.') },
             { id: 'github', label: tk('GitHub'), icon: '⑂', group: tk('Configuration'), hint: tk('A token so Optimux can create GitHub repositories for new projects, and who commits.') },
             { id: 'scope', label: tk('Scope'), icon: '▣', group: tk('Configuration'), hint: tk('The Workspace folder: the folder that holds your projects.') },
             { id: 'backups', label: tk('Backups'), icon: '⧉', group: tk('Configuration'), hint: tk('Snapshots of your data and projects, kept on this machine.') },
@@ -4061,6 +4111,7 @@ const optimuxApp = createApp({
             if (id === 'memory') { fetchMemory(); fetchCostEstimates(); }
             if (id === 'system') { fetchSystemInfo(); fetchAuth(); }
             if (id === 'github') { githubMsg.value = null; fetchGithub(true); }
+            if (id === 'team') fetchTeam();
             if (id === 'guide') loadGuide();
             if (id === 'execution') { fetchSandbox(); fetchAutonomy(); fetchProjectsList(); autonomyMsg.value = null; commandEnvText.value = (appSettings.value.command_env || []).join('\n'); }
             if (id === 'skills') fetchSkills();
@@ -5939,6 +5990,7 @@ const optimuxApp = createApp({
         };
 
         onMounted(() => {
+            fetchMe();
             fetchConfig();
             fetchSandbox();   // also tells the UI whether this is a server (OPTIMUX_SERVER=1)
             applyHash();  // opened with a dashboard address
@@ -6689,6 +6741,7 @@ const optimuxApp = createApp({
             rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
             historyPage, historySorted, fetchHistoryPage, sortHistory, historyProjects, setHistoryProject,
             historyPageList, HISTORY_LIMIT, systemInfo, newToken, rotateToken,
+            teamInfo, team, fetchTeam, teamInvite, teamReinvite, teamDisable, teamMessage, teamStatus, teamWhen, teamKind, teamReads,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
             openChatFromDashboard, switchProject, routingRole, fmtAgo, overviewKpis, writeClipboard,

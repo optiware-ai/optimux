@@ -178,7 +178,7 @@ def me(login_id: str | None) -> dict:
         return {"mode": "solo", "admin": True, "user": None}
     who = session_user(login_id)
     if who and who["role"] == "user":
-        return {"mode": "team", "admin": False, "user": get(who["id"])}
+        return {"mode": "team", "admin": False, "user": get(who["id"]), "consent_text": tr(CONSENT_TEXT)}
     uid = who["id"] if who else first_admin_id()
     return {"mode": "team", "admin": True, "user": get(uid) if uid else None}
 

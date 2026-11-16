@@ -5523,6 +5523,9 @@ async def get_guide():
 
 @app.get("/")
 async def get(request: Request):
+    who = team.session_user(request.state.login_id)
+    if who and who["role"] == "user":       # a team member gets their account page (team step 1)
+        return FileResponse(os.path.join(WEB_DIR, "account.html"), media_type="text/html")
     with open(os.path.join(REPO_DIR, "index.html"), "r") as f:
         html = f.read()
     # v0.8: a fresh style nonce for the Studio's code editor, in the CSP and in a <meta> the page reads

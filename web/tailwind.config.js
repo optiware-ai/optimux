@@ -1,7 +1,7 @@
 // Tailwind builds web/app.css from the classes used in these files.
 // After changing classes in the UI, rebuild with: scripts/build-css.sh
 module.exports = {
-  content: ['./index.html', './web/app.js', './web/login.html', './web/login.js'],
+  content: ['./index.html', './web/app.js', './web/login.html', './web/login.js', './web/account.html', './web/account.js'],
   theme: { extend: {} },
   plugins: [require('@tailwindcss/typography')],
 };

@@ -392,3 +392,34 @@ def test_the_admins_session_list_does_not_hold_the_members(teamed):
     invite_and_activate(teamed)
     sessions = teamed.get("/api/auth").json()["sessions"]
     assert len(sessions) == 1
+
+
+# ---------------------------------------------------------------- pages (p84)
+
+def test_a_member_lands_on_their_account_page_and_the_admin_on_the_app(teamed):
+    member, _ = invite_and_activate(teamed)
+    page = member.get("/")
+    assert page.status_code == 200 and "/static/account.js" in page.text
+    app_page = teamed.get("/")
+    assert app_page.status_code == 200 and "/static/account.js" not in app_page.text
+
+
+def test_the_account_page_gets_the_consent_text_with_the_member_only(teamed):
+    member, _ = invite_and_activate(teamed)
+    me = member.get("/api/me").json()
+    assert me["consent_text"] == team.tr(team.CONSENT_TEXT)
+    assert "consent_text" not in teamed.get("/api/me").json()
+
+
+def test_the_sign_in_page_has_the_member_door_the_admin_door_and_the_invitation():
+    import os
+    html = open(os.path.join(os.path.dirname(__file__), "..", "web", "login.html")).read()
+    for ident in ("member-form", "login-form", "invite-form", "to-admin", "to-member"):
+        assert f'id="{ident}"' in html, ident
+    assert os.path.exists(os.path.join(os.path.dirname(__file__), "..", "web", "account.js"))
+
+
+def test_the_invitation_link_keeps_the_token_out_of_the_address_the_server_sees():
+    import os
+    js = open(os.path.join(os.path.dirname(__file__), "..", "web", "login.js")).read()
+    assert "location.hash" in js and "replaceState" in js
