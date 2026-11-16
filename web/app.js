@@ -2932,9 +2932,16 @@ const optimuxApp = createApp({
 
         // v0.8: from a request in History to its chat, with a way back (the Dashboard keeps where it was)
         const fromHistory = ref(false);
+        // A chat opened from the Dashboard is shown in the chat page, even when the Dashboard was opened from the
+        // Studio (closing it would go back there, where the chat is hidden)
+        const showChatPage = () => {
+            backTo.value = 'chat';
+            if (showSettingsModal.value) closeSettings();
+            if (studio.open) closeStudio();
+        };
         const goToSentChat = (r) => {
             if (!r.session || isGenerating.value || pendingApproval.value) return;
-            closeSettings();
+            showChatPage();
             pendingJump.value = { ids: r.ids || [], until: Date.now() + 15000 };
             openSession(r.session);
             fromHistory.value = true;
@@ -2964,7 +2971,7 @@ const optimuxApp = createApp({
             openSettings('history');
         };
         const openChatFromDashboard = (sid) => {
-            closeSettings();
+            showChatPage();
             openSession(sid);
         };
         const openOfferedProject = async () => {

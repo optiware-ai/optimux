@@ -135,7 +135,7 @@ def test_a_request_row_has_a_go_to_chat_icon_right_after_its_prompt():
 
 def test_going_to_the_chat_leaves_a_way_back_to_the_history():
     go = APP[APP.index("const goToSentChat"):][:700]
-    assert "openSession(" in go and "fromHistory.value = true" in go and "closeSettings()" in go
+    assert "openSession(" in go and "fromHistory.value = true" in go and "showChatPage()" in go
     back = APP[APP.index("const backToHistory"):][:400]
     assert "fromHistory.value = false" in back and "openSettings('history')" in back
     assert "fromHistory.value = false" in APP[APP.index("const newChat"):][:300]          # any other way on ends it
@@ -173,3 +173,12 @@ def test_going_to_a_chat_lands_on_the_request_not_on_the_end():
     assert "usage.sent" in jump and "data-user-msg" in jump and "pendingJump.value = null" in jump
     assert jump.index("if (at < 0) return false") < jump.index("pendingJump.value = null;\n            let from")   # kept until its own chat is shown
     assert "if (!jumpToRequest()) scrollToBottom(true)" in APP                              # the replay ends there
+
+
+def test_opening_a_chat_from_the_dashboard_always_shows_the_chat_page_never_the_studio():
+    show = APP[APP.index("const showChatPage"):][:600]
+    assert show.index("backTo.value = 'chat'") < show.index("closeSettings()")      # the Dashboard must not return to the Studio
+    assert "studio.open" in show and "closeStudio(" in show
+    for name in ("const goToSentChat", "const openChatFromDashboard"):
+        assert "showChatPage()" in APP[APP.index(name):][:500], name
+        assert "closeSettings()" not in APP[APP.index(name):][:500], name
