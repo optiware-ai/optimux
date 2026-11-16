@@ -117,6 +117,8 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── onboarding.py_AGENT.md
 │       ├── tasks.py             (Task records: one row per request, 👍 / 👎, CSV export, working time)
 │       ├── tasks.py_AGENT.md
+│       ├── team.py              (Team version: members, invitations, consent, the admin access log)
+│       ├── team.py_AGENT.md
 │       ├── usage.py             (Token & cost metering per LLM call)
 │       └── usage.py_AGENT.md
 ├── tests/                       (pytest suite covering the core modules)

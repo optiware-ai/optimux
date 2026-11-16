@@ -6,6 +6,7 @@
 ## Commands
 - `init`: `paths.prepare_home()` (folder 700, secrets 600), the access token (not printed), memory files, starter skills, database. Safe to repeat.
 - `token`: print the access token.
+- `enable-team [name]` (the existing password becomes the first admin's; needs a password) / `disable-team` (solo again, members signed out).
 - `set-password` (stdin; ≥ 12 chars, then every session ends) / `reset-password` (deletes auth.json, ends sessions).
 - `set-key ENV_KEY` (stdin) → `save_api_key_to_env`; `add-model ID NAME [ENV_KEY]` → `save_model`; `set-routing CONDUCTOR SIMPLE COMPLEX` → `save_routing_config` (models must exist).
 - `set-workspace PATH [--create]`, `sandbox on|off`: change one setting, keeping the others (`_update_settings` re-validates through `save_settings`).

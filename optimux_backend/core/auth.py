@@ -239,14 +239,15 @@ def session_hash(token: str) -> str:
     return _hash(token)
 
 
-def create_session(ip: str = "", agent: str = "", now: float | None = None) -> str:
+def create_session(ip: str = "", agent: str = "", now: float | None = None, user_id: int | None = None) -> str:
+    """`user_id`: the team member or admin it belongs to (team mode); None in solo mode."""
     token = secrets.token_urlsafe(32)
     now = time.time() if now is None else now
     conn = store.connect()
     try:
         with conn:
-            conn.execute("INSERT INTO logins (id, created, last_seen, ip, agent) VALUES (?, ?, ?, ?, ?)",
-                         (_hash(token), now, now, ip[:64], agent[:200]))
+            conn.execute("INSERT INTO logins (id, created, last_seen, ip, agent, user_id) VALUES (?, ?, ?, ?, ?, ?)",
+                         (_hash(token), now, now, ip[:64], agent[:200], user_id))
     finally:
         conn.close()
     return token
@@ -302,20 +303,37 @@ def end_session(token_or_id: str, is_id: bool = False) -> None:
         conn.close()
 
 
-def end_all_sessions(keep_id: str | None = None) -> int:
+# Team mode: sessions of ordinary members. The admin's own sign-out and password change leave them alone.
+_MEMBERS = "COALESCE(user_id IN (SELECT id FROM users WHERE role = 'user'), 0)"
+
+
+def end_all_sessions(keep_id: str | None = None, members: bool = True) -> int:
+    """Every session but `keep_id`. members=False leaves the team members signed in."""
     conn = store.connect()
     try:
         with conn:
-            cur = conn.execute("DELETE FROM logins WHERE id != ?", (keep_id or "",))
+            cur = conn.execute("DELETE FROM logins WHERE id != ?" + ("" if members else f" AND NOT ({_MEMBERS})"),
+                               (keep_id or "",))
             return cur.rowcount
     finally:
         conn.close()
 
 
-def list_sessions(current_id: str | None = None) -> list[dict]:
+def end_user_sessions(user_id: int) -> int:
     conn = store.connect()
     try:
-        rows = conn.execute("SELECT id, created, last_seen, ip, agent FROM logins ORDER BY last_seen DESC").fetchall()
+        with conn:
+            return conn.execute("DELETE FROM logins WHERE user_id = ?", (user_id,)).rowcount
+    finally:
+        conn.close()
+
+
+def list_sessions(current_id: str | None = None) -> list[dict]:
+    """The install's own browsers (the admin's); team members' sessions are not listed here."""
+    conn = store.connect()
+    try:
+        rows = conn.execute(f"SELECT id, created, last_seen, ip, agent FROM logins WHERE NOT ({_MEMBERS}) "
+                            "ORDER BY last_seen DESC").fetchall()
     finally:
         conn.close()
     return [{"created": r["created"], "last_seen": r["last_seen"], "ip": r["ip"], "agent": r["agent"],

@@ -9,7 +9,7 @@
 
 ## Core Functionality
 - **Passwords:** `set_password` (≥ `MIN_PASSWORD` = 12), `check_password` (constant cost when no password exists), `password_set`.
-- **Sessions:** `create_session(ip, agent)` returns the cookie value; `check_session(token)` returns the session id or None, ending sessions idle for 14 days (`IDLE_SECONDS`) or older than 30 (`MAX_AGE_SECONDS`), and refreshes `last_seen` at most once a minute; `end_session`, `end_all_sessions(keep_id)`, `list_sessions(current_id)`.
+- **Sessions:** `create_session(ip, agent, user_id=None)` (team mode: the member or admin it belongs to) returns the cookie value; `check_session(token)` returns the session id or None, ending sessions idle for 14 days (`IDLE_SECONDS`) or older than 30 (`MAX_AGE_SECONDS`), and refreshes `last_seen` at most once a minute; `end_session`, `end_all_sessions(keep_id, members=True)` (members=False leaves team members signed in; the admin's password change and "sign out others" use it), `end_user_sessions(user_id)`, `list_sessions(current_id)` (never lists members).
 - **TOTP (RFC 6238, SHA-1, 6 digits, 30 s):** `start_totp` (pending secret + `otpauth://` URI), `confirm_totp(code)`, `check_totp(code)` (accepts the current step ±1, each step only once via `last_step`), `disable_totp`.
 - **`RateLimiter` / `limiter`:** 5 failures per address in 15 minutes lock that address until the oldest failure is 15 minutes old. In memory (a restart clears it).
 - **`server_mode()`:** `OPTIMUX_SERVER=1`. Used by `sandbox.required()`, `config_manager.get_settings/save_settings` (auto-approve off, network off by default), `autonomy.server_block` (levels only with a working sandbox) and `main.py` (Secure cookies, checklist).

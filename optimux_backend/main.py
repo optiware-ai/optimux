@@ -42,6 +42,7 @@ from optimux_backend.core import analytics
 from optimux_backend.core import ratelimits
 from optimux_backend.core import budgets
 from optimux_backend.core import store
+from optimux_backend.core import team
 from optimux_backend.core import workspace
 from optimux_backend.core import project_records
 from optimux_backend.core import skills as skills_lib
@@ -165,7 +166,10 @@ except Exception as e:
 # ---------------------------------------------------------------- access (Feature 23)
 
 # Reachable without signing in: the sign-in page and its API, and static files
-PUBLIC_PATHS = {"/login", "/auth/status", "/auth/login", "/auth/setup", "/auth/logout", "/favicon.ico"}
+PUBLIC_PATHS = {"/login", "/auth/status", "/auth/login", "/auth/setup", "/auth/logout", "/auth/invite", "/auth/activate",
+                "/favicon.ico"}
+# Team members (not admins) reach only their own account until the server checks every route (team step 2)
+MEMBER_PATHS = ("/api/me",)
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
@@ -273,6 +277,11 @@ async def guard(request: Request, call_next):
                 security_headers(request, response)
                 return response
             request.state.login_id = login_id
+            who = team.session_user(login_id)
+            if who and who["role"] == "user" and path != "/" and not path.startswith(MEMBER_PATHS):
+                response = JSONResponse({"detail": tr("Not available for team members yet.")}, status_code=403)
+                security_headers(request, response)
+                return response
     elif request.method not in SAFE_METHODS and path.startswith("/auth/") and not same_origin(request):
         response = JSONResponse({"detail": tr("Cross-site request refused.")}, status_code=403)
         security_headers(request, response)
@@ -1761,6 +1770,30 @@ class SetupPayload(BaseModel):
 class LoginPayload(BaseModel):
     password: str
     code: str = ""
+    name: str = ""          # team mode: the member's name
+    admin: bool = False     # team mode: the admin door
+
+
+class InvitePayload(BaseModel):
+    token: str = Field(max_length=200)
+
+
+class ActivatePayload(BaseModel):
+    token: str = Field(max_length=200)
+    password: str = Field(max_length=1024)
+    chat_access: bool = False
+
+
+class MemberNamePayload(BaseModel):
+    name: str = Field(max_length=200)
+
+
+class DisabledPayload(BaseModel):
+    disabled: bool
+
+
+class ConsentPayload(BaseModel):
+    chat_access: bool
 
 
 class PasswordPayload(BaseModel):
@@ -1855,8 +1888,8 @@ async def _announce(event: str, request: Request | None = None) -> None:
                 pass
 
 
-def _signed_in(request: Request, response: JSONResponse) -> JSONResponse:
-    token = auth.create_session(client_ip(request), request.headers.get("user-agent", ""))
+def _signed_in(request: Request, response: JSONResponse, user_id: int | None = None) -> JSONResponse:
+    token = auth.create_session(client_ip(request), request.headers.get("user-agent", ""), user_id=user_id)
     response.set_cookie(auth.COOKIE, token, max_age=auth.MAX_AGE_SECONDS, path="/", httponly=True,
                         samesite="strict", secure=is_https(request) or auth.server_mode())
     return response
@@ -1885,7 +1918,7 @@ async def favicon():
 
 @app.get("/auth/status")
 async def auth_status(request: Request):
-    return {"setup_needed": not auth.password_set(), "totp": auth.totp_enabled(),
+    return {"setup_needed": not auth.password_set(), "totp": auth.totp_enabled(), "team": team.enabled(),
             "signed_in": bool(auth.check_session(request.cookies.get(auth.COOKIE))),
             "server_mode": auth.server_mode(), "https": is_https(request),
             "language": config_manager.language()}       # v0.8: the sign-in page's language
@@ -1918,6 +1951,9 @@ async def auth_login(payload: LoginPayload, request: Request):
     if limited:
         return limited
     ip = client_ip(request)
+    in_team = team.enabled()
+    if in_team and not payload.admin:
+        return await _member_login(payload, request, ip)
     if not auth.password_set():
         raise HTTPException(409, "No password yet: set one with the access token.")
     if not await asyncio.to_thread(auth.check_password, payload.password):
@@ -1936,7 +1972,49 @@ async def auth_login(payload: LoginPayload, request: Request):
             raise HTTPException(401, "Wrong or already used code.")
     auth.succeeded(ip)
     await _announce("signin", request)      # the other browsers see who just signed in
-    return _signed_in(request, JSONResponse({"ok": True}))
+    return _signed_in(request, JSONResponse({"ok": True}), user_id=team.first_admin_id() if in_team else None)
+
+
+async def _member_login(payload: LoginPayload, request: Request, ip: str):
+    """Team mode, the members' door: name and password. Admin accounts never match here,
+    and a wrong name gets the same answer as a wrong password."""
+    user = await asyncio.to_thread(team.check_login, payload.name, payload.password)
+    if not user:
+        auth.password_failed(ip)
+        raise HTTPException(401, "Wrong name or password.")
+    auth.succeeded(ip)
+    team.touch_login(user["id"])
+    return _signed_in(request, JSONResponse({"ok": True}), user_id=user["id"])
+
+
+@app.post("/auth/invite")
+async def auth_invite(payload: InvitePayload, request: Request):
+    """The invitation page asks who the link is for and what the member is asked to agree to."""
+    limited = _limited(request)
+    if limited:
+        return limited
+    info = team.invite_info(payload.token) if team.enabled() else None
+    if not info:
+        auth.failed(client_ip(request))
+        raise HTTPException(404, "This invitation doesn't work (used, replaced or expired). Ask your admin for a new one.")
+    return info
+
+
+@app.post("/auth/activate")
+async def auth_activate(payload: ActivatePayload, request: Request):
+    """The member sets a password and makes the consent choice; they are signed in."""
+    limited = _limited(request)
+    if limited:
+        return limited
+    try:
+        user = await asyncio.to_thread(team.activate, payload.token, payload.password, payload.chat_access) if team.enabled() else None
+    except auth.AuthError as e:
+        raise HTTPException(400, str(e))
+    if not user:
+        auth.failed(client_ip(request))
+        raise HTTPException(404, "This invitation doesn't work (used, replaced or expired). Ask your admin for a new one.")
+    auth.succeeded(client_ip(request))
+    return _signed_in(request, JSONResponse({"ok": True}), user_id=user["id"])
 
 
 @app.post("/auth/logout")
@@ -1967,7 +2045,7 @@ async def auth_overview(request: Request):
 @app.post("/api/auth/signout-others")
 async def auth_signout_others(request: Request):
     """Sign out every other browser (this one stays signed in)."""
-    ended = auth.end_all_sessions(keep_id=request.state.login_id)
+    ended = auth.end_all_sessions(keep_id=request.state.login_id, members=False)
     await _close_sockets(keep=request.state.login_id)
     await _announce("signout")
     return {"ended": ended}
@@ -1985,7 +2063,7 @@ async def auth_change_password(payload: PasswordPayload, request: Request):
         auth.set_password(payload.new)
     except auth.AuthError as e:
         raise HTTPException(400, str(e))
-    ended = auth.end_all_sessions(keep_id=request.state.login_id)   # other browsers must sign in again
+    ended = auth.end_all_sessions(keep_id=request.state.login_id, members=False)   # other browsers must sign in again
     await _close_sockets(keep=request.state.login_id)
     return {"ok": True, "ended": ended}
 
@@ -2025,6 +2103,83 @@ async def auth_totp_disable(payload: LoginPayload, request: Request):
         raise HTTPException(400, "Password or code doesn't match.")
     auth.disable_totp()
     return {"ok": True}
+
+
+# ---- The team version (step 1): members, consent and the access log
+
+def _team_admin(request: Request) -> None:
+    """Admin only (members are also stopped by the guard); and only when team mode is on."""
+    who = team.session_user(request.state.login_id)
+    if who and who["role"] != "admin":
+        raise HTTPException(403, tr("Only the admin can do this."))
+    if not team.enabled():
+        raise HTTPException(409, tr("Team mode is off. Turn it on with: optimux enable-team"))
+
+
+def _member(request: Request) -> dict:
+    who = team.session_user(request.state.login_id)
+    if not who or who["role"] != "user":
+        raise HTTPException(409, tr("This is for team members."))
+    return who
+
+
+def _team_call(fn, *args):
+    try:
+        return fn(*args)
+    except team.TeamError as e:
+        raise HTTPException(e.status, str(e))
+
+
+@app.get("/api/me")
+async def api_me(request: Request):
+    """Who is signed in and what they may do; the page uses it to decide what to show."""
+    return team.me(request.state.login_id)
+
+
+@app.post("/api/me/consent")
+async def api_me_consent(payload: ConsentPayload, request: Request):
+    """The member allows or stops the admin reading their chats (kept as history)."""
+    who = _member(request)
+    return team.set_chat_access(who["id"], payload.chat_access)
+
+
+@app.get("/api/me/audit")
+async def api_me_audit(request: Request):
+    """Every time an admin opened this member's data."""
+    who = _member(request)
+    return {"lines": team.audit_for_user(who["id"])}
+
+
+@app.get("/api/team/users")
+async def api_team_users(request: Request):
+    _team_admin(request)
+    return {"users": team.list_users()}
+
+
+@app.post("/api/team/users")
+async def api_team_invite(payload: MemberNamePayload, request: Request):
+    """Invite a member: the link token is shown once."""
+    _team_admin(request)
+    return _team_call(team.invite, payload.name)
+
+
+@app.post("/api/team/users/{user_id}/invite")
+async def api_team_reinvite(user_id: int, request: Request):
+    """A new link; the old link and the old password stop working."""
+    _team_admin(request)
+    return _team_call(team.reinvite, user_id)
+
+
+@app.post("/api/team/users/{user_id}/disabled")
+async def api_team_disabled(user_id: int, payload: DisabledPayload, request: Request):
+    _team_admin(request)
+    return _team_call(team.set_disabled, user_id, payload.disabled)
+
+
+@app.get("/api/team/audit")
+async def api_team_audit(request: Request):
+    _team_admin(request)
+    return {"lines": team.audit_all()}
 
 
 def _loopback(host: str) -> bool:
@@ -5135,6 +5290,10 @@ async def websocket_endpoint(websocket: WebSocket):
     # token as the first message (kept out of the URL and the access log).
     login_id = auth.check_session(websocket.cookies.get(auth.COOKIE))
     await websocket.accept()
+    who = team.session_user(login_id)
+    if who and who["role"] == "user":       # members get the chat once the server checks every message (team step 2)
+        await websocket.close(code=4403)
+        return
     if not login_id:
         ip = client_ip(websocket)
         if auth.retry_after(ip):

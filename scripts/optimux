@@ -22,6 +22,8 @@ help() {
   row "password" "choose a new sign-in password"
   row "reset-password" "forget the password and two-step codes"
   row "token" "the access token (first sign-in, scripts)"
+  row "enable-team [name]" "make the password the first admin of a team"
+  row "disable-team" "back to a single user (members are signed out)"
   row "github" "install the GitHub CLI and add a GitHub token"
   row "uninstall [--yes]" "remove Optimux (asks before deleting data; --yes keeps the data)"
   printf '\n'
@@ -49,6 +51,8 @@ main_cli() {
     update) cli_update ;;
     password) cli_password ;;
     reset-password) admin reset-password ;;
+    enable-team) shift; admin enable-team "$@" ;;
+    disable-team) admin disable-team ;;
     token) cli_token ;;
     github) cli_github ;;
     uninstall) [[ "${2:-}" == --yes || "${2:-}" == -y ]] && CM_YES=1; cli_uninstall ;;

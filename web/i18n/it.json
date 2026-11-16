@@ -2642,5 +2642,15 @@
  "{rated} of {requests} requests rated": "{rated} di {requests} richieste valutate",
  "{rated} of {requests} requests rated.": "{rated} di {requests} richieste valutate.",
  "{up} of {rated}": "{up} di {rated}",
- "👍 {up} · 👎 {down}": "👍 {up} · 👎 {down}"
+ "👍 {up} · 👎 {down}": "👍 {up} · 👎 {down}",
+ "No such member.": "Nessun membro con questo nome.",
+ "Not available for team members yet.": "Non ancora disponibile per i membri del team.",
+ "Only the admin can do this.": "Solo l'amministratore può farlo.",
+ "Set the sign-in password first: team mode turns it into the admin's.": "Imposta prima la password di accesso: la modalità team la trasforma in quella dell'amministratore.",
+ "Team mode is off. Turn it on with: optimux enable-team": "La modalità team è disattivata. Attivala con: optimux enable-team",
+ "That name is already taken.": "Questo nome è già in uso.",
+ "This is for team members.": "Questo è riservato ai membri del team.",
+ "Unknown kind of access.": "Tipo di accesso sconosciuto.",
+ "Use 2 to 40 letters, digits, spaces, dots, dashes or apostrophes for the name.": "Per il nome usa da 2 a 40 tra lettere, cifre, spazi, punti, trattini o apostrofi.",
+ "Your admin always sees your usage of the models: time, model, cost and counts. If you choose \"Admin may also read my chats\", the admin can open your chats and what was sent to the models; that includes the text of the memory sent with your requests. Project memory is shared with everyone on the project, and it is updated from the chats held in it. Every time the admin opens your data it is logged, and you can read that log. You can revoke this choice at any time; it stops future access but cannot undo what was already seen.": "L'amministratore vede sempre il tuo utilizzo dei modelli: ora, modello, costo e conteggi. Se scegli \"L'amministratore può leggere anche le mie chat\", può aprire le tue chat e ciò che è stato inviato ai modelli; questo include il testo della memoria inviata con le tue richieste. La memoria del progetto è condivisa con tutti i membri del progetto e viene aggiornata dalle chat svolte al suo interno. Ogni volta che l'amministratore apre i tuoi dati viene registrato, e puoi leggere quel registro. Puoi revocare questa scelta in qualsiasi momento; blocca gli accessi futuri ma non può annullare ciò che è già stato visto."
 }

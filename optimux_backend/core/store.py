@@ -216,6 +216,45 @@ MIGRATIONS = [
     CREATE INDEX sent_calls_ts ON sent_calls (ts);
     CREATE INDEX sent_calls_session ON sent_calls (session);
     """,
+    # 15: the team version, step 1. Members of a team, what each agreed to, who may read what,
+    # and a log of every time an admin opened a member's data. The log can only grow.
+    """
+    CREATE TABLE users (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        role TEXT NOT NULL DEFAULT 'user',
+        status TEXT NOT NULL DEFAULT 'invited',
+        password TEXT,
+        invite_hash TEXT,
+        invite_expires REAL,
+        created REAL NOT NULL,
+        last_login REAL,
+        chat_access INTEGER NOT NULL DEFAULT 0,
+        consent_version INTEGER,
+        consent_at REAL
+    );
+    CREATE TABLE consent_history (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        ts REAL NOT NULL,
+        chat_access INTEGER NOT NULL,
+        version INTEGER NOT NULL
+    );
+    CREATE TABLE admin_access (
+        id INTEGER PRIMARY KEY,
+        ts REAL NOT NULL,
+        admin_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        ref TEXT
+    );
+    CREATE INDEX admin_access_user ON admin_access (user_id);
+    CREATE TRIGGER admin_access_keep_update BEFORE UPDATE ON admin_access
+        BEGIN SELECT RAISE(ABORT, 'the access log is append-only'); END;
+    CREATE TRIGGER admin_access_keep_delete BEFORE DELETE ON admin_access
+        BEGIN SELECT RAISE(ABORT, 'the access log is append-only'); END;
+    ALTER TABLE logins ADD COLUMN user_id INTEGER;
+    """,
 ]
 
 _ready_for: str | None = None

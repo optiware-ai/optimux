@@ -117,6 +117,14 @@
    "class": "S",
    "note": ""
   },
+  "GET /api/me": {
+   "class": "S",
+   "note": "who is signed in and what they may do; members may call it"
+  },
+  "GET /api/me/audit": {
+   "class": "S",
+   "note": "a member reads the lines about their own data"
+  },
   "GET /api/memory/project/{name}": {
    "class": "M",
    "note": "write calls need write access; /curate spends a model call"
@@ -297,6 +305,14 @@
    "class": "S",
    "note": "filtered by user; the admin sees everyone (?user=)"
   },
+  "GET /api/team/audit": {
+   "class": "A",
+   "note": "every admin look at members' data; read-only, the database refuses edits"
+  },
+  "GET /api/team/users": {
+   "class": "A",
+   "note": "members, status and who is signed in; no passwords or links"
+  },
   "GET /api/usage": {
    "class": "S",
    "note": "filtered by user; the admin sees everyone (?user=)"
@@ -436,6 +452,10 @@
   "POST /api/language": {
    "class": "S",
    "note": "today a global setting; team: one per user"
+  },
+  "POST /api/me/consent": {
+   "class": "S",
+   "note": "a member changes their own chat-reading choice; kept as history"
   },
   "POST /api/memory": {
    "class": "S",
@@ -608,6 +628,26 @@
   "POST /api/tasks/{task_id}/rating": {
    "class": "S",
    "note": "own replies"
+  },
+  "POST /api/team/users": {
+   "class": "A",
+   "note": "invite a member; the link token is shown once"
+  },
+  "POST /api/team/users/{user_id}/disabled": {
+   "class": "A",
+   "note": "disable or re-enable a member; disabling signs them out"
+  },
+  "POST /api/team/users/{user_id}/invite": {
+   "class": "A",
+   "note": "a new link; the old link and password stop working"
+  },
+  "POST /auth/activate": {
+   "class": "P",
+   "note": "the invitation token is the credential; limited per address"
+  },
+  "POST /auth/invite": {
+   "class": "P",
+   "note": "checks an invitation token; limited per address"
   },
   "POST /auth/login": {
    "class": "P",

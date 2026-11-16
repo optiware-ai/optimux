@@ -72,6 +72,8 @@ The installer adds an `optimux` command (on a server, run it with `sudo`):
 | `optimux password` | Choose a new password (signs every browser out) |
 | `optimux reset-password` | Forget the password and two-step codes |
 | `optimux token` | Show the access token |
+| `optimux enable-team [name]` | Make the password the first admin of a team (see *Running Optimux for other people*) |
+| `optimux disable-team` | Back to a single user; members are signed out and their data stays |
 | `optimux github` | Install the GitHub CLI and add (or replace) the GitHub token |
 | `optimux uninstall` | Remove Optimux; asks separately before deleting your data. `--yes` removes it without asking and keeps the data |
 
@@ -1335,6 +1337,16 @@ A tab that was open during an update shows **Optimux was updated** at the top wh
 **Backups:** copy `/var/lib/optimux/.optimux` (it holds your keys: keep the copy encrypted) and your Workspace off the server.
 
 **Local models** (Ollama) are usually too slow on a small VPS; use hosted models, or a cheap hosted model as the Conductor.
+
+## Running Optimux for other people
+
+Optimux starts as a tool for one person. `optimux enable-team` turns your password into the **first admin's**; from then on you can invite members. This is the first step of the team version, so members can only sign in and manage their own consent for now: chats, projects and the admin screens for them arrive in the next steps. Turning it back off (`optimux disable-team`) signs the members out and keeps their data.
+
+- **Two doors.** Members sign in with their name and password. You sign in through the admin door with the admin password (and two-step code, if on). The members' door never opens an admin account.
+- **Invitations only.** There is no open sign-up. An invitation is a link that works once, for 7 days; Optimux shows it once and keeps only a fingerprint of it. Inviting again replaces the link and the old password. Optimux doesn't send email: you copy the link into your own message.
+- **What the admin can see.** Always: when each member used which model, the cost and the counts. Reading a member's chats and what was sent to the models needs that member's *yes*, given when they activate the account and revocable at any time. What was sent includes the memory text; project memory is shared by the project's members and is updated from the chats held in it. The member sees all this in the text they agree to.
+- **A log nobody can edit.** Every time an admin opens a member's data, one line is added (who, what kind, which item, when; never the content). The member can read their own lines; the database refuses to change or delete them.
+- **Your responsibility.** You decide who to invite and what to tell them. Optimux is not legal advice: depending on your country and on who the members are (employees, for example), consent may not be enough on its own and the law may require more, such as an agreement with staff representatives. Also tell members that their requests are sent to the model providers you have set up.
 
 ## Security
 

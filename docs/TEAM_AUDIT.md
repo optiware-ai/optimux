@@ -1,6 +1,6 @@
 # Team version: audit of who may do what (step 0)
 
-Read-only. Nothing in the app changed. `tests/team_route_classes.json` holds the table; `tests/test_team_route_classes.py` fails when a new endpoint, websocket message or model tool is not classified, so it cannot go stale.
+This was written as a read-only audit (p82). Step 1 (p83) added the endpoints marked `/api/me`, `/api/team` and `/auth/invite|activate`; they are classified in the same table. `tests/team_route_classes.json` holds the table; `tests/test_team_route_classes.py` fails when a new endpoint, websocket message or model tool is not classified, so it cannot go stale.
 
 ## Classes
 

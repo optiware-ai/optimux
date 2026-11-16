@@ -75,6 +75,23 @@ def cmd_reset_password(args) -> None:
     _out("Password removed. Set a new one with the access token on the sign-in page.")
 
 
+def cmd_enable_team(args) -> None:
+    """Team mode on: the existing password becomes the first admin's (name from the argument)."""
+    from optimux_backend.core import team
+    try:
+        admin = team.enable(args.name)
+    except team.TeamError as e:
+        raise SystemExit(str(e))
+    _out(f"Team mode is on. Admin: {admin['name']}. Sign in through the admin door; invite members from the Dashboard.")
+
+
+def cmd_disable_team(args) -> None:
+    """Back to a single user: members are signed out; their data stays."""
+    from optimux_backend.core import team
+    ended = team.disable()
+    _out(f"Team mode is off. {ended} member sign-in{'s' if ended != 1 else ''} ended.")
+
+
 def cmd_set_key(args) -> None:
     """Save an API key (read from stdin) as ENV_KEY in secrets.env."""
     from optimux_backend.core.config_manager import ApiKeyPayload, save_api_key_to_env
@@ -207,6 +224,10 @@ def main(argv=None) -> int:
     sub.add_parser("token", help="print the access token").set_defaults(fn=cmd_token)
     sub.add_parser("set-password", help="set the password (stdin)").set_defaults(fn=cmd_set_password)
     sub.add_parser("reset-password", help="remove the password and two-step codes").set_defaults(fn=cmd_reset_password)
+    s = sub.add_parser("enable-team", help="turn the password into the first admin of a team")
+    s.add_argument("name", nargs="?", default="admin")
+    s.set_defaults(fn=cmd_enable_team)
+    sub.add_parser("disable-team", help="back to a single user").set_defaults(fn=cmd_disable_team)
     s = sub.add_parser("set-key", help="save an API key (stdin)")
     s.add_argument("env_key")
     s.set_defaults(fn=cmd_set_key)
