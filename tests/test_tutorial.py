@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 from optimux_backend import main
 
 ROOT = Path(__file__).resolve().parent.parent
-FILM = ROOT / "web" / "tutorial" / "optimux-tutorial-2.mp4"
-URL = "/static/tutorial/optimux-tutorial-2.mp4"
+FILM = ROOT / "web" / "tutorial" / "optimux-tutorial-3.mp4"
+URL = "/static/tutorial/optimux-tutorial-3.mp4"
 
 def chapters():
     """The chapter list as the page has it: [[seconds, title], ...]."""
@@ -18,7 +18,7 @@ def chapters():
     return [(float(t), name) for t, name in re.findall(r"\{ t: ([\d.]+), title: tk\('([^']+)'\) \}", block)], block
 
 def test_the_film_ships_with_the_app_and_stays_small():
-    assert FILM.is_file() and (ROOT / "web" / "tutorial" / "optimux-tutorial-2.jpg").is_file()
+    assert FILM.is_file() and (ROOT / "web" / "tutorial" / "optimux-tutorial-3.jpg").is_file()
     assert FILM.stat().st_size < 10 * 1024 * 1024         # it travels with every install and update
     head = FILM.read_bytes()[:4096]
     assert head[4:8] == b"ftyp" and b"moov" in head       # the index is first: it plays before it is all there

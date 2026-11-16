@@ -3709,21 +3709,21 @@ const optimuxApp = createApp({
         // The video tutorial (v0.8): one file shipped with the app, its version in the name
         // (a new film gets a new name). Times are seconds into the film.
         const TUTORIAL = {
-            src: '/static/tutorial/optimux-tutorial-2.mp4',
-            poster: '/static/tutorial/optimux-tutorial-2.jpg',
-            length: 510.5,
+            src: '/static/tutorial/optimux-tutorial-3.mp4',
+            poster: '/static/tutorial/optimux-tutorial-3.jpg',
+            length: 514.9,
             chapters: [
                 { t: 0, title: tk('Install') },
-                { t: 31.5, title: tk('The first sign-in') },
-                { t: 68.5, title: tk('Add a model') },
-                { t: 126.0, title: tk('Choose who does what') },
-                { t: 161.7, title: tk('Set the Workspace') },
-                { t: 180.7, title: tk('Set up Git and GitHub') },
-                { t: 225.2, title: tk('Create a project') },
-                { t: 281.3, title: tk('Your first request') },
-                { t: 365.0, title: tk('The Studio') },
-                { t: 398.8, title: tk('Commit your work') },
-                { t: 432.6, title: tk('Ask for a change from the Studio') },
+                { t: 33.3, title: tk('The first sign-in') },
+                { t: 70.7, title: tk('Add a model') },
+                { t: 128.0, title: tk('Choose who does what') },
+                { t: 163.3, title: tk('Set the Workspace') },
+                { t: 182.3, title: tk('Set up Git and GitHub') },
+                { t: 226.9, title: tk('Create a project') },
+                { t: 283.9, title: tk('Your first request') },
+                { t: 368.3, title: tk('The Studio') },
+                { t: 402.4, title: tk('Commit your work') },
+                { t: 436.6, title: tk('Ask for a change from the Studio') },
             ],
         };
         const tutorialAt = ref(0);              // seconds played, to mark the chapter on screen
