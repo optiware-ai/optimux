@@ -953,7 +953,7 @@ const optimuxApp = createApp({
         const moreSteps = ref(10);             // how many more, in that card
         const pendingForm = ref(null);   // Feature 25: { form, error, github, active_project, key } for create_project
         // v0.8: What was sent: the model calls of one reply, each read from /api/sent/<id> when picked
-        const sentBox = Vue.reactive({ open: false, browse: false, calls: [], at: 0, loading: false, error: '', data: null, shown: {}, copied: false });
+        const sentBox = Vue.reactive({ open: false, calls: [], at: 0, loading: false, error: '', data: null, shown: {}, copied: false });
         const SENT_KINDS = {     // kind: [label, the bar's colour, the text's colour]
             instructions: [() => tr('Optimux\'s instructions'), 'bg-gray-500', 'text-gray-300'],
             memory: [() => tr('Your memory'), 'bg-purple-500', 'text-purple-300'],
@@ -967,12 +967,29 @@ const optimuxApp = createApp({
         const sentKindClass = (k, bar) => (SENT_KINDS[k] || [null, 'bg-gray-600', 'text-gray-300'])[bar ? 1 : 2];
         const sentRoleClass = (r) => (r === 'complex' ? 'bg-amber-900/60 text-amber-200' : r === 'simple' ? 'bg-blue-900/60 text-blue-200' : 'bg-gray-800 text-gray-300');
         const sentPeek = (t) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 140);
-        const sentGroups = Vue.computed(() => {
-            const d = sentBox.data;
+        const sentGroupsOf = (d) => {
             if (!d || !d.chars) return [];
             const sums = {};
             d.parts.forEach((p) => { sums[p.kind] = (sums[p.kind] || 0) + p.chars; });
             return Object.keys(SENT_KINDS).filter((k) => sums[k]).map((k) => ({ kind: k, chars: sums[k], share: Math.max(1, Math.round(100 * sums[k] / d.chars)) }));
+        };
+        const sentGroups = Vue.computed(() => sentGroupsOf(sentBox.data));
+        // what a reader looks for first is open: the memory, and the last thing said
+        const sentShownAtFirst = (d) => {
+            const shown = {};
+            const last = d.parts.map((p) => p.kind).lastIndexOf('user');
+            d.parts.forEach((p, n) => { shown[n] = p.kind === 'memory' || n === last; });
+            return shown;
+        };
+        // The calls of one reply, each model once with its calls under it (numbers keep the order they were made in)
+        const sentModels = Vue.computed(() => {
+            const order = [], by = {};
+            sentBox.calls.forEach((c, i) => {
+                const k = c.model || '?';
+                if (!by[k]) { by[k] = { model: k, items: [] }; order.push(k); }
+                by[k].items.push({ c, i });
+            });
+            return order.map((k) => by[k]);
         });
         const showSent = async (i) => {
             const call = sentBox.calls[i];
@@ -981,27 +998,11 @@ const optimuxApp = createApp({
             try {
                 const d = await studioFetch('/api/sent/' + call.id);
                 if (sentBox.calls[sentBox.at] !== call) return;
-                // open what a reader looks for first: the memory, and the last thing said
-                const shown = {};
-                const last = d.parts.map((p) => p.kind).lastIndexOf('user');
-                d.parts.forEach((p, n) => { shown[n] = p.kind === 'memory' || n === last; });
-                sentBox.data = d; sentBox.shown = shown;
+                sentBox.data = d; sentBox.shown = sentShownAtFirst(d);
             } catch (e) { sentBox.error = e.message; }
             sentBox.loading = false;
-        };
-        // Dashboard → History → Browse: every kept call, also those outside a reply
-        // (the memory update, a commit message, a skill draft)
-        const browseSent = async () => {
-            sentBox.browse = true; sentBox.calls = []; sentBox.data = null; sentBox.error = ''; sentBox.open = true; sentBox.loading = true;
-            try {
-                const d = await studioFetch('/api/sent?limit=200');
-                sentBox.calls = d.calls.map((c) => ({ ...c, when: new Date(c.ts * 1000).toLocaleString(appLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }));
-            } catch (e) { sentBox.error = e.message; }
-            sentBox.loading = false;
-            if (sentBox.calls.length) showSent(0);
         };
         const openSent = (msg) => {
-            sentBox.browse = false;
             sentBox.calls = (msg.usage && msg.usage.sent) || [];
             sentBox.open = true;
             // start at the call that answered: the last one that is not the Conductor or the scout
@@ -1010,10 +1011,10 @@ const optimuxApp = createApp({
             showSent(Math.max(0, at));
         };
         const sentOpenAll = (on) => { if (sentBox.data) sentBox.data.parts.forEach((p, n) => { sentBox.shown[n] = on; }); };
+        const sentAsText = (d) => d.parts.map((p) => '===== ' + sentKindLabel(p.kind) + ' =====\n' + p.text).join('\n\n');
         const copySent = async () => {
             if (!sentBox.data) return;
-            const text = sentBox.data.parts.map((p) => '===== ' + sentKindLabel(p.kind) + ' =====\n' + p.text).join('\n\n');
-            try { await navigator.clipboard.writeText(text); sentBox.copied = true; setTimeout(() => { sentBox.copied = false; }, 1500); } catch (_) {}
+            try { await navigator.clipboard.writeText(sentAsText(sentBox.data)); sentBox.copied = true; setTimeout(() => { sentBox.copied = false; }, 1500); } catch (_) {}
         };
         const pendingSync = ref(null);   // v0.8: the Push / Update window the model asked for: { project, kind, message, sync_pass }
         const reopenSync = () => {       // the card's button: the same window, with the pass that lets it through
@@ -2068,6 +2069,7 @@ const optimuxApp = createApp({
             refreshProjectLists();
         };
         const fetchHistoryPage = async () => {
+            if (historyBlock.value === 'sent') fetchSentChats();
             const h = historyPage.value;
             const params = new URLSearchParams();
             if (h.project) params.set('project', h.project === NO_PROJECT ? '' : h.project); else params.set('all_projects', 'true');
@@ -2097,12 +2099,77 @@ const optimuxApp = createApp({
             Object.assign(historyPage.value, { project: '', archived: false, q: '', period: 'all' });
             fetchHistoryPage();
         };
+        // v0.8: the two blocks of History start closed; one is open at a time, and the filters above act on that one
+        const historyBlock = ref('');
+        const toggleHistoryBlock = (name) => {
+            historyBlock.value = historyBlock.value === name ? '' : name;
+            if (historyBlock.value === 'sent') fetchSentChats();
+        };
+        const historySearchHint = Vue.computed(() => (historyBlock.value === 'sent' ? tr('Words in the title or a model\'s name') : tr('Words in the title')));
+        const historySince = () => {      // the start of the period (Today, 7 days, 30 days), in seconds; 0 = any time
+            const period = historyPage.value.period;
+            if (period === 'all') return 0;
+            const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (Number(period) - 1));
+            return d.getTime() / 1000;
+        };
+        // The kept prompts: chat (+) → the models it used, each once → its calls, each opened where it is
+        const sentTree = Vue.reactive({ chats: [], loading: false, error: '', loaded: false, open: {}, calls: {}, busy: {}, call: {} });
+        let sentChatsSeq = 0;
+        const fetchSentChats = async () => {
+            const h = historyPage.value, mine = ++sentChatsSeq;
+            const params = new URLSearchParams();
+            if (h.project) params.set('project', h.project === NO_PROJECT ? '' : h.project); else params.set('all_projects', 'true');
+            if (h.archived) params.set('archived', 'true');
+            if (h.q.trim()) params.set('q', h.q.trim());
+            if (historySince()) params.set('since', String(historySince()));
+            sentTree.loading = true; sentTree.error = '';
+            try {
+                const d = await studioFetch('/api/sent/chats?' + params.toString());
+                if (mine !== sentChatsSeq) return;                  // a newer search is on its way
+                sentTree.chats = d.chats; sentTree.loaded = true; sentTree.calls = {};
+                sentTree.chats.filter((c) => sentTree.open[c.session]).forEach((c) => loadSentCalls(c.session));
+            } catch (e) { if (mine === sentChatsSeq) sentTree.error = e.message; }
+            if (mine === sentChatsSeq) sentTree.loading = false;
+        };
+        watch(() => historyPage.value.period, () => { if (historyBlock.value === 'sent') fetchSentChats(); });
+        const loadSentCalls = async (sid) => {
+            sentTree.busy[sid] = true;
+            try {
+                const d = await studioFetch('/api/sent?limit=500&session=' + encodeURIComponent(sid));
+                sentTree.calls[sid] = d.calls.map((c) => ({ ...c, when: new Date(c.ts * 1000).toLocaleString(appLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }));
+            } catch (e) { sentTree.calls[sid] = []; sentTree.error = e.message; }
+            sentTree.busy[sid] = false;
+        };
+        const toggleSentChat = (c) => {
+            sentTree.open[c.session] = !sentTree.open[c.session];
+            if (sentTree.open[c.session] && !sentTree.calls[c.session]) loadSentCalls(c.session);
+        };
+        const sentModelsOf = (sid) => {   // each model once; its calls in the order they were made
+            const order = [], by = {};
+            [...(sentTree.calls[sid] || [])].sort((a, b) => a.id - b.id).forEach((c) => {
+                const k = c.model || '?';
+                if (!by[k]) { by[k] = { model: k, items: [] }; order.push(k); }
+                by[k].items.push(c);
+            });
+            return order.map((k) => by[k]);
+        };
+        const toggleSentCall = async (c) => {
+            const had = sentTree.call[c.id];
+            if (had) { had.open = !had.open; return; }
+            const st = Vue.reactive({ open: true, loading: true, error: '', data: null, shown: {}, copied: false });
+            sentTree.call[c.id] = st;
+            try { const d = await studioFetch('/api/sent/' + c.id); st.data = d; st.shown = sentShownAtFirst(d); }
+            catch (e) { st.error = e.message; }
+            st.loading = false;
+        };
+        const sentCallAll = (st, on) => { if (st.data) st.data.parts.forEach((p, n) => { st.shown[n] = on; }); };
+        const copySentCall = async (st) => {
+            if (!st.data) return;
+            try { await navigator.clipboard.writeText(sentAsText(st.data)); st.copied = true; setTimeout(() => { st.copied = false; }, 1500); } catch (_) {}
+        };
         const historySorted = Vue.computed(() => {
-            const { sort, desc, period } = historyPage.value;
-            const since = period === 'all' ? 0 : (() => {
-                const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (Number(period) - 1));
-                return d.getTime() / 1000;
-            })();
+            const { sort, desc } = historyPage.value;
+            const since = historySince();
             const list = historyPageList.value.filter(c => (c.updated || 0) >= since);
             list.sort((a, b) => {
                 const x = sort === 'project' ? projectLabel(a.project) : (a[sort] ?? '');
@@ -6475,7 +6542,8 @@ const optimuxApp = createApp({
             pendingAction, pendingForm, sendProjectForm, toasts, dismissToast, githubInfo, githubToken, githubMsg, githubBusy,
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
-            sentBox, openSent, browseSent, showSent, sentGroups, sentKindLabel, sentKindClass, sentRoleClass, sentPeek, sentOpenAll, copySent,
+            sentBox, openSent, showSent, sentGroups, sentGroupsOf, sentModels, historyBlock, toggleHistoryBlock, historySearchHint,
+            sentTree, toggleSentChat, sentModelsOf, toggleSentCall, sentCallAll, copySentCall, sentKindLabel, sentKindClass, sentRoleClass, sentPeek, sentOpenAll, copySent,
             syncBox, chatProject, openSync, reopenSync, closeSync, syncReady, syncCommits, syncCanChoose, syncProblems, syncWarnings, syncButton, writeCommitMessage, runSync, link, linkNote,
             startClone, cancelClone, projectLocations, loadProjectLocations, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,

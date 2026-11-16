@@ -12,12 +12,12 @@ def _tab(name, after):
 
 def test_the_kept_prompts_card_is_in_history_not_in_execution():
     history, execution = _tab("history", None), _tab("execution", None)
-    for marker in ("data-sent-browse", "keep_sent_days", "What was sent to the models"):
+    for marker in ("data-history-sent", "keep_sent_days", "What was sent to the models"):
         assert marker in history, marker
         assert marker not in execution, marker
 
 
 def test_the_card_shows_that_the_days_were_saved():
     """Execution had the Saved! tick for the whole tab; History has none, so the card carries its own."""
-    card = PAGE[PAGE.index("What was sent to the models"):PAGE.index("data-sent-browse")]
+    card = PAGE[PAGE.index("data-history-sent"):PAGE.index("data-sent-chat")]
     assert "showSettingsSaved" in card

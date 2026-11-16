@@ -817,9 +817,20 @@ async def rate_task(task_id: str, payload: TaskRatingPayload):
 
 
 @app.get("/api/sent")
-async def sent_calls(limit: int = 100, role: str | None = None):
-    """The kept calls, newest first, without their text (Dashboard → Execution → Browse)."""
-    return {"calls": await asyncio.to_thread(sent_lib.recent, limit, role or None)}
+async def sent_calls(limit: int = 100, role: str | None = None, session: str | None = None):
+    """The kept calls, newest first, without their text (Dashboard → History). `session`
+    keeps one chat's calls ("" = those made outside any chat)."""
+    return {"calls": await asyncio.to_thread(sent_lib.recent, limit, role or None, None, session)}
+
+
+@app.get("/api/sent/chats")
+async def sent_chats(project: str | None = None, all_projects: bool = False, archived: bool = False,
+                     since: float = 0, q: str = "", limit: int = 300):
+    """The kept calls by chat, the most recent first (Dashboard → History): one row per
+    chat with its title, number of calls and models. The filters are the chat list's
+    (since: seconds, 0 = any time)."""
+    return {"chats": await asyncio.to_thread(sent_lib.chats, None if all_projects else project,
+                                             since or None, archived, q, limit)}
 
 
 @app.get("/api/sent/{sid}")

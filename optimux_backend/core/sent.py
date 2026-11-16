@@ -124,14 +124,18 @@ def get(sid: int) -> dict | None:
             "tools": json.loads(row["tools"] or "[]"), "parts": parts}
 
 
-def recent(limit: int = 100, role: str | None = None, project: str | None = None) -> list[dict]:
+def recent(limit: int = 100, role: str | None = None, project: str | None = None,
+           session: str | None = None) -> list[dict]:
     """The kept calls, newest first, without their text: {id, ts, role, model,
-    project, session, chars}. For the Dashboard's list."""
+    project, session, chars}. For the Dashboard's list. `session` keeps one chat's
+    calls ("" = the calls made outside any chat)."""
     where, args = [], []
     if role:
         where.append("role = ?"); args.append(role)
     if project is not None:
         where.append("project = ?"); args.append(project)
+    if session is not None:
+        where.append("COALESCE(session, '') = ?"); args.append(session)
     sql = ("SELECT id, ts, role, model, project, session, chars FROM sent_calls"
            + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC LIMIT ?")
     conn = store.connect()
@@ -139,6 +143,37 @@ def recent(limit: int = 100, role: str | None = None, project: str | None = None
         return [dict(r) for r in conn.execute(sql, (*args, max(1, min(int(limit), 1000))))]
     finally:
         conn.close()
+
+
+def chats(project: str | None = None, since: float | None = None, archived: bool = False,
+          query: str = "", limit: int = 300) -> list[dict]:
+    """The kept calls by chat, the most recently used chat first (Dashboard -> History):
+    {session, title, known, project, archived, last, calls, chars, models}. The filters are
+    the chat list's: a project ("" = the Workspace), calls since a time, archived chats,
+    words in the title or in a model's name. Calls made outside any chat (a commit
+    message, a memory update) come as one row with session "" and no title; those of a
+    chat that was deleted keep their id, with known false and no title."""
+    from optimux_backend.core.security import mask_secrets
+    where, args = ["COALESCE(s.archived, 0) = ?"], [int(archived)]
+    if project is not None:
+        where.append("COALESCE(c.project, '') = ?"); args.append(project)
+    if since is not None:
+        where.append("c.ts >= ?"); args.append(since)
+    if query.strip():
+        where.append("(s.title LIKE ? OR c.model LIKE ?)"); args += [f"%{query.strip()}%"] * 2
+    sql = ("SELECT COALESCE(c.session, '') AS session, MAX(s.title) AS title, MAX(s.archived) AS archived, "
+           "MAX(c.ts) AS last, COUNT(*) AS calls, SUM(c.chars) AS chars, GROUP_CONCAT(DISTINCT c.model) AS models, "
+           "MAX(COALESCE(c.project, '')) AS project, MAX(s.id) AS known "
+           "FROM sent_calls c LEFT JOIN sessions s ON s.id = c.session WHERE " + " AND ".join(where)
+           + " GROUP BY COALESCE(c.session, '') ORDER BY last DESC LIMIT ?")
+    conn = store.connect()
+    try:
+        found = conn.execute(sql, (*args, max(1, min(int(limit), 1000)))).fetchall()
+    finally:
+        conn.close()
+    return [{"session": r["session"], "title": mask_secrets(r["title"] or "")[0], "project": r["project"],
+             "archived": bool(r["archived"]), "known": r["known"] is not None, "last": r["last"], "calls": r["calls"], "chars": r["chars"] or 0,
+             "models": sorted(m for m in (r["models"] or "").split(",") if m)} for r in found]
 
 
 def prune(days: int) -> int:
