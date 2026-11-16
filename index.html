@@ -1398,17 +1398,25 @@
                         <button type="button" @click="toggleHistoryBlock('sent')" :aria-expanded="historyBlock === 'sent' ? 'true' : 'false'" data-history-block="sent" class="w-full flex items-center gap-3 px-4 py-3 text-left rounded-xl hover:bg-gray-800/50">
                             <span class="font-mono text-gray-400 w-4 text-center" aria-hidden="true">{{ historyBlock === 'sent' ? '−' : '+' }}</span>
                             <span class="font-bold text-gray-200">{{ $t('What was sent to the models') }}</span>
-                            <span v-if="historyBlock === 'sent' && sentTree.loaded" class="text-[13px] text-gray-500">{{ $t('{length} request{v}', { length: sentTree.requests.length, v: sentTree.requests.length === 1 ? '' : 's' }) }}</span>
+                            <span v-if="sentTree.count !== null" class="text-[13px] text-gray-500">{{ $t('{length} request{v}', { length: sentTree.count, v: sentTree.count === 1 ? '' : 's' }) }}</span>
                         </button>
                         <div v-if="historyBlock === 'sent'" class="px-4 pb-4 space-y-3">
                             <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
                                 <label class="flex flex-wrap items-center gap-2 text-[15px] text-gray-200">{{ $t('Keep them for') }}
-                                    <input v-model.number="appSettings.keep_sent_days" @change="saveSettings" type="number" min="0" max="365" :aria-label="$t('Days the sent prompts are kept')" class="w-20 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-gray-200 outline-none focus:border-blue-500">
+                                    <input v-model.number="appSettings.keep_sent_days" @change="changeKeepDays" type="number" min="0" max="365" :aria-label="$t('Days the sent prompts are kept')" class="w-20 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-gray-200 outline-none focus:border-blue-500">
                             {{ $t('days') }}
                             <span v-if="showSettingsSaved" class="text-green-400 font-bold text-[13px]">{{ $t('Saved!') }}</span></label>
                                 <help-tip>{{ $t('Optimux keeps the prompt of every model call exactly as it left this machine (saved keys already hidden): its own instructions, your memory, the conversation, the tool results and the tools offered. Under a reply, "What was sent" shows them. They are kept in Optimux\'s own data on this machine, never anywhere else.') }}</help-tip>
                             </div>
-                            <p class="text-[13px] text-gray-400">{{ $t('0 keeps nothing: "What was sent" then has nothing to show for new replies. Text sent again with every call (the instructions, the earlier conversation) is stored once.') }}</p>
+                            <div v-if="keepAsk" data-keep-ask role="alertdialog" :aria-label="$t('Delete older prompts?')" class="rounded-lg border border-amber-700/70 bg-amber-950/30 px-3 py-2.5 text-[13px] text-amber-100 space-y-2">
+                                <p class="font-bold">{{ $t('Keeping {days} day{v} deletes older prompts for good', { days: keepAsk.days, v: keepAsk.days === 1 ? '' : 's' }) }}</p>
+                                <p>{{ $t('{requests} request{v} ({calls} call{v2}) older than that would be deleted now, and this cannot be undone.', { requests: keepAsk.requests, v: keepAsk.requests === 1 ? '' : 's', calls: keepAsk.calls, v2: keepAsk.calls === 1 ? '' : 's' }) }}</p>
+                                <div class="flex flex-wrap gap-2">
+                                    <button type="button" @click="confirmKeepDays" class="px-3 py-1 rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-bold">{{ $t('Delete them and keep {days}', { days: keepAsk.days }) }}</button>
+                                    <button type="button" @click="cancelKeepDays" class="px-3 py-1 rounded-lg border border-gray-600 text-gray-200 hover:border-gray-400">{{ $t('Keep {days} days as before', { days: keepAsk.current }) }}</button>
+                                </div>
+                            </div>
+                            <p class="text-[13px] text-gray-400">{{ $t('0 keeps nothing: "What was sent" then has nothing to show for new replies. Text sent again with every call (the instructions, the earlier conversation) is stored once.') }} {{ $t('Prompts older than this period are deleted for good, a few times a day.') }}</p>
                             <div v-if="sentTree.error" class="text-red-300 text-[13px]" role="alert">{{ sentTree.error }}</div>
                             <div v-else-if="sentTree.loading && !sentTree.loaded" class="text-gray-400 text-[13px]">{{ $t('Loading…') }}</div>
                             <div v-else-if="!sentTree.requests.length" class="text-gray-500 italic text-[13px] py-3">{{ $t('Nothing kept matches. Prompts are kept from the next model call on.') }}</div>
@@ -3479,14 +3487,14 @@
 
         <!-- One line above the chat (v0.4-5r): the chat's name, or, once a prompt has scrolled
              away, that prompt; in the page's flow, so it never covers the chat -->
-        <div v-if="currentSession || pinnedPrompt" class="pt-3 pr-4 flex items-start gap-2">
+        <div v-if="currentSession || pinnedPrompt" class="pt-3 pb-3 pr-4 flex items-start gap-2">
             <!-- v0.8: you came here from Dashboard → History -->
             <button v-if="fromHistory" type="button" data-back-to-history @click="backToHistory" :title="$t('Go back to the History in the Dashboard')" class="flex-shrink-0 text-[13px] px-3 py-1.5 rounded-lg border border-blue-800/70 bg-blue-950/30 text-blue-200 hover:border-blue-500">←<span class="cm-bar-label">{{ ' ' + $t('Back to History') }}</span></button>
             <div v-if="pinnedPrompt" class="flex-1 min-w-0 bg-gray-950 border border-blue-800/60 rounded-lg text-[13px] text-gray-200">
                 <div class="flex items-start gap-2 px-3 py-1.5">
                     <span v-if="chatRenamed" class="flex-shrink-0 max-w-[220px] truncate text-xs font-mono text-gray-500 border border-gray-700 rounded px-1.5" :title="$t('Chat: ') + currentSession.title">{{ currentSession.title }}</span>
                     <span class="text-blue-300 font-mono flex-shrink-0 select-none">{{ $t('You:') }}</span>
-                    <div :class="['flex-1 min-w-0', pinnedOpen ? 'whitespace-pre-wrap break-words max-h-60 overflow-y-auto' : 'truncate']">{{ pinnedPrompt.text }}</div>
+                    <div :class="['min-w-0', pinnedOpen ? 'flex-1 whitespace-pre-wrap break-words max-h-60 overflow-y-auto' : 'max-w-[50%] truncate']">{{ pinnedPrompt.text }}</div>
                     <button @click="pinnedOpen = !pinnedOpen" class="flex-shrink-0 text-[12px] font-mono text-gray-400 hover:text-gray-100" :title="pinnedOpen ? $t('Show one line') : $t('Show the whole prompt')">{{ pinnedOpen ? $t('Less ▴') : $t('More ▾') }}</button>
                 </div>
             </div>
@@ -3494,7 +3502,7 @@
                 <span class="truncate" :title="currentSession && currentSession.title">{{ (currentSession && currentSession.title) || $t('Untitled chat') }}</span>
                 <button v-if="currentSession && !readOnlyChat" @click="renameSession(currentSession)" class="flex-shrink-0 text-gray-600 hover:text-gray-300" :title="$t('Rename this chat')">✎</button>
             </div>
-            <button v-if="pinnedPrompt" @click="jumpToPinned" class="flex-shrink-0 text-xs font-mono text-gray-400 hover:text-gray-100 bg-gray-900 hover:bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 transition" :title="$t('Scroll up to this prompt')">↑</button>
+            <button v-if="pinnedPrompt" @click="scrollChatToTop" class="flex-shrink-0 text-xs font-mono text-gray-400 hover:text-gray-100 bg-gray-900 hover:bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 transition" :title="$t('Scroll to the top of the chat')" :aria-label="$t('Scroll to the top of the chat')">↑</button>
         </div>
         <div class="flex-1 overflow-y-auto py-6 pl-1 pr-4 space-y-6 scroll-smooth" id="chat-container" @click="onChatClick" @scroll.passive="onChatScroll">
             <div v-for="(msg, index) in messages" :key="index" :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
@@ -3683,6 +3691,7 @@
                             <button v-if="canEscalate(msg, index)" @click="escalate" class="text-amber-400 hover:text-amber-300 border border-amber-800/60 hover:border-amber-600 rounded px-2 py-0.5" :title="$t('Re-run your last request on the Complex Executor')">{{ $t('Escalate ↑') }}</button>
                         </span>
                     </div>
+                    <div v-if="msg.at && msg.role === 'agent' && !(index === 0 && msg.system_note === 'System') && !(isGenerating && index === messages.length - 1)" data-reply-time class="mt-1 text-[11px] font-mono text-gray-600">{{ stampOf(msg.at) }}</div>
                     
                     <!-- Feature 18: running total while the reply is still working -->
                     <div v-if="msg.role === 'agent' && msg.usage && isGenerating && index === messages.length - 1" class="mt-3 pt-2 border-t border-gray-800 flex items-center gap-2 text-[11px] font-mono text-gray-500" :title="$t('Updated after every model call; commands themselves are free')">

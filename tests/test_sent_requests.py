@@ -157,3 +157,52 @@ def test_the_timeline_puts_the_answer_with_the_call_that_wrote_it(mocker, tmp_pa
     out = sent.record("", "commit_message", "m", [{"role": "user", "content": "msg"}], None)
     lone = client.get(f"/api/sent/request?session=&key=call-{out}", headers=H).json()["steps"]
     assert lone[0].get("answer", "") == ""                    # outside a chat nothing is logged
+
+
+def test_a_row_carries_the_ids_of_its_calls_so_the_chat_can_find_the_reply():
+    a, ids = _chat()
+    rows = {r["key"]: r for r in sent.requests()}
+    assert rows["T1"]["ids"] == [ids["c1"], ids["s1"], ids["s2"]]
+    assert rows["T2"]["ids"] == [ids["c2"], ids["x1"]]
+
+
+def test_the_requests_can_be_counted_without_reading_them():
+    a, ids = _chat()
+    assert sent.count() == 3                                   # T1, T2 and the curator's own call
+    assert sent.count(project="nope") == 0
+    assert sent.count(since=time.time() + 60) == 0
+
+
+def test_what_a_shorter_period_would_delete_is_counted_first_and_pruned_on_request(mocker, tmp_path):
+    client = make_client(mocker, tmp_path)
+    a, ids = _chat()
+    conn = store.connect()
+    with conn:
+        conn.execute("UPDATE sent_calls SET ts = ? WHERE id IN (?, ?, ?)", (time.time() - 20 * 86400, ids["c1"], ids["s1"], ids["s2"]))
+    conn.close()
+    got = client.get("/api/sent/prune-preview?days=14", headers=H).json()
+    assert got["calls"] == 3 and got["requests"] == 1 and got["current"] == 14
+    assert client.get("/api/sent/prune-preview?days=30", headers=H).json()["calls"] == 0
+    assert client.get("/api/sent/prune-preview?days=0", headers=H).json()["calls"] == 6     # nothing kept: all of it
+    assert client.get("/api/sent/prune-preview?days=999", headers=H).status_code == 422     # a value the setting refuses
+    assert sent.count() == 3                                                                 # counting deleted nothing
+    assert client.post("/api/sent/prune", json={"days": 14}, headers=H).json() == {"deleted": 3}
+    assert sent.count() == 2
+    assert client.post("/api/sent/prune", json={"days": 999}, headers=H).status_code == 422
+
+
+def test_the_list_says_how_many_there_are_and_can_be_asked_for_the_number_alone(mocker, tmp_path):
+    client = make_client(mocker, tmp_path)
+    _chat()
+    d = client.get("/api/sent/requests?all_projects=true", headers=H).json()
+    assert d["count"] == 3 and len(d["requests"]) == 3
+    assert client.get("/api/sent/requests?all_projects=true&count_only=true", headers=H).json() == {"count": 3}
+    assert client.get("/api/sent/requests?all_projects=true&count_only=true&q=hexagons", headers=H).json() == {"count": 1}
+
+
+def test_a_chat_comes_back_with_the_time_of_each_event():
+    a = sessions.create("alpha", "times")
+    sessions.append_events(a, [{"type": "prompt", "content": "hi"}, {"type": "token", "content": "yo"}])
+    got = sessions.get(a)
+    assert len(got["times"]) == len(got["events"]) == 2
+    assert all(abs(t - time.time()) < 60 for t in got["times"])

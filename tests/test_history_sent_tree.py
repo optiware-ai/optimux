@@ -142,3 +142,34 @@ def test_going_to_the_chat_leaves_a_way_back_to_the_history():
     assert "fromHistory.value = false" in APP[APP.index("const goHome"):][:300]
     assert "data-back-to-history" in PAGE and "backToHistory" in PAGE and "v-if=\"fromHistory\"" in PAGE
     assert "fromHistory, backToHistory, goToSentChat" in APP
+
+
+def test_the_sent_header_has_a_counter_even_when_closed():
+    head = PAGE[PAGE.index('data-history-block="sent"'):][:900]
+    counter = head[head.index("<span class=\"text-[13px] text-gray-500\""):head.index("</button>")] if "<span class=\"text-[13px] text-gray-500\"" in head else head
+    assert "historyBlock === 'sent' && sentTree.loaded" not in head          # it no longer waits for the block to be open
+    assert "sentTree.count" in head
+    assert "count_only=true" in APP and "fetchSentCount" in APP
+    page = APP[APP.index("const fetchHistoryPage"):][:900]
+    assert "fetchSentCount()" in page                                        # read when the History is, not only when opened
+
+
+def test_a_shorter_keeping_period_is_confirmed_before_anything_is_deleted():
+    block = _sent_block()
+    assert "@change=\"changeKeepDays\"" in block and "@change=\"saveSettings\"" not in block[:block.index("data-sent-request")]
+    for marker in ("data-keep-ask", "confirmKeepDays", "cancelKeepDays", "keepAsk.requests", "keepAsk.calls"):
+        assert marker in block, marker
+    ask = APP[APP.index("const changeKeepDays"):][:1400]
+    assert "/api/sent/prune-preview?days=" in ask and "keepAsk.value = " in ask and "d.current" in ask
+    assert "return;" in ask[ask.index("keepAsk.value = "):][:200]               # nothing is saved until they confirm
+    assert APP.index("saveSettings()", APP.index("const confirmKeepDays")) < APP.index("/api/sent/prune'", APP.index("const confirmKeepDays"))
+    assert "keep_sent_days = keepAsk.value.current" in APP[APP.index("const cancelKeepDays"):][:300]
+
+
+def test_going_to_a_chat_lands_on_the_request_not_on_the_end():
+    go = APP[APP.index("const goToSentChat"):][:500]
+    assert "pendingJump.value" in go and "r.ids" in go
+    jump = APP[APP.index("const jumpToRequest"):][:1200]
+    assert "usage.sent" in jump and "data-user-msg" in jump and "pendingJump.value = null" in jump
+    assert jump.index("if (at < 0) return false") < jump.index("pendingJump.value = null;\n            let from")   # kept until its own chat is shown
+    assert "if (!jumpToRequest()) scrollToBottom(true)" in APP                              # the replay ends there

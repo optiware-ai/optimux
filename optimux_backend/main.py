@@ -8,7 +8,7 @@ import secrets
 import time
 import traceback
 import uuid
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -294,7 +294,7 @@ RESTORE_ALLOWED = ("/api/restore/", "/api/snapshots")
 
 # ---- The Studio (v0.8): the active project's files, an editor and a preview
 
-from pydantic import BaseModel  # noqa: E402  (also imported further down, with the other payloads)
+from pydantic import BaseModel, Field  # noqa: E402  (also imported further down, with the other payloads)
 
 def _files_error(e: "files_studio.FilesError"):
     raise HTTPException(e.status, str(e))
@@ -825,12 +825,34 @@ async def sent_calls(limit: int = 100, role: str | None = None, session: str | N
 
 @app.get("/api/sent/requests")
 async def sent_requests(project: str | None = None, all_projects: bool = False, archived: bool = False,
-                        since: float = 0, q: str = "", limit: int = 300):
+                        since: float = 0, q: str = "", limit: int = 300, count_only: bool = False):
     """The kept calls as a flat list of requests, the most recent first (Dashboard → History): one
     row per thing the user asked, with its chat's title. The filters are the chat list's (since:
-    seconds, 0 = any time); `q` looks in the title, the models and the whole request."""
-    return {"requests": await asyncio.to_thread(sent_lib.requests, None if all_projects else project,
-                                                since or None, archived, q, limit)}
+    seconds, 0 = any time); `q` looks in the title, the models and the whole request. `count` is how
+    many there are (the list stops at `limit`); `count_only` returns just that, for a closed header."""
+    where = (None if all_projects else project, since or None, archived)
+    if count_only:
+        n = len(await asyncio.to_thread(sent_lib.requests, *where, q, 1000)) if q.strip() else await asyncio.to_thread(sent_lib.count, *where)
+        return {"count": n}
+    rows = await asyncio.to_thread(sent_lib.requests, *where, q, limit)
+    return {"requests": rows, "count": len(rows) if q.strip() or len(rows) < limit else await asyncio.to_thread(sent_lib.count, *where)}
+
+
+@app.get("/api/sent/prune-preview")
+async def sent_prune_preview(days: int = Query(..., ge=0, le=365)):
+    """What a shorter keeping period would delete (nothing is deleted here): the numbers shown to the user
+    before they confirm, with the period in force now."""
+    return await asyncio.to_thread(sent_lib.prune_preview, days) | {"current": int(get_settings().get("keep_sent_days", sent_lib.KEEP_DAYS) or 0)}
+
+
+class PrunePayload(BaseModel):
+    days: int = Field(ge=0, le=365)
+
+
+@app.post("/api/sent/prune")
+async def sent_prune(payload: PrunePayload):
+    """Delete the kept prompts older than `days` now (asked for after the user confirmed a shorter period)."""
+    return {"deleted": await asyncio.to_thread(sent_lib.prune, payload.days)}
 
 
 @app.get("/api/sent/request")
@@ -5029,7 +5051,7 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
         # Its project folder is gone (archived or deleted): show the chat to read, but
         # don't switch to that project or continue the chat, since commands couldn't run there.
         reset_chat(session)
-        await send(websocket, "session_loaded", session=summary, events=data["events"],
+        await send(websocket, "session_loaded", session=summary, events=data["events"], times=data["times"],
                    read_only=True, reason=reason, ratings=tasks_lib.ratings(data["id"]))
         return
     if data["project"] and data["project"] != active_project():
@@ -5045,7 +5067,7 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
         "tier_pinned": data["tier_pinned"], "last_turn_ok": data["last_turn_ok"],
     })
     session["budget_notes"] = set()
-    await send(websocket, "session_loaded", session=summary, events=data["events"], active_project_changed=switched,
+    await send(websocket, "session_loaded", session=summary, events=data["events"], times=data["times"], active_project_changed=switched,
                plans=[public_plan(p) for p in plans_lib.for_session(data["id"])], ratings=tasks_lib.ratings(data["id"]))
 
 

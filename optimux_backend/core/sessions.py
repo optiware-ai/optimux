@@ -144,8 +144,9 @@ def get(sid: str) -> dict | None:
         if row is None:
             return None
         state = conn.execute("SELECT history, tier_pinned, last_turn_ok FROM sessions WHERE id = ?", (sid,)).fetchone()
-        events = [json.loads(r["data"]) for r in
-                  conn.execute("SELECT data FROM session_events WHERE session_id = ? ORDER BY id", (sid,))]
+        stored = conn.execute("SELECT ts, data FROM session_events WHERE session_id = ? ORDER BY id", (sid,)).fetchall()
+        events = [json.loads(r["data"]) for r in stored]
+        times = [r["ts"] for r in stored]
     finally:
         conn.close()
     # Saved keys are hidden on the way out too (v0.5.1): a chat stored before
@@ -157,6 +158,7 @@ def get(sid: str) -> dict | None:
         "tier_pinned": bool(state["tier_pinned"]),
         "last_turn_ok": bool(state["last_turn_ok"]),
         "events": mask_obj(events)[0],
+        "times": times,          # when each event was stored, in step with `events` (v0.8: the time under a reply)
     }
 
 

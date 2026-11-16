@@ -1059,6 +1059,8 @@ const optimuxApp = createApp({
             scout: tr('Scout'), planner: tr('Planner'), curator: tr('Memory update'), commit_message: tr('Commit message'),
             skill_draft: tr('Skill draft') })[r] || r;
         // a date and time down to the second, so calls can be followed one after another
+        // the full date and time of a reply, down to the second
+        const stampOf = (sec) => new Date(sec * 1000).toLocaleString(appLocale(), { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const sentWhen = (ts) => new Date(ts * 1000).toLocaleString(appLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const sentModels = Vue.computed(() => {
             const order = [], by = {};
@@ -1798,10 +1800,10 @@ const optimuxApp = createApp({
             document.title = ATT.tabTitle('Optimux', appSettings.value.active_project || '', waiting);
         });
         document.addEventListener('visibilitychange', () => { if (!document.hidden) closeAttentionNote(); });
-        const jumpToPinned = () => {
+        // The ↑ beside the pinned prompt: all the way to the top of the chat (the one at the bottom hops a prompt at a time)
+        const scrollChatToTop = () => {
             const c = document.getElementById('chat-container');
-            const el = pinnedPrompt.value && c && c.querySelector(`[data-user-msg="${pinnedPrompt.value.index}"]`);
-            if (el) c.scrollTop += el.getBoundingClientRect().top - c.getBoundingClientRect().top - 8;
+            if (c) { followChat.value = false; c.scrollTop = 0; }
         };
         Vue.watch(() => messages.value.length, () => nextTick(updatePinned));
 
@@ -2141,7 +2143,7 @@ const optimuxApp = createApp({
             refreshProjectLists();
         };
         const fetchHistoryPage = async () => {
-            if (historyBlock.value === 'sent') fetchSentRequests();
+            if (historyBlock.value === 'sent') fetchSentRequests(); else fetchSentCount();
             const h = historyPage.value;
             const params = new URLSearchParams();
             if (h.project) params.set('project', h.project === NO_PROJECT ? '' : h.project); else params.set('all_projects', 'true');
@@ -2186,10 +2188,22 @@ const optimuxApp = createApp({
         };
         // The kept prompts: a flat list of requests (no chat level); a row opens to its timeline, the meta-prompt,
         // the Conductor and the executor, each call with only what it added
-        const sentTree = Vue.reactive({ requests: [], loading: false, error: '', loaded: false, open: {}, detail: {}, wholePrompt: {} });
+        const sentTree = Vue.reactive({ requests: [], loading: false, error: '', loaded: false, open: {}, detail: {}, wholePrompt: {}, count: null });
         let sentSeq = 0;
         const sentQuery = () => historyPage.value.q.trim();
         const sentRowKey = (r) => r.session + '|' + r.key;
+        const sentParams = () => {
+            const h = historyPage.value, params = new URLSearchParams();
+            if (h.project) params.set('project', h.project === NO_PROJECT ? '' : h.project); else params.set('all_projects', 'true');
+            if (h.archived) params.set('archived', 'true');
+            if (sentQuery()) params.set('q', sentQuery());
+            if (historySince()) params.set('since', String(historySince()));
+            return params;
+        };
+        // The number in the header while the block is closed: counted by the server, nothing is listed
+        const fetchSentCount = async () => {
+            try { sentTree.count = (await studioFetch('/api/sent/requests?count_only=true&' + sentParams().toString())).count; } catch (_) { sentTree.count = null; }
+        };
         const fetchSentRequests = async () => {
             const h = historyPage.value, mine = ++sentSeq;
             const params = new URLSearchParams();
@@ -2202,6 +2216,7 @@ const optimuxApp = createApp({
                 const d = await studioFetch('/api/sent/requests?' + params.toString());
                 if (mine !== sentSeq) return;                       // a newer search is on its way
                 sentTree.requests = d.requests.map((r) => ({ ...r, when: sentWhen(r.ts) }));
+                sentTree.count = d.count;
                 sentTree.loaded = true; sentTree.detail = {};
                 sentTree.requests.filter((r) => sentTree.open[sentRowKey(r)]).forEach(loadSentRequest);
             } catch (e) { if (mine === sentSeq) sentTree.error = e.message; }
@@ -2218,6 +2233,32 @@ const optimuxApp = createApp({
                 sentTree.detail[k] = { metaView: d.meta.length ? view('meta', d.meta) : null,
                                        steps: d.steps.map((st) => ({ ...st, when: sentWhen(st.ts), view: view(st.role, withAnswer(st)) })) };
             } catch (e) { sentTree.detail[k] = { metaView: null, steps: [], error: e.message }; }
+        };
+        // A shorter keeping period deletes what is older: say how much, and only do it when the user agrees
+        const keepAsk = ref(null);           // { days, requests, calls, current }
+        const changeKeepDays = async () => {
+            let n = Math.round(Number(appSettings.value.keep_sent_days));
+            if (!(n >= 0 && n <= 365)) n = 14;
+            appSettings.value.keep_sent_days = n;
+            try {
+                const d = await studioFetch('/api/sent/prune-preview?days=' + n);
+                if (n < d.current && d.calls) {
+                    keepAsk.value = { days: n, requests: d.requests, calls: d.calls, current: d.current };
+                    return;                  // nothing is saved or deleted until they confirm
+                }
+            } catch (_) { /* no preview: save as before, the server keeps its own limits */ }
+            saveSettings();
+        };
+        const confirmKeepDays = async () => {
+            const a = keepAsk.value;
+            keepAsk.value = null;
+            if (!a || !(await saveSettings())) return;
+            try { await studioFetch('/api/sent/prune', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ days: a.days }) }); } catch (_) {}
+            fetchSentCount(); if (historyBlock.value === 'sent') fetchSentRequests();
+        };
+        const cancelKeepDays = () => {
+            if (keepAsk.value) appSettings.value.keep_sent_days = keepAsk.value.current;
+            keepAsk.value = null;
         };
         const toggleSentRequest = (r) => {
             const k = sentRowKey(r);
@@ -2894,8 +2935,29 @@ const optimuxApp = createApp({
         const goToSentChat = (r) => {
             if (!r.session || isGenerating.value || pendingApproval.value) return;
             closeSettings();
+            pendingJump.value = { ids: r.ids || [], until: Date.now() + 15000 };
             openSession(r.session);
             fromHistory.value = true;
+        };
+        // The chat is replayed, then the page goes to the request that was clicked: the reply made by one of its
+        // calls (their ids are in the reply's usage), and the prompt just above it
+        const pendingJump = ref(null);
+        const jumpToRequest = () => {
+            const want = pendingJump.value;
+            if (!want || Date.now() > want.until) { pendingJump.value = null; return false; }
+            // another chat may be replayed first (the page opening where it was): the request waits for its own
+            const at = messages.value.findIndex((m) => m.role === 'agent' && m.usage && (m.usage.sent || []).some((c) => want.ids.includes(c.id)));
+            if (at < 0) return false;
+            pendingJump.value = null;
+            let from = at;
+            while (from > 0 && messages.value[from].role !== 'user') from--;
+            const c = document.getElementById('chat-container');
+            const el = c && c.querySelector(`[data-user-msg="${from}"]`);
+            if (!el) return false;
+            // at once, not smoothly: a smooth scroll starts near the end, where the reader "is following" the chat
+            followChat.value = false;
+            c.scrollTo({ top: c.scrollTop + el.getBoundingClientRect().top - c.getBoundingClientRect().top - 8, behavior: 'instant' });
+            return true;
         };
         const backToHistory = () => {
             fromHistory.value = false;
@@ -6017,6 +6079,7 @@ const optimuxApp = createApp({
                     return;
                 }
                 const lastMsg = messages.value[messages.value.length - 1];
+                if (!replay && lastMsg && lastMsg.role === 'agent' && ['token', 'usage', 'done', 'error', 'stopped'].includes(data.type)) lastMsg.at = Date.now() / 1000;
 
                 // v0.8: what the reply is waiting for (live only, never replayed); any output ends it
                 if (data.type === 'status') {
@@ -6259,7 +6322,7 @@ const optimuxApp = createApp({
                     : tr('Reopened "{v}" from {when}.', { v: data.session.title || tr('Untitled chat'), when: when }))];
                 messages.value = rebuilt;
                 replayRatings = data.ratings || {};
-                for (const ev of data.events) {
+                for (const [n, ev] of data.events.entries()) {
                     const last = messages.value[messages.value.length - 1];
                     if (ev.type === 'prompt' || ev.type === 'escalate' || ev.type === 'plan_action') {
                         if (last && last.role === 'agent') finalizeReply(last);
@@ -6269,6 +6332,9 @@ const optimuxApp = createApp({
                     } else {
                         handleMessage(ev, true);
                     }
+                    // the time under a reply is that of its last event
+                    const now = messages.value[messages.value.length - 1];
+                    if (now && now.role === 'agent' && (data.times || [])[n]) now.at = data.times[n];
                 }
                 // v0.8: the request went on while the page was away: this is how far it got, the
                 // rest arrives live (and the question it waits on is asked again right after)
@@ -6277,7 +6343,7 @@ const optimuxApp = createApp({
                 if (!data.active_project_changed && !readOnlyChat.value && data.session.project && data.session.project !== appSettings.value.active_project) {
                     fetchConfig();  // the server switched to the session's project
                 }
-                nextTick(() => scrollToBottom(true));
+                nextTick(() => { if (!jumpToRequest()) scrollToBottom(true); });
             };
 
             connect();
@@ -6576,7 +6642,7 @@ const optimuxApp = createApp({
             waitingText, notifyWaiting, notifyPermission, turnNotifyOn, jumpToChat, attentionCard, attentionDismissed, confirmSignOut,
             pendingSteps, moreSteps, answerStepLimit, backTo, diffLineClass, sendApprovalResponse, rejectReason, showTrail,
             MEMORY_MAX_CHARS, pendingTimeLimit, pendingDefaultLimit, keepWaiting, clockNow, fmtClock, fmtSpan, answerLimit,
-            pinnedPrompt, pinnedOpen, updatePinned, jumpToPinned, followChat, onChatScroll, scrollToBottom, waitText, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
+            pinnedPrompt, pinnedOpen, updatePinned, scrollChatToTop, followChat, onChatScroll, scrollToBottom, waitText, chatRenamed, promptAbove, hopUp, changeLabel, changeTitle,
 					renderMarkdown, renderUserText,
             showSettingsModal, openSettings, closeSettings, settingsTab, dashView, setDashView, dashboardSections, dashboardGroups,
             saveKeyDirect, newModelId, newModelName, newModelEnvKey, newModelApiKey, addCustomModel, deleteCustomModel,
@@ -6625,7 +6691,7 @@ const optimuxApp = createApp({
             fetchGithub, saveGithubToken, gitIdentity, saveGitIdentity, checkGithub, removeGithub, newProject, openNewProject, createProjectFromForm,
             ROLE_HELP: roleHelp, roleGroups, setupGithubFromForm, ghImport, loadGithubRepos, showGithubTab, filteredRepos, shownRepos, pickRepo, importNameProblem,
             sentBox, openSent, showSent, sentModels, historyBlock, toggleHistoryBlock, historySearchHint,
-            fromHistory, backToHistory, goToSentChat, sentTree, sentRowKey, toggleSentRequest, showWholePrompt, sentRoleClass, sentRoleName, sentWhen,
+            fromHistory, backToHistory, goToSentChat, keepAsk, changeKeepDays, confirmKeepDays, cancelKeepDays, stampOf, sentTree, sentRowKey, toggleSentRequest, showWholePrompt, sentRoleClass, sentRoleName, sentWhen,
             syncBox, chatProject, openSync, reopenSync, closeSync, syncReady, syncCommits, syncCanChoose, syncProblems, syncWarnings, syncButton, writeCommitMessage, runSync, link, linkNote,
             startClone, cancelClone, projectLocations, loadProjectLocations, openGroups, toggleGroup, archivedNames, usageRows, activeBudgets, workspacePath, archivePath, projectPath, gitBox, sshHost, openGitBox, gitLine, gitFolder, copyGitLine, deletedProjects, archivedProjects, archiveFromDashboard, restoreArchived, deleteBox,
             openDelete, deletePhraseOk, confirmDelete, skillsInfo, skillEditor, skillDrafting, fetchSkills, newSkill, editSkill, saveSkill,

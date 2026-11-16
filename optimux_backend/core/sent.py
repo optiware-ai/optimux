@@ -176,7 +176,7 @@ def requests(project: str | None = None, since: float | None = None, archived: b
              query: str = "", limit: int = 300) -> list[dict]:
     """The kept calls as a flat list of requests, the most recent first (Dashboard -> History): one row per
     thing the user asked, whatever its chat: {key, session, title, known, project, reply, role, prompt, ts, last,
-    calls, chars, models}. A reply's calls (the Conductor's, the executor's, the scout's) share a task id; a
+    calls, ids, chars, models}. A reply's calls (the Conductor's, the executor's, the scout's) share a task id; a
     call made on its own (the memory update, a commit message) is a row of its own (`reply` false, no prompt).
     `prompt` is what the user said, cut for a list. The filters are the chat list's (a project, "" = the
     Workspace; requests used since a time; archived chats); `query` keeps the requests whose chat title, a
@@ -211,12 +211,44 @@ def requests(project: str | None = None, since: float | None = None, archived: b
                 continue
             out.append({"key": key, "session": session, "title": title, "known": calls[0]["known"] is not None,
                         "project": calls[0]["project"], "reply": reply, "role": first["role"], "prompt": prompt[:PROMPT_CUT], "ts": calls[0]["ts"],
-                        "last": last, "calls": len(calls), "chars": sum(c["chars"] or 0 for c in calls), "models": models})
+                        "last": last, "calls": len(calls), "ids": [c["id"] for c in calls], "chars": sum(c["chars"] or 0 for c in calls), "models": models})
             if len(out) >= max(1, min(int(limit), 1000)):
                 break
     finally:
         conn.close()
     return out
+
+
+def count(project: str | None = None, since: float | None = None, archived: bool = False) -> int:
+    """How many requests `requests()` would list for the same filters, without reading any text (a header's
+    number while the list is closed). A search needs the text: count that with len(requests(...))."""
+    where, args = ["COALESCE(s.archived, 0) = ?"], [int(archived)]
+    if project is not None:
+        where.append("COALESCE(c.project, '') = ?"); args.append(project)
+    having = " HAVING MAX(c.ts) >= ?" if since is not None else ""
+    if since is not None:
+        args.append(since)
+    conn = store.connect()
+    try:
+        return conn.execute("SELECT COUNT(*) FROM (SELECT 1 FROM sent_calls c LEFT JOIN sessions s ON s.id = c.session WHERE "
+                            + " AND ".join(where) + " GROUP BY COALESCE(c.session, ''), COALESCE(c.task_id, 'call-' || c.id)"
+                            + having + ")", args).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def prune_preview(days: int) -> dict:
+    """What prune(days) would delete, counted and left alone: {calls, requests}, so a shorter keeping
+    period can be shown to the user before anything goes."""
+    cutoff = time.time() - max(0, days) * 86400
+    conn = store.connect()
+    try:
+        calls = conn.execute("SELECT COUNT(*) FROM sent_calls WHERE ts < ?", (cutoff,)).fetchone()[0]
+        requests_ = conn.execute("SELECT COUNT(*) FROM (SELECT 1 FROM sent_calls WHERE ts < ? "
+                                 "GROUP BY COALESCE(session, ''), COALESCE(task_id, 'call-' || id))", (cutoff,)).fetchone()[0]
+        return {"calls": calls, "requests": requests_}
+    finally:
+        conn.close()
 
 
 def request_detail(session: str, key: str) -> dict | None:
