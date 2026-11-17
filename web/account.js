@@ -33,6 +33,7 @@
 
     function paintConsent(user) {
         for (const r of radios()) r.checked = (r.value === '1') === !!user.chat_access;
+        $('current').textContent = user.chat_access ? tr('Admin may also read my chats') : tr('Admin sees usage and cost only');
         $('since').textContent = user.consent ? tr('Chosen on') + ' ' + when(user.consent.at) : '';
     }
 
@@ -73,11 +74,15 @@
         show($('saved'), false);
         const allow = document.querySelector('input[name="chats"]:checked');
         if (!allow) return;
+        $('save').disabled = true;
         const { res, data } = await api('/api/me/consent', { chat_access: allow.value === '1' });
+        $('save').disabled = false;
         if (!res.ok) { fail(data.detail || tr('Could not save.')); return; }
         paintConsent(data);
         show($('saved'), true);
     });
+    // "Saved." belongs to the last save only: a new click on a choice clears it
+    for (const r of radios()) r.addEventListener('change', () => show($('saved'), false));
 
     $('sign-out').addEventListener('click', async () => {
         await api('/auth/logout', {});

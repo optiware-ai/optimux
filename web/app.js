@@ -5990,6 +5990,11 @@ const optimuxApp = createApp({
         };
 
         onMounted(() => {
+            // The Team page keeps itself current (who is signed in, new log lines) while it is open and visible
+            setInterval(() => {
+                if (showSettingsModal.value && settingsTab.value === 'team' && teamInfo.value.mode === 'team'
+                    && document.visibilityState === 'visible') fetchTeam();
+            }, 8000);
             fetchMe();
             fetchConfig();
             fetchSandbox();   // also tells the UI whether this is a server (OPTIMUX_SERVER=1)

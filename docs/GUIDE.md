@@ -1340,7 +1340,7 @@ A tab that was open during an update shows **Optimux was updated** at the top wh
 
 ## Running Optimux for other people
 
-Optimux starts as a tool for one person. `optimux enable-team` turns your password into the **first admin's**; from then on you can invite members. This is the first step of the team version, so members can only sign in, make their consent choice and read their access log for now: chats and projects for them arrive in the next steps. The admin finds the people, the invitations and the access log in **Dashboard → Team** (the entry appears once team mode is on). Turning it back off (`optimux disable-team`) signs the members out and keeps their data.
+Optimux starts as a tool for one person. `optimux enable-team` turns your password into the **first admin's**; from then on you can invite members. This is the first step of the team version, so members can only sign in, make their consent choice and read their access log for now: chats and projects for them arrive in the next steps. The admin finds the people, the invitations and the access log in **Dashboard → Team** (the entry appears once team mode is on); the page refreshes itself every few seconds while it is open. Turning it back off (`optimux disable-team`) signs the members out and keeps their data.
 
 - **The sandbox is required.** Team mode turns it on and `optimux enable-team` refuses where bubblewrap does not work. In team mode a command can see only its own project, never the other projects in the Workspace.
 - **Two doors.** Members sign in with their name and password. You sign in through the admin door with the admin password (and two-step code, if on). The members' door never opens an admin account.

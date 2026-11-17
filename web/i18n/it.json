@@ -2711,5 +2711,6 @@
  "Your account · Optimux": "Il tuo account · Optimux",
  "Your choice": "La tua scelta",
  "Your name": "Il tuo nome",
- "{name} is signed out and cannot sign in until you enable the account again. Their chats and data are kept.": "{name} viene disconnesso e non può accedere finché non riattivi l'account. Le sue chat e i suoi dati restano."
+ "{name} is signed out and cannot sign in until you enable the account again. Their chats and data are kept.": "{name} viene disconnesso e non può accedere finché non riattivi l'account. Le sue chat e i suoi dati restano.",
+ "Your choice now:": "La tua scelta attuale:"
 }

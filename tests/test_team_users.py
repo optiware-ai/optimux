@@ -475,3 +475,20 @@ def test_the_command_refuses_team_mode_where_the_sandbox_does_not_work(solo, mon
     with pytest.raises(SystemExit, match="sandbox"):
         admin.main(["enable-team", "boss"])
     assert team.mode() == "solo"
+
+
+# ---------------------------------------------------------------- feedback and live updates (p86)
+
+def test_the_account_page_always_shows_the_choice_in_force():
+    import os
+    root = os.path.join(os.path.dirname(__file__), "..", "web")
+    html = open(os.path.join(root, "account.html")).read()
+    js = open(os.path.join(root, "account.js")).read()
+    assert 'id="current"' in html
+    assert "$('current')" in js and "disabled" in js, "the button is off while saving and the line says what is in force"
+
+
+def test_the_team_page_refreshes_itself_while_it_is_open():
+    import os
+    js = open(os.path.join(os.path.dirname(__file__), "..", "web", "app.js")).read()
+    assert "settingsTab.value === 'team'" in js and "setInterval" in js
