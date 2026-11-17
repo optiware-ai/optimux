@@ -54,7 +54,13 @@
         show($('http-warning'), location.protocol !== 'https:' && !local);
         // An invitation link keeps its token after the "#", which browsers never send to the server
         if (await openInvitation()) return;
-        if (st.signed_in) { location.replace(next()); return; }
+        if (new URLSearchParams(location.search).has('disabled')) {
+            history.replaceState(null, '', location.pathname);
+            fail(tr('Your account has been disabled by the admin. Please contact your admin.'));
+        }
+        // A member who opens the admin door is shown the form (signing in there replaces their session)
+        const adminDoor = new URLSearchParams(location.search).has('admin');
+        if (st.signed_in && !(st.member && adminDoor)) { location.replace(next()); return; }
         teamMode = !!st.team;
         if (st.setup_needed) {
             $('subtitle').textContent = tr('Set up your password');

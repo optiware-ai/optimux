@@ -2712,5 +2712,7 @@
  "Your choice": "La tua scelta",
  "Your name": "Il tuo nome",
  "{name} is signed out and cannot sign in until you enable the account again. Their chats and data are kept.": "{name} viene disconnesso e non può accedere finché non riattivi l'account. Le sue chat e i suoi dati restano.",
- "Your choice now:": "La tua scelta attuale:"
+ "Your choice now:": "La tua scelta attuale:",
+ "Your account has been disabled by the admin. Please contact your admin.": "Il tuo account è stato disattivato dall'amministratore. Contatta il tuo amministratore.",
+ "You will be signed out in a few seconds.": "Tra pochi secondi verrai disconnesso."
 }

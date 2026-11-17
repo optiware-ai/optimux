@@ -232,14 +232,52 @@ def test_a_member_password_does_not_open_the_admin_door(teamed):
     assert c.post("/auth/login", json={"admin": True, "password": USER_PW}, headers=ORIGIN).status_code == 401
 
 
-def test_a_disabled_member_cannot_sign_in_and_is_signed_out(teamed):
+def test_a_disabled_member_is_told_why_and_cannot_use_the_app(teamed):
     member, info = invite_and_activate(teamed)
     assert teamed.post(f"/api/team/users/{info['id']}/disabled", json={"disabled": True}, headers=ORIGIN).status_code == 200
+    # the open page learns it from its next request: a clear reason, not a bare "signed out"
+    r = member.get("/api/me")
+    assert r.status_code == 403 and r.json()["disabled"] is True and "disabled" in r.json()["detail"]
+    assert member.get("/api/settings").status_code == 403
+    assert member.get("/").status_code == 200, "the account page stays, so it can show the message"
+    users = {u["name"]: u for u in teamed.get("/api/team/users").json()["users"]}
+    assert users["anna"]["status"] == "disabled" and users["anna"]["signed_in"] is False
+    # after the page signs itself out, the session is gone
+    member.post("/auth/logout", headers=ORIGIN)
     assert member.get("/api/me").status_code == 401
+
+
+def test_signing_in_to_a_disabled_account_says_so_only_with_the_right_password(teamed):
+    member, info = invite_and_activate(teamed)
+    teamed.post(f"/api/team/users/{info['id']}/disabled", json={"disabled": True}, headers=ORIGIN)
     c = TestClient(teamed.app)
-    assert c.post("/auth/login", json={"name": "anna", "password": USER_PW}, headers=ORIGIN).status_code == 401
+    right = c.post("/auth/login", json={"name": "anna", "password": USER_PW}, headers=ORIGIN)
+    assert right.status_code == 403 and "disabled by the admin" in right.json()["detail"]
+    assert "contact your admin" in right.json()["detail"].lower()
+    wrong = c.post("/auth/login", json={"name": "anna", "password": "wrong password!!"}, headers=ORIGIN)
+    unknown = c.post("/auth/login", json={"name": "nobody", "password": USER_PW}, headers=ORIGIN)
+    assert wrong.status_code == unknown.status_code == 401 and wrong.json() == unknown.json(), "no hint to strangers"
+    assert c.get("/api/me").status_code == 401, "not signed in"
+
+
+def test_enabling_again_needs_a_fresh_sign_in(teamed):
+    member, info = invite_and_activate(teamed)
+    teamed.post(f"/api/team/users/{info['id']}/disabled", json={"disabled": True}, headers=ORIGIN)
     teamed.post(f"/api/team/users/{info['id']}/disabled", json={"disabled": False}, headers=ORIGIN)
+    assert member.get("/api/me").status_code == 401, "the old session is gone"
+    c = TestClient(teamed.app)
     assert c.post("/auth/login", json={"name": "anna", "password": USER_PW}, headers=ORIGIN).status_code == 200
+
+
+def test_the_account_page_shows_the_notice_then_signs_itself_out():
+    import os
+    root = os.path.join(os.path.dirname(__file__), "..", "web")
+    js = open(os.path.join(root, "account.js")).read()
+    html = open(os.path.join(root, "account.html")).read()
+    assert 'id="disabled-note"' in html
+    assert "data.disabled" in js and "setTimeout" in js and "disabled=1" in js
+    login = open(os.path.join(root, "login.js")).read()
+    assert "disabled" in login
 
 
 def test_a_new_invitation_replaces_the_password_and_the_old_link(teamed):
@@ -492,3 +530,16 @@ def test_the_team_page_refreshes_itself_while_it_is_open():
     import os
     js = open(os.path.join(os.path.dirname(__file__), "..", "web", "app.js")).read()
     assert "settingsTab.value === 'team'" in js and "setInterval" in js
+
+
+def test_the_status_says_when_the_browser_is_signed_in_as_a_member(teamed):
+    member, _ = invite_and_activate(teamed)
+    assert member.get("/auth/status").json()["member"] is True
+    assert teamed.get("/auth/status").json()["member"] is False
+    assert TestClient(teamed.app).get("/auth/status").json()["member"] is False
+
+
+def test_a_member_who_opens_the_admin_door_is_shown_the_form_not_sent_to_their_page():
+    import os
+    js = open(os.path.join(os.path.dirname(__file__), "..", "web", "login.js")).read()
+    assert "st.member" in js

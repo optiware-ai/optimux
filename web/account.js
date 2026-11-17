@@ -62,11 +62,34 @@
         try { st = await (await fetch('/auth/status', { credentials: 'same-origin' })).json(); } catch (_) {}
         await translate(st.language);
         const { res, data } = await api('/api/me');
+        if (data.disabled) { disabledNotice(data.detail); return; }
         if (!res.ok || !data.user || data.admin) { location.replace('/login'); return; }
         $('who').textContent = data.user.name;
         $('consent-text').textContent = data.consent_text || '';
         paintConsent(data.user);
         await paintAudit();
+        setInterval(watchAccount, 5000);
+    }
+
+    // The admin may disable this account while the page is open: say so clearly, then sign out for real
+    let leaving = false;
+    function disabledNotice(detail) {
+        if (leaving) return;
+        leaving = true;
+        $('disabled-note').textContent = (detail || tr('Your account has been disabled by the admin. Please contact your admin.')) +
+            ' ' + tr('You will be signed out in a few seconds.');
+        show($('disabled-note'), true);
+        for (const id of ['save']) $(id).disabled = true;
+        setTimeout(async () => {
+            await api('/auth/logout', {});
+            location.replace('/login?disabled=1');
+        }, 6000);
+    }
+    async function watchAccount() {
+        if (leaving) return;
+        const { res, data } = await api('/api/me');
+        if (data.disabled) disabledNotice(data.detail);
+        else if (res.status === 401) location.replace('/login');
     }
 
     $('save').addEventListener('click', async () => {

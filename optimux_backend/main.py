@@ -278,6 +278,11 @@ async def guard(request: Request, call_next):
                 return response
             request.state.login_id = login_id
             who = team.session_user(login_id)
+            if who and who["role"] == "user" and who["status"] == "disabled" and path != "/":
+                # The member's open page asks (for example /api/me) and learns why it can't go on
+                response = JSONResponse({"detail": tr(team.DISABLED_TEXT), "disabled": True}, status_code=403)
+                security_headers(request, response)
+                return response
             if who and who["role"] == "user" and path != "/" and not path.startswith(MEMBER_PATHS):
                 response = JSONResponse({"detail": tr("Not available for team members yet.")}, status_code=403)
                 security_headers(request, response)
@@ -1918,8 +1923,10 @@ async def favicon():
 
 @app.get("/auth/status")
 async def auth_status(request: Request):
+    login_id = auth.check_session(request.cookies.get(auth.COOKIE))
+    who = team.session_user(login_id) if login_id else None
     return {"setup_needed": not auth.password_set(), "totp": auth.totp_enabled(), "team": team.enabled(),
-            "signed_in": bool(auth.check_session(request.cookies.get(auth.COOKIE))),
+            "signed_in": bool(login_id), "member": bool(who and who["role"] == "user"),
             "server_mode": auth.server_mode(), "https": is_https(request),
             "language": config_manager.language()}       # v0.8: the sign-in page's language
 
@@ -1982,6 +1989,8 @@ async def _member_login(payload: LoginPayload, request: Request, ip: str):
     if not user:
         auth.password_failed(ip)
         raise HTTPException(401, "Wrong name or password.")
+    if user["status"] == "disabled":        # right password: say why (not a failed attempt)
+        raise HTTPException(403, tr(team.DISABLED_TEXT))
     auth.succeeded(ip)
     team.touch_login(user["id"])
     return _signed_in(request, JSONResponse({"ok": True}), user_id=user["id"])

@@ -33,6 +33,8 @@ CONSENT_VERSION = 1
 NAME = re.compile(r"[\w][\w .'\-]{1,39}")
 LOG_KINDS = ("chat", "sent", "usage")
 
+DISABLED_TEXT = tk("Your account has been disabled by the admin. Please contact your admin.")
+
 CONSENT_TEXT = tk(
     "Your admin always sees your usage of the models: time, model, cost and counts. "
     "If you choose \"Admin may also read my chats\", the admin can open your chats and what was sent to the models; "
@@ -136,6 +138,8 @@ def _live(created: float, last_seen: float, now: float) -> bool:
 
 def _presence(row) -> tuple[bool, float | None]:
     now = time.time()
+    if row["status"] == "disabled":
+        return False, None
     if row["role"] == "admin":      # browsers signed in before team mode belong to the admin too
         sessions = _query("SELECT created, last_seen FROM logins WHERE user_id IS NULL OR user_id = ?", (row["id"],))
     else:
@@ -245,8 +249,9 @@ def activate(token: str, password: str, chat_access: bool) -> dict | None:
 
 
 def check_login(name: str, password: str) -> dict | None:
-    """A member's name and password. Admin accounts never match here."""
-    rows = _query("SELECT * FROM users WHERE name = ? AND role = 'user' AND status = 'active' AND password IS NOT NULL",
+    """A member's name and password. Admin accounts never match here. A disabled member with the
+    right password is returned too (status 'disabled') so they can be told why; the caller must not sign them in."""
+    rows = _query("SELECT * FROM users WHERE name = ? AND role = 'user' AND status IN ('active', 'disabled') AND password IS NOT NULL",
                   (name.strip() if isinstance(name, str) else "",))
     if not rows or not isinstance(password, str) or len(password) > auth.MAX_PASSWORD:
         auth.hash_password("timing-equalizer")      # same cost whether or not the name exists
@@ -263,11 +268,12 @@ def set_disabled(user_id: int, disabled: bool) -> dict:
     if not user or user["role"] != "user":
         raise TeamError(tr("No such member."), 404)
     if disabled:
+        # The sessions stay for now: the member's open page asks, is told why, and signs itself out.
         _write("UPDATE users SET status = 'disabled' WHERE id = ?", (user_id,))
-        auth.end_user_sessions(user_id)
     elif user["status"] == "disabled":
         has_password = bool(_query("SELECT 1 FROM users WHERE id = ? AND password IS NOT NULL", (user_id,)))
         _write("UPDATE users SET status = ? WHERE id = ?", ("active" if has_password else "invited", user_id))
+        auth.end_user_sessions(user_id)         # a fresh sign-in after being enabled again
     return get(user_id)
 
 
