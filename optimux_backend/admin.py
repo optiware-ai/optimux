@@ -77,7 +77,12 @@ def cmd_reset_password(args) -> None:
 
 def cmd_enable_team(args) -> None:
     """Team mode on: the existing password becomes the first admin's (name from the argument)."""
-    from optimux_backend.core import team
+    from optimux_backend.core import sandbox, team
+    st = sandbox.status(refresh=True)
+    if not st["works"]:
+        raise SystemExit("Team mode needs the sandbox (bubblewrap), so that commands run for one person "
+                         "cannot read another person's project. " + (st.get("error") or "") +
+                         " Install it (for example: sudo apt install bubblewrap) and run this again.")
     try:
         admin = team.enable(args.name)
     except team.TeamError as e:

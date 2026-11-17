@@ -252,6 +252,16 @@ def _minutes(seconds: float) -> str:
     return f"{seconds}s" if seconds < 120 else f"{seconds // 60} min {seconds % 60:02d}s"
 
 
+def sandbox_hide() -> str | None:
+    """Team mode: the Workspace folder, hidden from model-run commands so that a member's
+    command sees its own project only. None in solo mode (nothing changes)."""
+    from optimux_backend.core import team
+    if not team.enabled():
+        return None
+    root = get_settings().get("projects_root") or ""
+    return os.path.realpath(root) if root else None
+
+
 async def run_shell_command(command: str, timeout: int | None = None, cwd: str | None = None,
                             on_limit=None) -> dict:
     """Execute a bash command asynchronously inside the configured scope.
@@ -281,7 +291,8 @@ async def run_shell_command(command: str, timeout: int | None = None, cwd: str |
             return {"stdout": "", "stderr": "Refused: the sandbox is on but unavailable. " + (st["error"] or ""),
                     "exit_code": 126}
         argv = sandbox.build_argv(command, workdir, SHELL, network=bool(settings.get("sandbox_network", True)),
-                                  ro_paths=settings.get("sandbox_ro_paths") or [], bwrap=st["path"])
+                                  ro_paths=settings.get("sandbox_ro_paths") or [], bwrap=st["path"],
+                                  hide=sandbox_hide())
 
     process = None
     out_buf, err_buf = _Capped(*OUTPUT_CAPS["stdout"]), _Capped(*OUTPUT_CAPS["stderr"])

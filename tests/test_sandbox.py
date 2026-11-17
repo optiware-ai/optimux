@@ -1,6 +1,8 @@
 """Sandbox (bubblewrap) for model-run commands."""
 import asyncio
 import os
+import shutil
+import tempfile
 
 import pytest
 
@@ -167,3 +169,62 @@ def test_the_service_file_never_overmounts_proc():
     for setting in ("ProtectHostname", "ProtectProc", "ProcSubset", "ProtectKernelTunables", "ProtectKernelLogs",
                     "RestrictNamespaces"):
         assert setting not in active, setting
+
+
+# ---------- team mode: a member's commands see their own project only (team step 2)
+
+def test_the_workspace_is_hidden_then_only_the_working_folder_is_mounted_back(tmp_path):
+    root = str(tmp_path / "ws")
+    wd = root + "/a"
+    os.makedirs(wd)
+    a = sandbox.build_argv("ls", wd, "/bin/bash", bwrap="bwrap", hide=root)
+    assert 0 < _idx(a, "--tmpfs", root) < _idx(a, "--bind", wd, wd)
+    assert _idx(a, "--remount-ro", root) > _idx(a, "--bind", wd, wd)
+
+
+def test_solo_commands_are_not_changed(tmp_path):
+    root = str(tmp_path / "ws")
+    wd = root + "/a"
+    os.makedirs(wd)
+    a = sandbox.build_argv("ls", wd, "/bin/bash", bwrap="bwrap")
+    assert _idx(a, "--tmpfs", root) < 0
+    # a hide folder that is not around the working folder changes nothing
+    assert sandbox.build_argv("ls", wd, "/bin/bash", bwrap="bwrap", hide=str(tmp_path / "elsewhere")) == a
+    assert sandbox.build_argv("ls", wd, "/bin/bash", bwrap="bwrap", hide=wd) == a
+
+
+def test_the_executor_hides_the_workspace_only_in_team_mode(tmp_path, monkeypatch):
+    from optimux_backend.core import store
+    root = str(tmp_path / "ws")
+    os.makedirs(root)
+    monkeypatch.setattr(executor, "get_settings", lambda: {"projects_root": root})
+    assert executor.sandbox_hide() is None
+    store.set_meta("mode", "team")
+    assert executor.sandbox_hide() == os.path.realpath(root)
+
+
+@needs_bwrap
+def test_a_command_cannot_read_another_project_in_team_mode(monkeypatch, tmp_path):
+    from optimux_backend.core import store
+    try:
+        root = tempfile.mkdtemp(prefix="optimux-ws-", dir="/opt")      # outside /tmp and the home folders
+    except OSError:
+        pytest.skip("cannot make a folder outside /tmp here")
+    try:
+        os.makedirs(root + "/a")
+        os.makedirs(root + "/b")
+        with open(root + "/b/secret.txt", "w") as f:
+            f.write("project-b-secret")
+        sandbox._STATUS = None
+        def run(cmd):
+            monkeypatch.setattr(executor, "get_settings", lambda: {"projects_root": root, "sandbox": True})
+            return asyncio.run(executor.run_shell_command(cmd, cwd=root + "/a"))
+        first = run(f"cat {root}/b/secret.txt")
+        assert "project-b-secret" in first["stdout"], "solo: unchanged"
+        store.set_meta("mode", "team")
+        second = run(f"cat {root}/b/secret.txt; ls {root}")
+        assert "project-b-secret" not in second["stdout"]
+        assert second["stdout"].split() == ["a"]
+        assert run("echo mine > mine.txt && cat mine.txt")["stdout"] == "mine\n"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

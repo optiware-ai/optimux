@@ -351,8 +351,10 @@ def test_there_is_no_way_to_change_or_erase_the_log(teamed):
 
 # ---------------------------------------------------------------- the command line
 
-def test_the_command_turns_team_mode_on_and_off(solo, capsys):
+def test_the_command_turns_team_mode_on_and_off(solo, capsys, monkeypatch):
     from optimux_backend import admin
+    from optimux_backend.core import sandbox
+    monkeypatch.setattr(sandbox, "status", lambda refresh=False: {"works": True, "error": "", "path": "bwrap"})
     assert admin.main(["enable-team", "boss"]) == 0
     assert team.mode() == "team"
     assert admin.main(["disable-team"]) == 0
@@ -423,3 +425,53 @@ def test_the_invitation_link_keeps_the_token_out_of_the_address_the_server_sees(
     import os
     js = open(os.path.join(os.path.dirname(__file__), "..", "web", "login.js")).read()
     assert "location.hash" in js and "replaceState" in js
+
+# ---------------------------------------------------------------- every route, not a sample (team step 2)
+
+def test_a_member_is_refused_on_every_route_except_their_own_account(teamed):
+    """Deny by default: the guard's allow-list is the only way in. A new endpoint is closed to
+    members until someone opens it on purpose (and then this test needs the new name)."""
+    import re
+    from optimux_backend import main
+    member, _ = invite_and_activate(teamed)
+    allowed_prefixes = ("/static/", "/preview/") + tuple(main.MEMBER_PATHS)
+    seen = 0
+    for route in main.app.routes:
+        path = getattr(route, "path", None)
+        if path is None or not hasattr(route, "methods"):
+            continue
+        if path == "/" or path in main.PUBLIC_PATHS or path.startswith(allowed_prefixes):
+            continue
+        url = re.sub(r"\{[^}]+\}", "x", path)
+        for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
+            r = member.request(method, url, json={} if method != "GET" else None, headers=ORIGIN)
+            assert r.status_code == 403, f"{method} {path} gave a member {r.status_code}"
+            seen += 1
+    assert seen > 120, seen
+
+
+def test_the_member_allow_list_is_what_the_audit_says_members_may_do():
+    """What the guard lets a member reach is exactly: the page, their own account, and the
+    public sign-in endpoints. Opening more means changing this on purpose."""
+    from optimux_backend import main
+    assert main.MEMBER_PATHS == ("/api/me",)
+
+
+# ---------------------------------------------------------------- team mode needs the sandbox
+
+def test_team_mode_makes_the_sandbox_required(solo):
+    from optimux_backend.core import sandbox
+    assert not sandbox.required()
+    team.enable("boss")
+    assert sandbox.required() and sandbox.enabled({})
+    team.disable()
+    assert not sandbox.required()
+
+
+def test_the_command_refuses_team_mode_where_the_sandbox_does_not_work(solo, monkeypatch):
+    from optimux_backend import admin
+    from optimux_backend.core import sandbox
+    monkeypatch.setattr(sandbox, "status", lambda refresh=False: {"works": False, "error": "no bwrap", "path": None})
+    with pytest.raises(SystemExit, match="sandbox"):
+        admin.main(["enable-team", "boss"])
+    assert team.mode() == "solo"

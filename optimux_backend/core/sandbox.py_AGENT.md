@@ -12,7 +12,7 @@
 - Own PID, IPC, UTS (and cgroup when possible) namespaces, `--die-with-parent`, `--new-session` (no terminal injection); `--unshare-net` when the network is off.
 
 ## Core Functionality
-- **`build_argv(command, workdir, shell, network, ro_paths, bwrap)`:** the full `bwrap ... bash -c <command>` argv. Mount order matters: hide first, then mount the allowed folders on top.
+- **`build_argv(command, workdir, shell, network, ro_paths, bwrap, hide)`:** the full `bwrap ... bash -c <command>` argv. Mount order matters: hide first, then mount the allowed folders on top. `hide` (team mode, from `executor.sandbox_hide()`): the Workspace folder becomes an empty tmpfs and only the working folder is mounted back, so a command cannot read other projects (with `--ro-bind / /` it could when the Workspace is outside a home folder). `required()` is also true in team mode.
 - **`check_ro_path(path)`:** validates an extra read-only folder (absolute, existing, not `/`, `/home` or the home folder, and not containing Optimux's folder). Raises `SandboxError`.
 - **`status(refresh=False)`:** cached `{installed, path, version, works, error, required}`; `works` comes from really running `true` in a sandbox, so disabled user namespaces are detected.
 - **`enabled(settings)`:** the `sandbox` setting, or forced by `OPTIMUX_REQUIRE_SANDBOX=1` (`required()`), which the dashboard can't override.

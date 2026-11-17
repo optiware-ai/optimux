@@ -47,10 +47,12 @@ def bwrap_path() -> str | None:
 
 
 def required() -> bool:
-    """Forced on by the server's environment (can't be turned off from the UI):
-    OPTIMUX_REQUIRE_SANDBOX=1, or OPTIMUX_SERVER=1 which implies it."""
+    """Forced on (can't be turned off from the UI): OPTIMUX_REQUIRE_SANDBOX=1, OPTIMUX_SERVER=1
+    which implies it, or team mode, where commands must not reach other people's files."""
+    from optimux_backend.core import team
     from optimux_backend.core.auth import server_mode
-    return server_mode() or os.environ.get(REQUIRE_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+    return (server_mode() or os.environ.get(REQUIRE_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+            or team.enabled())
 
 
 def enabled(settings: dict) -> bool:
@@ -87,9 +89,10 @@ def check_ro_path(path: str) -> str:
 
 
 def build_argv(command: str, workdir: str, shell: str, network: bool = True,
-               ro_paths: list[str] | tuple = (), bwrap: str = "bwrap") -> list[str]:
+               ro_paths: list[str] | tuple = (), bwrap: str = "bwrap", hide: str | None = None) -> list[str]:
     """The bwrap command line for one shell command. Order matters: hidden folders
-    become empty tmpfs first, then the allowed folders are mounted back on top."""
+    become empty tmpfs first, then the allowed folders are mounted back on top.
+    `hide` (team mode): the Workspace folder, so only the working folder is visible in it."""
     workdir = os.path.realpath(workdir)
     argv = [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
             "--tmpfs", "/tmp", "--tmpfs", "/var/tmp", "--tmpfs", "/run"]
@@ -98,6 +101,10 @@ def build_argv(command: str, workdir: str, shell: str, network: bool = True,
         if os.path.isdir(keep):
             argv += ["--ro-bind", keep, keep]
     hidden = [h for h in _home_dirs() if h != workdir]
+    if hide:
+        around = os.path.realpath(hide)
+        if around != workdir and _under(workdir, around) and around not in hidden:
+            hidden.append(around)       # after the home folders, so it works inside them too
     for h in hidden:
         argv += ["--tmpfs", h]
     # The working folder is mounted over any of them that lie inside it, so only

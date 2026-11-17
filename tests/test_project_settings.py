@@ -72,7 +72,7 @@ def test_commands_use_the_project_network(monkeypatch):
     monkeypatch.setattr(executor, "get_settings", lambda: {"active_project": "demo", "sandbox": True, "sandbox_network": True})
     monkeypatch.setattr(sandbox, "status", lambda refresh=False: {"works": True, "path": "/usr/bin/bwrap"})
 
-    def argv(command, workdir, shell, network, ro_paths, bwrap):
+    def argv(command, workdir, shell, network, ro_paths, bwrap, hide=None):
         seen["network"] = network
         return ["true"]
     monkeypatch.setattr(sandbox, "build_argv", argv)

@@ -41,7 +41,7 @@ Everything a person can do goes through one of three doors, and team mode must g
 ## Risks found while reading
 
 1. **Hiding buttons is not security.** 71 endpoints are admin-only and 34 need project membership; each needs a check on the server.
-2. **The sandbox may show other projects.** Commands run with the whole disk read-only (`--ro-bind / /`) and only home folders hidden. If the Workspace is not under a home folder (a VPS often uses `/srv/...`), a command on one project could *read* another project it is not on. To verify, then hide the rest of the Workspace explicitly. It can only write to its own project.
+2. **The sandbox may show other projects.** Commands run with the whole disk read-only (`--ro-bind / /`) and only home folders hidden. If the Workspace is not under a home folder (a VPS often uses `/srv/...`), a command on one project could *read* another project it is not on. **Verified (p85) and fixed:** in team mode the Workspace folder is hidden and only the command's own project is mounted back (`sandbox.build_argv(hide=…)`, `executor.sandbox_hide()`); team mode also makes the sandbox required, and `optimux enable-team` refuses where bubblewrap does not work. Without the sandbox a command could reach any file the server user can. A command could always write only to its own project.
 3. **Two people on one project** share one folder. First version: one run at a time per project.
 4. **`/preview/...` tokens** must be issued only to members.
 5. **The admin and chat contents**: a policy decision (see the proposal).
