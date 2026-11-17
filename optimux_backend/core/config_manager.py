@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import contextvars
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -238,8 +239,22 @@ def _read_settings() -> dict:
         return {"projects_root": "", "active_project": ""}
 
 
+# Team version: one connection can have a project of its own. Bound inside the
+# task that serves that connection (tasks started later inherit it), read here,
+# and never saved: the file keeps the install's (the admin's) active project.
+_BOUND_PROJECT: contextvars.ContextVar = contextvars.ContextVar("optimux_bound_project", default=None)
+
+
+def bind_project(name: str | None) -> None:
+    """Use `name` as the active project in this task and the ones it starts; None goes back to the saved one."""
+    _BOUND_PROJECT.set(name)
+
+
 def get_settings() -> dict:
     data = _read_settings()
+    bound = _BOUND_PROJECT.get()
+    if bound is not None:
+        data["active_project"] = bound
     from optimux_backend.core.auth import server_mode
     server = server_mode()
     # Commands have no network on a server unless it was turned on deliberately

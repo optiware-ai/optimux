@@ -12,7 +12,7 @@
 - **Access log:** `log_admin_access(admin_id, user_id, kind, ref)` with kind `chat`, `sent` or `usage`; the reference is an id, never content. `audit_for_user`, `audit_all`. Triggers in the database refuse UPDATE and DELETE on `admin_access`.
 - **Sessions:** `logins.user_id` is NULL for the install's own browsers (solo, or signed in before team mode: they are the admin's). `session_user(login_id)` returns the member or admin row; `me(login_id)` is what `/api/me` sends (members also get `consent_text`).
 
-- Projects (step 3a): table `project_members(project, user_id, added)` by folder name. `set_member`, `project_members`, `projects_of(user, existing)`, `can_use_project(user, project)` (admin: all; a member: only assigned ones; used by later steps to guard M routes).
+- Projects (step 3a): table `project_members(project, user_id, added)` by folder name. `set_member`, `project_members`, `projects_of(user, existing)`, `can_use_project(user, project)` (admin: all; a member: only assigned ones; used by later steps to guard M routes), `default_project(user, existing)` (first assigned project, or "").
 
 ## Links & Dependencies
 - `auth.py` (passwords, sessions), `store.py` (tables, `meta`), `i18n.py`.

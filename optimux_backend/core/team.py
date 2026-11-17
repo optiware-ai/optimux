@@ -306,6 +306,12 @@ def projects_of(user_id: int, existing: list[str]) -> list[str]:
     return [name for name in existing if name in mine]
 
 
+def default_project(user_id: int, existing: list[str]) -> str:
+    """The project a member starts on: their first one in alphabetical order, or "" if they have none."""
+    mine = projects_of(user_id, existing)
+    return mine[0] if mine else ""
+
+
 def can_use_project(user_id: int, project: str) -> bool:
     """The admin: every project. A member: only the ones they were put on."""
     user = get(user_id)
