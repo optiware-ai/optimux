@@ -309,6 +309,10 @@
    "class": "A",
    "note": "every admin look at members' data; read-only, the database refuses edits"
   },
+  "GET /api/team/projects": {
+   "class": "A",
+   "note": "who is on which project"
+  },
   "GET /api/team/users": {
    "class": "A",
    "note": "members, status and who is signed in; no passwords or links"
@@ -628,6 +632,10 @@
   "POST /api/tasks/{task_id}/rating": {
    "class": "S",
    "note": "own replies"
+  },
+  "POST /api/team/projects/{name}/members/{user_id}": {
+   "class": "A",
+   "note": "put a member on a project or take them off"
   },
   "POST /api/team/users": {
    "class": "A",

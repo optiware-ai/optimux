@@ -1801,6 +1801,18 @@ class ConsentPayload(BaseModel):
     chat_access: bool
 
 
+def _workspace_projects() -> list[str]:
+    """The Workspace's project folders; none while the Workspace folder isn't set up."""
+    try:
+        return workspace.project_names()
+    except workspace.WorkspaceError:
+        return []
+
+
+class MemberFlagPayload(BaseModel):
+    member: bool
+
+
 class PasswordPayload(BaseModel):
     current: str
     new: str
@@ -2142,7 +2154,10 @@ def _team_call(fn, *args):
 @app.get("/api/me")
 async def api_me(request: Request):
     """Who is signed in and what they may do; the page uses it to decide what to show."""
-    return team.me(request.state.login_id)
+    me = team.me(request.state.login_id)
+    if me.get("user") and not me["admin"]:
+        me["projects"] = team.projects_of(me["user"]["id"], _workspace_projects())
+    return me
 
 
 @app.post("/api/me/consent")
@@ -2183,6 +2198,23 @@ async def api_team_reinvite(user_id: int, request: Request):
 async def api_team_disabled(user_id: int, payload: DisabledPayload, request: Request):
     _team_admin(request)
     return _team_call(team.set_disabled, user_id, payload.disabled)
+
+
+@app.get("/api/team/projects")
+async def api_team_projects(request: Request):
+    """The Workspace's projects and who is on each (member ids); the admin is on all of them."""
+    _team_admin(request)
+    return {"projects": _workspace_projects(), "members": team.project_members()}
+
+
+@app.post("/api/team/projects/{name}/members/{user_id}")
+async def api_team_assign(name: str, user_id: int, payload: MemberFlagPayload, request: Request):
+    """Put a member on a project or take them off."""
+    _team_admin(request)
+    if name not in _workspace_projects():
+        raise HTTPException(404, tr("No such project."))
+    _team_call(team.set_member, name, user_id, payload.member)
+    return {"ok": True}
 
 
 @app.get("/api/team/audit")

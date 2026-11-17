@@ -255,6 +255,16 @@ MIGRATIONS = [
         BEGIN SELECT RAISE(ABORT, 'the access log is append-only'); END;
     ALTER TABLE logins ADD COLUMN user_id INTEGER;
     """,
+    # 16: the team version, step 3a. Which members are on which project (by folder name).
+    """
+    CREATE TABLE project_members (
+        project TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        added REAL NOT NULL,
+        PRIMARY KEY (project, user_id)
+    );
+    CREATE INDEX project_members_user ON project_members (user_id);
+    """,
 ]
 
 _ready_for: str | None = None

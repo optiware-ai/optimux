@@ -37,6 +37,17 @@
         $('since').textContent = user.consent ? tr('Chosen on') + ' ' + when(user.consent.at) : '';
     }
 
+    function paintProjects(names) {
+        const list = $('projects');
+        list.textContent = '';
+        for (const name of names || []) {
+            const li = document.createElement('li');
+            li.textContent = name;
+            list.appendChild(li);
+        }
+        show($('projects-empty'), !(names || []).length);
+    }
+
     async function paintAudit() {
         const { data } = await api('/api/me/audit');
         const lines = data.lines || [];
@@ -67,6 +78,7 @@
         $('who').textContent = data.user.name;
         $('consent-text').textContent = data.consent_text || '';
         paintConsent(data.user);
+        paintProjects(data.projects);
         await paintAudit();
         setInterval(watchAccount, 5000);
     }
@@ -90,6 +102,7 @@
         const { res, data } = await api('/api/me');
         if (data.disabled) disabledNotice(data.detail);
         else if (res.status === 401) location.replace('/login');
+        else if (data.projects) paintProjects(data.projects);       // the admin may add or remove projects
     }
 
     $('save').addEventListener('click', async () => {

@@ -2714,5 +2714,14 @@
  "{name} is signed out and cannot sign in until you enable the account again. Their chats and data are kept.": "{name} viene disconnesso e non può accedere finché non riattivi l'account. Le sue chat e i suoi dati restano.",
  "Your choice now:": "La tua scelta attuale:",
  "Your account has been disabled by the admin. Please contact your admin.": "Il tuo account è stato disattivato dall'amministratore. Contatta il tuo amministratore.",
- "You will be signed out in a few seconds.": "Tra pochi secondi verrai disconnesso."
+ "You will be signed out in a few seconds.": "Tra pochi secondi verrai disconnesso.",
+ "Invite someone first.": "Invita prima qualcuno.",
+ "No project yet. Ask your admin to add you.": "Ancora nessun progetto. Chiedi all'admin di aggiungerti.",
+ "No projects in the Workspace yet.": "Ancora nessun progetto nel Workspace.",
+ "No such project.": "Progetto inesistente.",
+ "The admin is on every project already.": "L'admin è già su tutti i progetti.",
+ "Tick the projects each member may use. Members see only their own projects; you can use all of them.": "Spunta i progetti che ogni membro può usare. I membri vedono solo i propri progetti; tu puoi usarli tutti.",
+ "Who works on which project": "Chi lavora su quale progetto",
+ "Your projects": "I tuoi progetti",
+ "{name} on {project}": "{name} su {project}"
 }

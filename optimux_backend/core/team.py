@@ -277,6 +277,45 @@ def set_disabled(user_id: int, disabled: bool) -> dict:
     return get(user_id)
 
 
+# ---------------------------------------------------------------- projects
+
+def set_member(project: str, user_id: int, member: bool) -> None:
+    """Put a member on a project or take them off (safe to repeat). Admins are on every project."""
+    user = get(user_id)
+    if not user:
+        raise TeamError(tr("No such member."), 404)
+    if user["role"] != "user":
+        raise TeamError(tr("The admin is on every project already."))
+    if member:
+        _write("INSERT OR IGNORE INTO project_members (project, user_id, added) VALUES (?, ?, ?)", (project, user_id, time.time()))
+    else:
+        _write("DELETE FROM project_members WHERE project = ? AND user_id = ?", (project, user_id))
+
+
+def project_members() -> dict[str, list[int]]:
+    """Every project that has members: name -> member ids."""
+    out: dict[str, list[int]] = {}
+    for r in _query("SELECT project, user_id FROM project_members ORDER BY project, user_id"):
+        out.setdefault(r["project"], []).append(r["user_id"])
+    return out
+
+
+def projects_of(user_id: int, existing: list[str]) -> list[str]:
+    """The member's projects that are in the Workspace now (an archived one comes back with its folder)."""
+    mine = {r["project"] for r in _query("SELECT project FROM project_members WHERE user_id = ?", (user_id,))}
+    return [name for name in existing if name in mine]
+
+
+def can_use_project(user_id: int, project: str) -> bool:
+    """The admin: every project. A member: only the ones they were put on."""
+    user = get(user_id)
+    if not user:
+        return False
+    if user["role"] == "admin":
+        return True
+    return bool(_query("SELECT 1 FROM project_members WHERE project = ? AND user_id = ?", (project, user_id)))
+
+
 # ---------------------------------------------------------------- consent
 
 def set_chat_access(user_id: int, allow: bool) -> dict:

@@ -1191,6 +1191,27 @@
                         </div>
 
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-x-auto">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-1">{{ $t('Who works on which project') }}</h3>
+                            <p class="text-[13px] text-gray-400 mb-2">{{ $t('Tick the projects each member may use. Members see only their own projects; you can use all of them.') }}</p>
+                            <p v-if="!team.projects.length" class="text-[13px] text-gray-500 italic">{{ $t('No projects in the Workspace yet.') }}</p>
+                            <p v-else-if="!team.users.some(u => u.role !== 'admin')" class="text-[13px] text-gray-500 italic">{{ $t('Invite someone first.') }}</p>
+                            <table v-else class="text-[14px]">
+                                <thead><tr class="text-left text-gray-500 text-[12px] uppercase tracking-wider">
+                                    <th class="py-1 pr-6 font-normal">{{ $t('Project') }}</th>
+                                    <th v-for="u in team.users.filter(x => x.role !== 'admin')" :key="u.id" class="py-1 px-3 font-normal text-center">{{ u.name }}</th>
+                                </tr></thead>
+                                <tbody>
+                                    <tr v-for="p in team.projects" :key="p" class="border-t border-gray-800">
+                                        <td class="py-1.5 pr-6 text-gray-100">{{ p }}</td>
+                                        <td v-for="u in team.users.filter(x => x.role !== 'admin')" :key="u.id" class="py-1.5 px-3 text-center">
+                                            <input type="checkbox" data-assign :checked="teamOn(p, u)" @change="teamAssign(p, u, $event.target.checked)" :aria-label="$t('{name} on {project}', { name: u.name, project: p })" class="w-4 h-4 accent-blue-500">
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-x-auto">
                             <h3 class="text-[15px] font-bold text-gray-200 mb-1">{{ $t('Access log') }}</h3>
                             <p class="text-[13px] text-gray-400 mb-2">{{ $t('Every time an admin opened a member\'s data. Members can read their own lines. Nobody can change or delete this log.') }}</p>
                             <p v-if="!team.audit.length" class="text-[13px] text-gray-500 italic">{{ $t('Nothing opened so far.') }}</p>
