@@ -1,6 +1,7 @@
 """Team version, step 1: users, invitations, the two sign-in doors, consent and
 the audit log. The solo version (no team mode) must behave as before."""
 import hashlib
+import json
 import time
 
 import pytest
@@ -309,12 +310,14 @@ def test_a_member_cannot_invite_anyone(teamed):
     assert member.post("/api/team/users", json={"name": "eve"}, headers=ORIGIN).status_code == 403
 
 
-def test_a_member_cannot_use_the_chat_socket_yet(teamed):
+def test_a_member_with_no_project_cannot_use_the_chat_socket(teamed):
     member, _ = invite_and_activate(teamed)
     from starlette.websockets import WebSocketDisconnect
-    with pytest.raises(WebSocketDisconnect):
+    with pytest.raises(WebSocketDisconnect) as e:
         with member.websocket_connect("/ws", headers={"Origin": "http://testserver"}) as ws:
+            assert json.loads(ws.receive_text())["type"] == "no_projects"
             ws.receive_text()
+    assert e.value.code == 4403
 
 
 # ---------------------------------------------------------------- the user list

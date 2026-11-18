@@ -19,3 +19,5 @@
 
 - **History:** when `update_memory` appends to project memory, the change is recorded with `curator.record_version(..., source="model")`, so it appears in the dashboard's History and can be undone.
 - **Size limit and atomic writes (v0.5.2, IM-04):** `MEMORY_MAX_CHARS` = 20,000 per file; `check_size(content, what)` raises `MemoryTooLarge` with a message about the per-request cost. `write_atomic(path, content)` writes a temp file in the same folder (fsync, mode of the old file) and `os.replace`s it; on any error the temp file is removed and the old file stays. Used by `init_memory`, `update_memory` (the model tool: over the limit returns an error string, nothing saved), `/api/memory` (400) and `curator.write_memory` (400 from `/api/memory/project/{name}`; `check=False` for undo and snapshot restore).
+
+- **Team members (step 5a):** when `team.current_user_id()` is set (a member's connection), `get_memory_context()` returns the project's notes only and `update_memory` refuses `personal` / `professional` (they are the admin's until members have their own).

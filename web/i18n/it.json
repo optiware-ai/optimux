@@ -2731,5 +2731,10 @@
  "History: member": "Cronologia: membro",
  "Usage: member": "Utilizzo: membro",
  "Private chat": "Chat privata",
- "Private request": "Richiesta privata"
+ "Private request": "Richiesta privata",
+ "You are not on any project yet. Ask your admin to add you.": "Non sei ancora su nessun progetto. Chiedi all'admin di aggiungerti.",
+ "You are not on this project.": "Non sei su questo progetto.",
+ "You are no longer on this project. Pick another one.": "Non sei più su questo progetto. Sceglierne un altro.",
+ "Someone is already working in this project. Try again when they have finished.": "Qualcuno sta già lavorando in questo progetto. Riprova quando ha finito.",
+ "A team member can't do this: ask the admin.": "Un membro del team non può farlo: chiedi all'admin."
 }

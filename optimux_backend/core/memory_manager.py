@@ -85,10 +85,13 @@ def _read_md(filepath: str, default: str) -> str:
 def get_memory_context() -> str:
     """Retrieve centralized markdown context."""
     init_memory()
-    personal = _read_md(PERSONAL_MD, DEFAULT_PERSONAL)
-    professional = _read_md(PROFESSIONAL_MD, DEFAULT_PROFESSIONAL)
-    
-    context = personal + "\n\n" + professional + "\n\n"
+    from optimux_backend.core import team
+    if team.current_user_id() is None:
+        personal = _read_md(PERSONAL_MD, DEFAULT_PERSONAL)
+        professional = _read_md(PROFESSIONAL_MD, DEFAULT_PROFESSIONAL)
+        context = personal + "\n\n" + professional + "\n\n"
+    else:
+        context = ""        # a team member's model gets the project's notes only: the personal and technical notes are the admin's
     
     settings = get_settings()
     active_project = settings.get("active_project", "")
@@ -106,6 +109,9 @@ def get_memory_context() -> str:
 def update_memory(file_type: str, content: str):
     """Append content to a specific memory file."""
     init_memory()
+    from optimux_backend.core import team
+    if team.current_user_id() is not None and file_type in ("personal", "professional"):
+        return "Error: Personal and technical notes can't be changed in a team member's chat. Only the project's notes can."
     
     if file_type == "personal":
         filepath = PERSONAL_MD

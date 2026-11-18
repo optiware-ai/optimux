@@ -14,7 +14,7 @@
 
 - Projects (step 3a): table `project_members(project, user_id, added)` by folder name. `set_member`, `project_members`, `projects_of(user, existing)`, `can_use_project(user, project)` (admin: all; a member: only assigned ones; used by later steps to guard M routes), `default_project(user, existing)` (first assigned project, or "").
 
-- Ownership (step 4a): `bind_user(id)` / `current_user_id()`, a context variable like `config_manager.bind_project`. `sessions.create`, `usage.insert`, `tasks.finish` and `sent.record` store it as `user_id` (an entry can't name another owner). Nothing binds it yet; the member chat (step 4c) binds it in the connection's `/ws` handler. Reading rules (consent, Users column) come in step 4b.
+- Ownership (step 4a): `bind_user(id)` / `current_user_id()`, a context variable like `config_manager.bind_project`. `sessions.create`, `usage.insert`, `tasks.finish` and `sent.record` store it as `user_id` (an entry can't name another owner). A member's `/ws` connection binds it when it opens (main.py `websocket_endpoint`). Reading rules (consent, Users column) come in step 4b.
 - Read rules (step 4b): `private_users()` = members whose text the admin may not read (not agreed, or disabled). main.py: `_owner(user)` (`?user=` → "all"/"me"/id, 422 otherwise, ignored in solo), `_named(rows)` (adds `user`, `private`, blanks private titles), `_read_block(owner, kind, ref)` ("" and a log line, or the refusal), `chat_read_block(sid)` (also used by `handle_open_session`, which opens a member's chat read-only).
 
 ## Links & Dependencies

@@ -757,6 +757,8 @@ def _read_block(owner_id: int | None, kind: str, ref: str = "") -> str:
 
 
 def chat_read_block(sid: str) -> str:
+    if team.current_user_id() is not None:      # a member's own connection: _member_chat already allowed only their own chats
+        return ""
     return _read_block(chat_store.owner_of(sid), "chat", sid)
 
 
@@ -3787,8 +3789,11 @@ def listed_skills(found: dict | None = None) -> dict:
 def offered_tools(skills: dict | None = None) -> list:
     skills = listed_skills() if skills is None else skills
     project = active_project()
-    return (TOOLS + (files_lib.FILE_TOOLS if project else []) + workspace.tools_for(project)
-            + ([skills_lib.LOAD_SKILL_TOOL] if skills else []))
+    tools = (TOOLS + (files_lib.FILE_TOOLS if project else []) + workspace.tools_for(project)
+             + ([skills_lib.LOAD_SKILL_TOOL] if skills else []))
+    if team.current_user_id() is not None:
+        tools = [t for t in tools if t["function"]["name"] not in MEMBER_REFUSED_TOOLS]
+    return tools
 
 
 async def stream_once(websocket: WebSocket, model: str, messages: list, r: StreamResult,
@@ -4372,6 +4377,10 @@ def create_report(result: dict) -> str:
     return report
 
 
+# What a member's model may not do: the Workspace tools change the whole install, and a push uses the admin's GitHub sign-in
+MEMBER_REFUSED_TOOLS = {"list_projects", "create_project", "switch_project", "archive_project", "push_project"}
+
+
 def workspace_tool_names() -> set:
     return {t["function"]["name"] for t in workspace.WORKSPACE_TOOLS + workspace.GIT_TOOLS}
 
@@ -4388,6 +4397,8 @@ async def run_workspace_tool(websocket: WebSocket, session: dict, name: str, arg
     Anything with side effects outside settings needs approval at every autonomy
     level (always_ask), because it creates or moves folders and may create a
     GitHub repository."""
+    if team.current_user_id() is not None and name in MEMBER_REFUSED_TOOLS:     # these change the whole install
+        return {"ok": False, "error": tr("A team member can't do this: ask the admin.")}
     try:
         args = json.loads(args_str or "{}") or {}
     except Exception:
@@ -5313,7 +5324,7 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
     summary = {k: data[k] for k in ("id", "project", "title", "created", "updated", "turns", "tier", "cost",
                                     "calls_without_cost", "archived")}
     reason = missing_project_reason(data["project"]) if data["project"] != active_project() else None
-    if chat_store.owner_of(sid) is not None:        # a member's chat the admin may read: to read, not to continue
+    if chat_store.owner_of(sid) is not None and team.current_user_id() is None:        # a member's chat the admin may read: to read, not to continue
         reset_chat(session)
         await send(websocket, "session_loaded", session=summary, events=data["events"], times=data["times"],
                    read_only=True, reason=tr("This is a member's chat: you can read it, not continue it."),
@@ -5397,6 +5408,27 @@ def parse_text_tool_call(text: str):
     }
 
 
+def _member_state(user_id: int) -> dict:
+    """What a member's page needs: the projects they may use and the one this connection is on."""
+    return {"type": "member_state", "projects": team.projects_of(user_id, _workspace_projects()), "project": active_project()}
+
+
+def _member_chat(user_id: int, sid: str, mine: list[str]) -> dict:
+    """Which stored chat a member's open_session may open: one of their own, in a project they are still on.
+    {"id": the chat ("" = none), "project": the project to move this connection to, or None to stay}."""
+    if sid == "latest":
+        sid = chat_store.latest(active_project(), owner=user_id) or ""
+    elif sid == "last":
+        sid = next((s["id"] for s in chat_store.list_sessions(None, False, "", limit=100, owner=user_id)
+                    if s["project"] in mine), "")
+    if not sid or chat_store.owner_of(sid) != user_id:
+        return {"id": "", "project": None}
+    project = chat_store.project_of(sid)
+    if project not in mine:
+        return {"id": "", "project": None}
+    return {"id": sid, "project": project if project != active_project() else None}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     # Origin check before accept() -> rejected browsers get HTTP 403
@@ -5408,9 +5440,18 @@ async def websocket_endpoint(websocket: WebSocket):
     login_id = auth.check_session(websocket.cookies.get(auth.COOKIE))
     await websocket.accept()
     who = team.session_user(login_id)
-    if who and who["role"] == "user":       # members get the chat once the server checks every message (team step 2)
-        await websocket.close(code=4403)
-        return
+    member = bool(who and who["role"] == "user")
+    if member:      # a member's connection: their own owner and project, set for this task and the ones it starts
+        if who["status"] != "active":
+            await websocket.close(code=4403)
+            return
+        mine = team.projects_of(who["id"], _workspace_projects())
+        if not mine:
+            await websocket.send_text(json.dumps({"type": "no_projects", "content": tr("You are not on any project yet. Ask your admin to add you.")}))
+            await websocket.close(code=4403)
+            return
+        team.bind_user(who["id"])
+        config_manager.bind_project(mine[0])
     if not login_id:
         ip = client_ip(websocket)
         if auth.retry_after(ip):
@@ -5426,11 +5467,13 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_text(json.dumps({"type": "error", "content": "Unauthorized"}))
             await websocket.close(code=4401)
             return
-    else:
+    elif not member:        # a member's page is not told about the Workspace (project names, changes)
         LIVE_SOCKETS.setdefault(login_id, set()).add(websocket)
         ensure_workspace_watcher()
     await websocket.send_text(json.dumps({"type": "auth_ok", "build": page_build(), "away": PAGE_AWAY_GRACE,
                                           "version": await asyncio.to_thread(running_version)}))
+    if member:
+        await websocket.send_text(json.dumps(_member_state(who["id"])))
     problem = sandbox_problem()
     if problem:
         await websocket.send_text(json.dumps({"type": "sandbox_problem", "content": problem}))
@@ -5442,7 +5485,9 @@ async def websocket_endpoint(websocket: WebSocket):
     current: asyncio.Task | None = None
 
     def start(payload: dict) -> asyncio.Task:
-        task = asyncio.create_task(run_job(payload))
+        project = active_project()
+        BUSY_PROJECTS[project] = BUSY_PROJECTS.get(project, 0) + 1      # claimed now, released when the job ends
+        task = asyncio.create_task(run_job(payload, project))
         if payload.get("type") not in ("new_chat", "open_session"):     # those are quick and belong to the page
             key, entry = session["id"], {"session": session, "line": line, "task": task, "owner": websocket,
                                          "project": active_project(), "started": time.monotonic(), "timer": None}
@@ -5461,9 +5506,7 @@ async def websocket_endpoint(websocket: WebSocket):
             task.add_done_callback(ended)
         return task
 
-    async def run_job(payload: dict) -> None:
-        project = active_project()
-        BUSY_PROJECTS[project] = BUSY_PROJECTS.get(project, 0) + 1
+    async def run_job(payload: dict, project: str) -> None:
         try:
             await _run_job(payload)
         finally:
@@ -5569,6 +5612,39 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_text(json.dumps({"type": "pong", "t": payload.get("t")}))
                 continue
             busy = current is not None and not current.done()
+            if member:
+                who = team.session_user(login_id)
+                if not who or who["status"] != "active":       # disabled or gone while the page was open
+                    await websocket.close(code=4403)
+                    break
+                mine = team.projects_of(who["id"], _workspace_projects())
+                if kind == "switch_project":
+                    wanted = str(payload.get("project", ""))
+                    if busy:
+                        await send(line, "system", tr("Still working on the previous request. Stop it first."))
+                    elif wanted not in mine:
+                        await send(line, "system", tr("You are not on this project."))
+                        await websocket.send_text(json.dumps(_member_state(who["id"])))
+                    else:
+                        if session["chat_id"]:
+                            schedule_curation(line, session["chat_id"])      # the chat being left is finished
+                        config_manager.bind_project(wanted)
+                        reset_chat(session)
+                        await send(line, "chat_reset")
+                        await websocket.send_text(json.dumps(_member_state(who["id"])))
+                    continue
+                if kind == "open_session" and not busy:
+                    wanted = _member_chat(who["id"], str(payload.get("id", "latest")), mine)
+                    payload["id"] = wanted["id"]
+                    if wanted["project"] is not None:
+                        config_manager.bind_project(wanted["project"])
+                        await websocket.send_text(json.dumps(_member_state(who["id"])))
+                elif kind not in ("stop", "approval_response", "limit_response", "new_chat", "escalate", "plan_action") \
+                        and active_project() not in mine:
+                    await send(line, "system", tr("You are no longer on this project. Pick another one."))
+                    await websocket.send_text(json.dumps(_member_state(who["id"])))
+                    await send(line, "done")
+                    continue
 
             if kind == "stop":
                 if busy:
@@ -5603,6 +5679,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
             if kind not in ("new_chat", "open_session") and (why := restore_lib.blocked_reason()):
                 await send(line, "system", why)
+                await send(line, "done")
+                continue
+            if team.enabled() and kind not in ("new_chat", "open_session") and BUSY_PROJECTS.get(active_project()):
+                await send(line, "system", tr("Someone is already working in this project. Try again when they have finished."))
                 await send(line, "done")
                 continue
             current = start(payload)

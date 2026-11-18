@@ -685,7 +685,7 @@
   },
   "open_session": {
    "class": "S",
-   "note": "own chats only; switches the active project (today a global setting)"
+   "note": "own chats only, in a project the member is on; moves this connection to that project (not saved)"
   },
   "escalate": {
    "class": "M",
@@ -710,6 +710,10 @@
   "ping": {
    "class": "S",
    "note": ""
+  },
+  "switch_project": {
+   "class": "M",
+   "note": "a member moves their own connection to a project they are on; per connection, never saved"
   }
  },
  "model_tools": {
@@ -743,7 +747,7 @@
   },
   "update_markdown_memory": {
    "class": "S",
-   "note": "personal/professional: the user's; project memory needs write access"
+   "note": "members: project notes only; the personal and technical notes are the admin's until members have their own"
   },
   "finish_step": {
    "class": "S",
@@ -754,20 +758,20 @@
    "note": "plan bookkeeping"
   },
   "list_projects": {
-   "class": "S",
-   "note": "team: only the projects the user is on"
+   "class": "A",
+   "note": "refused for members (a member's page is told only their projects)"
   },
   "switch_project": {
-   "class": "M",
-   "note": "only to a project the user is on; per user, not global"
+   "class": "A",
+   "note": "refused for members: they switch from the page, per connection"
   },
   "project_status": {
    "class": "M",
    "note": "read access"
   },
   "push_project": {
-   "class": "M",
-   "note": "write access; uses the admin's GitHub token"
+   "class": "A",
+   "note": "refused for members: it uses the admin's GitHub sign-in"
   },
   "update_project": {
    "class": "M",
