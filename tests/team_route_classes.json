@@ -657,6 +657,10 @@
    "class": "A",
    "note": "put a member on a project or take them off"
   },
+  "POST /api/team/projects/{name}/rules": {
+   "class": "A",
+   "note": "the admin sets what members may do in a project without asking, and their network"
+  },
   "POST /api/team/users": {
    "class": "A",
    "note": "invite a member; the link token is shown once"
@@ -771,7 +775,7 @@
   },
   "update_markdown_memory": {
    "class": "S",
-   "note": "members: project notes only; the personal and technical notes are the admin's until members have their own"
+   "note": "members: their own personal and technical notes, and the project's notes"
   },
   "finish_step": {
    "class": "S",

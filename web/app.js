@@ -2865,7 +2865,7 @@ const optimuxApp = createApp({
 
         // ---- Team version (step 1): the admin's Team page. Solo installs never show it.
         const teamInfo = ref({ mode: 'solo', admin: true, user: null });
-        const team = Vue.reactive({ users: [], audit: [], projects: [], members: {}, name: '', error: '', invite: null, budgetForm: {} });
+        const team = Vue.reactive({ users: [], audit: [], projects: [], members: {}, rules: {}, name: '', error: '', invite: null, budgetForm: {} });
         const fetchMe = async () => { try { teamInfo.value = await (await fetch('/api/me')).json(); } catch (_) {} };
         const fetchTeam = async () => {
             await fetchMe();
@@ -2881,6 +2881,7 @@ const optimuxApp = createApp({
                 const p = await (await fetch('/api/team/projects')).json();
                 team.projects = p.projects || [];
                 team.members = p.members || {};
+                team.rules = p.rules || {};
             } catch (_) {}
         };
         const budgetFormOf = (u) => ({ amount: u.budget ? u.budget.monthly_usd : '', mode: u.budget ? u.budget.on_limit : 'block' });
@@ -2891,6 +2892,11 @@ const optimuxApp = createApp({
             if (!data) return;
             u.budget = data.budget;
             team.budgetForm[u.id] = budgetFormOf(u);
+        };
+        const teamRules = async (project, change) => {
+            const now = { level: 'supervised', network: false, ...(team.rules[project] || {}) };
+            const data = await teamPost(`/api/team/projects/${encodeURIComponent(project)}/rules`, { ...now, ...change });
+            if (data) team.rules[project] = data.rules; else await fetchTeam();
         };
         const teamOn = (project, u) => (team.members[project] || []).includes(u.id);
         const teamAssign = async (project, u, member) => {
@@ -6787,7 +6793,7 @@ const optimuxApp = createApp({
             historyPage, historySorted, fetchHistoryPage, sortHistory, historyProjects, setHistoryProject,
             historyPageList, HISTORY_LIMIT, systemInfo, newToken, rotateToken,
             memberOptions, setHistoryUser, usageUser, setUsageUser,
-            teamInfo, team, fetchTeam, teamBudgetSave, teamOn, teamAssign, teamInvite, teamReinvite, teamDisable, teamMessage, teamStatus, teamWhen, teamKind, teamReads,
+            teamInfo, team, fetchTeam, teamBudgetSave, teamRules, teamOn, teamAssign, teamInvite, teamReinvite, teamDisable, teamMessage, teamStatus, teamWhen, teamKind, teamReads,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
             openChatFromDashboard, switchProject, routingRole, fmtAgo, overviewKpis, writeClipboard,

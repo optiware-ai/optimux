@@ -2349,7 +2349,27 @@ async def api_team_disabled(user_id: int, payload: DisabledPayload, request: Req
 async def api_team_projects(request: Request):
     """The Workspace's projects and who is on each (member ids); the admin is on all of them."""
     _team_admin(request)
-    return {"projects": _workspace_projects(), "members": team.project_members()}
+    projects = _workspace_projects()
+    return {"projects": projects, "members": team.project_members(),
+            "rules": {name: autonomy_lib.member_rules(name) for name in projects}}
+
+
+class MemberRulesPayload(BaseModel):
+    level: str
+    network: bool = False
+
+
+@app.post("/api/team/projects/{name}/rules")
+async def api_team_rules(name: str, payload: MemberRulesPayload, request: Request):
+    """What members may do in a project without asking, and whether their commands have a network."""
+    _team_admin(request)
+    if name not in _workspace_projects():
+        raise HTTPException(404, tr("No such project."))
+    try:
+        rules = autonomy_lib.set_member_rules(name, payload.level, payload.network)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"status": "success", "rules": rules}
 
 
 @app.post("/api/team/projects/{name}/members/{user_id}")
@@ -4267,6 +4287,8 @@ def raise_level_for(project: str, level: str, why: str) -> str:
     or "". Only for a Supervised project asking because it is Supervised (a hard limit
     would ask at every level anyway), and only where the levels can apply."""
     if not project or level != "supervised" or not why.startswith("Supervised") or autonomy_lib.server_block():
+        return ""
+    if team.current_user_id() is not None:      # the admin decides what members may do; a member can't change it
         return ""
     return "checkpointed"
 

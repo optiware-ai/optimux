@@ -203,13 +203,18 @@ NETWORK_HINT = ("[Optimux sandbox: commands have no network here, so downloads, 
                 "project_status, push_project or update_project instead: Optimux runs those itself.]")
 
 
-def network_hint(output: str, exit_code: int, sandboxed: bool, network: bool) -> str:
+NETWORK_HINT_MEMBER = ("[Optimux sandbox: commands have no network for team members in this project, so downloads, "
+                       "installs (pip, npm, apt) and git fetch, pull or push from a command fail. Don't retry them. "
+                       "Tell the user to ask their admin, who can allow it for this project.]")
+
+
+def network_hint(output: str, exit_code: int, sandboxed: bool, network: bool, member: bool = False) -> str:
     """The hint to add when a sandboxed command without network failed on a
     lookup or connection; "" otherwise (the network is on, or it failed for
     another reason)."""
     if not sandboxed or network or not exit_code:
         return ""
-    return NETWORK_HINT if NETWORK_ERRORS.search(output or "") else ""
+    return (NETWORK_HINT_MEMBER if member else NETWORK_HINT) if NETWORK_ERRORS.search(output or "") else ""
 
 
 async def _watch(task: asyncio.Future, limit: int, on_limit) -> tuple[str | None, float]:
@@ -285,12 +290,17 @@ async def run_shell_command(command: str, timeout: int | None = None, cwd: str |
     named = timeout is None
     timeout = command_timeout_for(settings) if named else timeout
     argv = None
+    network = bool(settings.get("sandbox_network", True))
+    from optimux_backend.core import autonomy, team
+    member = team.current_user_id() is not None
+    if member:       # a member's commands have a network only where the admin allowed it (and the install allows it)
+        network = network and autonomy.member_rules(settings.get("active_project", ""))["network"]
     if sandbox.enabled(settings):
         st = sandbox.status()
         if not st["works"]:
             return {"stdout": "", "stderr": "Refused: the sandbox is on but unavailable. " + (st["error"] or ""),
                     "exit_code": 126}
-        argv = sandbox.build_argv(command, workdir, SHELL, network=bool(settings.get("sandbox_network", True)),
+        argv = sandbox.build_argv(command, workdir, SHELL, network=network,
                                   ro_paths=settings.get("sandbox_ro_paths") or [], bwrap=st["path"],
                                   hide=sandbox_hide())
 
@@ -336,8 +346,7 @@ async def run_shell_command(command: str, timeout: int | None = None, cwd: str |
                     "create_project tool; anything else outside this folder is for the user to do.]")
         out = out_buf.text()
         result = {"stdout": out, "stderr": err, "exit_code": process.returncode}
-        hint = network_hint(out + "\n" + err, process.returncode, bool(argv),
-                            bool(settings.get("sandbox_network", True)))
+        hint = network_hint(out + "\n" + err, process.returncode, bool(argv), network, member=member)
         if hint:
             result["stderr"] = (err + "\n" if err else "") + hint
             result["hint"] = hint

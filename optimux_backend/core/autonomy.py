@@ -127,6 +127,9 @@ def project_level(project: str) -> str:
     Workspace) and on a server without a working sandbox."""
     if not project or server_block():
         return "supervised"
+    from optimux_backend.core import team
+    if team.current_user_id() is not None:       # a team member: what the admin allowed members here, never more
+        return member_rules(project)["level"]
     level = (_read().get("projects") or {}).get(project)
     return level if level in LEVELS else _saved_default()
 
@@ -142,6 +145,36 @@ def overview() -> dict:
 
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+
+
+# ---------------------------------------------------------------- team members (step 9)
+
+def member_rules(project: str) -> dict:
+    """What members may do in a project: their autonomy level and whether their commands have a
+    network. Strict until the admin says otherwise (the admin's own level for the project is separate)."""
+    own = ((_read().get("members") or {}).get(project) or {}) if project else {}
+    level = own.get("level")
+    return {"level": level if level in LEVELS else "supervised", "network": own.get("network") is True}
+
+
+def member_rules_all() -> dict:
+    return {name: member_rules(name) for name in (_read().get("members") or {})}
+
+
+def set_member_rules(project: str, level: str, network: bool) -> dict:
+    if level not in LEVELS:
+        raise ValueError(tr("Unknown level {level}; use one of {v}.", level=f'{level!r}', v=', '.join(LEVELS)))
+    if not project or not NAME_RE.match(project) or project in (".", ".."):
+        raise ValueError(tr("Invalid project name."))
+    data = _read()
+    members = dict(data.get("members") or {})
+    if level == "supervised" and not network:
+        members.pop(project, None)                # back to the default: nothing to keep
+    else:
+        members[project] = {"level": level, "network": bool(network)}
+    data["members"] = members
+    _write(data)
+    return member_rules(project)
 
 
 def set_level(project: str | None, level: str | None) -> dict:

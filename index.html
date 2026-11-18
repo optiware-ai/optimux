@@ -1212,6 +1212,28 @@
                         </div>
 
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-x-auto">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-1">{{ $t('What members may do without asking') }}</h3>
+                            <p class="text-[13px] text-gray-400 mb-2">{{ $t('Members start strict: every command and file change waits for their own approval, and their commands have no network. Loosen it for a project here. This does not change your own level for the project. Pushes, deletions, installs and paths outside the project always ask, and a member can never push to GitHub.') }}</p>
+                            <p v-if="!team.projects.length" class="text-[13px] text-gray-500 italic">{{ $t('No projects in the Workspace yet.') }}</p>
+                            <table v-else class="text-[14px]">
+                                <thead><tr class="text-left text-gray-500 text-[12px] uppercase tracking-wider">
+                                    <th class="py-1 pr-6 font-normal">{{ $t('Project') }}</th><th class="py-1 pr-6 font-normal">{{ $t('Members may') }}</th><th class="py-1 font-normal">{{ $t('Commands can use the network') }}</th>
+                                </tr></thead>
+                                <tbody>
+                                    <tr v-for="p in team.projects" :key="p" class="border-t border-gray-800" :data-rules="p">
+                                        <td class="py-1.5 pr-6 text-gray-100">{{ p }}</td>
+                                        <td class="py-1.5 pr-6">
+                                            <select data-rules-level :value="(team.rules[p] || {}).level || 'supervised'" @change="teamRules(p, { level: $event.target.value })" :aria-label="$t('Autonomy level of ') + p" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1 text-[14px]">
+                                                <option value="supervised">{{ $t('Supervised') }}</option><option value="checkpointed">{{ $t('Checkpointed') }}</option><option value="autonomous">{{ $t('Autonomous') }}</option>
+                                            </select>
+                                        </td>
+                                        <td class="py-1.5"><input type="checkbox" data-rules-network :checked="!!(team.rules[p] || {}).network" @change="teamRules(p, { network: $event.target.checked })" :aria-label="$t('Commands can use the network') + ': ' + p" class="w-4 h-4 accent-blue-500"></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-x-auto">
                             <h3 class="text-[15px] font-bold text-gray-200 mb-1">{{ $t('Monthly budget for each member') }}</h3>
                             <p class="text-[13px] text-gray-400 mb-2">{{ $t('What a member may spend this month in all their projects together. A project\'s own budget (Dashboard → Budgets) counts everyone working in it. When either one is used up and set to Stop, the member\'s next request is refused and they are told to ask you.') }}</p>
                             <p v-if="!team.users.some(u => u.role !== 'admin')" class="text-[13px] text-gray-500 italic">{{ $t('Invite someone first.') }}</p>

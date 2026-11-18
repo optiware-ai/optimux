@@ -2768,5 +2768,9 @@
  "The two new passwords are different.": "Le due nuove password sono diverse.",
  "Could not change the password.": "Non è stato possibile cambiare la password.",
  "That is not your current password.": "Questa non è la tua password attuale.",
- "Choose a different password from the current one.": "Scegli una password diversa da quella attuale."
+ "Choose a different password from the current one.": "Scegli una password diversa da quella attuale.",
+ "What members may do without asking": "Cosa possono fare i membri senza chiedere",
+ "Members start strict: every command and file change waits for their own approval, and their commands have no network. Loosen it for a project here. This does not change your own level for the project. Pushes, deletions, installs and paths outside the project always ask, and a member can never push to GitHub.": "I membri partono con regole strette: ogni comando e ogni modifica ai file aspetta la loro approvazione, e i loro comandi non hanno rete. Qui puoi allentarle per un progetto. Non cambia il tuo livello per il progetto. Push, cancellazioni, installazioni e percorsi fuori dal progetto chiedono sempre, e un membro non può mai fare push su GitHub.",
+ "Members may": "I membri possono",
+ "Commands can use the network": "I comandi possono usare la rete"
 }
