@@ -236,3 +236,38 @@ def test_a_members_workspace_tool_call_is_refused(app_client, ws_root):
     for tool in ("create_project", "switch_project", "archive_project", "push_project", "list_projects"):
         res = as_member(lambda: asyncio.run(app_client.run_workspace_tool(None, {}, tool, "{}", "t1")))
         assert res["ok"] is False and "team member" in res["error"], tool
+
+
+# ---- the member's pages and own chat list
+
+def test_a_member_gets_the_chat_page_and_the_account_page(crew):
+    anna = crew["anna"][0]
+    home_page = anna.get("/")
+    assert home_page.status_code == 200 and 'id="chat"' in home_page.text and "member.js" in home_page.text
+    acc = anna.get("/account")
+    assert acc.status_code == 200 and "account.js" in acc.text
+    assert 'href="/account"' in home_page.text and 'href="/"' in acc.text
+    # the admin has no use for it
+    assert "member.js" not in crew["admin"].get("/").text
+
+
+def test_a_member_lists_their_own_chats_in_their_projects(crew):
+    def make(uid, project, title):
+        def run():
+            team.bind_user(uid)
+            return sessions.create(project, title)
+        return contextvars.copy_context().run(run)
+    mine = make(crew["anna"][1], "alpha", "anna-alpha")
+    make(crew["anna"][1], "gamma", "anna-gamma")          # a project she is not on (any more)
+    make(crew["bob"][1], "beta", "bob-chat")
+    make(None, "alpha", "boss-chat")
+    rows = crew["anna"][0].get("/api/me/chats").json()["chats"]
+    assert [(r["id"], r["title"], r["project"]) for r in rows] == [(mine, "anna-alpha", "alpha")]
+    assert crew["admin"].get("/api/me/chats").status_code == 409
+
+
+def test_a_disabled_member_still_reaches_the_account_page(crew):
+    anna, uid = crew["anna"]
+    crew["admin"].post(f"/api/team/users/{uid}/disabled", json={"disabled": True}, headers=ORIGIN)
+    assert anna.get("/account").status_code == 200
+    assert anna.get("/api/me/chats").status_code == 403

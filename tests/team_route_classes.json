@@ -25,6 +25,10 @@
    "class": "S",
    "note": "the page itself; the guard sends strangers to /login"
   },
+  "GET /account": {
+   "class": "S",
+   "note": "the member's account page; anyone else is sent to /"
+  },
   "GET /api/analytics": {
    "class": "S",
    "note": "filtered by user; the admin sees everyone (?user=)"
@@ -124,6 +128,10 @@
   "GET /api/me/audit": {
    "class": "S",
    "note": "a member reads the lines about their own data"
+  },
+  "GET /api/me/chats": {
+   "class": "S",
+   "note": "a member's own chats, in their projects"
   },
   "GET /api/memory/project/{name}": {
    "class": "M",

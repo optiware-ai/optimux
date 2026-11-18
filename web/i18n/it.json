@@ -2660,7 +2660,6 @@
  "Admin may also read my chats": "L'amministratore può leggere anche le mie chat",
  "Admin sees usage and cost only": "L'amministratore vede solo utilizzo e costi",
  "Admin sign-in": "Accesso amministratore",
- "Chats and projects for team members are coming in the next version of Optimux. For now you can see and change what your admin may see.": "Le chat e i progetti per i membri del team arriveranno nella prossima versione di Optimux. Per ora puoi vedere e cambiare ciò che l'amministratore può vedere.",
  "Choose a password (12 characters or more)": "Scegli una password (12 caratteri o più)",
  "Chosen on": "Scelta fatta il",
  "Copy the message": "Copia il messaggio",
@@ -2736,5 +2735,15 @@
  "You are not on this project.": "Non sei su questo progetto.",
  "You are no longer on this project. Pick another one.": "Non sei più su questo progetto. Sceglierne un altro.",
  "Someone is already working in this project. Try again when they have finished.": "Qualcuno sta già lavorando in questo progetto. Riprova quando ha finito.",
- "A team member can't do this: ask the admin.": "Un membro del team non può farlo: chiedi all'admin."
+ "A team member can't do this: ask the admin.": "Un membro del team non può farlo: chiedi all'admin.",
+ "A new chat. Ask for something below.": "Una nuova chat. Chiedi qualcosa qui sotto.",
+ "Ask for something. Enter sends, Shift+Enter adds a line.": "Chiedi qualcosa. Invio manda, Maiusc+Invio va a capo.",
+ "Chat · Optimux": "Chat · Optimux",
+ "Decline": "Rifiuta",
+ "My chats": "Le mie chat",
+ "Not connected. Trying again…": "Non connesso. Riprovo…",
+ "Open a chat…": "Apri una chat…",
+ "Reason (optional)": "Motivo (facoltativo)",
+ "The assistant asks your approval": "L'assistente chiede la tua approvazione",
+ "← Back to the chat": "← Torna alla chat"
 }

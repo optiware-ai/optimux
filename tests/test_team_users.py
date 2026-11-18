@@ -439,12 +439,13 @@ def test_the_admins_session_list_does_not_hold_the_members(teamed):
 
 # ---------------------------------------------------------------- pages (p84)
 
-def test_a_member_lands_on_their_account_page_and_the_admin_on_the_app(teamed):
+def test_a_member_lands_on_their_chat_page_and_the_admin_on_the_app(teamed):
     member, _ = invite_and_activate(teamed)
     page = member.get("/")
-    assert page.status_code == 200 and "/static/account.js" in page.text
+    assert page.status_code == 200 and "/static/member.js" in page.text
+    assert "/static/account.js" in member.get("/account").text
     app_page = teamed.get("/")
-    assert app_page.status_code == 200 and "/static/account.js" not in app_page.text
+    assert app_page.status_code == 200 and "/static/member.js" not in app_page.text
 
 
 def test_the_account_page_gets_the_consent_text_with_the_member_only(teamed):
@@ -481,7 +482,7 @@ def test_a_member_is_refused_on_every_route_except_their_own_account(teamed):
         path = getattr(route, "path", None)
         if path is None or not hasattr(route, "methods"):
             continue
-        if path == "/" or path in main.PUBLIC_PATHS or path.startswith(allowed_prefixes):
+        if path in main.MEMBER_PAGES or path in main.PUBLIC_PATHS or path.startswith(allowed_prefixes):
             continue
         url = re.sub(r"\{[^}]+\}", "x", path)
         for method in sorted(route.methods - {"HEAD", "OPTIONS"}):

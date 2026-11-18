@@ -16,7 +16,7 @@ from tests.ws_helpers import make_client
 H = {"Authorization": "Bearer test-token"}
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCES = ("index.html", "web/app.js", "web/attention.js", "web/boot.js", "web/connection.js", "web/i18n.js",
-           "web/login.js", "web/account.js")
+           "web/login.js", "web/account.js", "web/member.js")
 # The sign-in page marks whole elements: their inner HTML (spaces collapsed) is the text
 MARKED = re.compile(r"<(\w+)\b[^>]*\bdata-i18n\b[^>]*>(.*?)</\1>", re.S)
 # $t('...') in templates, tr('...') in scripts, tk('...') for texts kept as data
@@ -37,7 +37,7 @@ def marked_texts() -> set[str]:
         if rel.endswith(".html"):                  # the browser decodes &quot; and the like first
             texts = {html.unescape(t) for t in texts}
         found |= texts
-    for page in ("login.html", "account.html"):
+    for page in ("login.html", "account.html", "member.html"):
         with open(os.path.join(ROOT, "web", page), encoding="utf-8") as f:
             found |= {re.sub(r"\s+", " ", m.group(2)).strip() for m in MARKED.finditer(f.read())}
     return found | server_texts()

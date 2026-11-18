@@ -170,6 +170,7 @@ PUBLIC_PATHS = {"/login", "/auth/status", "/auth/login", "/auth/setup", "/auth/l
                 "/favicon.ico"}
 # Team members (not admins) reach only their own account until the server checks every route (team step 2)
 MEMBER_PATHS = ("/api/me",)
+MEMBER_PAGES = ("/", "/account")      # the pages a member can load: their chat and their account
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
@@ -239,7 +240,7 @@ def security_headers(request, response) -> None:
 
 
 def _unauthorized(request: Request):
-    if request.method == "GET" and request.url.path == "/":
+    if request.method == "GET" and request.url.path in ("/", "/account"):
         return RedirectResponse("/login", status_code=303)
     return JSONResponse({"detail": tr("Unauthorized")}, status_code=401)
 
@@ -278,12 +279,12 @@ async def guard(request: Request, call_next):
                 return response
             request.state.login_id = login_id
             who = team.session_user(login_id)
-            if who and who["role"] == "user" and who["status"] == "disabled" and path != "/":
+            if who and who["role"] == "user" and who["status"] == "disabled" and path not in MEMBER_PAGES:
                 # The member's open page asks (for example /api/me) and learns why it can't go on
                 response = JSONResponse({"detail": tr(team.DISABLED_TEXT), "disabled": True}, status_code=403)
                 security_headers(request, response)
                 return response
-            if who and who["role"] == "user" and path != "/" and not path.startswith(MEMBER_PATHS):
+            if who and who["role"] == "user" and path not in MEMBER_PAGES and not path.startswith(MEMBER_PATHS):
                 response = JSONResponse({"detail": tr("Not available for team members yet.")}, status_code=403)
                 security_headers(request, response)
                 return response
@@ -5718,11 +5719,30 @@ async def get_guide():
         raise HTTPException(404, "docs/GUIDE.md is missing.")
 
 
+@app.get("/account")
+async def account_page(request: Request):
+    """A team member's account page: what the admin may see, and when they looked."""
+    who = team.session_user(request.state.login_id)
+    if not (who and who["role"] == "user"):
+        return RedirectResponse("/")
+    return FileResponse(os.path.join(WEB_DIR, "account.html"), media_type="text/html")
+
+
+@app.get("/api/me/chats")
+async def api_me_chats(request: Request):
+    """A member's own chats, newest first, in the projects they are on (for the chat page's list)."""
+    who = _member(request)
+    mine = team.projects_of(who["id"], _workspace_projects())
+    rows = chat_store.list_sessions(None, False, "", limit=200, owner=who["id"])
+    return {"chats": [{"id": r["id"], "title": r["title"], "project": r["project"], "updated": r["updated"]}
+                      for r in rows if r["project"] in mine][:50]}
+
+
 @app.get("/")
 async def get(request: Request):
     who = team.session_user(request.state.login_id)
-    if who and who["role"] == "user":       # a team member gets their account page (team step 1)
-        return FileResponse(os.path.join(WEB_DIR, "account.html"), media_type="text/html")
+    if who and who["role"] == "user":       # a team member gets their chat (team step 5)
+        return FileResponse(os.path.join(WEB_DIR, "member.html"), media_type="text/html")
     with open(os.path.join(REPO_DIR, "index.html"), "r") as f:
         html = f.read()
     # v0.8: a fresh style nonce for the Studio's code editor, in the CSP and in a <meta> the page reads
