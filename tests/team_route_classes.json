@@ -665,6 +665,10 @@
    "class": "A",
    "note": "a new link; the old link and password stop working"
   },
+  "POST /api/team/users/{user_id}/budget": {
+   "class": "A",
+   "note": "the admin sets a member's monthly budget"
+  },
   "POST /auth/activate": {
    "class": "P",
    "note": "the invitation token is the credential; limited per address"

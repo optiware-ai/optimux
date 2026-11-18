@@ -331,6 +331,19 @@ def month_totals(project: str, now: float | None = None) -> dict:
     return {"calls": row["calls"], "cost": float(row["cost"]), "calls_without_cost": row["without_cost"]}
 
 
+def user_month_totals(user_id: int, now: float | None = None) -> dict:
+    """This calendar month's cost for one team member, over every project."""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS calls, COALESCE(SUM(cost), 0) AS cost, "
+            "COALESCE(SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END), 0) AS without_cost "
+            "FROM usage WHERE ts >= ? AND user_id = ?", (month_start(now), int(user_id))).fetchone()
+    finally:
+        conn.close()
+    return {"calls": row["calls"], "cost": float(row["cost"]), "calls_without_cost": row["without_cost"]}
+
+
 def recent_average(role: str, n: int = 5) -> dict | None:
     """Average cost of the last `n` priced calls with this role (any project), used to warn
     before an action that costs money. None when there is no priced call yet."""

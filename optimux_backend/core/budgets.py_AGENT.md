@@ -8,6 +8,7 @@
 - **`status(project)`:** Returns this calendar month's spending (`usage.month_totals(project)`, one SQL query) against the budget: `monthly_usd`, `on_limit`, `spent`, `ratio`, `calls_without_cost` and `state` (`ok` below 80%, `warning` from 80%, `over` from 100%). Returns `None` when the project has no budget.
 - **`all_statuses()`:** Status for every project that has a budget.
 - **`blocks(project)`:** The status when the budget is used up and set to `block`, otherwise `None`.
+- **Members (team step 7):** `~/.optimux/config/user_budgets.json` holds `{member id: {monthly_usd, on_limit}}` (`get_user_budgets`, `save_user_budget`, `user_status(id)` = this month's spend over all projects via `usage.user_month_totals`). `status()` carries `scope: "project"`, `user_status()` `scope: "user"`. `blocking(project)` is what every model call checks: the project's blocking budget (shared by everyone working in it), else the bound member's own. The admin has no member budget.
 - **Limitation:** calls without a known price can't be counted, so a budget can be exceeded by them; the status reports how many there were.
 
 ## Links & Dependencies

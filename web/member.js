@@ -98,6 +98,15 @@
         if (msg.exit_code) c.summary.classList.add('text-red-300');
     }
 
+    function paintBudget(b) {
+        const el = $('budget');
+        show(el, !!b);
+        if (!b) return;
+        const money = (x) => '$' + Number(x).toFixed(2);
+        el.textContent = tr('Budget: {spent} of {limit} this month').replace('{spent}', money(b.spent)).replace('{limit}', money(b.monthly_usd));
+        el.className = 'text-[13px] ' + (b.state === 'over' ? 'text-red-300' : b.state === 'warning' ? 'text-yellow-300' : 'text-gray-400');
+    }
+
     function setBusy(on) {
         busy = on;
         show($('stop'), on);
@@ -179,7 +188,7 @@
                 if (m.content) { putNote(m.content); scroll(); }
                 break;
             case 'error': putNote('❌ ' + (m.content || ''), FAIL); scroll(); break;
-            case 'done': agent = null; if (!replay) { setBusy(false); paintChats(); } break;
+            case 'done': agent = null; if (!replay) { setBusy(false); paintChats(); check(); } break;
             default: break;      // usage, status, thinking, plan, changes... are for the full page
         }
     }
@@ -218,6 +227,7 @@
         const { res, data } = await api('/api/me');
         if (data.disabled) return disabledNotice(data.detail);
         if (res.status === 401) { location.replace('/login'); return; }
+        if (res.ok) paintBudget(data.budget);
         if (res.ok && data.projects && data.projects.join('|') !== projects.join('|')) {
             const keep = $('project').value;
             paintProjects({ projects: data.projects, project: data.projects.includes(keep) ? keep : '' });
@@ -290,6 +300,7 @@
         if (data.disabled) { disabledNotice(data.detail); return; }
         if (!res.ok || !data.user || data.admin) { location.replace('/login'); return; }
         $('who').textContent = data.user.name;
+        paintBudget(data.budget);
         empty(tr('Connecting…'));
         connect();
         setInterval(check, 5000);

@@ -2752,5 +2752,14 @@
  "The notes could not be loaded.": "Non è stato possibile caricare gli appunti.",
  "The notes could not be saved.": "Non è stato possibile salvare gli appunti.",
  "These notes go with your own requests, so the assistant knows how you like to work. Other members and the admin cannot open this page. If you let the admin read your chats, they can see what was sent to the models, and that includes these notes.": "Questi appunti viaggiano con le tue richieste, così l'assistente sa come ti piace lavorare. Gli altri membri e l'admin non possono aprire questa pagina. Se permetti all'admin di leggere le tue chat, può vedere cosa è stato inviato ai modelli, e questo include questi appunti.",
- "Your way of working (coding style, tools, habits)": "Il tuo modo di lavorare (stile di codice, strumenti, abitudini)"
+ "Your way of working (coding style, tools, habits)": "Il tuo modo di lavorare (stile di codice, strumenti, abitudini)",
+ "At the limit": "Al limite",
+ "Budget: {spent} of {limit} this month": "Budget: {spent} di {limit} questo mese",
+ "Budgets are for team members.": "I budget sono per i membri del team.",
+ "Dollars a month": "Dollari al mese",
+ "Monthly budget for each member": "Budget mensile di ogni membro",
+ "Monthly budget for {name}": "Budget mensile di {name}",
+ "Only warn": "Solo avviso",
+ "What a member may spend this month in all their projects together. A project's own budget (Dashboard → Budgets) counts everyone working in it. When either one is used up and set to Stop, the member's next request is refused and they are told to ask you.": "Quanto un membro può spendere questo mese in tutti i suoi progetti insieme. Il budget di un progetto (Dashboard → Budget) conta tutti quelli che ci lavorano. Quando uno dei due è esaurito e impostato su Stop, la richiesta successiva del membro viene rifiutata e gli viene detto di chiedere a te.",
+ "{spent} of {limit} ({percent}%)": "{spent} di {limit} ({percent}%)"
 }

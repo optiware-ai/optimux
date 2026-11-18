@@ -2865,18 +2865,32 @@ const optimuxApp = createApp({
 
         // ---- Team version (step 1): the admin's Team page. Solo installs never show it.
         const teamInfo = ref({ mode: 'solo', admin: true, user: null });
-        const team = Vue.reactive({ users: [], audit: [], projects: [], members: {}, name: '', error: '', invite: null });
+        const team = Vue.reactive({ users: [], audit: [], projects: [], members: {}, name: '', error: '', invite: null, budgetForm: {} });
         const fetchMe = async () => { try { teamInfo.value = await (await fetch('/api/me')).json(); } catch (_) {} };
         const fetchTeam = async () => {
             await fetchMe();
             if (teamInfo.value.mode !== 'team') return;
-            try { team.users = (await (await fetch('/api/team/users')).json()).users || []; } catch (_) {}
+            try {
+                team.users = (await (await fetch('/api/team/users')).json()).users || [];
+                for (const u of team.users) {      // the boxes keep what the admin is typing while the list refreshes
+                    if (u.role !== 'admin' && !team.budgetForm[u.id]) team.budgetForm[u.id] = budgetFormOf(u);
+                }
+            } catch (_) {}
             try { team.audit = (await (await fetch('/api/team/audit')).json()).lines || []; } catch (_) {}
             try {
                 const p = await (await fetch('/api/team/projects')).json();
                 team.projects = p.projects || [];
                 team.members = p.members || {};
             } catch (_) {}
+        };
+        const budgetFormOf = (u) => ({ amount: u.budget ? u.budget.monthly_usd : '', mode: u.budget ? u.budget.on_limit : 'block' });
+        const teamBudgetSave = async (u) => {
+            const f = team.budgetForm[u.id];
+            const amount = f.amount === '' || f.amount === null ? null : Number(f.amount);
+            const data = await teamPost(`/api/team/users/${u.id}/budget`, { monthly_usd: amount, on_limit: f.mode });
+            if (!data) return;
+            u.budget = data.budget;
+            team.budgetForm[u.id] = budgetFormOf(u);
         };
         const teamOn = (project, u) => (team.members[project] || []).includes(u.id);
         const teamAssign = async (project, u, member) => {
@@ -6773,7 +6787,7 @@ const optimuxApp = createApp({
             historyPage, historySorted, fetchHistoryPage, sortHistory, historyProjects, setHistoryProject,
             historyPageList, HISTORY_LIMIT, systemInfo, newToken, rotateToken,
             memberOptions, setHistoryUser, usageUser, setUsageUser,
-            teamInfo, team, fetchTeam, teamOn, teamAssign, teamInvite, teamReinvite, teamDisable, teamMessage, teamStatus, teamWhen, teamKind, teamReads,
+            teamInfo, team, fetchTeam, teamBudgetSave, teamOn, teamAssign, teamInvite, teamReinvite, teamDisable, teamMessage, teamStatus, teamWhen, teamKind, teamReads,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
             openChatFromDashboard, switchProject, routingRole, fmtAgo, overviewKpis, writeClipboard,

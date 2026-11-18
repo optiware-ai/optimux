@@ -2227,6 +2227,7 @@ async def api_me(request: Request):
     me = team.me(request.state.login_id)
     if me.get("user") and not me["admin"]:
         me["projects"] = team.projects_of(me["user"]["id"], _workspace_projects())
+        me["budget"] = budgets.user_status(me["user"]["id"])
     return me
 
 
@@ -2273,7 +2274,26 @@ async def api_me_audit(request: Request):
 @app.get("/api/team/users")
 async def api_team_users(request: Request):
     _team_admin(request)
-    return {"users": team.list_users()}
+    users = team.list_users()
+    for u in users:
+        u["budget"] = budgets.user_status(u["id"]) if u["role"] == "user" else None
+    return {"users": users}
+
+
+class UserBudgetPayload(BaseModel):
+    monthly_usd: float | None = None
+    on_limit: str = "block"
+
+
+@app.post("/api/team/users/{user_id}/budget")
+async def api_team_budget(user_id: int, payload: UserBudgetPayload, request: Request):
+    """A member's monthly budget, over all their projects (empty amount removes it)."""
+    _team_admin(request)
+    who = team.get(user_id)
+    if not who or who["role"] != "user":
+        raise HTTPException(400, tr("Budgets are for team members."))
+    budgets.save_user_budget(user_id, payload.monthly_usd, payload.on_limit)
+    return {"status": "success", "budget": budgets.user_status(user_id)}
 
 
 @app.post("/api/team/users")
@@ -3927,8 +3947,14 @@ def sandbox_problem() -> str:
 
 def budget_text(s: dict) -> str:
     unknown = f" ({s['calls_without_cost']} calls without a known price aren't counted)" if s["calls_without_cost"] else ""
-    return (f"Budget for {s['project']}: ${s['spent']:.2f} of ${s['monthly_usd']:.2f} this month "
+    what = "Your budget" if s.get("scope") == "user" else f"Budget for {s['project']}"
+    return (f"{what}: ${s['spent']:.2f} of ${s['monthly_usd']:.2f} this month "
             f"({s['ratio'] * 100:.0f}%){unknown}.")
+
+
+def budget_tail(s: dict, project_text: str, member_text: str) -> str:
+    """The sentence after the numbers: a member can't raise a budget, so they are told to ask the admin."""
+    return " " + (member_text if team.current_user_id() is not None else project_text)
 
 
 # Budget notes already shown, per (project, level, month): once per server run,
@@ -3939,18 +3965,20 @@ BUDGET_NOTES_SHOWN: set = set()
 async def check_budget_before_request(websocket: WebSocket, session: dict) -> bool:
     """Refuse a new request when the project's budget blocks; otherwise send a
     one-time note per level (80%, 100% in warn mode). Returns True to proceed."""
-    s = budgets.status(active_project())
-    if not s:
-        return True
-    if s["state"] == "over" and s["on_limit"] == "block":
-        await send(websocket, "budget", budget_text(s) + " New requests are blocked until you raise it.",
-                   state="blocked", budget=s)
-        return False
-    if s["state"] in ("warning", "over"):
-        key = (s["project"], s["state"], time.strftime("%Y-%m"))
-        if key not in BUDGET_NOTES_SHOWN:
-            BUDGET_NOTES_SHOWN.add(key)
-            await send(websocket, "budget", budget_text(s), state=s["state"], budget=s)
+    uid = team.current_user_id()
+    found = [x for x in (budgets.status(active_project()), budgets.user_status(uid) if uid is not None else None) if x]
+    for s in found:
+        if s["state"] == "over" and s["on_limit"] == "block":
+            await send(websocket, "budget", budget_text(s) + budget_tail(
+                s, "New requests are blocked until you raise it.",
+                "New requests are blocked until the admin raises it. Ask your admin."), state="blocked", budget=s)
+            return False
+    for s in found:
+        if s["state"] in ("warning", "over"):
+            key = (s.get("project") or f"user {s['user_id']}", s["state"], time.strftime("%Y-%m"))
+            if key not in BUDGET_NOTES_SHOWN:
+                BUDGET_NOTES_SHOWN.add(key)
+                await send(websocket, "budget", budget_text(s), state=s["state"], budget=s)
     return True
 
 
@@ -3962,7 +3990,7 @@ async def call_model(websocket: WebSocket, session: dict, role: str, model: str,
     errors are not retried. Failures put the model in cooldown and raise
     ProviderFailure; other errors propagate unchanged.
     """
-    blocked = budgets.blocks(active_project())
+    blocked = budgets.blocking(active_project())
     if blocked:
         raise BudgetExceeded(blocked)  # the turn pauses before spending more
     reason = providers.cooldown(model)
@@ -4061,7 +4089,7 @@ async def curate_session(sid: str | None, websocket: WebSocket | None = None, fo
         if len(chat) < 200:                                         # e.g. just "Hello"
             curator.mark_curated(sid, data["turns"])
             return {"changed": False, "reason": "The chat is too short to learn from."}
-        if budgets.blocks(project):
+        if budgets.blocking(project):
             return {"changed": False, "reason": "The project's budget is reached."}
         model = routing_for(project).get("simple_model", "")
         if not model or providers.cooldown(model):
@@ -4876,8 +4904,9 @@ STOPPED_NOTE = "[Stopped by the user.]"
 
 
 async def notify_budget_pause(websocket: WebSocket, s: dict) -> None:
-    await send(websocket, "budget", budget_text(s) + " Paused before the next model call; raise the budget to continue.",
-               state="paused", budget=s)
+    await send(websocket, "budget", budget_text(s) + budget_tail(
+        s, "Paused before the next model call; raise the budget to continue.",
+        "Paused before the next model call. Ask your admin to raise the budget to continue."), state="paused", budget=s)
 
 
 async def notify_step_limit(websocket: WebSocket, role: str) -> None:

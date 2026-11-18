@@ -1212,6 +1212,31 @@
                         </div>
 
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-x-auto">
+                            <h3 class="text-[15px] font-bold text-gray-200 mb-1">{{ $t('Monthly budget for each member') }}</h3>
+                            <p class="text-[13px] text-gray-400 mb-2">{{ $t('What a member may spend this month in all their projects together. A project\'s own budget (Dashboard → Budgets) counts everyone working in it. When either one is used up and set to Stop, the member\'s next request is refused and they are told to ask you.') }}</p>
+                            <p v-if="!team.users.some(u => u.role !== 'admin')" class="text-[13px] text-gray-500 italic">{{ $t('Invite someone first.') }}</p>
+                            <table v-else class="text-[14px]">
+                                <tbody>
+                                    <tr v-for="u in team.users.filter(x => x.role !== 'admin')" :key="u.id" class="border-t border-gray-800" :data-budget="u.name">
+                                        <td class="py-1.5 pr-4 text-gray-100">{{ u.name }}</td>
+                                        <td class="py-1.5 pr-4 text-gray-400 whitespace-nowrap" data-budget-spent>{{ u.budget ? $t('{spent} of {limit} ({percent}%)', { spent: fmtCost(u.budget.spent), limit: fmtCost(u.budget.monthly_usd), percent: Math.round(u.budget.ratio * 100) }) : $t('No limit') }}</td>
+                                        <td class="py-1.5 pr-2" v-if="team.budgetForm[u.id]">
+                                            <input v-model="team.budgetForm[u.id].amount" type="number" min="0" step="any" data-budget-amount :placeholder="$t('Dollars a month')" :aria-label="$t('Monthly budget for {name}', { name: u.name })" class="w-32 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1 text-[14px] focus:outline-none focus:border-blue-500">
+                                        </td>
+                                        <td class="py-1.5 pr-2" v-if="team.budgetForm[u.id]">
+                                            <select v-model="team.budgetForm[u.id].mode" :aria-label="$t('At the limit')" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-1 text-[14px]">
+                                                <option value="block">{{ $t('Stop') }}</option><option value="warn">{{ $t('Only warn') }}</option>
+                                            </select>
+                                        </td>
+                                        <td class="py-1.5 text-right whitespace-nowrap" v-if="team.budgetForm[u.id]">
+                                            <button @click="teamBudgetSave(u)" data-budget-save class="px-3 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500 text-[13px]">{{ $t('Save') }}</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-x-auto">
                             <h3 class="text-[15px] font-bold text-gray-200 mb-1">{{ $t('Access log') }}</h3>
                             <p class="text-[13px] text-gray-400 mb-2">{{ $t('Every time an admin opened a member\'s data. Members can read their own lines. Nobody can change or delete this log.') }}</p>
                             <p v-if="!team.audit.length" class="text-[13px] text-gray-500 italic">{{ $t('Nothing opened so far.') }}</p>
