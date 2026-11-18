@@ -125,8 +125,31 @@ def get(sid: int) -> dict | None:
             "tools": json.loads(row["tools"] or "[]"), "parts": parts}
 
 
+def owner_of_call(sid: int) -> int | None:
+    """Whose call it is: a member's id, or None."""
+    conn = store.connect()
+    try:
+        row = conn.execute("SELECT user_id FROM sent_calls WHERE id = ?", (sid,)).fetchone()
+    finally:
+        conn.close()
+    return None if row is None else row["user_id"]
+
+
+def owner_of_request(session: str, key: str) -> int | None:
+    """Whose request (a row of the History list) it is: a member's id, or None."""
+    conn = store.connect()
+    try:
+        if key.startswith("call-") and key[5:].isdigit():
+            row = conn.execute("SELECT user_id FROM sent_calls WHERE id = ? AND COALESCE(session, '') = ?", (int(key[5:]), session)).fetchone()
+        else:
+            row = conn.execute("SELECT user_id FROM sent_calls WHERE task_id = ? AND COALESCE(session, '') = ? ORDER BY id LIMIT 1", (key, session)).fetchone()
+    finally:
+        conn.close()
+    return None if row is None else row["user_id"]
+
+
 def recent(limit: int = 100, role: str | None = None, project: str | None = None,
-           session: str | None = None) -> list[dict]:
+           session: str | None = None, owner="all") -> list[dict]:
     """The kept calls, newest first, without their text: {id, ts, role, model,
     project, session, chars}. For the Dashboard's list. `session` keeps one chat's
     calls ("" = the calls made outside any chat)."""
@@ -137,7 +160,10 @@ def recent(limit: int = 100, role: str | None = None, project: str | None = None
         where.append("project = ?"); args.append(project)
     if session is not None:
         where.append("COALESCE(session, '') = ?"); args.append(session)
-    sql = ("SELECT id, ts, role, model, project, session, chars FROM sent_calls"
+    clause, more = store.owner_clause("user_id", owner)
+    if clause:
+        where.append(clause); args.extend(more)
+    sql = ("SELECT id, ts, role, model, project, session, chars, user_id FROM sent_calls"
            + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC LIMIT ?")
     conn = store.connect()
     try:
@@ -173,7 +199,7 @@ def _request_text(conn, refs: list) -> str:
 
 
 def requests(project: str | None = None, since: float | None = None, archived: bool = False,
-             query: str = "", limit: int = 300) -> list[dict]:
+             query: str = "", limit: int = 300, owner="all", hidden=()) -> list[dict]:
     """The kept calls as a flat list of requests, the most recent first (Dashboard -> History): one row per
     thing the user asked, whatever its chat: {key, session, title, known, project, reply, role, prompt, ts, last,
     calls, ids, chars, models}. A reply's calls (the Conductor's, the executor's, the scout's) share a task id; a
@@ -185,9 +211,12 @@ def requests(project: str | None = None, since: float | None = None, archived: b
     where, args = ["COALESCE(s.archived, 0) = ?"], [int(archived)]
     if project is not None:
         where.append("COALESCE(c.project, '') = ?"); args.append(project)
+    clause, more = store.owner_clause("c.user_id", owner)
+    if clause:
+        where.append(clause); args.extend(more)
     conn = store.connect()
     try:
-        rows = conn.execute("SELECT c.id, c.ts, COALESCE(c.session, '') AS session, c.task_id, c.role, c.model, c.chars, "
+        rows = conn.execute("SELECT c.id, c.ts, c.user_id, COALESCE(c.session, '') AS session, c.task_id, c.role, c.model, c.chars, "
                             "COALESCE(c.project, '') AS project, s.title AS title, s.id AS known "
                             "FROM sent_calls c LEFT JOIN sessions s ON s.id = c.session WHERE " + " AND ".join(where)
                             + " ORDER BY c.id", args).fetchall()
@@ -204,14 +233,18 @@ def requests(project: str | None = None, since: float | None = None, archived: b
             title = mask_secrets(calls[0]["title"] or "")[0]
             models = sorted({c["model"] for c in calls if c["model"]})
             prompt = ""
-            if reply:
+            private = calls[0]["user_id"] in hidden       # a member who did not agree: numbers and models only
+            if private:
+                title = ""
+            elif reply:
                 refs = json.loads(conn.execute("SELECT parts FROM sent_calls WHERE id = ?", (first["id"],)).fetchone()["parts"])
                 prompt = " ".join(_request_text(conn, refs).split())
             if words and not (words in title.lower() or any(words in m.lower() for m in models) or words in prompt.lower()):
                 continue
             out.append({"key": key, "session": session, "title": title, "known": calls[0]["known"] is not None,
                         "project": calls[0]["project"], "reply": reply, "role": first["role"], "prompt": prompt[:PROMPT_CUT], "ts": calls[0]["ts"],
-                        "last": last, "calls": len(calls), "ids": [c["id"] for c in calls], "chars": sum(c["chars"] or 0 for c in calls), "models": models})
+                        "last": last, "calls": len(calls), "ids": [c["id"] for c in calls], "chars": sum(c["chars"] or 0 for c in calls), "models": models,
+                        "user_id": calls[0]["user_id"]})
             if len(out) >= max(1, min(int(limit), 1000)):
                 break
     finally:
@@ -219,12 +252,15 @@ def requests(project: str | None = None, since: float | None = None, archived: b
     return out
 
 
-def count(project: str | None = None, since: float | None = None, archived: bool = False) -> int:
+def count(project: str | None = None, since: float | None = None, archived: bool = False, owner="all") -> int:
     """How many requests `requests()` would list for the same filters, without reading any text (a header's
     number while the list is closed). A search needs the text: count that with len(requests(...))."""
     where, args = ["COALESCE(s.archived, 0) = ?"], [int(archived)]
     if project is not None:
         where.append("COALESCE(c.project, '') = ?"); args.append(project)
+    clause, more = store.owner_clause("c.user_id", owner)
+    if clause:
+        where.append(clause); args.extend(more)
     having = " HAVING MAX(c.ts) >= ?" if since is not None else ""
     if since is not None:
         args.append(since)

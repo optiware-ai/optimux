@@ -140,7 +140,7 @@ def test_the_kept_calls_can_be_listed_newest_first():
     rows_ = sent.recent(10)
     assert [r["id"] for r in rows_[:2]] == [b, a]
     assert rows_[0] == {"id": b, "ts": rows_[0]["ts"], "role": "commit_message", "model": "m2", "project": "beta",
-                        "session": "", "chars": len("write the message")}
+                        "session": "", "chars": len("write the message"), "user_id": None}
     assert [r["id"] for r in sent.recent(10, role="curator")] == [a] and sent.recent(1)[0]["id"] == b
     assert "parts" not in rows_[0]                       # the list is light: the text comes with get()
 

@@ -365,6 +365,11 @@ def consent_history(user_id: int) -> list[dict]:
 
 # ---------------------------------------------------------------- the access log
 
+def private_users() -> set[int]:
+    """Members whose chats and prompts the admin may not read: all who have not agreed (or are disabled)."""
+    return {r["id"] for r in _query("SELECT id FROM users WHERE role = 'user' AND NOT (status = 'active' AND chat_access = 1)")}
+
+
 def log_admin_access(admin_id: int, user_id: int, kind: str, ref: str = "") -> None:
     if kind not in LOG_KINDS:
         raise TeamError(tr("Unknown kind of access."))

@@ -99,7 +99,7 @@ def save_state(sid: str, history: list, tier: str | None, tier_pinned: bool,
 
 
 _LIST_SQL = """
-    SELECT s.id, s.project, s.title, s.created, s.updated, s.archived, s.turns, s.tier,
+    SELECT s.id, s.project, s.user_id, s.title, s.created, s.updated, s.archived, s.turns, s.tier,
            COALESCE((SELECT SUM(u.cost) FROM usage u WHERE u.session = s.id), 0) AS cost,
            COALESCE((SELECT SUM(CASE WHEN u.cost IS NULL THEN 1 ELSE 0 END) FROM usage u WHERE u.session = s.id), 0)
                AS calls_without_cost
@@ -107,8 +107,10 @@ _LIST_SQL = """
 """
 
 
-def list_sessions(project: str | None = None, archived: bool = False, query: str = "", limit: int = 200) -> list[dict]:
-    """Newest first. project=None lists all projects; "" the Workspace's (no project)."""
+def list_sessions(project: str | None = None, archived: bool = False, query: str = "", limit: int = 200,
+                  owner="all", hidden=()) -> list[dict]:
+    """Newest first. project=None lists all projects; "" the Workspace's (no project). `owner`: "all",
+    "me" (the install's own) or a member's id. A search never looks in the titles of `hidden` members."""
     where, args = ["s.archived = ?"], [int(archived)]
     if project is not None:
         where.append("COALESCE(s.project, '') = ?")
@@ -116,6 +118,13 @@ def list_sessions(project: str | None = None, archived: bool = False, query: str
     if query.strip():
         where.append("s.title LIKE ?")
         args.append(f"%{query.strip()}%")
+        if hidden:
+            where.append(f"(s.user_id IS NULL OR s.user_id NOT IN ({','.join('?' * len(hidden))}))")
+            args.extend(hidden)
+    clause, more = store.owner_clause("s.user_id", owner)
+    if clause:
+        where.append(clause)
+        args.extend(more)
     conn = store.connect()
     try:
         rows = conn.execute(_LIST_SQL + " WHERE " + " AND ".join(where) + " ORDER BY s.updated DESC LIMIT ?",
@@ -123,6 +132,16 @@ def list_sessions(project: str | None = None, archived: bool = False, query: str
     finally:
         conn.close()
     return [dict(r) | {"archived": bool(r["archived"]), "title": mask_secrets(r["title"] or "")[0]} for r in rows]
+
+
+def owner_of(sid: str) -> int | None:
+    """Whose chat it is: a member's id, or None (the install's own, or no such chat)."""
+    conn = store.connect()
+    try:
+        row = conn.execute("SELECT user_id FROM sessions WHERE id = ?", (sid,)).fetchone()
+    finally:
+        conn.close()
+    return None if row is None else row["user_id"]
 
 
 def project_of(sid: str) -> str | None:
@@ -173,11 +192,14 @@ def project_counts() -> dict:
     return {r["project"]: {"chats": r["chats"], "last_updated": r["last_updated"]} for r in rows}
 
 
-def latest(project: str) -> str | None:
+def latest(project: str, owner="me") -> str | None:
+    """The project's most recent chat of one owner ("me": the install's own, which is every chat in solo mode)."""
+    clause, more = store.owner_clause("user_id", owner)
     conn = store.connect()
     try:
-        row = conn.execute("SELECT id FROM sessions WHERE project = ? AND archived = 0 ORDER BY updated DESC LIMIT 1",
-                           (project or "",)).fetchone()
+        row = conn.execute("SELECT id FROM sessions WHERE project = ? AND archived = 0"
+                           + (" AND " + clause if clause else "") + " ORDER BY updated DESC LIMIT 1",
+                           (project or "", *more)).fetchone()
         return row["id"] if row else None
     finally:
         conn.close()

@@ -490,3 +490,12 @@ def info() -> dict:
         "latest_backup_time": os.path.getmtime(latest) if latest else None,
         "backup_check": backup_status(),
     }
+
+
+def owner_clause(column: str, owner="all") -> tuple[str, list]:
+    """SQL for "whose work": "all" no filter, "me" the install's own (NULL), or one member's id."""
+    if owner == "all":
+        return "", []
+    if owner == "me":
+        return f"{column} IS NULL", []
+    return f"{column} = ?", [int(owner)]

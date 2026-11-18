@@ -249,13 +249,17 @@ def import_jsonl(conn) -> int:
     return count
 
 
-def read_entries(project: str | None = None, since: float = 0) -> list[dict]:
+def read_entries(project: str | None = None, since: float = 0, owner="all") -> list[dict]:
     conn = _connect()
     try:
         sql, args = "SELECT * FROM usage WHERE ts >= ?", [since]
         if project is not None:
             sql += " AND COALESCE(project, '(unknown)') = ?"
             args.append(project)
+        clause, more = store.owner_clause("user_id", owner)
+        if clause:
+            sql += " AND " + clause
+            args.extend(more)
         rows = conn.execute(sql + " ORDER BY ts", args).fetchall()
     finally:
         conn.close()
@@ -268,7 +272,7 @@ def read_entries(project: str | None = None, since: float = 0) -> list[dict]:
     return out
 
 
-def daily(days: int = 30, project: str | None = None, now: float | None = None, by: str = "model") -> list[dict]:
+def daily(days: int = 30, project: str | None = None, now: float | None = None, by: str = "model", owner="all") -> list[dict]:
     """Per local day and model (or project, with by="project", v0.8) for the last
     `days` days (today included): calls, tokens and cost. Days without usage are omitted."""
     group = "COALESCE(project, '(unknown)')" if by == "project" else "model"
@@ -284,6 +288,10 @@ def daily(days: int = 30, project: str | None = None, now: float | None = None, 
     if project is not None:
         sql += " AND COALESCE(project, '(unknown)') = ?"
         args.append(project)
+    clause, more = store.owner_clause("user_id", owner)
+    if clause:
+        sql += " AND " + clause
+        args.extend(more)
     conn = _connect()
     try:
         rows = conn.execute(sql + f" GROUP BY day, {group} ORDER BY day, {group}", args).fetchall()
@@ -364,7 +372,7 @@ def role_totals(role: str, since: float = 0) -> dict:
     return {"calls": row["calls"], "cost": float(row["cost"])}
 
 
-def summary(now: float | None = None, project: str | None = None) -> dict:
+def summary(now: float | None = None, project: str | None = None, owner="all") -> dict:
     """Totals for today and this calendar month (local time), the last 7 days and all time,
     each broken down by role and by model."""
     now = now if now is not None else time.time()
@@ -374,7 +382,7 @@ def summary(now: float | None = None, project: str | None = None) -> dict:
     periods = {"today": start_today, "last_7_days": start_week, "this_month": start_month, "all_time": 0}
     out = {name: {"total": _empty(), "by_role": {}, "by_model": {}, "by_project": {}, "by_skill": {},
                   "skill_drafts": {}, "memory_updates": {}} for name in periods}
-    for e in read_entries(project=project):
+    for e in read_entries(project=project, owner=owner):
         ts = e.get("ts", 0)
         for name, start in periods.items():
             if ts >= start:

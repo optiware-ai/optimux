@@ -715,10 +715,62 @@ async def remove_model(model_id: str):
     delete_model(model_id)
     return {"status": "success"}
 
+# ---- Team version, step 4b: what the admin sees of members' work.
+# Numbers are always visible. A chat's title, a prompt and what was sent only for a member who agreed,
+# and every opening of such a member's data is logged. In solo mode none of this applies.
+
+def _owner(user: str | None):
+    """The ?user= filter: "all" (default), "me" (the install's own) or a member's id."""
+    if not team.enabled() or user in (None, "", "all"):
+        return "all"
+    if user == "me":
+        return "me"
+    if user.isdigit() and team.get(int(user)):
+        return int(user)
+    raise HTTPException(422, tr("No such member."))
+
+
+def _named(rows: list[dict]) -> list[dict]:
+    """Team mode: each row says whose it is and whether its text is private to the admin."""
+    if not team.enabled():
+        return rows
+    admin = team.get(team.first_admin_id() or 0)
+    names = {u["id"]: u["name"] for u in team.list_users()}
+    private = team.private_users()
+    for r in rows:
+        uid = r.get("user_id")
+        r["user"] = names.get(uid) if uid else (admin["name"] if admin else None)
+        r["private"] = uid in private
+        if r["private"] and "title" in r:
+            r["title"] = ""
+    return rows
+
+
+def _read_block(owner_id: int | None, kind: str, ref: str = "") -> str:
+    """"" when the admin may read this (and the opening is logged), else why not."""
+    if owner_id is None or not team.enabled():
+        return ""
+    if not team.admin_may_read_chats(owner_id):
+        return tr("This member has not agreed to let the admin read their chats.")
+    team.log_admin_access(team.first_admin_id() or 0, owner_id, kind, ref)
+    return ""
+
+
+def chat_read_block(sid: str) -> str:
+    return _read_block(chat_store.owner_of(sid), "chat", sid)
+
+
+def _log_usage_look(owner) -> None:
+    if isinstance(owner, int):
+        team.log_admin_access(team.first_admin_id() or 0, owner, "usage", "")
+
+
 @app.get("/api/usage")
-async def get_usage(project: str | None = None):
-    """Usage totals; ?project=<name> limits them to one project."""
-    return usage_meter.summary(project=project)
+async def get_usage(project: str | None = None, user: str | None = None):
+    """Usage totals; ?project=<name> limits them to one project, ?user= to one member (id) or "me"."""
+    owner = _owner(user)
+    _log_usage_look(owner)
+    return usage_meter.summary(project=project, owner=owner)
 
 class BudgetPayload(BaseModel):
     project: str
@@ -763,13 +815,15 @@ class SessionDelete(BaseModel):
 
 @app.get("/api/sessions")
 async def list_sessions(project: str | None = None, all_projects: bool = False,
-                        archived: bool = False, q: str = "", limit: int = 200):
+                        archived: bool = False, q: str = "", limit: int = 200, user: str | None = None):
     """Stored chats, newest first: the active project's by default; project=""
     is the Workspace (chats with no project). At most `limit` (1 to 5000)."""
     if not all_projects and project is None:
         project = active_project()
-    return chat_store.list_sessions(None if all_projects else project, archived, q,
-                                    max(1, min(limit, 5000)))
+    owner = _owner(user)
+    return _named(chat_store.list_sessions(None if all_projects else project, archived, q,
+                                           max(1, min(limit, 5000)), owner=owner,
+                                           hidden=team.private_users() if team.enabled() else ()))
 
 
 @app.post("/api/sessions/{sid}/rename")
@@ -803,11 +857,13 @@ async def delete_session(sid: str, payload: SessionDelete):
 
 
 @app.get("/api/usage/daily")
-async def get_usage_daily(days: int = 30, project: str | None = None, by: str = "model"):
+async def get_usage_daily(days: int = 30, project: str | None = None, by: str = "model", user: str | None = None):
     """Cost and tokens per day and model (or per day and project, by=project) for charts."""
     if by not in ("model", "project"):
         raise HTTPException(422, "by must be model or project.")
-    return usage_meter.daily(max(1, min(days, 366)), project, by=by)
+    owner = _owner(user)
+    _log_usage_look(owner)
+    return usage_meter.daily(max(1, min(days, 366)), project, by=by, owner=owner)
 
 
 @app.get("/api/savings")
@@ -831,25 +887,30 @@ async def rate_task(task_id: str, payload: TaskRatingPayload):
 
 
 @app.get("/api/sent")
-async def sent_calls(limit: int = 100, role: str | None = None, session: str | None = None):
+async def sent_calls(limit: int = 100, role: str | None = None, session: str | None = None, user: str | None = None):
     """The kept calls, newest first, without their text (Dashboard → History). `session`
     keeps one chat's calls ("" = those made outside any chat)."""
-    return {"calls": await asyncio.to_thread(sent_lib.recent, limit, role or None, None, session)}
+    owner = _owner(user)
+    return {"calls": _named(await asyncio.to_thread(sent_lib.recent, limit, role or None, None, session, owner))}
 
 
 @app.get("/api/sent/requests")
 async def sent_requests(project: str | None = None, all_projects: bool = False, archived: bool = False,
-                        since: float = 0, q: str = "", limit: int = 300, count_only: bool = False):
+                        since: float = 0, q: str = "", limit: int = 300, count_only: bool = False,
+                        user: str | None = None):
     """The kept calls as a flat list of requests, the most recent first (Dashboard → History): one
     row per thing the user asked, with its chat's title. The filters are the chat list's (since:
     seconds, 0 = any time); `q` looks in the title, the models and the whole request. `count` is how
     many there are (the list stops at `limit`); `count_only` returns just that, for a closed header."""
     where = (None if all_projects else project, since or None, archived)
+    owner = _owner(user)
+    hidden = team.private_users() if team.enabled() else ()
     if count_only:
-        n = len(await asyncio.to_thread(sent_lib.requests, *where, q, 1000)) if q.strip() else await asyncio.to_thread(sent_lib.count, *where)
+        n = (len(await asyncio.to_thread(sent_lib.requests, *where, q, 1000, owner, hidden)) if q.strip()
+             else await asyncio.to_thread(sent_lib.count, *where, owner))
         return {"count": n}
-    rows = await asyncio.to_thread(sent_lib.requests, *where, q, limit)
-    return {"requests": rows, "count": len(rows) if q.strip() or len(rows) < limit else await asyncio.to_thread(sent_lib.count, *where)}
+    rows = _named(await asyncio.to_thread(sent_lib.requests, *where, q, limit, owner, hidden))
+    return {"requests": rows, "count": len(rows) if q.strip() or len(rows) < limit else await asyncio.to_thread(sent_lib.count, *where, owner)}
 
 
 @app.get("/api/sent/prune-preview")
@@ -872,6 +933,8 @@ async def sent_prune(payload: PrunePayload):
 @app.get("/api/sent/request")
 async def sent_request(session: str = "", key: str = ""):
     """One request as a timeline (meta-prompt, Conductor, executor), each call with only what it added."""
+    if why := _read_block(await asyncio.to_thread(sent_lib.owner_of_request, session, key), "sent", f"{session}/{key}"):
+        return JSONResponse({"detail": why}, status_code=403)
     found = await asyncio.to_thread(sent_lib.request_detail, session, key)
     if found is None:
         return JSONResponse({"detail": tr("This prompt is no longer kept.")}, status_code=404)
@@ -886,6 +949,8 @@ async def sent_request(session: str = "", key: str = ""):
 @app.get("/api/sent/{sid}")
 async def sent_call(sid: int):
     """What one model call was sent (v0.8): its parts, as they left the machine."""
+    if why := _read_block(await asyncio.to_thread(sent_lib.owner_of_call, sid), "sent", str(sid)):
+        return JSONResponse({"detail": why}, status_code=403)
     found = await asyncio.to_thread(sent_lib.get, sid)
     if found is None:
         return JSONResponse({"detail": tr("This prompt is no longer kept.")}, status_code=404)
@@ -5207,7 +5272,7 @@ def missing_project_reason(name: str) -> str | None:
 def last_open_chat() -> str | None:
     """The most recent chat, in any project, whose project folder is still in the
     Workspace (chats of archived or deleted projects are skipped)."""
-    for s in chat_store.list_sessions(None, False, "", limit=100):
+    for s in chat_store.list_sessions(None, False, "", limit=100, owner="me"):
         if missing_project_reason(s["project"]) is None:
             return s["id"]
     return None
@@ -5235,6 +5300,11 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
             switched = switch_active_project(target)
         except Exception as e:
             await send(websocket, "error", tr("Can't switch to {v}: {e}", v=target or 'the Workspace', e=e))
+    if sid and (why := chat_read_block(sid)):       # a member's chat, without their agreement
+        await send(websocket, "error", why)
+        reset_chat(session)
+        await send(websocket, "session_loaded", session=None, events=[], active_project_changed=switched)
+        return
     data = chat_store.get(sid) if sid else None
     if data is None:
         reset_chat(session)  # nothing to open: start clean, as the UI does
@@ -5243,6 +5313,12 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
     summary = {k: data[k] for k in ("id", "project", "title", "created", "updated", "turns", "tier", "cost",
                                     "calls_without_cost", "archived")}
     reason = missing_project_reason(data["project"]) if data["project"] != active_project() else None
+    if chat_store.owner_of(sid) is not None:        # a member's chat the admin may read: to read, not to continue
+        reset_chat(session)
+        await send(websocket, "session_loaded", session=summary, events=data["events"], times=data["times"],
+                   read_only=True, reason=tr("This is a member's chat: you can read it, not continue it."),
+                   ratings=tasks_lib.ratings(data["id"]))
+        return
     if reason:
         # Its project folder is gone (archived or deleted): show the chat to read, but
         # don't switch to that project or continue the chat, since commands couldn't run there.

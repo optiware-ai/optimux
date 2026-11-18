@@ -2723,5 +2723,7 @@
  "Tick the projects each member may use. Members see only their own projects; you can use all of them.": "Spunta i progetti che ogni membro può usare. I membri vedono solo i propri progetti; tu puoi usarli tutti.",
  "Who works on which project": "Chi lavora su quale progetto",
  "Your projects": "I tuoi progetti",
- "{name} on {project}": "{name} su {project}"
+ "{name} on {project}": "{name} su {project}",
+ "This member has not agreed to let the admin read their chats.": "Questo membro non ha accettato che l'admin legga le sue chat.",
+ "This is a member's chat: you can read it, not continue it.": "Questa è la chat di un membro: puoi leggerla, non continuarla."
 }

@@ -27,3 +27,5 @@
 - **`get(sid)` returns `times` (p79):** the stored time of each event, in step with `events`; `session_loaded` sends it so the page can show when a reply was made.
 
 - **Owner (team step 4a):** the row also stores `user_id` from `team.current_user_id()` (NULL = the install's own). Nothing reads it yet.
+
+- **Owner filter (team step 4b):** the list/read functions take `owner=` ("all" default, "me" = NULL, or a member id; `store.owner_clause`). `list_sessions(..., owner, hidden)` (a search skips hidden members' titles), `owner_of(sid)`, `latest(project, owner="me")` so the admin never lands in a member's chat.
