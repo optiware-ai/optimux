@@ -35,6 +35,12 @@ NAME = re.compile(r"[\w][\w .'\-]{1,39}")
 LOG_KINDS = ("chat", "sent", "usage")
 
 DISABLED_TEXT = tk("Your account has been disabled by the admin. Please contact your admin.")
+DISMISSED_TEXT = tk("Your account has been closed by the admin. Please contact your admin.")
+INACTIVE = ("disabled", "dismissed")        # can't sign in; chats, usage and history stay
+
+
+def inactive_text(status: str) -> str:
+    return DISMISSED_TEXT if status == "dismissed" else DISABLED_TEXT
 
 CONSENT_TEXT = tk(
     "Your admin always sees your usage of the models: time, model, cost and counts. "
@@ -139,7 +145,7 @@ def _live(created: float, last_seen: float, now: float) -> bool:
 
 def _presence(row) -> tuple[bool, float | None]:
     now = time.time()
-    if row["status"] == "disabled":
+    if row["status"] in INACTIVE:
         return False, None
     if row["role"] == "admin":      # browsers signed in before team mode belong to the admin too
         sessions = _query("SELECT created, last_seen FROM logins WHERE user_id IS NULL OR user_id = ?", (row["id"],))
@@ -203,6 +209,8 @@ def reinvite(user_id: int) -> dict:
     user = get(user_id)
     if not user or user["role"] != "user":
         raise TeamError(tr("No such member."), 404)
+    if user["status"] == "dismissed":
+        raise TeamError(tr("This member was dismissed. Restore them first."), 409)
     token = secrets.token_urlsafe(24)
     expires = time.time() + INVITE_SECONDS
     _write("UPDATE users SET status = 'invited', password = NULL, invite_hash = ?, invite_expires = ? WHERE id = ?",
@@ -252,7 +260,7 @@ def activate(token: str, password: str, chat_access: bool) -> dict | None:
 def check_login(name: str, password: str) -> dict | None:
     """A member's name and password. Admin accounts never match here. A disabled member with the
     right password is returned too (status 'disabled') so they can be told why; the caller must not sign them in."""
-    rows = _query("SELECT * FROM users WHERE name = ? AND role = 'user' AND status IN ('active', 'disabled') AND password IS NOT NULL",
+    rows = _query("SELECT * FROM users WHERE name = ? AND role = 'user' AND status IN ('active', 'disabled', 'dismissed') AND password IS NOT NULL",
                   (name.strip() if isinstance(name, str) else "",))
     if not rows or not isinstance(password, str) or len(password) > auth.MAX_PASSWORD:
         auth.hash_password("timing-equalizer")      # same cost whether or not the name exists
@@ -281,6 +289,8 @@ def set_disabled(user_id: int, disabled: bool) -> dict:
     user = get(user_id)
     if not user or user["role"] != "user":
         raise TeamError(tr("No such member."), 404)
+    if user["status"] == "dismissed":
+        raise TeamError(tr("This member was dismissed. Restore them first."), 409)
     if disabled:
         # The sessions stay for now: the member's open page asks, is told why, and signs itself out.
         _write("UPDATE users SET status = 'disabled' WHERE id = ?", (user_id,))
@@ -288,6 +298,23 @@ def set_disabled(user_id: int, disabled: bool) -> dict:
         has_password = bool(_query("SELECT 1 FROM users WHERE id = ? AND password IS NOT NULL", (user_id,)))
         _write("UPDATE users SET status = ? WHERE id = ?", ("active" if has_password else "invited", user_id))
         auth.end_user_sessions(user_id)         # a fresh sign-in after being enabled again
+    return get(user_id)
+
+
+def set_dismissed(user_id: int, dismissed: bool) -> dict:
+    """Close a member out (they have left the team): they can't sign in, they are off every project and
+    their link is void. Chats, usage and history stay. Restoring gives the account back, without projects."""
+    user = get(user_id)
+    if not user or user["role"] != "user":
+        raise TeamError(tr("No such member."), 404)
+    if dismissed and user["status"] != "dismissed":
+        # Like disabling, the sessions stay so an open page is told why and signs itself out.
+        _write("UPDATE users SET status = 'dismissed', invite_hash = NULL, invite_expires = NULL WHERE id = ?", (user_id,))
+        _write("DELETE FROM project_members WHERE user_id = ?", (user_id,))
+    elif not dismissed and user["status"] == "dismissed":
+        has_password = bool(_query("SELECT 1 FROM users WHERE id = ? AND password IS NOT NULL", (user_id,)))
+        _write("UPDATE users SET status = ? WHERE id = ?", ("active" if has_password else "invited", user_id))
+        auth.end_user_sessions(user_id)
     return get(user_id)
 
 
@@ -300,6 +327,8 @@ def set_member(project: str, user_id: int, member: bool) -> None:
         raise TeamError(tr("No such member."), 404)
     if user["role"] != "user":
         raise TeamError(tr("The admin is on every project already."))
+    if member and user["status"] == "dismissed":
+        raise TeamError(tr("This member was dismissed. Restore them first."), 409)
     if member:
         _write("INSERT OR IGNORE INTO project_members (project, user_id, added) VALUES (?, ?, ?)", (project, user_id, time.time()))
     else:

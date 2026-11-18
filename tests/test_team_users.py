@@ -276,7 +276,7 @@ def test_the_account_page_shows_the_notice_then_signs_itself_out():
     js = open(os.path.join(root, "account.js")).read()
     html = open(os.path.join(root, "account.html")).read()
     assert 'id="disabled-note"' in html
-    assert "data.disabled" in js and "setTimeout" in js and "disabled=1" in js
+    assert "data.disabled" in js and "setTimeout" in js and "/login?disabled=" in js and "closed" in js
     login = open(os.path.join(root, "login.js")).read()
     assert "disabled" in login
 

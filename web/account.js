@@ -73,7 +73,7 @@
         try { st = await (await fetch('/auth/status', { credentials: 'same-origin' })).json(); } catch (_) {}
         await translate(st.language);
         const { res, data } = await api('/api/me');
-        if (data.disabled) { disabledNotice(data.detail); return; }
+        if (data.disabled) { disabledNotice(data.detail, data.closed); return; }
         if (!res.ok || !data.user || data.admin) { location.replace('/login'); return; }
         $('who').textContent = data.user.name;
         $('consent-text').textContent = data.consent_text || '';
@@ -85,7 +85,7 @@
 
     // The admin may disable this account while the page is open: say so clearly, then sign out for real
     let leaving = false;
-    function disabledNotice(detail) {
+    function disabledNotice(detail, closed) {
         if (leaving) return;
         leaving = true;
         $('disabled-note').textContent = (detail || tr('Your account has been disabled by the admin. Please contact your admin.')) +
@@ -94,13 +94,13 @@
         for (const id of ['save', 'change-password']) $(id).disabled = true;
         setTimeout(async () => {
             await api('/auth/logout', {});
-            location.replace('/login?disabled=1');
+            location.replace('/login?disabled=' + (closed ? 'closed' : '1'));
         }, 6000);
     }
     async function watchAccount() {
         if (leaving) return;
         const { res, data } = await api('/api/me');
-        if (data.disabled) disabledNotice(data.detail);
+        if (data.disabled) disabledNotice(data.detail, data.closed);
         else if (res.status === 401) location.replace('/login');
         else if (data.projects) paintProjects(data.projects);       // the admin may add or remove projects
     }

@@ -281,9 +281,9 @@ async def guard(request: Request, call_next):
                 return response
             request.state.login_id = login_id
             who = team.session_user(login_id)
-            if who and who["role"] == "user" and who["status"] == "disabled" and path not in MEMBER_PAGES:
+            if who and who["role"] == "user" and who["status"] in team.INACTIVE and path not in MEMBER_PAGES:
                 # The member's open page asks (for example /api/me) and learns why it can't go on
-                response = JSONResponse({"detail": tr(team.DISABLED_TEXT), "disabled": True}, status_code=403)
+                response = JSONResponse({"detail": tr(team.inactive_text(who["status"])), "disabled": True, "closed": who["status"] == "dismissed"}, status_code=403)
                 security_headers(request, response)
                 return response
             if who and who["role"] == "user" and path not in MEMBER_PAGES and path not in MEMBER_PATHS and not path.startswith(MEMBER_PREFIXES):
@@ -1867,6 +1867,10 @@ class DisabledPayload(BaseModel):
     disabled: bool
 
 
+class DismissedPayload(BaseModel):
+    dismissed: bool
+
+
 class ConsentPayload(BaseModel):
     chat_access: bool
 
@@ -2074,8 +2078,8 @@ async def _member_login(payload: LoginPayload, request: Request, ip: str):
     if not user:
         auth.password_failed(ip)
         raise HTTPException(401, "Wrong name or password.")
-    if user["status"] == "disabled":        # right password: say why (not a failed attempt)
-        raise HTTPException(403, tr(team.DISABLED_TEXT))
+    if user["status"] in team.INACTIVE:     # right password: say why (not a failed attempt)
+        raise HTTPException(403, tr(team.inactive_text(user["status"])))
     auth.succeeded(ip)
     team.touch_login(user["id"])
     return _signed_in(request, JSONResponse({"ok": True}), user_id=user["id"])
@@ -2343,6 +2347,16 @@ async def api_team_reinvite(user_id: int, request: Request):
 async def api_team_disabled(user_id: int, payload: DisabledPayload, request: Request):
     _team_admin(request)
     return _team_call(team.set_disabled, user_id, payload.disabled)
+
+
+@app.post("/api/team/users/{user_id}/dismissed")
+async def api_team_dismissed(user_id: int, payload: DismissedPayload, request: Request):
+    """Close a member out (they have left): signed out, off every project, no budget. History stays."""
+    _team_admin(request)
+    out = _team_call(team.set_dismissed, user_id, payload.dismissed)
+    if payload.dismissed:
+        budgets.save_user_budget(user_id, None)
+    return out
 
 
 @app.get("/api/team/projects")

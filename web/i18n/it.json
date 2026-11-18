@@ -596,7 +596,7 @@
  "Dev server": "Server di sviluppo",
  "Dev server port (and path)": "Porta del server di sviluppo (e percorso)",
  "Disconnected from the Optimux server; retrying": "Disconnesso dal server di Optimux; nuovo tentativo in corso",
- "Dismiss": "Ignora",
+ "Dismiss": "Congeda",
  "Display Name": "Nome visualizzato",
  "Display name": "Nome visualizzato",
  "Do this task without a plan": "Fai questo compito senza un piano",
@@ -2772,5 +2772,14 @@
  "What members may do without asking": "Cosa possono fare i membri senza chiedere",
  "Members start strict: every command and file change waits for their own approval, and their commands have no network. Loosen it for a project here. This does not change your own level for the project. Pushes, deletions, installs and paths outside the project always ask, and a member can never push to GitHub.": "I membri partono con regole strette: ogni comando e ogni modifica ai file aspetta la loro approvazione, e i loro comandi non hanno rete. Qui puoi allentarle per un progetto. Non cambia il tuo livello per il progetto. Push, cancellazioni, installazioni e percorsi fuori dal progetto chiedono sempre, e un membro non può mai fare push su GitHub.",
  "Members may": "I membri possono",
- "Commands can use the network": "I comandi possono usare la rete"
+ "Commands can use the network": "I comandi possono usare la rete",
+ "Your account has been closed by the admin. Please contact your admin.": "Il tuo account è stato chiuso dall'admin. Contatta il tuo admin.",
+ "This member was dismissed. Restore them first.": "Questo membro è stato congedato. Ripristinalo prima.",
+ "Dismissed": "Congedato",
+ "dismissed": "congedato",
+ "Dismiss {name}?": "Congedare {name}?",
+ "{name} is signed out and cannot sign in, is taken off every project and loses their budget. Their chats, usage and history are kept, and you can restore the account later.": "{name} viene scollegato e non può accedere, viene tolto da ogni progetto e perde il budget. Le sue chat, l'uso e la cronologia restano, e puoi ripristinare l'account più avanti.",
+ "For someone who has left. They are signed out and cannot sign in, they are taken off every project and their budget is removed, and they disappear from this list. Their chats, usage and history are kept. You can restore them later.": "Per chi se n'è andato. Viene scollegato e non può accedere, viene tolto da ogni progetto, il suo budget viene rimosso e sparisce da questo elenco. Le sue chat, l'uso e la cronologia restano. Puoi ripristinarlo più avanti.",
+ "Give {name} the account back. It comes back without projects or budget; you choose those again.": "Restituisci l'account a {name}. Torna senza progetti né budget: li scegli di nuovo tu.",
+ "Show dismissed members ({n})": "Mostra i membri congedati ({n})"
 }

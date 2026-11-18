@@ -2166,7 +2166,7 @@ const optimuxApp = createApp({
         const memberOptions = Vue.computed(() => {
             const admin = team.users.find(u => u.role === 'admin');
             return [{ value: 'me', label: tr('Me ({name})', { name: admin ? admin.name : '' }) },
-                    ...team.users.filter(u => u.role !== 'admin').map(u => ({ value: String(u.id), label: u.name }))];
+                    ...team.users.filter(u => u.role !== 'admin').map(u => ({ value: String(u.id), label: u.status === 'dismissed' ? u.name + ' (' + tr('dismissed') + ')' : u.name }))];
         });
         const setHistoryUser = (v) => { historyPage.value.user = v || ''; fetchHistoryPage(); };
         const usageUser = ref('');
@@ -2865,7 +2865,7 @@ const optimuxApp = createApp({
 
         // ---- Team version (step 1): the admin's Team page. Solo installs never show it.
         const teamInfo = ref({ mode: 'solo', admin: true, user: null });
-        const team = Vue.reactive({ users: [], audit: [], projects: [], members: {}, rules: {}, name: '', error: '', invite: null, budgetForm: {} });
+        const team = Vue.reactive({ users: [], audit: [], projects: [], members: {}, rules: {}, name: '', error: '', invite: null, budgetForm: {}, showDismissed: false });
         const fetchMe = async () => { try { teamInfo.value = await (await fetch('/api/me')).json(); } catch (_) {} };
         const fetchTeam = async () => {
             await fetchMe();
@@ -2939,7 +2939,15 @@ const optimuxApp = createApp({
         const teamMessage = Vue.computed(() => !team.invite ? '' : tr(
             'Hello {name}, you are invited to Optimux. Open this link within {days} days to choose your password and what I may see:\n\n{link}\n\nI always see how much you use the models (time, model, cost). Reading your chats needs your own yes, which you give or refuse when you create the account and can change at any time.',
             { name: team.invite.name, days: 7, link: team.invite.link }));
-        const teamStatus = (u) => u.status === 'active' ? tr('Active') : u.status === 'invited' ? tr('Invited') : tr('Disabled');
+        const teamStatus = (u) => u.status === 'active' ? tr('Active') : u.status === 'invited' ? tr('Invited') : u.status === 'dismissed' ? tr('Dismissed') : tr('Disabled');
+        const teamMembers = Vue.computed(() => team.users.filter(u => u.role !== 'admin' && u.status !== 'dismissed'));
+        const teamDismissedCount = Vue.computed(() => team.users.filter(u => u.status === 'dismissed').length);
+        const teamPeople = Vue.computed(() => team.users.filter(u => u.status !== 'dismissed' || team.showDismissed));
+        const teamDismiss = async (u, dismissed) => {
+            if (dismissed && !await askConfirm({ title: tr('Dismiss {name}?', { name: u.name }),
+                text: tr('{name} is signed out and cannot sign in, is taken off every project and loses their budget. Their chats, usage and history are kept, and you can restore the account later.', { name: u.name }), ok: tr('Dismiss'), danger: true })) return;
+            if (await teamPost(`/api/team/users/${u.id}/dismissed`, { dismissed })) await fetchTeam();
+        };
         const teamWhen = (ts) => ts ? stampOf(ts) : '—';
         const teamKind = (k) => k === 'chat' ? tr('A chat') : k === 'sent' ? tr('What was sent to the models') : k === 'usage' ? tr('Usage') : k;
         const teamReads = (u) => u.role === 'admin' || u.status === 'invited' ? '—' : (u.chat_access ? tr('Yes') : tr('No'));
@@ -6793,7 +6801,7 @@ const optimuxApp = createApp({
             historyPage, historySorted, fetchHistoryPage, sortHistory, historyProjects, setHistoryProject,
             historyPageList, HISTORY_LIMIT, systemInfo, newToken, rotateToken,
             memberOptions, setHistoryUser, usageUser, setUsageUser,
-            teamInfo, team, fetchTeam, teamBudgetSave, teamRules, teamOn, teamAssign, teamInvite, teamReinvite, teamDisable, teamMessage, teamStatus, teamWhen, teamKind, teamReads,
+            teamInfo, team, fetchTeam, teamBudgetSave, teamRules, teamOn, teamAssign, teamInvite, teamReinvite, teamDisable, teamDismiss, teamMembers, teamDismissedCount, teamPeople, teamMessage, teamStatus, teamWhen, teamKind, teamReads,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,
             openChatFromDashboard, switchProject, routingRole, fmtAgo, overviewKpis, writeClipboard,

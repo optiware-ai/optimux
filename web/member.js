@@ -216,16 +216,16 @@
     }
 
     // The admin may disable the account or change the projects while the page is open
-    function disabledNotice(detail) {
+    function disabledNotice(detail, closed) {
         if (leaving) return;
         leaving = true;
         notice((detail || tr('Your account has been disabled by the admin. Please contact your admin.')) + ' ' + tr('You will be signed out in a few seconds.'));
         $('prompt').disabled = true; $('send').disabled = true;
-        setTimeout(async () => { await api('/auth/logout', {}); location.replace('/login?disabled=1'); }, 6000);
+        setTimeout(async () => { await api('/auth/logout', {}); location.replace('/login?disabled=' + (closed ? 'closed' : '1')); }, 6000);
     }
     async function check() {
         const { res, data } = await api('/api/me');
-        if (data.disabled) return disabledNotice(data.detail);
+        if (data.disabled) return disabledNotice(data.detail, data.closed);
         if (res.status === 401) { location.replace('/login'); return; }
         if (res.ok) paintBudget(data.budget);
         if (res.ok && data.projects && data.projects.join('|') !== projects.join('|')) {
@@ -297,7 +297,7 @@
         $('prompt').placeholder = tr('Ask for something. Enter sends, Shift+Enter adds a line.');
         $('reason').placeholder = tr('Reason (optional)');
         const { res, data } = await api('/api/me');
-        if (data.disabled) { disabledNotice(data.detail); return; }
+        if (data.disabled) { disabledNotice(data.detail, data.closed); return; }
         if (!res.ok || !data.user || data.admin) { location.replace('/login'); return; }
         $('who').textContent = data.user.name;
         paintBudget(data.budget);

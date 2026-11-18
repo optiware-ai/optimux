@@ -1171,39 +1171,44 @@
                                     <th class="py-1 pr-3 font-normal">{{ $t('Signed in') }}</th><th class="py-1 pr-3 font-normal">{{ $t('Last sign-in') }}</th><th class="py-1 pr-3 font-normal">{{ $t('May read chats') }}</th><th></th>
                                 </tr></thead>
                                 <tbody>
-                                    <tr v-for="u in team.users" :key="u.id" class="border-t border-gray-800" :data-user="u.name">
+                                    <tr v-for="u in teamPeople" :key="u.id" class="border-t border-gray-800" :data-user="u.name">
                                         <td class="py-1.5 pr-3 text-gray-100">{{ u.name }}</td>
                                         <td class="py-1.5 pr-3 text-gray-400">{{ u.role === 'admin' ? $t('Admin') : $t('Member') }}</td>
-                                        <td class="py-1.5 pr-3" :class="u.status === 'active' ? 'text-green-400' : u.status === 'disabled' ? 'text-red-300' : 'text-yellow-300'">{{ teamStatus(u) }}</td>
+                                        <td class="py-1.5 pr-3" :class="u.status === 'active' ? 'text-green-400' : u.status === 'disabled' ? 'text-red-300' : u.status === 'dismissed' ? 'text-gray-500' : 'text-yellow-300'">{{ teamStatus(u) }}</td>
                                         <td class="py-1.5 pr-3"><span :class="u.signed_in ? 'text-green-400' : 'text-gray-500'">{{ u.signed_in ? '● ' + $t('Yes') : $t('No') }}</span></td>
                                         <td class="py-1.5 pr-3 text-gray-400">{{ teamWhen(u.last_login) }}</td>
                                         <td class="py-1.5 pr-3 text-gray-300">{{ teamReads(u) }}</td>
                                         <td class="py-1.5 text-right whitespace-nowrap">
-                                            <template v-if="u.role !== 'admin'">
+                                            <template v-if="u.role !== 'admin' && u.status === 'dismissed'">
+                                                <button @click="teamDismiss(u, false)" :title="$t('Give {name} the account back. It comes back without projects or budget; you choose those again.', { name: u.name })" data-restore class="px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">{{ $t('Restore') }}</button>
+                                            </template>
+                                            <template v-else-if="u.role !== 'admin'">
                                                 <button @click="teamReinvite(u)" class="px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">{{ $t('New link') }}</button>
                                                 <button v-if="u.status !== 'disabled'" @click="teamDisable(u, true)" class="ml-1 px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">{{ $t('Disable') }}</button>
                                                 <button v-else @click="teamDisable(u, false)" class="ml-1 px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-gray-500 text-[13px]">{{ $t('Enable') }}</button>
+                                                <button @click="teamDismiss(u, true)" :title="$t('For someone who has left. They are signed out and cannot sign in, they are taken off every project and their budget is removed, and they disappear from this list. Their chats, usage and history are kept. You can restore them later.')" data-dismiss class="ml-1 px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-red-500 hover:text-red-300 text-[13px]">{{ $t('Dismiss') }}</button>
                                             </template>
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
+                            <label v-if="teamDismissedCount" class="mt-2 flex items-center gap-2 text-[13px] text-gray-400"><input type="checkbox" v-model="team.showDismissed" data-show-dismissed class="w-4 h-4 accent-blue-500">{{ $t('Show dismissed members ({n})', { n: teamDismissedCount }) }}</label>
                         </div>
 
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-x-auto">
                             <h3 class="text-[15px] font-bold text-gray-200 mb-1">{{ $t('Who works on which project') }}</h3>
                             <p class="text-[13px] text-gray-400 mb-2">{{ $t('Tick the projects each member may use. Members see only their own projects; you can use all of them.') }}</p>
                             <p v-if="!team.projects.length" class="text-[13px] text-gray-500 italic">{{ $t('No projects in the Workspace yet.') }}</p>
-                            <p v-else-if="!team.users.some(u => u.role !== 'admin')" class="text-[13px] text-gray-500 italic">{{ $t('Invite someone first.') }}</p>
+                            <p v-else-if="!teamMembers.length" class="text-[13px] text-gray-500 italic">{{ $t('Invite someone first.') }}</p>
                             <table v-else class="text-[14px]">
                                 <thead><tr class="text-left text-gray-500 text-[12px] uppercase tracking-wider">
                                     <th class="py-1 pr-6 font-normal">{{ $t('Project') }}</th>
-                                    <th v-for="u in team.users.filter(x => x.role !== 'admin')" :key="u.id" class="py-1 px-3 font-normal text-center">{{ u.name }}</th>
+                                    <th v-for="u in teamMembers" :key="u.id" class="py-1 px-3 font-normal text-center">{{ u.name }}</th>
                                 </tr></thead>
                                 <tbody>
                                     <tr v-for="p in team.projects" :key="p" class="border-t border-gray-800">
                                         <td class="py-1.5 pr-6 text-gray-100">{{ p }}</td>
-                                        <td v-for="u in team.users.filter(x => x.role !== 'admin')" :key="u.id" class="py-1.5 px-3 text-center">
+                                        <td v-for="u in teamMembers" :key="u.id" class="py-1.5 px-3 text-center">
                                             <input type="checkbox" data-assign :checked="teamOn(p, u)" @change="teamAssign(p, u, $event.target.checked)" :aria-label="$t('{name} on {project}', { name: u.name, project: p })" class="w-4 h-4 accent-blue-500">
                                         </td>
                                     </tr>
@@ -1236,10 +1241,10 @@
                         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-x-auto">
                             <h3 class="text-[15px] font-bold text-gray-200 mb-1">{{ $t('Monthly budget for each member') }}</h3>
                             <p class="text-[13px] text-gray-400 mb-2">{{ $t('What a member may spend this month in all their projects together. A project\'s own budget (Dashboard → Budgets) counts everyone working in it. When either one is used up and set to Stop, the member\'s next request is refused and they are told to ask you.') }}</p>
-                            <p v-if="!team.users.some(u => u.role !== 'admin')" class="text-[13px] text-gray-500 italic">{{ $t('Invite someone first.') }}</p>
+                            <p v-if="!teamMembers.length" class="text-[13px] text-gray-500 italic">{{ $t('Invite someone first.') }}</p>
                             <table v-else class="text-[14px]">
                                 <tbody>
-                                    <tr v-for="u in team.users.filter(x => x.role !== 'admin')" :key="u.id" class="border-t border-gray-800" :data-budget="u.name">
+                                    <tr v-for="u in teamMembers" :key="u.id" class="border-t border-gray-800" :data-budget="u.name">
                                         <td class="py-1.5 pr-4 text-gray-100">{{ u.name }}</td>
                                         <td class="py-1.5 pr-4 text-gray-400 whitespace-nowrap" data-budget-spent>{{ u.budget ? $t('{spent} of {limit} ({percent}%)', { spent: fmtCost(u.budget.spent), limit: fmtCost(u.budget.monthly_usd), percent: Math.round(u.budget.ratio * 100) }) : $t('No limit') }}</td>
                                         <td class="py-1.5 pr-2" v-if="team.budgetForm[u.id]">

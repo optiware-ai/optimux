@@ -669,6 +669,10 @@
    "class": "A",
    "note": "disable or re-enable a member; disabling signs them out"
   },
+  "POST /api/team/users/{user_id}/dismissed": {
+   "class": "A",
+   "note": "the admin closes a member out (left the team) or restores them"
+  },
   "POST /api/team/users/{user_id}/invite": {
    "class": "A",
    "note": "a new link; the old link and password stop working"

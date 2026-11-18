@@ -55,8 +55,10 @@
         // An invitation link keeps its token after the "#", which browsers never send to the server
         if (await openInvitation()) return;
         if (new URLSearchParams(location.search).has('disabled')) {
+            const closed = new URLSearchParams(location.search).get('disabled') === 'closed';
             history.replaceState(null, '', location.pathname);
-            fail(tr('Your account has been disabled by the admin. Please contact your admin.'));
+            fail(closed ? tr('Your account has been closed by the admin. Please contact your admin.')
+                : tr('Your account has been disabled by the admin. Please contact your admin.'));
         }
         // A member who opens the admin door is shown the form (signing in there replaces their session)
         const adminDoor = new URLSearchParams(location.search).has('admin');
