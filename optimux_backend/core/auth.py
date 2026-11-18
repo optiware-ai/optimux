@@ -328,6 +328,16 @@ def end_user_sessions(user_id: int) -> int:
         conn.close()
 
 
+def end_user_sessions_except(user_id: int, keep_id: str | None) -> int:
+    """Sign a member out everywhere but in the browser they are using now."""
+    conn = store.connect()
+    try:
+        with conn:
+            return conn.execute("DELETE FROM logins WHERE user_id = ? AND id != ?", (user_id, keep_id or "")).rowcount
+    finally:
+        conn.close()
+
+
 def list_sessions(current_id: str | None = None) -> list[dict]:
     """The install's own browsers (the admin's); team members' sessions are not listed here."""
     conn = store.connect()

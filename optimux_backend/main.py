@@ -2061,7 +2061,10 @@ async def auth_login(payload: LoginPayload, request: Request):
             raise HTTPException(401, "Wrong or already used code.")
     auth.succeeded(ip)
     await _announce("signin", request)      # the other browsers see who just signed in
-    return _signed_in(request, JSONResponse({"ok": True}), user_id=team.first_admin_id() if in_team else None)
+    admin_id = team.first_admin_id() if in_team else None
+    if admin_id:
+        team.touch_login(admin_id)          # the Team page's "Last sign-in"
+    return _signed_in(request, JSONResponse({"ok": True}), user_id=admin_id)
 
 
 async def _member_login(payload: LoginPayload, request: Request, ip: str):
@@ -2255,6 +2258,32 @@ async def api_me_memory_save(payload: MemberNotesPayload, request: Request):
     except memory_manager.MemoryTooLarge as e:
         raise HTTPException(400, str(e))
     return {"status": "success"}
+
+
+class PasswordChangePayload(BaseModel):
+    current: str
+    new: str
+
+
+@app.post("/api/me/password")
+async def api_me_password(payload: PasswordChangePayload, request: Request):
+    """A member changes their own password. A wrong current password counts like a failed sign-in;
+    the member's other browsers are signed out and this one stays."""
+    who = _member(request)
+    limited = _limited(request, password=True)
+    if limited:
+        return limited
+    ip = client_ip(request)
+    try:
+        done = await asyncio.to_thread(team.change_password, who["id"], payload.current, payload.new)
+    except auth.AuthError as e:
+        raise HTTPException(400, str(e))
+    if not done:
+        auth.password_failed(ip)
+        raise HTTPException(403, tr("That is not your current password."))
+    auth.succeeded(ip)
+    await asyncio.to_thread(auth.end_user_sessions_except, who["id"], request.state.login_id)
+    return {"ok": True}
 
 
 @app.post("/api/me/consent")

@@ -388,7 +388,7 @@
  "Cerebras": "Cerebras",
  "Change": "Cambia",
  "Change in Scope": "Cambia in Ambito",
- "Change password": "Cambia la password",
+ "Change password": "Cambia password",
  "Change this model's ID, name, key, server and prices, here": "Cambia qui l'ID, il nome, la chiave, il server e i prezzi di questo modello",
  "Changes": "Modifiche",
  "Chart shows": "Il grafico mostra",
@@ -938,7 +938,7 @@
  "New on GitHub ({behind} commit{v})": "Nuovi su GitHub ({behind} commit)",
  "New password": "Nuova password",
  "New password (12 characters or more)": "Nuova password (almeno 12 caratteri)",
- "New password again": "Ripeti la nuova password",
+ "New password again": "Nuova password, ancora",
  "New project": "Nuovo progetto",
  "New project (no model involved)": "Nuovo progetto (nessun modello coinvolto)",
  "New sign-in to Optimux": "Nuovo accesso a Optimux",
@@ -2761,5 +2761,12 @@
  "Monthly budget for {name}": "Budget mensile di {name}",
  "Only warn": "Solo avviso",
  "What a member may spend this month in all their projects together. A project's own budget (Dashboard → Budgets) counts everyone working in it. When either one is used up and set to Stop, the member's next request is refused and they are told to ask you.": "Quanto un membro può spendere questo mese in tutti i suoi progetti insieme. Il budget di un progetto (Dashboard → Budget) conta tutti quelli che ci lavorano. Quando uno dei due è esaurito e impostato su Stop, la richiesta successiva del membro viene rifiutata e gli viene detto di chiedere a te.",
- "{spent} of {limit} ({percent}%)": "{spent} di {limit} ({percent}%)"
+ "{spent} of {limit} ({percent}%)": "{spent} di {limit} ({percent}%)",
+ "Change your password": "Cambia la tua password",
+ "New password (at least 12 characters)": "Nuova password (almeno 12 caratteri)",
+ "Your other browsers are signed out when you change it.": "Gli altri tuoi browser vengono scollegati quando la cambi.",
+ "The two new passwords are different.": "Le due nuove password sono diverse.",
+ "Could not change the password.": "Non è stato possibile cambiare la password.",
+ "That is not your current password.": "Questa non è la tua password attuale.",
+ "Choose a different password from the current one.": "Scegli una password diversa da quella attuale."
 }

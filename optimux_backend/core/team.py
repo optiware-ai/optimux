@@ -260,6 +260,19 @@ def check_login(name: str, password: str) -> dict | None:
     return _public(rows[0]) if auth.verify_password(password, rows[0]["password"]) else None
 
 
+def change_password(user_id: int, current: str, new: str) -> bool:
+    """A member's own password change. False when `current` is not their password; AuthError for a bad new one."""
+    rows = _query("SELECT password FROM users WHERE id = ? AND role = 'user' AND status = 'active' AND password IS NOT NULL", (user_id,))
+    if not rows or not isinstance(current, str) or len(current) > auth.MAX_PASSWORD \
+            or not auth.verify_password(current, rows[0]["password"]):
+        return False
+    auth.check_new_password(new)
+    if new == current:
+        raise auth.AuthError(tr("Choose a different password from the current one."))
+    _write("UPDATE users SET password = ? WHERE id = ?", (auth.hash_password(new), user_id))
+    return True
+
+
 def touch_login(user_id: int) -> None:
     _write("UPDATE users SET last_login = ? WHERE id = ?", (time.time(), user_id))
 

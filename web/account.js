@@ -91,7 +91,7 @@
         $('disabled-note').textContent = (detail || tr('Your account has been disabled by the admin. Please contact your admin.')) +
             ' ' + tr('You will be signed out in a few seconds.');
         show($('disabled-note'), true);
-        for (const id of ['save']) $(id).disabled = true;
+        for (const id of ['save', 'change-password']) $(id).disabled = true;
         setTimeout(async () => {
             await api('/auth/logout', {});
             location.replace('/login?disabled=1');
@@ -119,6 +119,20 @@
     });
     // "Saved." belongs to the last save only: a new click on a choice clears it
     for (const r of radios()) r.addEventListener('change', () => show($('saved'), false));
+
+    $('password-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const status = $('pw-status');
+        const say = (text, ok) => { status.textContent = text; status.className = 'text-[13px] ' + (ok ? 'text-green-400' : 'text-red-300'); };
+        say('', true);
+        if ($('pw-new').value !== $('pw-again').value) { say(tr('The two new passwords are different.'), false); return; }
+        $('change-password').disabled = true;
+        const { res, data } = await api('/api/me/password', { current: $('pw-current').value, new: $('pw-new').value });
+        $('change-password').disabled = leaving;
+        if (!res.ok) { say(data.detail || tr('Could not change the password.'), false); return; }
+        for (const id of ['pw-current', 'pw-new', 'pw-again']) $(id).value = '';
+        say(tr('Password changed.'), true);
+    });
 
     $('sign-out').addEventListener('click', async () => {
         await api('/auth/logout', {});

@@ -477,6 +477,10 @@
    "class": "S",
    "note": "a member saves their own notes; they are sent with their own requests only"
   },
+  "POST /api/me/password": {
+   "class": "S",
+   "note": "a member changes their own password; a wrong current one counts as a failed sign-in"
+  },
   "POST /api/memory": {
    "class": "S",
    "note": "personal and professional memory: one per user"
