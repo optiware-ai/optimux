@@ -14,6 +14,8 @@
 
 - Projects (step 3a): table `project_members(project, user_id, added)` by folder name. `set_member`, `project_members`, `projects_of(user, existing)`, `can_use_project(user, project)` (admin: all; a member: only assigned ones; used by later steps to guard M routes), `default_project(user, existing)` (first assigned project, or "").
 
+- Ownership (step 4a): `bind_user(id)` / `current_user_id()`, a context variable like `config_manager.bind_project`. `sessions.create`, `usage.insert`, `tasks.finish` and `sent.record` store it as `user_id` (an entry can't name another owner). Nothing binds it yet; the member chat (step 4c) binds it in the connection's `/ws` handler. Reading rules (consent, Users column) come in step 4b.
+
 ## Links & Dependencies
 - `auth.py` (passwords, sessions), `store.py` (tables, `meta`), `i18n.py`.
 - `main.py`: the guard lets a member reach only `/` and `/api/me*` (403 elsewhere) and `/ws` closes with 4403 until step 2.

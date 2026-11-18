@@ -34,3 +34,5 @@
 
 ## Reference per project (v0.8)
 - `reference_model(project)` is the Complex model of `config_manager.effective_routing(project)`; `record` passes its `project`, so a project with its own Complex model is compared with that one.
+
+- **Owner (team step 4a):** the row also stores `user_id` from `team.current_user_id()` (NULL = the install's own). Nothing reads it yet.

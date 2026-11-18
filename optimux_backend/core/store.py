@@ -265,6 +265,18 @@ MIGRATIONS = [
     );
     CREATE INDEX project_members_user ON project_members (user_id);
     """,
+    # 17: the team version, step 4a. Whose each chat, call, request and sent prompt is.
+    # NULL = the install's own (solo, the admin, or from before team mode).
+    """
+    ALTER TABLE sessions ADD COLUMN user_id INTEGER;
+    ALTER TABLE usage ADD COLUMN user_id INTEGER;
+    ALTER TABLE tasks ADD COLUMN user_id INTEGER;
+    ALTER TABLE sent_calls ADD COLUMN user_id INTEGER;
+    CREATE INDEX sessions_user ON sessions (user_id);
+    CREATE INDEX usage_user_ts ON usage (user_id, ts);
+    CREATE INDEX tasks_user ON tasks (user_id);
+    CREATE INDEX sent_calls_user ON sent_calls (user_id);
+    """,
 ]
 
 _ready_for: str | None = None

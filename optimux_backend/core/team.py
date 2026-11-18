@@ -20,6 +20,7 @@ installs never touch this module's tables.
 
 No FastAPI imports, so it can be tested alone.
 """
+import contextvars
 import hashlib
 import re
 import secrets
@@ -304,6 +305,20 @@ def projects_of(user_id: int, existing: list[str]) -> list[str]:
     """The member's projects that are in the Workspace now (an archived one comes back with its folder)."""
     mine = {r["project"] for r in _query("SELECT project FROM project_members WHERE user_id = ?", (user_id,))}
     return [name for name in existing if name in mine]
+
+
+# Whose work is being recorded. Bound in the task that serves a member's connection
+# (tasks started later inherit it), read where chats, calls and requests are stored.
+_BOUND_USER: contextvars.ContextVar = contextvars.ContextVar("optimux_bound_user", default=None)
+
+
+def bind_user(user_id: int | None) -> None:
+    """Record what this task and the ones it starts do as this member's; None is the install's own."""
+    _BOUND_USER.set(user_id)
+
+
+def current_user_id() -> int | None:
+    return _BOUND_USER.get()
 
 
 def default_project(user_id: int, existing: list[str]) -> str:

@@ -10,7 +10,7 @@ import os
 import time
 from datetime import datetime, timedelta
 
-from optimux_backend.core import store
+from optimux_backend.core import store, team
 
 USAGE_FILE = store.paths.LEGACY_USAGE_LOG  # legacy log, imported once
 COLUMNS = ("ts", "session", "project", "role", "model", "prompt_tokens", "completion_tokens",
@@ -220,8 +220,8 @@ def insert(entry: dict, conn=None) -> None:
             row[k] = _int(row[k])
         row["estimated"] = 1 if entry.get("estimated") else 0
         with conn:
-            conn.execute(f"INSERT INTO usage ({', '.join(COLUMNS)}) VALUES ({', '.join('?' * len(COLUMNS))})",
-                         [row[k] for k in COLUMNS])
+            conn.execute(f"INSERT INTO usage ({', '.join(COLUMNS)}, user_id) VALUES ({', '.join('?' * len(COLUMNS))}, ?)",
+                         [row[k] for k in COLUMNS] + [team.current_user_id()])
     finally:
         if own:
             conn.close()

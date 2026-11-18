@@ -19,3 +19,5 @@
 - Escalations also zero the stuck model's reference cost: `usage.zero_reference(task_id, role, step)`.
 - Tests: `tests/test_tasks.py`.
 - **`judged(project, since)` (v0.8):** every request that ran on a model, with its rating (None when not rated), tier, escalated, cost and times: what `analytics.quality_of` counts from.
+
+- **Owner (team step 4a):** the row also stores `user_id` from `team.current_user_id()` (NULL = the install's own). Nothing reads it yet.
