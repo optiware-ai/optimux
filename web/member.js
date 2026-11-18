@@ -256,6 +256,31 @@
     $('chats').addEventListener('change', () => { const id = $('chats').value; if (id && !busy) send({ type: 'open_session', id }); });
     $('sign-out').addEventListener('click', async () => { leaving = true; await api('/auth/logout', {}); location.replace('/login'); });
 
+    // The member's own personal and technical notes
+    const NOTES = ['personal', 'professional'];
+    async function openNotes() {
+        $('notes-status').textContent = '';
+        for (const k of NOTES) {
+            const { res, data } = await api('/api/me/memory/' + k);
+            if (!res.ok) { $('notes-status').textContent = data.detail || tr('The notes could not be loaded.'); return; }
+            $('notes-' + k).value = data.content;
+        }
+        show($('notes'), true);
+        $('notes-personal').focus();
+    }
+    async function saveNotes() {
+        $('notes-status').textContent = '';
+        for (const k of NOTES) {
+            const { res, data } = await api('/api/me/memory', { file_type: k, content: $('notes-' + k).value });
+            if (!res.ok) { $('notes-status').textContent = data.detail || tr('The notes could not be saved.'); return; }
+        }
+        $('notes-status').textContent = tr('Saved.');
+    }
+    $('open-notes').addEventListener('click', openNotes);
+    $('notes-save').addEventListener('click', saveNotes);
+    $('notes-close').addEventListener('click', () => show($('notes'), false));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') show($('notes'), false); });
+
     async function start() {
         const status = await api('/auth/status');
         await translate(status.data.language);

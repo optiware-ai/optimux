@@ -476,13 +476,13 @@ def test_a_member_is_refused_on_every_route_except_their_own_account(teamed):
     import re
     from optimux_backend import main
     member, _ = invite_and_activate(teamed)
-    allowed_prefixes = ("/static/", "/preview/") + tuple(main.MEMBER_PATHS)
+    allowed_prefixes = ("/static/", "/preview/") + tuple(main.MEMBER_PREFIXES)
     seen = 0
     for route in main.app.routes:
         path = getattr(route, "path", None)
         if path is None or not hasattr(route, "methods"):
             continue
-        if path in main.MEMBER_PAGES or path in main.PUBLIC_PATHS or path.startswith(allowed_prefixes):
+        if path in main.MEMBER_PAGES or path in main.PUBLIC_PATHS or path in main.MEMBER_PATHS or path.startswith(allowed_prefixes):
             continue
         url = re.sub(r"\{[^}]+\}", "x", path)
         for method in sorted(route.methods - {"HEAD", "OPTIONS"}):

@@ -2745,5 +2745,12 @@
  "Open a chat…": "Apri una chat…",
  "Reason (optional)": "Motivo (facoltativo)",
  "The assistant asks your approval": "L'assistente chiede la tua approvazione",
- "← Back to the chat": "← Torna alla chat"
+ "← Back to the chat": "← Torna alla chat",
+ "About you (name, language, how you like answers)": "Su di te (nome, lingua, come preferisci le risposte)",
+ "My notes": "I miei appunti",
+ "The notes are 'personal' or 'professional'.": "Gli appunti sono 'personal' o 'professional'.",
+ "The notes could not be loaded.": "Non è stato possibile caricare gli appunti.",
+ "The notes could not be saved.": "Non è stato possibile salvare gli appunti.",
+ "These notes go with your own requests, so the assistant knows how you like to work. Other members and the admin cannot open this page. If you let the admin read your chats, they can see what was sent to the models, and that includes these notes.": "Questi appunti viaggiano con le tue richieste, così l'assistente sa come ti piace lavorare. Gli altri membri e l'admin non possono aprire questa pagina. Se permetti all'admin di leggere le tue chat, può vedere cosa è stato inviato ai modelli, e questo include questi appunti.",
+ "Your way of working (coding style, tools, habits)": "Il tuo modo di lavorare (stile di codice, strumenti, abitudini)"
 }

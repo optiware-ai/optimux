@@ -211,16 +211,18 @@ def notes(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_a_member_gets_project_memory_only(notes, ws_root):
+def test_a_member_gets_the_project_notes_and_not_the_admins(notes, ws_root):
     text = as_member(mm.get_memory_context)
     assert "ALPHA-NOTES" in text and "SECRET" not in text
     assert "ADMIN-PERSONAL-SECRET" in mm.get_memory_context()        # the admin still has theirs
 
 
-def test_a_member_cannot_write_the_admins_notes(notes, ws_root):
+def test_a_member_cannot_write_the_admins_notes(notes, ws_root, monkeypatch):
+    monkeypatch.setattr(mm, "MEMBERS_DIR", str(notes / "members"))
     for kind in ("personal", "professional"):
-        assert as_member(lambda: mm.update_memory(kind, "x")).startswith("Error")
+        assert as_member(lambda: mm.update_memory(kind, "x")).startswith("Successfully")     # into their own notes
     assert (notes / "personal_md.md").read_text() == "ADMIN-PERSONAL-SECRET"
+    assert (notes / "professional_md.md").read_text() == "ADMIN-TECH-SECRET"
     assert as_member(lambda: mm.update_memory("project", "from a member")).startswith("Successfully")
 
 

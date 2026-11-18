@@ -133,6 +133,10 @@
    "class": "S",
    "note": "a member's own chats, in their projects"
   },
+  "GET /api/me/memory/{kind}": {
+   "class": "S",
+   "note": "a member reads their own personal or technical notes"
+  },
   "GET /api/memory/project/{name}": {
    "class": "M",
    "note": "write calls need write access; /curate spends a model call"
@@ -468,6 +472,10 @@
   "POST /api/me/consent": {
    "class": "S",
    "note": "a member changes their own chat-reading choice; kept as history"
+  },
+  "POST /api/me/memory": {
+   "class": "S",
+   "note": "a member saves their own notes; they are sent with their own requests only"
   },
   "POST /api/memory": {
    "class": "S",

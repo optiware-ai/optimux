@@ -8,6 +8,7 @@ from optimux_backend.core import paths
 
 GLOBAL_DIR = paths.MEMORY_DIR
 PROJECTS_DIR = os.path.join(GLOBAL_DIR, "projects")
+MEMBERS_DIR = os.path.join(GLOBAL_DIR, "members")      # team mode: members/<id>/personal.md and professional.md
 
 PERSONAL_MD = os.path.join(GLOBAL_DIR, "personal.md")
 PROFESSIONAL_MD = os.path.join(GLOBAL_DIR, "professional.md")
@@ -75,6 +76,26 @@ def init_memory():
     if not os.path.exists(PROFESSIONAL_MD):
         write_atomic(PROFESSIONAL_MD, DEFAULT_PROFESSIONAL)
 
+MEMBER_KINDS = ("personal", "professional")
+_DEFAULTS = {"personal": DEFAULT_PERSONAL, "professional": DEFAULT_PROFESSIONAL}
+
+
+def _member_file(user_id: int, kind: str) -> str:
+    if kind not in MEMBER_KINDS:
+        raise ValueError(f"kind must be one of {list(MEMBER_KINDS)}")
+    return os.path.join(MEMBERS_DIR, str(int(user_id)), f"{kind}.md")      # int(): the id is a number, never a path
+
+
+def member_notes(user_id: int, kind: str) -> str:
+    """A team member's own personal or technical notes (the defaults until they write some)."""
+    return _read_md(_member_file(user_id, kind), _DEFAULTS[kind])
+
+
+def save_member_notes(user_id: int, kind: str, content: str) -> None:
+    check_size(content, kind.capitalize())
+    write_atomic(_member_file(user_id, kind), content)
+
+
 def _read_md(filepath: str, default: str) -> str:
     try:
         with open(filepath, 'r') as f:
@@ -86,12 +107,14 @@ def get_memory_context() -> str:
     """Retrieve centralized markdown context."""
     init_memory()
     from optimux_backend.core import team
-    if team.current_user_id() is None:
+    uid = team.current_user_id()
+    if uid is None:
         personal = _read_md(PERSONAL_MD, DEFAULT_PERSONAL)
         professional = _read_md(PROFESSIONAL_MD, DEFAULT_PROFESSIONAL)
-        context = personal + "\n\n" + professional + "\n\n"
-    else:
-        context = ""        # a team member's model gets the project's notes only: the personal and technical notes are the admin's
+    else:       # a team member's model gets their own notes, never the admin's or another member's
+        personal = member_notes(uid, "personal")
+        professional = member_notes(uid, "professional")
+    context = personal + "\n\n" + professional + "\n\n"
     
     settings = get_settings()
     active_project = settings.get("active_project", "")
@@ -110,13 +133,10 @@ def update_memory(file_type: str, content: str):
     """Append content to a specific memory file."""
     init_memory()
     from optimux_backend.core import team
-    if team.current_user_id() is not None and file_type in ("personal", "professional"):
-        return "Error: Personal and technical notes can't be changed in a team member's chat. Only the project's notes can."
-    
-    if file_type == "personal":
-        filepath = PERSONAL_MD
-    elif file_type == "professional":
-        filepath = PROFESSIONAL_MD
+    uid = team.current_user_id()
+
+    if file_type in MEMBER_KINDS:
+        filepath = _member_file(uid, file_type) if uid is not None else (PERSONAL_MD if file_type == "personal" else PROFESSIONAL_MD)
     elif file_type == "project":
         settings = get_settings()
         active_project = settings.get("active_project", "")
@@ -130,7 +150,7 @@ def update_memory(file_type: str, content: str):
     else:
         return "Error: Invalid file_type. Must be 'personal', 'professional', or 'project'."
         
-    before = _read_md(filepath, "")
+    before = _read_md(filepath, _DEFAULTS[file_type] if uid is not None and file_type in MEMBER_KINDS else "")
     after = before + "\n" + content + "\n"
     try:
         check_size(after, file_type.capitalize())

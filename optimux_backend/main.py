@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 # Import from the modular core
 # Put files in ~/.optimux's layout before any module reads config or secrets
 from optimux_backend.core import paths
+from optimux_backend.core import memory_manager
 for _move in paths.prepare_home():
     print(f"[Optimux] {_move}")
 # A restore staged before the restart goes in place before anything reads config,
@@ -170,6 +171,7 @@ PUBLIC_PATHS = {"/login", "/auth/status", "/auth/login", "/auth/setup", "/auth/l
                 "/favicon.ico"}
 # Team members (not admins) reach only their own account until the server checks every route (team step 2)
 MEMBER_PATHS = ("/api/me",)
+MEMBER_PREFIXES = tuple(p + "/" for p in MEMBER_PATHS)     # "/api/me/..." only: "/api/memory" must not match "/api/me"
 MEMBER_PAGES = ("/", "/account")      # the pages a member can load: their chat and their account
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
@@ -284,7 +286,7 @@ async def guard(request: Request, call_next):
                 response = JSONResponse({"detail": tr(team.DISABLED_TEXT), "disabled": True}, status_code=403)
                 security_headers(request, response)
                 return response
-            if who and who["role"] == "user" and path not in MEMBER_PAGES and not path.startswith(MEMBER_PATHS):
+            if who and who["role"] == "user" and path not in MEMBER_PAGES and path not in MEMBER_PATHS and not path.startswith(MEMBER_PREFIXES):
                 response = JSONResponse({"detail": tr("Not available for team members yet.")}, status_code=403)
                 security_headers(request, response)
                 return response
@@ -2226,6 +2228,32 @@ async def api_me(request: Request):
     if me.get("user") and not me["admin"]:
         me["projects"] = team.projects_of(me["user"]["id"], _workspace_projects())
     return me
+
+
+@app.get("/api/me/memory/{kind}")
+async def api_me_memory(kind: str, request: Request):
+    """A member's own personal or technical notes. Nobody else, the admin included, has a way to read them."""
+    who = _member(request)
+    if kind not in memory_manager.MEMBER_KINDS:
+        raise HTTPException(400, tr("The notes are 'personal' or 'professional'."))
+    return {"content": memory_manager.member_notes(who["id"], kind)}
+
+
+class MemberNotesPayload(BaseModel):
+    file_type: str
+    content: str
+
+
+@app.post("/api/me/memory")
+async def api_me_memory_save(payload: MemberNotesPayload, request: Request):
+    who = _member(request)
+    if payload.file_type not in memory_manager.MEMBER_KINDS:
+        raise HTTPException(400, tr("The notes are 'personal' or 'professional'."))
+    try:
+        memory_manager.save_member_notes(who["id"], payload.file_type, payload.content)
+    except memory_manager.MemoryTooLarge as e:
+        raise HTTPException(400, str(e))
+    return {"status": "success"}
 
 
 @app.post("/api/me/consent")
