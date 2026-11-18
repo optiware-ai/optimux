@@ -2725,5 +2725,11 @@
  "Your projects": "I tuoi progetti",
  "{name} on {project}": "{name} su {project}",
  "This member has not agreed to let the admin read their chats.": "Questo membro non ha accettato che l'admin legga le sue chat.",
- "This is a member's chat: you can read it, not continue it.": "Questa è la chat di un membro: puoi leggerla, non continuarla."
+ "This is a member's chat: you can read it, not continue it.": "Questa è la chat di un membro: puoi leggerla, non continuarla.",
+ "Everyone": "Tutti",
+ "Me ({name})": "Io ({name})",
+ "History: member": "Cronologia: membro",
+ "Usage: member": "Utilizzo: membro",
+ "Private chat": "Chat privata",
+ "Private request": "Richiesta privata"
 }

@@ -129,7 +129,7 @@ def test_a_request_row_has_a_go_to_chat_icon_right_after_its_prompt():
     row = row[:row.index("data-sent-meta")]
     assert "<button" in row and "goToSentChat(r)" in row and "@click.stop" in row     # not a button inside a button
     assert row.index("r.prompt") < row.index("goToSentChat(r)") < row.index("r.title")    # right after the dots
-    assert 'v-if="r.known && r.session"' in row                                         # a deleted chat has nowhere to go
+    assert 'v-if="r.known && r.session && !r.private"' in row                                         # a deleted chat has nowhere to go
     assert "role=\"button\"" in row or "aria-expanded" in row
 
 

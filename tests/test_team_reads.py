@@ -146,3 +146,12 @@ def test_the_admins_latest_chat_is_never_a_members(world, app_client, monkeypatc
     monkeypatch.setattr(app_client, "missing_project_reason", lambda name: None)
     assert sessions.latest("alpha") == world["sid"]["boss"]          # bob's and anna's are newer
     assert app_client.last_open_chat() == world["sid"]["boss"]
+
+
+def test_the_history_page_shows_member_and_private_rows():
+    import os
+    root = os.path.join(os.path.dirname(__file__), "..")
+    index = open(os.path.join(root, "index.html")).read()
+    app = open(os.path.join(root, "web", "app.js")).read()
+    assert index.count("data-member-filter") == 2 and "data-private" in index and "c.private" in index
+    assert "if (r.private) return;" in app and "params.set('user', h.user)" in app

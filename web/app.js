@@ -1844,7 +1844,7 @@ const optimuxApp = createApp({
         const projectsOverview = ref([]);
         const NO_PROJECT = '(no project)';  // the History filter's "Workspace" (a project name can't be this)
         const HISTORY_LIMIT = 5000;         // the most chats History loads at once
-        const historyPage = ref({ project: '', archived: false, q: '', period: 'all', sort: 'updated', desc: true });
+        const historyPage = ref({ project: '', archived: false, q: '', period: 'all', user: '', sort: 'updated', desc: true });
         const historyPageList = ref([]);
         const systemInfo = ref(null);
         const newToken = ref('');
@@ -2149,6 +2149,7 @@ const optimuxApp = createApp({
             if (h.project) params.set('project', h.project === NO_PROJECT ? '' : h.project); else params.set('all_projects', 'true');
             if (h.archived) params.set('archived', 'true');
             if (h.q.trim()) params.set('q', h.q.trim());
+            if (h.user) params.set('user', h.user);
             params.set('limit', String(HISTORY_LIMIT));
             try { const d = await (await fetch('/api/sessions?' + params.toString())).json(); historyPageList.value = Array.isArray(d) ? d : []; }
             catch (error) { console.error('Failed to load history', error); }
@@ -2161,16 +2162,25 @@ const optimuxApp = createApp({
                     ...gone.map(n => ({ value: n, label: n + ' (deleted)' }))];
         });
         const setHistoryProject = (v) => { historyPage.value.project = v || ''; fetchHistoryPage(); };
+        // Team mode: whose work to list (everyone, the admin's own, or one member)
+        const memberOptions = Vue.computed(() => {
+            const admin = team.users.find(u => u.role === 'admin');
+            return [{ value: 'me', label: tr('Me ({name})', { name: admin ? admin.name : '' }) },
+                    ...team.users.filter(u => u.role !== 'admin').map(u => ({ value: String(u.id), label: u.name }))];
+        });
+        const setHistoryUser = (v) => { historyPage.value.user = v || ''; fetchHistoryPage(); };
+        const usageUser = ref('');
+        const setUsageUser = (v) => { usageUser.value = v || ''; fetchUsage(); };
         const sortHistory = (col) => {
             const h = historyPage.value;
             if (h.sort === col) h.desc = !h.desc; else { h.sort = col; h.desc = col !== 'title' && col !== 'project'; }
         };
         const historyFiltered = Vue.computed(() => {
             const h = historyPage.value;
-            return !!(h.project || h.archived || h.q.trim() || h.period !== 'all');
+            return !!(h.project || h.archived || h.q.trim() || h.period !== 'all' || h.user);
         });
         const resetHistoryFilters = () => {
-            Object.assign(historyPage.value, { project: '', archived: false, q: '', period: 'all' });
+            Object.assign(historyPage.value, { project: '', archived: false, q: '', period: 'all', user: '' });
             fetchHistoryPage();
         };
         // v0.8: the two blocks of History start closed; one is open at a time, and the filters above act on that one
@@ -2198,6 +2208,7 @@ const optimuxApp = createApp({
             if (h.archived) params.set('archived', 'true');
             if (sentQuery()) params.set('q', sentQuery());
             if (historySince()) params.set('since', String(historySince()));
+            if (h.user) params.set('user', h.user);
             return params;
         };
         // The number in the header while the block is closed: counted by the server, nothing is listed
@@ -2211,6 +2222,7 @@ const optimuxApp = createApp({
             if (h.archived) params.set('archived', 'true');
             if (sentQuery()) params.set('q', sentQuery());
             if (historySince()) params.set('since', String(historySince()));
+            if (h.user) params.set('user', h.user);
             sentTree.loading = true; sentTree.error = '';
             try {
                 const d = await studioFetch('/api/sent/requests?' + params.toString());
@@ -2261,6 +2273,7 @@ const optimuxApp = createApp({
             keepAsk.value = null;
         };
         const toggleSentRequest = (r) => {
+            if (r.private) return;               // a member who did not agree: numbers only, nothing to open
             const k = sentRowKey(r);
             sentTree.open[k] = !sentTree.open[k];
             if (sentTree.open[k] && !sentTree.detail[k]) loadSentRequest(r);
@@ -3001,7 +3014,7 @@ const optimuxApp = createApp({
             if (studio.open) closeStudio();
         };
         const goToSentChat = (r) => {
-            if (!r.session || isGenerating.value || pendingApproval.value) return;
+            if (r.private || !r.session || isGenerating.value || pendingApproval.value) return;
             showChatPage();
             pendingJump.value = { ids: r.ids || [], until: Date.now() + 15000 };
             openSession(r.session);
@@ -4119,6 +4132,7 @@ const optimuxApp = createApp({
             if (id === 'start') fetchOnboarding();
             if (id === 'project') loadProjectPage();
             if (id === 'projects') fetchProjectsOverview();
+            if (id === 'history' || id === 'usage') fetchTeam();          // the Member lists (does nothing in solo mode)
             if (id === 'history') { fetchHistoryPage(); fetchProjectsList(); fetchDeleted(); }
             if (id === 'memory') { fetchMemory(); fetchCostEstimates(); }
             if (id === 'system') { fetchSystemInfo(); fetchAuth(); }
@@ -5781,7 +5795,7 @@ const optimuxApp = createApp({
             try {
                 budgets.value = await (await fetch('/api/budgets')).json();
                 syncBudgetEdits();
-                usageData.value = await (await fetch('/api/usage')).json();
+                usageData.value = await (await fetch('/api/usage' + (usageUser.value ? '?user=' + encodeURIComponent(usageUser.value) : ''))).json();
                 fetchDeleted();
                 fetchArchived();
                 cooldowns.value = await (await fetch('/api/cooldowns')).json();
@@ -6758,6 +6772,7 @@ const optimuxApp = createApp({
             rsStatus, rsPanel, rsRestarting, fetchRestoreStatus, openRestore, closeRestore, rsChosen, rsReady, doRestore, restartForRestore, cancelRestore, dismissRestore, rsUp, rsPickFile, rsReadKeyFile, rsUpload, rsImport,
             historyPage, historySorted, fetchHistoryPage, sortHistory, historyProjects, setHistoryProject,
             historyPageList, HISTORY_LIMIT, systemInfo, newToken, rotateToken,
+            memberOptions, setHistoryUser, usageUser, setUsageUser,
             teamInfo, team, fetchTeam, teamOn, teamAssign, teamInvite, teamReinvite, teamDisable, teamMessage, teamStatus, teamWhen, teamKind, teamReads,
             authInfo, securityChecks, signinNotice, browserLabel, signOutOthersFromNotice, pwForm, totpSetup, totpOff, fetchAuth, signOut, signOutOthers, changePassword,
             totpStart, totpConfirm, totpDisable, commandEnvText, saveCommandSettings,

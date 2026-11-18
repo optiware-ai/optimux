@@ -1428,6 +1428,10 @@
                             <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">{{ $t('Project') }}</label>
                             <chart-pick class="cm-pick-tall" :model-value="historyPage.project" @update:model-value="setHistoryProject" :options="historyProjects" :label="$t('History: project')"></chart-pick>
                         </div>
+                        <div v-if="teamInfo.mode === 'team'" data-member-filter>
+                            <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">{{ $t('Member') }}</label>
+                            <chart-pick :model-value="historyPage.user" @update:model-value="setHistoryUser" :options="memberOptions" :all="$t('Everyone')" :label="$t('History: member')"></chart-pick>
+                        </div>
                         <div>
                             <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">{{ $t('Updated') }}</label>
                             <div class="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5" role="radiogroup" :aria-label="$t('Updated')">
@@ -1459,23 +1463,29 @@
                             <table class="w-full text-[15px]">
                                 <thead><tr class="text-left text-xs uppercase tracking-wider text-gray-500 border-b border-gray-800">
                                     <th v-for="col in [['title',$t('Title')],['project',$t('Project')],['updated',$t('Updated')],['turns',$t('Turns')],['cost',$t('Cost')]]" :key="col[0]" class="px-4 py-2 font-normal cursor-pointer select-none hover:text-gray-300" @click="sortHistory(col[0])">{{ col[1] }}{{ historyPage.sort === col[0] ? (historyPage.desc ? ' ▾' : ' ▴') : '' }}</th>
+ <th v-if="teamInfo.mode === 'team'" class="px-4 py-2 font-normal">{{ $t('Member') }}</th>
                                     <th class="px-4 py-2"></th>
                                 </tr></thead>
                                 <tbody>
                                     <tr v-for="c in historySorted" :key="c.id" :class="['border-b border-gray-800/60 hover:bg-gray-800/30', currentSession && currentSession.id === c.id ? 'bg-blue-950/20' : '']">
-                                        <td class="px-4 py-2 max-w-[280px]"><button @click="openChatFromDashboard(c.id)" class="text-gray-100 hover:text-blue-300 truncate block max-w-full text-left" :title="c.title">{{ c.title || $t('Untitled chat') }}</button></td>
+                                        <td class="px-4 py-2 max-w-[280px]">
+                                            <span v-if="c.private" data-private class="text-gray-500 italic" :title="$t('This member has not agreed to let the admin read their chats.')">🔒 {{ $t('Private chat') }}</span>
+                                            <button v-else @click="openChatFromDashboard(c.id)" class="text-gray-100 hover:text-blue-300 truncate block max-w-full text-left" :title="c.title">{{ c.title || $t('Untitled chat') }}</button>
+                                        </td>
                                         <td class="px-4 py-2 font-mono text-[13px] text-gray-400">{{ projectLabel(c.project) }}<deleted-tag :at="deletedProjects[c.project] || 0"></deleted-tag></td>
                                         <td class="px-4 py-2 font-mono text-[13px] text-gray-400" :title="new Date(c.updated * 1000).toLocaleString($locale())">{{ fmtAgo(c.updated) }}</td>
                                         <td class="px-4 py-2 font-mono text-[13px] text-gray-400">{{ c.turns }}</td>
                                         <td class="px-4 py-2 font-mono text-[13px] text-gray-300">{{ fmtCost(c.cost) }}{{ c.calls_without_cost ? '+' : '' }}</td>
-                                        <td class="px-4 py-2 text-[13px] whitespace-nowrap text-right">
+                                        <td v-if="teamInfo.mode === 'team'" class="px-4 py-2 text-[13px] text-gray-300" data-member>{{ c.user }}</td>
+                                        <td v-if="c.user_id" class="px-4 py-2"></td>
+                                        <td v-else class="px-4 py-2 text-[13px] whitespace-nowrap text-right">
                                             <button @click="renameSession(c)" class="text-gray-500 hover:text-gray-200 mr-3">{{ $t('Rename') }}</button>
                                             <button v-if="!c.archived" @click="archiveSession(c, true)" class="text-gray-500 hover:text-gray-200 mr-3">{{ $t('Archive') }}</button>
                                             <button v-else @click="archiveSession(c, false)" class="text-gray-500 hover:text-gray-200 mr-3">{{ $t('Unarchive') }}</button>
                                             <button @click="deleteSession(c)" class="text-red-500/70 hover:text-red-400">{{ $t('Delete') }}</button>
                                         </td>
                                     </tr>
-                                    <tr v-if="historySorted.length === 0"><td colspan="6" class="px-4 py-6 text-center text-gray-500 italic">{{ $t('No chats match.') }}</td></tr>
+                                    <tr v-if="historySorted.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-500 italic">{{ $t('No chats match.') }}</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -1513,11 +1523,12 @@
                                     <!-- the whole row opens it; the go-to icon is a button of its own, never inside another -->
                                     <div @click="toggleSentRequest(r)" class="w-full flex items-center gap-3 px-3 py-2 text-left cursor-pointer hover:bg-gray-800/40">
                                         <button type="button" :aria-expanded="sentTree.open[sentRowKey(r)] ? 'true' : 'false'" :aria-label="$t('Open this request')" class="font-mono w-5 h-5 leading-[18px] text-center flex-shrink-0 rounded border border-gray-700 text-gray-300">{{ sentTree.open[sentRowKey(r)] ? '−' : '+' }}</button>
-                                        <span :class="['truncate min-w-0 max-w-[50%]', r.reply ? 'text-gray-100' : 'text-gray-300 italic']" :title="r.prompt">{{ r.reply ? (r.prompt || $t('(no text)')) : sentRoleName(r.role) }}</span>
-                                        <button v-if="r.known && r.session" type="button" @click.stop="goToSentChat(r)" :title="$t('Go to this chat')" :aria-label="$t('Go to this chat')" class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded border border-gray-700 text-gray-400 hover:text-blue-200 hover:border-blue-500">
+                                        <span :class="['truncate min-w-0 max-w-[50%]', r.reply ? 'text-gray-100' : 'text-gray-300 italic']" :title="r.prompt">{{ r.private ? '🔒 ' + $t('Private request') : (r.reply ? (r.prompt || $t('(no text)')) : sentRoleName(r.role)) }}</span>
+                                        <button v-if="r.known && r.session && !r.private" type="button" @click.stop="goToSentChat(r)" :title="$t('Go to this chat')" :aria-label="$t('Go to this chat')" class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded border border-gray-700 text-gray-400 hover:text-blue-200 hover:border-blue-500">
                                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>
                                         </button>
-                                        <span :class="['ml-auto truncate min-w-0 max-w-[22%] text-[12px]', r.known ? 'text-gray-400' : 'text-gray-500 italic']" :title="r.title">{{ r.known ? (r.title || $t('Untitled chat')) : (r.session ? $t('Deleted chat') : $t('Outside a chat')) }}</span>
+                                        <span :class="['ml-auto truncate min-w-0 max-w-[22%] text-[12px]', r.known ? 'text-gray-400' : 'text-gray-500 italic']" :title="r.title">{{ r.known ? (r.private ? '' : (r.title || $t('Untitled chat'))) : (r.session ? $t('Deleted chat') : $t('Outside a chat')) }}</span>
+                                        <span v-if="teamInfo.mode === 'team'" data-member class="text-[12px] text-gray-300 flex-shrink-0">{{ r.user }}</span>
                                         <span class="font-mono text-[12px] text-gray-500 flex-shrink-0">{{ projectLabel(r.project) }}</span>
                                         <span class="font-mono text-[12px] text-gray-400 flex-shrink-0">{{ r.when }}</span>
                                         <span class="font-mono text-[12px] text-gray-500 flex-shrink-0 w-20 text-right">{{ $t('{length} call{v}', { length: r.calls, v: r.calls === 1 ? '' : 's' }) }}</span>
@@ -2837,6 +2848,9 @@
                         </div>
                     </div>
                     <div v-if="settingsTab === 'usage' && dashView.usage === 'details'" class="flex items-center justify-between mb-4">
+                        <div v-if="teamInfo.mode === 'team'" class="mr-3" data-member-filter>
+                            <chart-pick :model-value="usageUser" @update:model-value="setUsageUser" :options="memberOptions" :all="$t('Everyone')" :label="$t('Usage: member')"></chart-pick>
+                        </div>
                         <div class="flex gap-1 bg-gray-900 border border-gray-800 rounded-lg p-1" role="group" :aria-label="$t('Period')">
                             <button v-for="p in [['today',$t('Today')],['last_7_days',$t('7 days')],['this_month',$t('This month')],['all_time',$t('All time')]]" :key="p[0]" @click="usagePeriod = p[0]" :aria-pressed="usagePeriod === p[0]"
                                     :class="['text-[13px] px-3 py-1 rounded-md', usagePeriod === p[0] ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200']">{{ p[1] }}</button>
