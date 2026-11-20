@@ -10,7 +10,7 @@ import os
 import time
 from datetime import datetime, timedelta
 
-from optimux_backend.core import store, team
+from optimux_backend.core import store, identity
 
 USAGE_FILE = store.paths.LEGACY_USAGE_LOG  # legacy log, imported once
 COLUMNS = ("ts", "session", "project", "role", "model", "prompt_tokens", "completion_tokens",
@@ -221,7 +221,7 @@ def insert(entry: dict, conn=None) -> None:
         row["estimated"] = 1 if entry.get("estimated") else 0
         with conn:
             conn.execute(f"INSERT INTO usage ({', '.join(COLUMNS)}, user_id) VALUES ({', '.join('?' * len(COLUMNS))}, ?)",
-                         [row[k] for k in COLUMNS] + [team.current_user_id()])
+                         [row[k] for k in COLUMNS] + [identity.current_user_id()])
     finally:
         if own:
             conn.close()
@@ -326,19 +326,6 @@ def month_totals(project: str, now: float | None = None) -> dict:
             "COALESCE(SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END), 0) AS without_cost "
             "FROM usage WHERE ts >= ? AND COALESCE(project, '(unknown)') = ?",
             (month_start(now), project)).fetchone()
-    finally:
-        conn.close()
-    return {"calls": row["calls"], "cost": float(row["cost"]), "calls_without_cost": row["without_cost"]}
-
-
-def user_month_totals(user_id: int, now: float | None = None) -> dict:
-    """This calendar month's cost for one team member, over every project."""
-    conn = _connect()
-    try:
-        row = conn.execute(
-            "SELECT COUNT(*) AS calls, COALESCE(SUM(cost), 0) AS cost, "
-            "COALESCE(SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END), 0) AS without_cost "
-            "FROM usage WHERE ts >= ? AND user_id = ?", (month_start(now), int(user_id))).fetchone()
     finally:
         conn.close()
     return {"calls": row["calls"], "cost": float(row["cost"]), "calls_without_cost": row["without_cost"]}

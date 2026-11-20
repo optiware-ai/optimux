@@ -1,19 +1,25 @@
-# Team version: audit of who may do what (step 0)
+# Team version: who may do what
 
-This was written as a read-only audit (p82). Step 1 (p83) added the endpoints marked `/api/me`, `/api/team` and `/auth/invite|activate`; they are classified in the same table. `tests/team_route_classes.json` holds the table; `tests/test_team_route_classes.py` fails when a new endpoint, websocket message or model tool is not classified, so it cannot go stale.
+This began as a read-only audit (p82) before the team version was built. It is now the standing record of how every way into Optimux is classified. The data is two files, and a test fails when something new is not classified, so the record cannot go stale:
+
+- `tests/team_route_classes.json`: the core's endpoints, the chat socket's messages and the tools a model can call.
+- `optimux_team/tests/team_route_classes.json`: the endpoints the team add-on defines (`/api/me`, `/api/team`, `/auth/invite`, `/auth/activate`, `/team-assets/`). Without the add-on there are none of them.
+
+`tests/test_team_route_classes.py` merges the two when the add-on is installed. In team mode the add-on's guard decides who may reach what; in solo mode there is one user and none of this applies.
 
 ## Classes
 
-| Class | Meaning | Endpoints |
-|---|---|---|
-| P | public | 6 |
-| T | own token | 1 |
-| S | signed in (own data) | 33 |
-| R | read for all, admin writes | 10 |
-| M | project member | 34 |
-| A | admin only | 72 |
+| Class | Meaning | Core | Add-on | Total |
+|---|---|---|---|---|
+| P | public | 6 | 2 | 8 |
+| T | own token | 1 | 0 | 1 |
+| S | signed in (own data) | 34 | 8 | 42 |
+| R | read for all, admin writes | 10 | 0 | 10 |
+| M | project member | 34 | 0 | 34 |
+| A | admin only | 72 | 10 | 82 |
+| | | 157 | 20 | 177 |
 
-Total: 156 (155 REST endpoints and the chat socket).
+The totals count the REST endpoints and the chat socket.
 
 ## The three doors
 Everything a person can do goes through one of three doors, and team mode must guard all of them:
@@ -22,7 +28,9 @@ Everything a person can do goes through one of three doors, and team mode must g
 2. **The chat socket** (`/ws`): its own origin check and sign-in; then 8 message types plus the plain prompt (listed below).
 3. **Model tool calls**: what a model can do on its own in a chat (run a command, write files, switch or create projects). Checking only REST would leave this door open.
 
-## What is global today and must become per user
+## What was global, and had to become per user
+
+The design record from before the team version; the add-on implements each row (the *Team version* column was the plan).
 
 | Where | What | Team version |
 |---|---|---|
@@ -38,7 +46,7 @@ Everything a person can do goes through one of three doors, and team mode must g
 | `sent_calls`, `sessions`, usage, tasks | no owner (`user_id` exists only in `plans`) | add `user_id`; filter every read |
 | GitHub token, API keys, snapshots, backups | one set for the install | admin only; a snapshot holds everyone's chats |
 
-## Risks found while reading
+## Risks found while reading (before the team version)
 
 1. **Hiding buttons is not security.** 71 endpoints are admin-only and 34 need project membership; each needs a check on the server.
 2. **The sandbox may show other projects.** Commands run with the whole disk read-only (`--ro-bind / /`) and only home folders hidden. If the Workspace is not under a home folder (a VPS often uses `/srv/...`), a command on one project could *read* another project it is not on. **Verified (p85) and fixed:** in team mode the Workspace folder is hidden and only the command's own project is mounted back (`sandbox.build_argv(hide=…)`, `executor.sandbox_hide()`); team mode also makes the sandbox required, and `optimux enable-team` refuses where bubblewrap does not work. Without the sandbox a command could reach any file the server user can. A command could always write only to its own project.

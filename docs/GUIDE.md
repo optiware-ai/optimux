@@ -1340,6 +1340,8 @@ A tab that was open during an update shows **Optimux was updated** at the top wh
 
 ## Running Optimux for other people
 
+> This part needs the **team add-on**, a separate commercial product. Without it `optimux enable-team` says so and Optimux stays a tool for one person; everything else in this guide works as described.
+
 Optimux starts as a tool for one person. `optimux enable-team` turns your password into the **first admin's**; from then on you can invite members. Members get a slim chat page of their own (see *The members' page* below); the rest of the Dashboard stays with the admin for now. The admin finds the people, the invitations and the access log in **Dashboard → Team** (the entry appears once team mode is on); the page refreshes itself every few seconds while it is open. Turning it back off (`optimux disable-team`) signs the members out and keeps their data.
 
 - **The sandbox is required.** Team mode turns it on and `optimux enable-team` refuses where bubblewrap does not work. In team mode a command can see only its own project, never the other projects in the Workspace.

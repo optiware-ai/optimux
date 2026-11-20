@@ -8,7 +8,6 @@ from optimux_backend.core import paths
 
 GLOBAL_DIR = paths.MEMORY_DIR
 PROJECTS_DIR = os.path.join(GLOBAL_DIR, "projects")
-MEMBERS_DIR = os.path.join(GLOBAL_DIR, "members")      # team mode: members/<id>/personal.md and professional.md
 
 PERSONAL_MD = os.path.join(GLOBAL_DIR, "personal.md")
 PROFESSIONAL_MD = os.path.join(GLOBAL_DIR, "professional.md")
@@ -80,22 +79,6 @@ MEMBER_KINDS = ("personal", "professional")
 _DEFAULTS = {"personal": DEFAULT_PERSONAL, "professional": DEFAULT_PROFESSIONAL}
 
 
-def _member_file(user_id: int, kind: str) -> str:
-    if kind not in MEMBER_KINDS:
-        raise ValueError(f"kind must be one of {list(MEMBER_KINDS)}")
-    return os.path.join(MEMBERS_DIR, str(int(user_id)), f"{kind}.md")      # int(): the id is a number, never a path
-
-
-def member_notes(user_id: int, kind: str) -> str:
-    """A team member's own personal or technical notes (the defaults until they write some)."""
-    return _read_md(_member_file(user_id, kind), _DEFAULTS[kind])
-
-
-def save_member_notes(user_id: int, kind: str, content: str) -> None:
-    check_size(content, kind.capitalize())
-    write_atomic(_member_file(user_id, kind), content)
-
-
 def _read_md(filepath: str, default: str) -> str:
     try:
         with open(filepath, 'r') as f:
@@ -103,17 +86,28 @@ def _read_md(filepath: str, default: str) -> str:
     except FileNotFoundError:
         return default
 
+def _member_file(user_id: int, kind: str) -> str | None:
+    from optimux_backend.core import plugins
+    return plugins.ask("member_note_file", user_id, kind, default=None)
+
+
+def _member_text(user_id: int, kind: str) -> str:
+    path = _member_file(user_id, kind)
+    return _read_md(path, _DEFAULTS[kind]) if path else _DEFAULTS[kind]
+
+
 def get_memory_context() -> str:
     """Retrieve centralized markdown context."""
     init_memory()
-    from optimux_backend.core import team
-    uid = team.current_user_id()
+    from optimux_backend.core import identity
+    uid = identity.current_user_id()
     if uid is None:
         personal = _read_md(PERSONAL_MD, DEFAULT_PERSONAL)
         professional = _read_md(PROFESSIONAL_MD, DEFAULT_PROFESSIONAL)
     else:       # a team member's model gets their own notes, never the admin's or another member's
-        personal = member_notes(uid, "personal")
-        professional = member_notes(uid, "professional")
+        # asked of the add-on; with none, a member gets the defaults, never the admin's notes
+        personal = _member_text(uid, "personal")
+        professional = _member_text(uid, "professional")
     context = personal + "\n\n" + professional + "\n\n"
     
     settings = get_settings()
@@ -132,11 +126,16 @@ def get_memory_context() -> str:
 def update_memory(file_type: str, content: str):
     """Append content to a specific memory file."""
     init_memory()
-    from optimux_backend.core import team
-    uid = team.current_user_id()
+    from optimux_backend.core import identity
+    uid = identity.current_user_id()
 
     if file_type in MEMBER_KINDS:
-        filepath = _member_file(uid, file_type) if uid is not None else (PERSONAL_MD if file_type == "personal" else PROFESSIONAL_MD)
+        if uid is None:
+            filepath = PERSONAL_MD if file_type == "personal" else PROFESSIONAL_MD
+        else:
+            filepath = _member_file(uid, file_type)
+            if not filepath:       # no add-on to say where a member's notes live: never write the admin's
+                return "Error: Member notes are not available on this install. Nothing was saved."
     elif file_type == "project":
         settings = get_settings()
         active_project = settings.get("active_project", "")

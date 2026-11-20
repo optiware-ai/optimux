@@ -23,7 +23,7 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 ├── .github/ISSUE_TEMPLATE/      (bug report and feature request forms; config.yml links Q&A, Ideas and private security reporting)
 ├── index.html                   (Vue 3 SPA page and templates)
 ├── index.html_AGENT.md
-├── web/                         (app.js, attention.js ("the chat needs you"), boot.js, connection.js (the page's check of its line to Optimux), chat-input.js (the chat box's list typing), sent-view.js (what a pane of kept text is: JSON, Markdown or code, for its View button), i18n.js and i18n/<code>.json (the page's languages), login page, the team member's chat page (member.html, member.js) and account page (account.html, account.js), styles, logo.svg and logo-192.png (the notification icon), preview-pick.js (the Studio preview's picker, inlined into previewed pages), pinned libraries in vendor/)
+├── web/                         (app.js, attention.js ("the chat needs you"), boot.js, connection.js (the page's check of its line to Optimux), chat-input.js (the chat box's list typing), sent-view.js (what a pane of kept text is: JSON, Markdown or code, for its View button), i18n.js and i18n/<code>.json (the page's languages), login page, styles, logo.svg and logo-192.png (the notification icon), preview-pick.js (the Studio preview's picker, inlined into previewed pages), pinned libraries in vendor/)
 │   ├── tutorial/                (the video tutorial of Dashboard -> Help: optimux-tutorial-N.mp4 and its poster; a new film gets a new N)
 ├── deploy/                      (server kit: systemd unit, Caddyfile, env example, AppArmor profile)
 ├── install.sh                   (one-line installer, local or server; library of the optimux command)
@@ -113,15 +113,43 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │       ├── workspace.py_AGENT.md
 │       ├── store.py_AGENT.md
 │       ├── security.py_AGENT.md
+│       ├── identity.py          (Which mode and whose work: what the core reads about the team version)
+│       ├── identity.py_AGENT.md
+│       ├── plugins.py           (Add-ons: sockets a separate package plugs into; none installed = solo)
+│       ├── plugins.py_AGENT.md
 │       ├── onboarding.py        (Getting started: the first-run checklist)
 │       ├── onboarding.py_AGENT.md
 │       ├── tasks.py             (Task records: one row per request, 👍 / 👎, CSV export, working time)
 │       ├── tasks.py_AGENT.md
-│       ├── team.py              (Team version: members, invitations, consent, the admin access log)
-│       ├── team.py_AGENT.md
 │       ├── usage.py             (Token & cost metering per LLM call)
-│       └── usage.py_AGENT.md
-├── tests/                       (pytest suite covering the core modules)
+│       ├── usage.py_AGENT.md
+│       ├── webutil.py           (client_ip and the sign-in rate limit answer, shared with add-ons)
+│       └── webutil.py_AGENT.md
+├── optimux_team/                (the team add-on: plugs into the core through core/plugins.py; its own tests are in optimux_team/tests/, with its route audit team_route_classes.json; cut-public.sh builds the public tree from the private one)
+│   ├── __init__.py              (register(api): the questions it answers)
+│   ├── __init__.py_AGENT.md
+│   ├── access.py                (What the admin sees of members' work: consent, names, access log)
+│   ├── access.py_AGENT.md
+│   ├── budgets.py               (A monthly budget for each member)
+│   ├── budgets.py_AGENT.md
+│   ├── guard.py                 (What a signed-in member may reach)
+│   ├── guard.py_AGENT.md
+│   ├── notes.py                 (A member's own personal and technical notes)
+│   ├── notes.py_AGENT.md
+│   ├── pages.py                 (The member pages and their two scripts, served from web/)
+│   ├── pages.py_AGENT.md
+│   ├── web/                     (member.html, member.js: a member's chat page; account.html, account.js: their account page)
+│   ├── schema.py                (The team tables: users, consent, access log, project members)
+│   ├── schema.py_AGENT.md
+│   ├── routes.py                (The team routes: /api/me and /api/team)
+│   ├── routes.py_AGENT.md
+│   ├── signin.py                (How members get in: sign-in door, invitation, activation)
+│   ├── signin.py_AGENT.md
+│   ├── team.py                  (members, invitations, consent, the admin access log: the data layer)
+│   ├── team.py_AGENT.md
+│   ├── rules.py                 (What members may do in a project: autonomy level and network)
+│   └── rules.py_AGENT.md
+├── tests/                       (pytest suite of the core; it passes with optimux_team/ deleted, CI job "core-only")
 └── requirements.txt
 ```
 

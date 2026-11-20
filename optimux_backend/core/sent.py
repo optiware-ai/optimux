@@ -14,7 +14,7 @@ import hashlib
 import json
 import time
 
-from optimux_backend.core import store, team
+from optimux_backend.core import store, identity
 
 KEEP_DAYS = 14            # the default of the keep_sent_days setting; 0 keeps nothing
 PROMPT_CUT = 300          # characters of a request shown in a list
@@ -89,7 +89,7 @@ def record(session_id: str, role: str, model: str, messages: list, tools: list |
                     "INSERT INTO sent_calls (ts, session, task_id, project, role, model, parts, tools, chars, user_id) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (time.time(), session_id, task_id, project or "", role, model, json.dumps(refs),
-                     json.dumps(names), sum(len(t) for _, t in parts), team.current_user_id()))
+                     json.dumps(names), sum(len(t) for _, t in parts), identity.current_user_id()))
                 sid = cur.lastrowid
         finally:
             conn.close()

@@ -15,7 +15,7 @@ Autonomy levels (v0.8, ported from OmniLatch v0.1.0-12): how much models may do 
 - `overview()`: `default` (the saved or migrated one, even while blocked), `default_saved`, `projects`, `blocked`, `levels`, `hard_limits`.
 
 ## Team members (step 9)
-- `autonomy.json` gains `"members": {project: {level, network}}`. `member_rules(project)` (strict default: supervised, no network), `set_member_rules(project, level, network)` (supervised + no network removes the entry), `member_rules_all()`. `project_level(project)` returns the member rules' level when `team.current_user_id()` is set, whatever the admin's own level or default is. `main.raise_level_for` returns "" for members, so a member's approval box can't loosen the project.
+- The rules for members live in the add-on (`optimux_team/rules.py`, file `member_rules.json`: `{project: {level, network}}`; strict default: supervised, no network). `project_level(project)` asks the add-on (`plugins.ask("member_rules", project, default=STRICT_MEMBER)`) when `identity.current_user_id()` is set, whatever the admin's own level or default is; with no add-on a member gets `STRICT_MEMBER`, never looser. `main.raise_level_for` returns "" for members, so a member's approval box can't loosen the project. (Before p102 these lived here, in `autonomy.json` under `members`; that key is no longer read.)
 
 ## Servers
 - `server_block()`: "" unless `auth.server_mode()`. On a server the levels apply only while the sandbox is on (`sandbox.enabled`) and works (`sandbox.status()["works"]`, cached); otherwise it returns why, and every project reads as supervised.

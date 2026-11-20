@@ -2,9 +2,9 @@
 
 What each release of Optimux changed. The version rules are in [CONTRIBUTING.md](CONTRIBUTING.md#versions-and-releases); the newest release is at the top.
 
-## Unreleased (on `main`, since v0.6.0)
+## v0.8.0 (2026-11-20) — beta
 
-Work that is on `main` but not in a release yet. An install from `main` shows `v0.6.0` with its commit. The full entry, with what to do before updating, is written when the release is made.
+The Studio, autonomy levels and an Italian interface, and a cleaner split: the core is complete for one person, and the team version is now a separate add-on.
 
 - **Studio:** browse, edit and preview a project's files beside the chat; send code or a part of the page to the model.
 - **Autonomy levels:** Supervised (the default), Checkpointed or Autonomous, per project; the hard limits always ask.
@@ -13,6 +13,10 @@ Work that is on `main` but not in a release yet. An install from `main` shows `v
 - **Scout before Complex**, **working time** per request, and a reworked **Dashboard** (charts and details, roles and jobs).
 - **Italian** interface and server texts, chosen in Dashboard → System.
 - **Restore** merges history both ways; **Getting started** has a check line per step.
+- **Add-ons:** the core has a fixed place where add-ons plug in (`optimux_backend/core/plugins.py`), and imports nothing from them. The test suite passes with no add-on installed.
+- **Team version:** several people on one install is now a separate add-on, `optimux_team`, under a commercial license (see the README). This repository holds everything for one person. `optimux enable-team` without the add-on says so; an install that was put in team mode and lost its add-on refuses to start (install the add-on, or run `optimux disable-team`). `optimux status` now shows the mode and the loaded add-ons.
+
+**Before updating:** nothing to do. The database upgrades itself on the first start after the update.
 
 ## v0.6.0 (2026-10-23) — beta
 

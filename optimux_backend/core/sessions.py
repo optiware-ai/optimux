@@ -13,7 +13,7 @@ import json
 import time
 import uuid
 
-from optimux_backend.core import store, team
+from optimux_backend.core import store, identity
 from optimux_backend.core.security import mask_obj, mask_secrets, secret_values, secrets_fingerprint
 
 
@@ -33,7 +33,7 @@ def create(project: str, first_prompt: str = "") -> str:
     try:
         with conn:
             conn.execute("INSERT INTO sessions (id, project, title, created, updated, user_id) VALUES (?, ?, ?, ?, ?, ?)",
-                         (sid, project or "", title, now, now, team.current_user_id()))
+                         (sid, project or "", title, now, now, identity.current_user_id()))
     finally:
         conn.close()
     return sid

@@ -2645,6 +2645,7 @@
  "👍 {up} · 👎 {down}": "👍 {up} · 👎 {down}",
  "No such member.": "Nessun membro con questo nome.",
  "Not available for team members yet.": "Non ancora disponibile per i membri del team.",
+ "Team mode needs its add-on, which is not installed.": "La modalità team richiede il suo componente aggiuntivo, che non è installato.",
  "Only the admin can do this.": "Solo l'amministratore può farlo.",
  "Set the sign-in password first: team mode turns it into the admin's.": "Imposta prima la password di accesso: la modalità team la trasforma in quella dell'amministratore.",
  "Team mode is off. Turn it on with: optimux enable-team": "La modalità team è disattivata. Attivala con: optimux enable-team",

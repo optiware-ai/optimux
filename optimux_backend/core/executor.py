@@ -260,8 +260,8 @@ def _minutes(seconds: float) -> str:
 def sandbox_hide() -> str | None:
     """Team mode: the Workspace folder, hidden from model-run commands so that a member's
     command sees its own project only. None in solo mode (nothing changes)."""
-    from optimux_backend.core import team
-    if not team.enabled():
+    from optimux_backend.core import identity
+    if not identity.enabled():
         return None
     root = get_settings().get("projects_root") or ""
     return os.path.realpath(root) if root else None
@@ -291,10 +291,11 @@ async def run_shell_command(command: str, timeout: int | None = None, cwd: str |
     timeout = command_timeout_for(settings) if named else timeout
     argv = None
     network = bool(settings.get("sandbox_network", True))
-    from optimux_backend.core import autonomy, team
-    member = team.current_user_id() is not None
+    from optimux_backend.core import autonomy, identity, plugins
+    member = identity.current_user_id() is not None
     if member:       # a member's commands have a network only where the admin allowed it (and the install allows it)
-        network = network and autonomy.member_rules(settings.get("active_project", ""))["network"]
+        network = network and plugins.ask("member_rules", settings.get("active_project", ""),
+                                          default=autonomy.STRICT_MEMBER)["network"]
     if sandbox.enabled(settings):
         st = sandbox.status()
         if not st["works"]:

@@ -42,8 +42,10 @@ from optimux_backend.core import providers
 from optimux_backend.core import analytics
 from optimux_backend.core import ratelimits
 from optimux_backend.core import budgets
+from optimux_backend.core import plugins
+from optimux_backend.core import identity
+from optimux_backend.core.webutil import client_ip, is_https, limited as _limited, signed_in as _signed_in
 from optimux_backend.core import store
-from optimux_backend.core import team
 from optimux_backend.core import workspace
 from optimux_backend.core import project_records
 from optimux_backend.core import skills as skills_lib
@@ -167,23 +169,8 @@ except Exception as e:
 # ---------------------------------------------------------------- access (Feature 23)
 
 # Reachable without signing in: the sign-in page and its API, and static files
-PUBLIC_PATHS = {"/login", "/auth/status", "/auth/login", "/auth/setup", "/auth/logout", "/auth/invite", "/auth/activate",
-                "/favicon.ico"}
-# Team members (not admins) reach only their own account until the server checks every route (team step 2)
-MEMBER_PATHS = ("/api/me",)
-MEMBER_PREFIXES = tuple(p + "/" for p in MEMBER_PATHS)     # "/api/me/..." only: "/api/memory" must not match "/api/me"
-MEMBER_PAGES = ("/", "/account")      # the pages a member can load: their chat and their account
+PUBLIC_PATHS = {"/login", "/auth/status", "/auth/login", "/auth/setup", "/auth/logout", "/favicon.ico"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-
-
-def client_ip(conn) -> str:
-    """The caller's address. Behind a reverse proxy on the same machine,
-    uvicorn already replaces it with the X-Forwarded-For address."""
-    return (conn.client.host if conn.client else "") or "unknown"
-
-
-def is_https(conn) -> bool:
-    return conn.url.scheme in ("https", "wss")
 
 
 def same_origin(request: Request) -> bool:
@@ -254,7 +241,7 @@ async def guard(request: Request, call_next):
     path = request.url.path
     request.state.login_id = None
     # /preview/ checks its own token (v0.8, the Studio): a sandboxed preview sends no sign-in
-    if not (path.startswith("/static/") or path in PUBLIC_PATHS or path.startswith("/preview/")):
+    if not (path.startswith("/static/") or path in PUBLIC_PATHS or plugins.is_public(path) or path.startswith("/preview/")):
         bearer = bearer_from_header(request.headers.get("authorization"))
         ip = client_ip(request)
         if bearer:
@@ -280,14 +267,11 @@ async def guard(request: Request, call_next):
                 security_headers(request, response)
                 return response
             request.state.login_id = login_id
-            who = team.session_user(login_id)
-            if who and who["role"] == "user" and who["status"] in team.INACTIVE and path not in MEMBER_PAGES:
-                # The member's open page asks (for example /api/me) and learns why it can't go on
-                response = JSONResponse({"detail": tr(team.inactive_text(who["status"])), "disabled": True, "closed": who["status"] == "dismissed"}, status_code=403)
-                security_headers(request, response)
-                return response
-            if who and who["role"] == "user" and path not in MEMBER_PAGES and path not in MEMBER_PATHS and not path.startswith(MEMBER_PREFIXES):
-                response = JSONResponse({"detail": tr("Not available for team members yet.")}, status_code=403)
+            # Team add-on: what members may reach, and why a closed-out member can't go on. With no add-on
+            # nobody is asked (solo). The answer is {"status", "body"} to refuse, or None.
+            denied = plugins.ask("guard", request, default=None)
+            if denied:
+                response = JSONResponse(denied["body"], status_code=denied["status"])
                 security_headers(request, response)
                 return response
     elif request.method not in SAFE_METHODS and path.startswith("/auth/") and not same_origin(request):
@@ -723,51 +707,40 @@ async def remove_model(model_id: str):
 # and every opening of such a member's data is logged. In solo mode none of this applies.
 
 def _owner(user: str | None):
-    """The ?user= filter: "all" (default), "me" (the install's own) or a member's id."""
-    if not team.enabled() or user in (None, "", "all"):
+    """The ?user= filter: "all" (default), "me" (the install's own) or a member's id. The team add-on decides."""
+    if not identity.enabled():
         return "all"
-    if user == "me":
-        return "me"
-    if user.isdigit() and team.get(int(user)):
-        return int(user)
-    raise HTTPException(422, tr("No such member."))
+    return plugins.ask("owner_filter", user, default="all")
 
 
 def _named(rows: list[dict]) -> list[dict]:
     """Team mode: each row says whose it is and whether its text is private to the admin."""
-    if not team.enabled():
+    if not identity.enabled():
         return rows
-    admin = team.get(team.first_admin_id() or 0)
-    names = {u["id"]: u["name"] for u in team.list_users()}
-    private = team.private_users()
-    for r in rows:
-        uid = r.get("user_id")
-        r["user"] = names.get(uid) if uid else (admin["name"] if admin else None)
-        r["private"] = uid in private
-        if r["private"] and "title" in r:
-            r["title"] = ""
-    return rows
+    return plugins.ask("name_rows", rows, default=rows)
+
+
+def _hidden_users():
+    """Members whose chat text the admin may not read (they have not agreed)."""
+    return plugins.ask("hidden_users", default=()) if identity.enabled() else ()
 
 
 def _read_block(owner_id: int | None, kind: str, ref: str = "") -> str:
     """"" when the admin may read this (and the opening is logged), else why not."""
-    if owner_id is None or not team.enabled():
+    if owner_id is None or not identity.enabled():
         return ""
-    if not team.admin_may_read_chats(owner_id):
-        return tr("This member has not agreed to let the admin read their chats.")
-    team.log_admin_access(team.first_admin_id() or 0, owner_id, kind, ref)
-    return ""
+    return plugins.ask("read_block", owner_id, kind, ref, default="")
 
 
 def chat_read_block(sid: str) -> str:
-    if team.current_user_id() is not None:      # a member's own connection: _member_chat already allowed only their own chats
+    if identity.current_user_id() is not None:      # a member's own connection: _member_chat already allowed only their own chats
         return ""
     return _read_block(chat_store.owner_of(sid), "chat", sid)
 
 
 def _log_usage_look(owner) -> None:
     if isinstance(owner, int):
-        team.log_admin_access(team.first_admin_id() or 0, owner, "usage", "")
+        plugins.ask("log_usage_look", owner, default=None)
 
 
 @app.get("/api/usage")
@@ -828,7 +801,7 @@ async def list_sessions(project: str | None = None, all_projects: bool = False,
     owner = _owner(user)
     return _named(chat_store.list_sessions(None if all_projects else project, archived, q,
                                            max(1, min(limit, 5000)), owner=owner,
-                                           hidden=team.private_users() if team.enabled() else ()))
+                                           hidden=_hidden_users()))
 
 
 @app.post("/api/sessions/{sid}/rename")
@@ -909,7 +882,7 @@ async def sent_requests(project: str | None = None, all_projects: bool = False, 
     many there are (the list stops at `limit`); `count_only` returns just that, for a closed header."""
     where = (None if all_projects else project, since or None, archived)
     owner = _owner(user)
-    hidden = team.private_users() if team.enabled() else ()
+    hidden = _hidden_users()
     if count_only:
         n = (len(await asyncio.to_thread(sent_lib.requests, *where, q, 1000, owner, hidden)) if q.strip()
              else await asyncio.to_thread(sent_lib.count, *where, owner))
@@ -1849,42 +1822,12 @@ class LoginPayload(BaseModel):
     admin: bool = False     # team mode: the admin door
 
 
-class InvitePayload(BaseModel):
-    token: str = Field(max_length=200)
-
-
-class ActivatePayload(BaseModel):
-    token: str = Field(max_length=200)
-    password: str = Field(max_length=1024)
-    chat_access: bool = False
-
-
-class MemberNamePayload(BaseModel):
-    name: str = Field(max_length=200)
-
-
-class DisabledPayload(BaseModel):
-    disabled: bool
-
-
-class DismissedPayload(BaseModel):
-    dismissed: bool
-
-
-class ConsentPayload(BaseModel):
-    chat_access: bool
-
-
 def _workspace_projects() -> list[str]:
     """The Workspace's project folders; none while the Workspace folder isn't set up."""
     try:
         return workspace.project_names()
     except workspace.WorkspaceError:
         return []
-
-
-class MemberFlagPayload(BaseModel):
-    member: bool
 
 
 class PasswordPayload(BaseModel):
@@ -1979,23 +1922,6 @@ async def _announce(event: str, request: Request | None = None) -> None:
                 pass
 
 
-def _signed_in(request: Request, response: JSONResponse, user_id: int | None = None) -> JSONResponse:
-    token = auth.create_session(client_ip(request), request.headers.get("user-agent", ""), user_id=user_id)
-    response.set_cookie(auth.COOKIE, token, max_age=auth.MAX_AGE_SECONDS, path="/", httponly=True,
-                        samesite="strict", secure=is_https(request) or auth.server_mode())
-    return response
-
-
-def _limited(request: Request, password: bool = False) -> JSONResponse | None:
-    ip = client_ip(request)
-    wait = auth.password_retry_after(ip) if password else auth.retry_after(ip)
-    if wait:
-        mins = max(1, round(wait / 60))
-        return JSONResponse({"detail": tr("Too many failed attempts. Try again in about {mins} minute{v}.", mins=mins, v='s' if mins != 1 else '')},
-                            status_code=429, headers={"Retry-After": str(wait)})
-    return None
-
-
 @app.get("/login")
 async def login_page():
     return FileResponse(os.path.join(WEB_DIR, "login.html"), media_type="text/html")
@@ -2010,9 +1936,8 @@ async def favicon():
 @app.get("/auth/status")
 async def auth_status(request: Request):
     login_id = auth.check_session(request.cookies.get(auth.COOKIE))
-    who = team.session_user(login_id) if login_id else None
-    return {"setup_needed": not auth.password_set(), "totp": auth.totp_enabled(), "team": team.enabled(),
-            "signed_in": bool(login_id), "member": bool(who and who["role"] == "user"),
+    return {"setup_needed": not auth.password_set(), "totp": auth.totp_enabled(), "team": identity.enabled(),
+            "signed_in": bool(login_id), "member": bool(login_id and plugins.ask("is_member", login_id, default=False)),
             "server_mode": auth.server_mode(), "https": is_https(request),
             "language": config_manager.language()}       # v0.8: the sign-in page's language
 
@@ -2044,9 +1969,13 @@ async def auth_login(payload: LoginPayload, request: Request):
     if limited:
         return limited
     ip = client_ip(request)
-    in_team = team.enabled()
+    in_team = identity.enabled()
     if in_team and not payload.admin:
-        return await _member_login(payload, request, ip)
+        # the members' door belongs to the team add-on; with none, team mode can't be signed in to
+        door = plugins.ask("member_login", payload, request, ip, default=None)
+        if door is None:
+            raise HTTPException(503, tr("Team mode needs its add-on, which is not installed."))
+        return await door
     if not auth.password_set():
         raise HTTPException(409, "No password yet: set one with the access token.")
     if not await asyncio.to_thread(auth.check_password, payload.password):
@@ -2065,54 +1994,9 @@ async def auth_login(payload: LoginPayload, request: Request):
             raise HTTPException(401, "Wrong or already used code.")
     auth.succeeded(ip)
     await _announce("signin", request)      # the other browsers see who just signed in
-    admin_id = team.first_admin_id() if in_team else None
-    if admin_id:
-        team.touch_login(admin_id)          # the Team page's "Last sign-in"
+    # team mode: the add-on records the admin's sign-in (the Team page's "Last sign-in") and says which account it is
+    admin_id = plugins.ask("admin_signed_in", default=None) if in_team else None
     return _signed_in(request, JSONResponse({"ok": True}), user_id=admin_id)
-
-
-async def _member_login(payload: LoginPayload, request: Request, ip: str):
-    """Team mode, the members' door: name and password. Admin accounts never match here,
-    and a wrong name gets the same answer as a wrong password."""
-    user = await asyncio.to_thread(team.check_login, payload.name, payload.password)
-    if not user:
-        auth.password_failed(ip)
-        raise HTTPException(401, "Wrong name or password.")
-    if user["status"] in team.INACTIVE:     # right password: say why (not a failed attempt)
-        raise HTTPException(403, tr(team.inactive_text(user["status"])))
-    auth.succeeded(ip)
-    team.touch_login(user["id"])
-    return _signed_in(request, JSONResponse({"ok": True}), user_id=user["id"])
-
-
-@app.post("/auth/invite")
-async def auth_invite(payload: InvitePayload, request: Request):
-    """The invitation page asks who the link is for and what the member is asked to agree to."""
-    limited = _limited(request)
-    if limited:
-        return limited
-    info = team.invite_info(payload.token) if team.enabled() else None
-    if not info:
-        auth.failed(client_ip(request))
-        raise HTTPException(404, "This invitation doesn't work (used, replaced or expired). Ask your admin for a new one.")
-    return info
-
-
-@app.post("/auth/activate")
-async def auth_activate(payload: ActivatePayload, request: Request):
-    """The member sets a password and makes the consent choice; they are signed in."""
-    limited = _limited(request)
-    if limited:
-        return limited
-    try:
-        user = await asyncio.to_thread(team.activate, payload.token, payload.password, payload.chat_access) if team.enabled() else None
-    except auth.AuthError as e:
-        raise HTTPException(400, str(e))
-    if not user:
-        auth.failed(client_ip(request))
-        raise HTTPException(404, "This invitation doesn't work (used, replaced or expired). Ask your admin for a new one.")
-    auth.succeeded(client_ip(request))
-    return _signed_in(request, JSONResponse({"ok": True}), user_id=user["id"])
 
 
 @app.post("/auth/logout")
@@ -2201,205 +2085,6 @@ async def auth_totp_disable(payload: LoginPayload, request: Request):
         raise HTTPException(400, "Password or code doesn't match.")
     auth.disable_totp()
     return {"ok": True}
-
-
-# ---- The team version (step 1): members, consent and the access log
-
-def _team_admin(request: Request) -> None:
-    """Admin only (members are also stopped by the guard); and only when team mode is on."""
-    who = team.session_user(request.state.login_id)
-    if who and who["role"] != "admin":
-        raise HTTPException(403, tr("Only the admin can do this."))
-    if not team.enabled():
-        raise HTTPException(409, tr("Team mode is off. Turn it on with: optimux enable-team"))
-
-
-def _member(request: Request) -> dict:
-    who = team.session_user(request.state.login_id)
-    if not who or who["role"] != "user":
-        raise HTTPException(409, tr("This is for team members."))
-    return who
-
-
-def _team_call(fn, *args):
-    try:
-        return fn(*args)
-    except team.TeamError as e:
-        raise HTTPException(e.status, str(e))
-
-
-@app.get("/api/me")
-async def api_me(request: Request):
-    """Who is signed in and what they may do; the page uses it to decide what to show."""
-    me = team.me(request.state.login_id)
-    if me.get("user") and not me["admin"]:
-        me["projects"] = team.projects_of(me["user"]["id"], _workspace_projects())
-        me["budget"] = budgets.user_status(me["user"]["id"])
-    return me
-
-
-@app.get("/api/me/memory/{kind}")
-async def api_me_memory(kind: str, request: Request):
-    """A member's own personal or technical notes. Nobody else, the admin included, has a way to read them."""
-    who = _member(request)
-    if kind not in memory_manager.MEMBER_KINDS:
-        raise HTTPException(400, tr("The notes are 'personal' or 'professional'."))
-    return {"content": memory_manager.member_notes(who["id"], kind)}
-
-
-class MemberNotesPayload(BaseModel):
-    file_type: str
-    content: str
-
-
-@app.post("/api/me/memory")
-async def api_me_memory_save(payload: MemberNotesPayload, request: Request):
-    who = _member(request)
-    if payload.file_type not in memory_manager.MEMBER_KINDS:
-        raise HTTPException(400, tr("The notes are 'personal' or 'professional'."))
-    try:
-        memory_manager.save_member_notes(who["id"], payload.file_type, payload.content)
-    except memory_manager.MemoryTooLarge as e:
-        raise HTTPException(400, str(e))
-    return {"status": "success"}
-
-
-class PasswordChangePayload(BaseModel):
-    current: str
-    new: str
-
-
-@app.post("/api/me/password")
-async def api_me_password(payload: PasswordChangePayload, request: Request):
-    """A member changes their own password. A wrong current password counts like a failed sign-in;
-    the member's other browsers are signed out and this one stays."""
-    who = _member(request)
-    limited = _limited(request, password=True)
-    if limited:
-        return limited
-    ip = client_ip(request)
-    try:
-        done = await asyncio.to_thread(team.change_password, who["id"], payload.current, payload.new)
-    except auth.AuthError as e:
-        raise HTTPException(400, str(e))
-    if not done:
-        auth.password_failed(ip)
-        raise HTTPException(403, tr("That is not your current password."))
-    auth.succeeded(ip)
-    await asyncio.to_thread(auth.end_user_sessions_except, who["id"], request.state.login_id)
-    return {"ok": True}
-
-
-@app.post("/api/me/consent")
-async def api_me_consent(payload: ConsentPayload, request: Request):
-    """The member allows or stops the admin reading their chats (kept as history)."""
-    who = _member(request)
-    return team.set_chat_access(who["id"], payload.chat_access)
-
-
-@app.get("/api/me/audit")
-async def api_me_audit(request: Request):
-    """Every time an admin opened this member's data."""
-    who = _member(request)
-    return {"lines": team.audit_for_user(who["id"])}
-
-
-@app.get("/api/team/users")
-async def api_team_users(request: Request):
-    _team_admin(request)
-    users = team.list_users()
-    for u in users:
-        u["budget"] = budgets.user_status(u["id"]) if u["role"] == "user" else None
-    return {"users": users}
-
-
-class UserBudgetPayload(BaseModel):
-    monthly_usd: float | None = None
-    on_limit: str = "block"
-
-
-@app.post("/api/team/users/{user_id}/budget")
-async def api_team_budget(user_id: int, payload: UserBudgetPayload, request: Request):
-    """A member's monthly budget, over all their projects (empty amount removes it)."""
-    _team_admin(request)
-    who = team.get(user_id)
-    if not who or who["role"] != "user":
-        raise HTTPException(400, tr("Budgets are for team members."))
-    budgets.save_user_budget(user_id, payload.monthly_usd, payload.on_limit)
-    return {"status": "success", "budget": budgets.user_status(user_id)}
-
-
-@app.post("/api/team/users")
-async def api_team_invite(payload: MemberNamePayload, request: Request):
-    """Invite a member: the link token is shown once."""
-    _team_admin(request)
-    return _team_call(team.invite, payload.name)
-
-
-@app.post("/api/team/users/{user_id}/invite")
-async def api_team_reinvite(user_id: int, request: Request):
-    """A new link; the old link and the old password stop working."""
-    _team_admin(request)
-    return _team_call(team.reinvite, user_id)
-
-
-@app.post("/api/team/users/{user_id}/disabled")
-async def api_team_disabled(user_id: int, payload: DisabledPayload, request: Request):
-    _team_admin(request)
-    return _team_call(team.set_disabled, user_id, payload.disabled)
-
-
-@app.post("/api/team/users/{user_id}/dismissed")
-async def api_team_dismissed(user_id: int, payload: DismissedPayload, request: Request):
-    """Close a member out (they have left): signed out, off every project, no budget. History stays."""
-    _team_admin(request)
-    out = _team_call(team.set_dismissed, user_id, payload.dismissed)
-    if payload.dismissed:
-        budgets.save_user_budget(user_id, None)
-    return out
-
-
-@app.get("/api/team/projects")
-async def api_team_projects(request: Request):
-    """The Workspace's projects and who is on each (member ids); the admin is on all of them."""
-    _team_admin(request)
-    projects = _workspace_projects()
-    return {"projects": projects, "members": team.project_members(),
-            "rules": {name: autonomy_lib.member_rules(name) for name in projects}}
-
-
-class MemberRulesPayload(BaseModel):
-    level: str
-    network: bool = False
-
-
-@app.post("/api/team/projects/{name}/rules")
-async def api_team_rules(name: str, payload: MemberRulesPayload, request: Request):
-    """What members may do in a project without asking, and whether their commands have a network."""
-    _team_admin(request)
-    if name not in _workspace_projects():
-        raise HTTPException(404, tr("No such project."))
-    try:
-        rules = autonomy_lib.set_member_rules(name, payload.level, payload.network)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return {"status": "success", "rules": rules}
-
-
-@app.post("/api/team/projects/{name}/members/{user_id}")
-async def api_team_assign(name: str, user_id: int, payload: MemberFlagPayload, request: Request):
-    """Put a member on a project or take them off."""
-    _team_admin(request)
-    if name not in _workspace_projects():
-        raise HTTPException(404, tr("No such project."))
-    _team_call(team.set_member, name, user_id, payload.member)
-    return {"ok": True}
-
-
-@app.get("/api/team/audit")
-async def api_team_audit(request: Request):
-    _team_admin(request)
-    return {"lines": team.audit_all()}
 
 
 def _loopback(host: str) -> bool:
@@ -3903,7 +3588,7 @@ def offered_tools(skills: dict | None = None) -> list:
     project = active_project()
     tools = (TOOLS + (files_lib.FILE_TOOLS if project else []) + workspace.tools_for(project)
              + ([skills_lib.LOAD_SKILL_TOOL] if skills else []))
-    if team.current_user_id() is not None:
+    if identity.current_user_id() is not None:
         tools = [t for t in tools if t["function"]["name"] not in MEMBER_REFUSED_TOOLS]
     return tools
 
@@ -4017,7 +3702,7 @@ def budget_text(s: dict) -> str:
 
 def budget_tail(s: dict, project_text: str, member_text: str) -> str:
     """The sentence after the numbers: a member can't raise a budget, so they are told to ask the admin."""
-    return " " + (member_text if team.current_user_id() is not None else project_text)
+    return " " + (member_text if identity.current_user_id() is not None else project_text)
 
 
 # Budget notes already shown, per (project, level, month): once per server run,
@@ -4028,8 +3713,8 @@ BUDGET_NOTES_SHOWN: set = set()
 async def check_budget_before_request(websocket: WebSocket, session: dict) -> bool:
     """Refuse a new request when the project's budget blocks; otherwise send a
     one-time note per level (80%, 100% in warn mode). Returns True to proceed."""
-    uid = team.current_user_id()
-    found = [x for x in (budgets.status(active_project()), budgets.user_status(uid) if uid is not None else None) if x]
+    uid = identity.current_user_id()
+    found = [x for x in (budgets.status(active_project()), plugins.ask("member_budget_status", uid, default=None) if uid is not None else None) if x]
     for s in found:
         if s["state"] == "over" and s["on_limit"] == "block":
             await send(websocket, "budget", budget_text(s) + budget_tail(
@@ -4302,7 +3987,7 @@ def raise_level_for(project: str, level: str, why: str) -> str:
     would ask at every level anyway), and only where the levels can apply."""
     if not project or level != "supervised" or not why.startswith("Supervised") or autonomy_lib.server_block():
         return ""
-    if team.current_user_id() is not None:      # the admin decides what members may do; a member can't change it
+    if identity.current_user_id() is not None:      # the admin decides what members may do; a member can't change it
         return ""
     return "checkpointed"
 
@@ -4519,7 +4204,7 @@ async def run_workspace_tool(websocket: WebSocket, session: dict, name: str, arg
     Anything with side effects outside settings needs approval at every autonomy
     level (always_ask), because it creates or moves folders and may create a
     GitHub repository."""
-    if team.current_user_id() is not None and name in MEMBER_REFUSED_TOOLS:     # these change the whole install
+    if identity.current_user_id() is not None and name in MEMBER_REFUSED_TOOLS:     # these change the whole install
         return {"ok": False, "error": tr("A team member can't do this: ask the admin.")}
     try:
         args = json.loads(args_str or "{}") or {}
@@ -5447,7 +5132,7 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
     summary = {k: data[k] for k in ("id", "project", "title", "created", "updated", "turns", "tier", "cost",
                                     "calls_without_cost", "archived")}
     reason = missing_project_reason(data["project"]) if data["project"] != active_project() else None
-    if chat_store.owner_of(sid) is not None and team.current_user_id() is None:        # a member's chat the admin may read: to read, not to continue
+    if chat_store.owner_of(sid) is not None and identity.current_user_id() is None:        # a member's chat the admin may read: to read, not to continue
         reset_chat(session)
         await send(websocket, "session_loaded", session=summary, events=data["events"], times=data["times"],
                    read_only=True, reason=tr("This is a member's chat: you can read it, not continue it."),
@@ -5531,9 +5216,9 @@ def parse_text_tool_call(text: str):
     }
 
 
-def _member_state(user_id: int) -> dict:
+def _member_state(projects: list[str]) -> dict:
     """What a member's page needs: the projects they may use and the one this connection is on."""
-    return {"type": "member_state", "projects": team.projects_of(user_id, _workspace_projects()), "project": active_project()}
+    return {"type": "member_state", "projects": projects, "project": active_project()}
 
 
 def _member_chat(user_id: int, sid: str, mine: list[str]) -> dict:
@@ -5562,18 +5247,19 @@ async def websocket_endpoint(websocket: WebSocket):
     # token as the first message (kept out of the URL and the access log).
     login_id = auth.check_session(websocket.cookies.get(auth.COOKIE))
     await websocket.accept()
-    who = team.session_user(login_id)
-    member = bool(who and who["role"] == "user")
+    # The team add-on says whether this session is a member's: {id, status, projects} or None (never for the solo owner)
+    who = plugins.ask("member_of", login_id, default=None)
+    member = who is not None
     if member:      # a member's connection: their own owner and project, set for this task and the ones it starts
         if who["status"] != "active":
             await websocket.close(code=4403)
             return
-        mine = team.projects_of(who["id"], _workspace_projects())
+        mine = who["projects"]
         if not mine:
             await websocket.send_text(json.dumps({"type": "no_projects", "content": tr("You are not on any project yet. Ask your admin to add you.")}))
             await websocket.close(code=4403)
             return
-        team.bind_user(who["id"])
+        identity.bind_user(who["id"])
         config_manager.bind_project(mine[0])
     if not login_id:
         ip = client_ip(websocket)
@@ -5596,7 +5282,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.send_text(json.dumps({"type": "auth_ok", "build": page_build(), "away": PAGE_AWAY_GRACE,
                                           "version": await asyncio.to_thread(running_version)}))
     if member:
-        await websocket.send_text(json.dumps(_member_state(who["id"])))
+        await websocket.send_text(json.dumps(_member_state(mine)))
     problem = sandbox_problem()
     if problem:
         await websocket.send_text(json.dumps({"type": "sandbox_problem", "content": problem}))
@@ -5736,36 +5422,36 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
             busy = current is not None and not current.done()
             if member:
-                who = team.session_user(login_id)
+                who = plugins.ask("member_of", login_id, default=None)
                 if not who or who["status"] != "active":       # disabled or gone while the page was open
                     await websocket.close(code=4403)
                     break
-                mine = team.projects_of(who["id"], _workspace_projects())
+                mine = who["projects"]
                 if kind == "switch_project":
                     wanted = str(payload.get("project", ""))
                     if busy:
                         await send(line, "system", tr("Still working on the previous request. Stop it first."))
                     elif wanted not in mine:
                         await send(line, "system", tr("You are not on this project."))
-                        await websocket.send_text(json.dumps(_member_state(who["id"])))
+                        await websocket.send_text(json.dumps(_member_state(mine)))
                     else:
                         if session["chat_id"]:
                             schedule_curation(line, session["chat_id"])      # the chat being left is finished
                         config_manager.bind_project(wanted)
                         reset_chat(session)
                         await send(line, "chat_reset")
-                        await websocket.send_text(json.dumps(_member_state(who["id"])))
+                        await websocket.send_text(json.dumps(_member_state(mine)))
                     continue
                 if kind == "open_session" and not busy:
                     wanted = _member_chat(who["id"], str(payload.get("id", "latest")), mine)
                     payload["id"] = wanted["id"]
                     if wanted["project"] is not None:
                         config_manager.bind_project(wanted["project"])
-                        await websocket.send_text(json.dumps(_member_state(who["id"])))
+                        await websocket.send_text(json.dumps(_member_state(mine)))
                 elif kind not in ("stop", "approval_response", "limit_response", "new_chat", "escalate", "plan_action") \
                         and active_project() not in mine:
                     await send(line, "system", tr("You are no longer on this project. Pick another one."))
-                    await websocket.send_text(json.dumps(_member_state(who["id"])))
+                    await websocket.send_text(json.dumps(_member_state(mine)))
                     await send(line, "done")
                     continue
 
@@ -5804,7 +5490,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await send(line, "system", why)
                 await send(line, "done")
                 continue
-            if team.enabled() and kind not in ("new_chat", "open_session") and BUSY_PROJECTS.get(active_project()):
+            if identity.enabled() and kind not in ("new_chat", "open_session") and BUSY_PROJECTS.get(active_project()):
                 await send(line, "system", tr("Someone is already working in this project. Try again when they have finished."))
                 await send(line, "done")
                 continue
@@ -5844,30 +5530,33 @@ async def get_guide():
 @app.get("/account")
 async def account_page(request: Request):
     """A team member's account page: what the admin may see, and when they looked."""
-    who = team.session_user(request.state.login_id)
-    if not (who and who["role"] == "user"):
+    page = plugins.ask("member_page", request.state.login_id, "account", default=None)       # the add-on's page, or None
+    if page is None:
         return RedirectResponse("/")
-    return FileResponse(os.path.join(WEB_DIR, "account.html"), media_type="text/html")
-
-
-@app.get("/api/me/chats")
-async def api_me_chats(request: Request):
-    """A member's own chats, newest first, in the projects they are on (for the chat page's list)."""
-    who = _member(request)
-    mine = team.projects_of(who["id"], _workspace_projects())
-    rows = chat_store.list_sessions(None, False, "", limit=200, owner=who["id"])
-    return {"chats": [{"id": r["id"], "title": r["title"], "project": r["project"], "updated": r["updated"]}
-                      for r in rows if r["project"] in mine][:50]}
+    return page
 
 
 @app.get("/")
 async def get(request: Request):
-    who = team.session_user(request.state.login_id)
-    if who and who["role"] == "user":       # a team member gets their chat (team step 5)
-        return FileResponse(os.path.join(WEB_DIR, "member.html"), media_type="text/html")
+    page = plugins.ask("member_page", request.state.login_id, "chat", default=None)       # a team member gets their chat (team step 5)
+    if page is not None:
+        return page
     with open(os.path.join(REPO_DIR, "index.html"), "r") as f:
         html = f.read()
     # v0.8: a fresh style nonce for the Studio's code editor, in the CSP and in a <meta> the page reads
     nonce = secrets.token_urlsafe(16)
     html = html.replace("<head>", f'<head>\n    <meta name="optimux-style-nonce" content="{nonce}">', 1)
     return HTMLResponse(html, headers={"Content-Security-Policy": page_csp(request, nonce)})
+
+
+# Add-ons (v0.8): an installed package such as optimux_team plugs in here, after every route of the
+# core exists. With none installed this does nothing.
+plugins.load()
+plugins.mount(app)
+
+
+@app.on_event("startup")
+async def _refuse_team_mode_without_its_addon() -> None:
+    """A team install whose add-on is missing would have no member guard and treat members' sign-ins like the
+    owner's. It must not start: install the add-on, or run `optimux disable-team`."""
+    plugins.check_mode(identity.mode())

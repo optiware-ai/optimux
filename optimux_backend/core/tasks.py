@@ -15,7 +15,7 @@ import io
 import time
 import uuid
 
-from optimux_backend.core import store, team
+from optimux_backend.core import store, identity
 from optimux_backend.core.i18n import tr
 
 COLUMNS = ("id", "ts", "session", "project", "kind", "tier", "model", "conductor_model", "conductor_tier",
@@ -97,7 +97,7 @@ def finish(task: dict | None, session_id: str | None) -> bool:
         try:
             with conn:
                 conn.execute(f"INSERT OR REPLACE INTO tasks ({', '.join(COLUMNS)}, user_id) "
-                             f"VALUES ({', '.join('?' * len(COLUMNS))}, ?)", [row[k] for k in COLUMNS] + [team.current_user_id()])
+                             f"VALUES ({', '.join('?' * len(COLUMNS))}, ?)", [row[k] for k in COLUMNS] + [identity.current_user_id()])
         finally:
             conn.close()
         return True

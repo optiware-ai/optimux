@@ -216,54 +216,15 @@ MIGRATIONS = [
     CREATE INDEX sent_calls_ts ON sent_calls (ts);
     CREATE INDEX sent_calls_session ON sent_calls (session);
     """,
-    # 15: the team version, step 1. Members of a team, what each agreed to, who may read what,
-    # and a log of every time an admin opened a member's data. The log can only grow.
+    # 15: sign-ins can belong to a person (the team add-on's members). The tables for members, consent and the
+    # access log used to be created here; since v0.8 they belong to the add-on (optimux_team/schema.py) and are
+    # created through add_schema(). A database that already has them keeps them.
     """
-    CREATE TABLE users (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-        role TEXT NOT NULL DEFAULT 'user',
-        status TEXT NOT NULL DEFAULT 'invited',
-        password TEXT,
-        invite_hash TEXT,
-        invite_expires REAL,
-        created REAL NOT NULL,
-        last_login REAL,
-        chat_access INTEGER NOT NULL DEFAULT 0,
-        consent_version INTEGER,
-        consent_at REAL
-    );
-    CREATE TABLE consent_history (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        ts REAL NOT NULL,
-        chat_access INTEGER NOT NULL,
-        version INTEGER NOT NULL
-    );
-    CREATE TABLE admin_access (
-        id INTEGER PRIMARY KEY,
-        ts REAL NOT NULL,
-        admin_id INTEGER NOT NULL,
-        user_id INTEGER NOT NULL,
-        kind TEXT NOT NULL,
-        ref TEXT
-    );
-    CREATE INDEX admin_access_user ON admin_access (user_id);
-    CREATE TRIGGER admin_access_keep_update BEFORE UPDATE ON admin_access
-        BEGIN SELECT RAISE(ABORT, 'the access log is append-only'); END;
-    CREATE TRIGGER admin_access_keep_delete BEFORE DELETE ON admin_access
-        BEGIN SELECT RAISE(ABORT, 'the access log is append-only'); END;
     ALTER TABLE logins ADD COLUMN user_id INTEGER;
     """,
-    # 16: the team version, step 3a. Which members are on which project (by folder name).
+    # 16: (was the team add-on's project_members table; now in optimux_team/schema.py)
     """
-    CREATE TABLE project_members (
-        project TEXT NOT NULL,
-        user_id INTEGER NOT NULL,
-        added REAL NOT NULL,
-        PRIMARY KEY (project, user_id)
-    );
-    CREATE INDEX project_members_user ON project_members (user_id);
+    -- nothing: this number stays so that every database keeps its place in the list
     """,
     # 17: the team version, step 4a. Whose each chat, call, request and sent prompt is.
     # NULL = the install's own (solo, the admin, or from before team mode).
@@ -279,7 +240,19 @@ MIGRATIONS = [
     """,
 ]
 
+# Schemas of add-ons (v0.8): {name: [migration, ...]}, each list numbered from 1 and kept in meta as
+# "schema_version:<name>". An add-on registers its list when it loads (`add_schema`), so a plain install
+# never gets its tables. Every migration of an add-on must be safe to run on a database that already has them.
+ADDON_SCHEMAS: dict[str, list[str]] = {}
+
 _ready_for: str | None = None
+
+
+def add_schema(name: str, migrations: list[str]) -> None:
+    """Register an add-on's tables. The next connection brings the database up to date."""
+    global _ready_for
+    ADDON_SCHEMAS[name] = list(migrations)
+    _ready_for = None            # connections made before the add-on loaded must migrate again
 
 
 def connect() -> sqlite3.Connection:
@@ -306,6 +279,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
             with conn:
                 conn.executescript(sql)
                 conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)", (str(number),))
+    for name, migrations in ADDON_SCHEMAS.items():
+        key = f"schema_version:{name}"
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        version = int(row["value"]) if row else 0
+        for number, sql in enumerate(migrations, start=1):
+            if number > version:
+                with conn:
+                    conn.executescript(sql)
+                    conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, str(number)))
     conn.commit()
 
 

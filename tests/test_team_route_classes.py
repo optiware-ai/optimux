@@ -10,16 +10,23 @@ from fastapi.routing import APIRoute
 from starlette.routing import WebSocketRoute
 
 from optimux_backend.core import workspace
+from optimux_backend.core import plugins
 from optimux_backend.main import PUBLIC_PATHS, app
 
 ROOT = Path(__file__).resolve().parent.parent
 AUDIT = json.loads((ROOT / "tests" / "team_route_classes.json").read_text())
+# The routes the team add-on defines are audited in its own file; with no add-on installed there are none
+_ADDON_AUDIT = ROOT / "optimux_team" / "tests" / "team_route_classes.json"
+if _ADDON_AUDIT.exists():
+    AUDIT["routes"] = {**AUDIT["routes"], **json.loads(_ADDON_AUDIT.read_text())["routes"]}
 CLASSES = {"P", "T", "S", "R", "M", "A"}
+
+from tests.conftest import flat_routes  # noqa: E402
 
 
 def _real_routes() -> set[str]:
     found = set()
-    for r in app.routes:
+    for r in flat_routes(app.routes):
         if isinstance(r, APIRoute):
             found |= {f"{m} {r.path}" for m in r.methods if m not in ("HEAD", "OPTIONS")}
         elif isinstance(r, WebSocketRoute):
@@ -44,7 +51,8 @@ def test_the_classes_are_known_and_every_entry_says_why_when_it_is_not_obvious()
 
 def test_what_the_audit_calls_public_is_what_the_sign_in_guard_lets_through():
     public = {k for k, v in AUDIT["routes"].items() if v["class"] == "P"}
-    guard = {k for k in AUDIT["routes"] if k.split(" ", 1)[1] in PUBLIC_PATHS}
+    open_paths = PUBLIC_PATHS | plugins.public_paths()      # the core's, and what the add-ons declare
+    guard = {k for k in AUDIT["routes"] if k.split(" ", 1)[1] in open_paths}
     assert public == guard
     assert {k for k, v in AUDIT["routes"].items() if v["class"] == "T"} == {k for k in AUDIT["routes"] if k.split(" ", 1)[1].startswith("/preview/")}
 

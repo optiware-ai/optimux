@@ -16,7 +16,7 @@ It isn't limited to code: you can ask it anything you would ask a chat AI, and i
 [![LiteLLM](https://img.shields.io/badge/LiteLLM-100%2B_providers-6E56CF)](https://github.com/BerriAI/litellm)
 [![Tests](https://github.com/optiware-ai/optimux/actions/workflows/tests.yml/badge.svg)](https://github.com/optiware-ai/optimux/actions/workflows/tests.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL_v3-blue.svg)](LICENSE)
-[![Status: beta](https://img.shields.io/badge/status-beta_v0.6-orange.svg)](#project-status)
+[![Status: beta](https://img.shields.io/badge/status-beta_v0.8-orange.svg)](#project-status)
 
 [Website](https://optimux.si) · [Features](#features) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Documentation](docs/GUIDE.md) · [Security](#security) · [Contributing](CONTRIBUTING.md)
 
@@ -56,7 +56,7 @@ It sends simple requests to cheap models, hands hard work to stronger models, tr
 ---
 
 > ### Project status
-> **Optimux is in beta. The latest release is v0.6.0 (2026-10-23).** The `main` branch, and this README, already include unreleased work for the next release: the Studio, autonomy levels, per-project settings and models, the Italian interface and more (listed under *Unreleased* in the [CHANGELOG](CHANGELOG.md)). An install from `main` shows `v0.6.0` with its commit until that release is made.
+> **Optimux is in beta. The latest release is v0.8.0 (2026-11-20).** What changed since v0.6.0 is in the [CHANGELOG](CHANGELOG.md).
 >
 > It is used every day on Linux and has a large automated test suite, but some paths have had little real-world use yet: server installs, macOS, and creating GitHub repositories from the app. The tests use fake models: they check Optimux itself, not how well real models do coding tasks. What has and hasn't been measured with real models is in [docs/evaluations](docs/evaluations/README.md). Expect rough edges, and please [open an issue](https://github.com/optiware-ai/optimux/issues) when something breaks.
 
@@ -378,7 +378,7 @@ The same tests and `shellcheck` run on GitHub Actions for every push and pull re
 
 - **Measured local-model delegation**: hand narrow, checkable tasks (output compression, titles, embeddings) to free local models where it pays off.
 - **Security, phase 2** (before 1.0): an audit log, dependency scanning and signed releases, then an independent penetration test.
-- **Teams** (a later generation): several users, roles, and keys and budgets per user.
+- **Team version** (available, separate): several people on one install, each with their own page, budgets and rules. See [License](#license).
 
 ## Contributing
 
@@ -391,6 +391,8 @@ To report a security problem, please don't open an issue: see [SECURITY.md](SECU
 Copyright (C) 2026 Masoud Valizadeh.
 
 Optimux is free software: you can redistribute it and/or modify it under the terms of the [GNU Affero General Public License version 3](LICENSE) (AGPL-3.0-only). If you run a modified version for other people over a network, the AGPL asks you to offer them its source code.
+
+The **team version** (several people on one install: members, invitations, consent, budgets) is a separate add-on, `optimux_team`, under a commercial license and not part of this repository. This repository is complete on its own: everything for one person is here, with a fixed place (`optimux_backend/core/plugins.py`) where the add-on plugs in. For the team version, open an issue.
 
 ## Acknowledgements
 

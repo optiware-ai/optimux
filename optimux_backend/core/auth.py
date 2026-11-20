@@ -304,7 +304,14 @@ def end_session(token_or_id: str, is_id: bool = False) -> None:
 
 
 # Team mode: sessions of ordinary members. The admin's own sign-out and password change leave them alone.
-_MEMBERS = "COALESCE(user_id IN (SELECT id FROM users WHERE role = 'user'), 0)"
+_MEMBERS_SQL = "COALESCE(user_id IN (SELECT id FROM users WHERE role = 'user'), 0)"
+
+
+def _members(conn) -> str:
+    """The SQL test "this sign-in is a member's". The members' table belongs to the team add-on; a plain
+    install has none, and then nobody is a member."""
+    has = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'").fetchone()
+    return _MEMBERS_SQL if has else "0"
 
 
 def end_all_sessions(keep_id: str | None = None, members: bool = True) -> int:
@@ -312,7 +319,7 @@ def end_all_sessions(keep_id: str | None = None, members: bool = True) -> int:
     conn = store.connect()
     try:
         with conn:
-            cur = conn.execute("DELETE FROM logins WHERE id != ?" + ("" if members else f" AND NOT ({_MEMBERS})"),
+            cur = conn.execute("DELETE FROM logins WHERE id != ?" + ("" if members else f" AND NOT ({_members(conn)})"),
                                (keep_id or "",))
             return cur.rowcount
     finally:
@@ -342,7 +349,7 @@ def list_sessions(current_id: str | None = None) -> list[dict]:
     """The install's own browsers (the admin's); team members' sessions are not listed here."""
     conn = store.connect()
     try:
-        rows = conn.execute(f"SELECT id, created, last_seen, ip, agent FROM logins WHERE NOT ({_MEMBERS}) "
+        rows = conn.execute(f"SELECT id, created, last_seen, ip, agent FROM logins WHERE NOT ({_members(conn)}) "
                             "ORDER BY last_seen DESC").fetchall()
     finally:
         conn.close()

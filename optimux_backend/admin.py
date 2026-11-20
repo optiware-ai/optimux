@@ -77,23 +77,26 @@ def cmd_reset_password(args) -> None:
 
 def cmd_enable_team(args) -> None:
     """Team mode on: the existing password becomes the first admin's (name from the argument)."""
-    from optimux_backend.core import sandbox, team
+    from optimux_backend.core import plugins, sandbox
     st = sandbox.status(refresh=True)
     if not st["works"]:
         raise SystemExit("Team mode needs the sandbox (bubblewrap), so that commands run for one person "
                          "cannot read another person's project. " + (st.get("error") or "") +
                          " Install it (for example: sudo apt install bubblewrap) and run this again.")
+    plugins.load()
     try:
-        admin = team.enable(args.name)
-    except team.TeamError as e:
+        admin = plugins.ask("enable_team", args.name, license_key=args.license, default=None)      # the team add-on turns it on (TeamError is a ValueError)
+    except ValueError as e:
         raise SystemExit(str(e))
+    if admin is None:
+        raise SystemExit("Team mode needs the team add-on (optimux_team), which is not installed.")
     _out(f"Team mode is on. Admin: {admin['name']}. Sign in through the admin door; invite members from the Dashboard.")
 
 
 def cmd_disable_team(args) -> None:
     """Back to a single user: members are signed out; their data stays."""
-    from optimux_backend.core import team
-    ended = team.disable()
+    from optimux_backend.core import identity
+    ended = identity.disable_team()
     _out(f"Team mode is off. {ended} member sign-in{'s' if ended != 1 else ''} ended.")
 
 
@@ -204,15 +207,25 @@ def cmd_remove_github(args) -> None:
 
 def cmd_status(args) -> None:
     """What is configured (no secrets), as JSON."""
-    from optimux_backend.core import auth, paths, sandbox
+    from optimux_backend.core import auth, identity, paths, plugins, sandbox
     from optimux_backend.core.config_manager import get_all_models, get_routing_config, get_settings
     settings = get_settings()
+    plugins.load()
+    try:
+        plugins.check_mode(identity.mode())
+        team_problem = None
+    except plugins.PluginError as e:
+        team_problem = str(e)
     models = get_all_models()
     _out({
         "home": paths.HOME,
         "password_set": auth.password_set(),
         "totp": auth.totp_enabled(),
         "server_mode": auth.server_mode(),
+        "mode": identity.mode(),
+        "addons": plugins.loaded(),
+        "team": plugins.ask("team_status", default=None),      # the add-on's own facts (its license), if installed
+        "mode_problem": team_problem,         # team mode without its add-on: the server refuses to start
         "workspace": settings.get("projects_root", ""),
         "sandbox": sandbox.enabled(settings),
         "github": settings.get("github_login", "") or None,
@@ -231,6 +244,7 @@ def main(argv=None) -> int:
     sub.add_parser("reset-password", help="remove the password and two-step codes").set_defaults(fn=cmd_reset_password)
     s = sub.add_parser("enable-team", help="turn the password into the first admin of a team")
     s.add_argument("name", nargs="?", default="admin")
+    s.add_argument("--license", help="the team license text you received (checked offline)")
     s.set_defaults(fn=cmd_enable_team)
     sub.add_parser("disable-team", help="back to a single user").set_defaults(fn=cmd_disable_team)
     s = sub.add_parser("set-key", help="save an API key (stdin)")

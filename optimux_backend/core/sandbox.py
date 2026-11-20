@@ -49,10 +49,10 @@ def bwrap_path() -> str | None:
 def required() -> bool:
     """Forced on (can't be turned off from the UI): OPTIMUX_REQUIRE_SANDBOX=1, OPTIMUX_SERVER=1
     which implies it, or team mode, where commands must not reach other people's files."""
-    from optimux_backend.core import team
+    from optimux_backend.core import identity
     from optimux_backend.core.auth import server_mode
     return (server_mode() or os.environ.get(REQUIRE_ENV, "").strip().lower() in ("1", "true", "yes", "on")
-            or team.enabled())
+            or identity.enabled())
 
 
 def enabled(settings: dict) -> bool:

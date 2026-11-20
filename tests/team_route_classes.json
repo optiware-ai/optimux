@@ -121,22 +121,6 @@
    "class": "S",
    "note": ""
   },
-  "GET /api/me": {
-   "class": "S",
-   "note": "who is signed in and what they may do; members may call it"
-  },
-  "GET /api/me/audit": {
-   "class": "S",
-   "note": "a member reads the lines about their own data"
-  },
-  "GET /api/me/chats": {
-   "class": "S",
-   "note": "a member's own chats, in their projects"
-  },
-  "GET /api/me/memory/{kind}": {
-   "class": "S",
-   "note": "a member reads their own personal or technical notes"
-  },
   "GET /api/memory/project/{name}": {
    "class": "M",
    "note": "write calls need write access; /curate spends a model call"
@@ -317,18 +301,6 @@
    "class": "S",
    "note": "filtered by user; the admin sees everyone (?user=)"
   },
-  "GET /api/team/audit": {
-   "class": "A",
-   "note": "every admin look at members' data; read-only, the database refuses edits"
-  },
-  "GET /api/team/projects": {
-   "class": "A",
-   "note": "who is on which project"
-  },
-  "GET /api/team/users": {
-   "class": "A",
-   "note": "members, status and who is signed in; no passwords or links"
-  },
   "GET /api/usage": {
    "class": "S",
    "note": "filtered by user; the admin sees everyone (?user=)"
@@ -468,18 +440,6 @@
   "POST /api/language": {
    "class": "S",
    "note": "today a global setting; team: one per user"
-  },
-  "POST /api/me/consent": {
-   "class": "S",
-   "note": "a member changes their own chat-reading choice; kept as history"
-  },
-  "POST /api/me/memory": {
-   "class": "S",
-   "note": "a member saves their own notes; they are sent with their own requests only"
-  },
-  "POST /api/me/password": {
-   "class": "S",
-   "note": "a member changes their own password; a wrong current one counts as a failed sign-in"
   },
   "POST /api/memory": {
    "class": "S",
@@ -652,42 +612,6 @@
   "POST /api/tasks/{task_id}/rating": {
    "class": "S",
    "note": "own replies"
-  },
-  "POST /api/team/projects/{name}/members/{user_id}": {
-   "class": "A",
-   "note": "put a member on a project or take them off"
-  },
-  "POST /api/team/projects/{name}/rules": {
-   "class": "A",
-   "note": "the admin sets what members may do in a project without asking, and their network"
-  },
-  "POST /api/team/users": {
-   "class": "A",
-   "note": "invite a member; the link token is shown once"
-  },
-  "POST /api/team/users/{user_id}/disabled": {
-   "class": "A",
-   "note": "disable or re-enable a member; disabling signs them out"
-  },
-  "POST /api/team/users/{user_id}/dismissed": {
-   "class": "A",
-   "note": "the admin closes a member out (left the team) or restores them"
-  },
-  "POST /api/team/users/{user_id}/invite": {
-   "class": "A",
-   "note": "a new link; the old link and password stop working"
-  },
-  "POST /api/team/users/{user_id}/budget": {
-   "class": "A",
-   "note": "the admin sets a member's monthly budget"
-  },
-  "POST /auth/activate": {
-   "class": "P",
-   "note": "the invitation token is the credential; limited per address"
-  },
-  "POST /auth/invite": {
-   "class": "P",
-   "note": "checks an invitation token; limited per address"
   },
   "POST /auth/login": {
    "class": "P",

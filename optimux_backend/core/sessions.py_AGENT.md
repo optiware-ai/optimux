@@ -26,6 +26,6 @@
 - **`answers(sid)` (v0.8, p78):** `{sent id: text}`, what each kept model call wrote, read from the chat's event log: the page streams a call's `token` events before the `usage` event that names the call (`sent`), so the text after one usage event and before the next belongs to the second. Empty answers are left out; saved keys are hidden. Used by `GET /api/sent/request` for its steps' `answer`.
 - **`get(sid)` returns `times` (p79):** the stored time of each event, in step with `events`; `session_loaded` sends it so the page can show when a reply was made.
 
-- **Owner (team step 4a):** the row also stores `user_id` from `team.current_user_id()` (NULL = the install's own). Nothing reads it yet.
+- **Owner (team step 4a):** the row also stores `user_id` from `identity.current_user_id()` (NULL = the install's own). Nothing reads it yet.
 
 - **Owner filter (team step 4b):** the list/read functions take `owner=` ("all" default, "me" = NULL, or a member id; `store.owner_clause`). `list_sessions(..., owner, hidden)` (a search skips hidden members' titles), `owner_of(sid)`, `latest(project, owner="me")` so the admin never lands in a member's chat.

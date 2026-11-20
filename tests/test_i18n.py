@@ -16,7 +16,10 @@ from tests.ws_helpers import make_client
 H = {"Authorization": "Bearer test-token"}
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCES = ("index.html", "web/app.js", "web/attention.js", "web/boot.js", "web/connection.js", "web/i18n.js",
-           "web/login.js", "web/account.js", "web/member.js")
+           "web/login.js", "optimux_team/web/account.js", "optimux_team/web/member.js")
+# The team add-on is optional: the public core is tested without its folder
+ADDON = os.path.isdir(os.path.join(ROOT, "optimux_team", "web"))
+SOURCES = tuple(x for x in SOURCES if ADDON or not x.startswith("optimux_team/"))
 # The sign-in page marks whole elements: their inner HTML (spaces collapsed) is the text
 MARKED = re.compile(r"<(\w+)\b[^>]*\bdata-i18n\b[^>]*>(.*?)</\1>", re.S)
 # $t('...') in templates, tr('...') in scripts, tk('...') for texts kept as data
@@ -37,8 +40,10 @@ def marked_texts() -> set[str]:
         if rel.endswith(".html"):                  # the browser decodes &quot; and the like first
             texts = {html.unescape(t) for t in texts}
         found |= texts
-    for page in ("login.html", "account.html", "member.html"):
-        with open(os.path.join(ROOT, "web", page), encoding="utf-8") as f:
+    for page in ("web/login.html", "optimux_team/web/account.html", "optimux_team/web/member.html"):
+        if not os.path.exists(os.path.join(ROOT, page)):
+            continue
+        with open(os.path.join(ROOT, page), encoding="utf-8") as f:
             found |= {re.sub(r"\s+", " ", m.group(2)).strip() for m in MARKED.finditer(f.read())}
     return found | server_texts()
 
@@ -46,7 +51,9 @@ def marked_texts() -> set[str]:
 def server_texts() -> set[str]:
     """tr("…") and tk("…") in the server (core/i18n.py): the first argument, a written string."""
     found = set()
-    for path in glob.glob(os.path.join(ROOT, "optimux_backend", "**", "*.py"), recursive=True):
+    paths_ = glob.glob(os.path.join(ROOT, "optimux_backend", "**", "*.py"), recursive=True)
+    paths_ += glob.glob(os.path.join(ROOT, "optimux_team", "**", "*.py"), recursive=True)      # the add-on's texts too
+    for path in paths_:
         with open(path, encoding="utf-8") as f:
             tree = ast.parse(f.read())
         for node in ast.walk(tree):
@@ -75,7 +82,8 @@ def test_translations_keep_their_placeholders_and_are_all_used(code):
     for source, target in have.items():
         # every placeholder of the translation exists; one may be left out (an English plural "s")
         assert set(PLACEHOLDER.findall(target)) <= set(PLACEHOLDER.findall(source)), source
-    unused = sorted(set(have) - texts)
+    # Without the add-on its texts stay in the catalogue, unused here: only the full tree can tell
+    unused = sorted(set(have) - texts) if ADDON else []
     assert not unused, f"no longer on the page: {unused[:20]}"
 
 

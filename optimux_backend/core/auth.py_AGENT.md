@@ -22,3 +22,4 @@
 ## Links & Dependencies
 - `paths.py` (folder, `write_private`), `store.py` (`logins`), `security.check_token` (setup, Bearer).
 - Tests: `tests/test_auth.py`.
+- **Members' sessions (p111):** `end_all_sessions(members=False)` and `list_sessions` leave out the members' sign-ins using `_members(conn)`, which tests for the `users` table first: a plain install has none, and then nobody is a member.

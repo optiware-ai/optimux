@@ -15,7 +15,6 @@ from optimux_backend.core import paths
 from optimux_backend.core.i18n import tr
 
 BUDGETS_FILE = paths.BUDGETS_FILE
-USER_BUDGETS_FILE = os.path.join(paths.CONFIG_DIR, "user_budgets.json")      # team mode: {member id: {...}}
 ON_LIMIT = ("block", "warn")
 WARN_RATIO = 0.8
 
@@ -81,63 +80,14 @@ def blocks(project: str) -> dict | None:
     return s if s and s["state"] == "over" and s["on_limit"] == "block" else None
 
 
-# ---------------------------------------------------------------- team members (step 7)
-
-def get_user_budgets() -> dict:
-    try:
-        with open(USER_BUDGETS_FILE, "r") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def save_user_budget(user_id: int, monthly_usd: float | None, on_limit: str = "block") -> None:
-    """Set a member's monthly budget (all their projects together), or remove it with None."""
-    budgets = get_user_budgets()
-    key = str(int(user_id))
-    if monthly_usd is None:
-        budgets.pop(key, None)
-    else:
-        if monthly_usd <= 0:
-            raise ValidationError(tr("Budget must be greater than 0 (leave it empty for no limit)."))
-        if on_limit not in ON_LIMIT:
-            raise ValidationError(tr("on_limit must be one of {v}.", v=', '.join(ON_LIMIT)))
-        budgets[key] = {"monthly_usd": float(monthly_usd), "on_limit": on_limit}
-    os.makedirs(os.path.dirname(USER_BUDGETS_FILE), exist_ok=True)
-    with open(USER_BUDGETS_FILE, "w") as f:
-        json.dump(budgets, f, indent=4)
-
-
-def user_status(user_id: int) -> dict | None:
-    """This month's spending of one member against their budget, or None if they have none."""
-    budget = get_user_budgets().get(str(int(user_id)))
-    if not budget:
-        return None
-    month = usage.user_month_totals(user_id)
-    limit = budget["monthly_usd"]
-    ratio = month["cost"] / limit if limit else 0.0
-    return {
-        "scope": "user",
-        "user_id": int(user_id),
-        "monthly_usd": limit,
-        "on_limit": budget.get("on_limit", "block"),
-        "spent": month["cost"],
-        "ratio": ratio,
-        "calls_without_cost": month["calls_without_cost"],
-        "state": "over" if ratio >= 1 else ("warning" if ratio >= WARN_RATIO else "ok"),
-    }
-
-
 def blocking(project: str) -> dict | None:
     """What stops the next model call: the project's budget (shared by everyone working in it),
     or, in a team member's connection, the member's own. None when nothing does."""
-    from optimux_backend.core import team
+    from optimux_backend.core import identity, plugins
     hit = blocks(project)
     if hit:
         return hit
-    uid = team.current_user_id()
+    uid = identity.current_user_id()
     if uid is None:
         return None
-    s = user_status(uid)
-    return s if s and s["state"] == "over" and s["on_limit"] == "block" else None
+    return plugins.ask("member_budget_block", uid, default=None)
