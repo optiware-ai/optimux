@@ -43,7 +43,7 @@ It asks **where** you're installing (this computer, or a server reachable from t
 - your **sign-in password** (so you don't need the access token);
 - your **Workspace folder** (the folder that holds your projects);
 - your first **AI provider**: paste one API key, and Optimux sets up sensible models and routing (and can test the key with one tiny call);
-- **GitHub** (optional): it installs the GitHub CLI (`gh`) and checks a token with GitHub, so new projects can get a GitHub repository (see *GitHub*);
+- **GitHub** (optional): it always installs the GitHub CLI (`gh`), even if you skip the rest, and offers to check a token with GitHub, so new projects can get a GitHub repository (see *GitHub*);
 - the **sandbox**, and whether Optimux starts by itself when you log in.
 
 Every question can be skipped: each one says where to change it later in the web interface. Passwords and keys are typed hidden, go to Optimux on standard input, and never appear on screen, in arguments or in the install log.
@@ -348,7 +348,7 @@ Projects are **never deleted from the chat**: the model can archive, but it can'
 
 ### GitHub
 
-To create GitHub repositories, Optimux needs two things **on the machine it runs on**: the GitHub CLI (`gh`) and a sign-in. Set both up in **Dashboard → GitHub**, with `optimux github`, or while installing.
+To create GitHub repositories, Optimux needs two things **on the machine it runs on**: the GitHub CLI (`gh`) and a sign-in. The installer puts `gh` on the machine whatever you answer, so later only the token is left: paste it in **Dashboard → GitHub**, or run `optimux github`. (If `gh` could not be installed, for lack of sudo or a package, the installer says so and `optimux github` tries again.)
 
 1. Create a token at github.com → Settings → Developer settings → **Fine-grained tokens** → *Generate new token*: Repository access **All repositories**; permissions **Administration: Read and write** (creates repositories) and **Contents: Read and write** (pushes the first commit). A classic token with the `repo` scope works too.
 2. Paste it in **Dashboard → GitHub** and press **Check and save**. Optimux asks GitHub whose token it is before saving it, and warns if a classic token lacks the `repo` scope. (With `optimux github` or `admin remove-github` on the command line, restart Optimux afterwards so a running server picks the change up.)

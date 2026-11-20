@@ -275,6 +275,31 @@ def test_github_setup_with_yes_never_asks(tmp_path):
     assert "GH-INSTALL" in r.stdout and "ASKED" not in r.stdout and "END" in r.stdout and "Dashboard → GitHub" in r.stdout
 
 
+def test_github_cli_is_installed_even_when_setup_is_declined(tmp_path):
+    """Saying no to "Set up GitHub now?" must still leave `gh` on the machine, so adding a
+    token later in Dashboard → GitHub needs no program installed by hand."""
+    r = lib('''CM_YES=""; CM_TTY=1; install_gh() { echo GH-INSTALL; }
+              confirm() { return 1; }; ask_secret() { echo ASKED; }
+              configure_github; echo END''')
+    assert "GH-INSTALL" in r.stdout and "ASKED" not in r.stdout and "END" in r.stdout
+    out = " ".join(r.stdout.split())        # the note wraps at the terminal width
+    assert "the GitHub CLI is ready" in out and "Dashboard → GitHub" in out
+
+
+def test_github_declined_and_gh_install_failed_still_carries_on(tmp_path):
+    r = lib('''CM_YES=""; CM_TTY=1; install_gh() { echo GH-INSTALL; return 1; }
+              confirm() { return 1; }; configure_github; echo END''')
+    assert r.returncode == 0 and "GH-INSTALL" in r.stdout and "END" in r.stdout
+    out = " ".join(r.stdout.split())
+    assert "the GitHub CLI is ready" not in out and "optimux github" in out
+
+
+def test_github_setup_accepted_but_gh_missing_skips_the_token(tmp_path):
+    r = lib('''CM_YES=""; CM_TTY=1; install_gh() { return 1; }; confirm() { return 0; }
+              ask_secret() { echo ASKED; }; configure_github; echo END''')
+    assert "ASKED" not in r.stdout and "END" in r.stdout and "Dashboard → GitHub" in " ".join(r.stdout.split())
+
+
 def test_github_token_goes_to_optimux_on_stdin_only(tmp_path):
     """The token reaches `admin set-github` on stdin; it isn't printed or passed as an argument."""
     seen = tmp_path / "seen"

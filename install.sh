@@ -596,16 +596,23 @@ json_str() { sed -n "s/.*\"$1\": \"\([^\"]*\)\".*/\1/p" "$2" | head -n 1; }
 configure_github() {
   note "Optimux can also create a GitHub repository for each new project."
   note "That needs the GitHub CLI (gh) and a token from your GitHub account."
+  # The GitHub CLI goes in whatever you answer below: later, adding GitHub is then only
+  # a matter of pasting a token, not of installing a program on the server by hand.
+  local have_gh=1
+  install_gh || have_gh=""
   if [[ -n "${CM_YES:-}" ]]; then
-    install_gh || true
     note "Add a token later in Dashboard → GitHub (or run: optimux github)."
     return 0
   fi
   if ! confirm "Set up GitHub now?" Y; then
-    note "No problem: set it up later in Dashboard → GitHub (or run: optimux github)."
+    if [[ -n "$have_gh" ]]; then
+      note "No problem: the GitHub CLI is ready. Add a token later in Dashboard → GitHub (or run: optimux github)."
+    else
+      note "No problem: set it up later in Dashboard → GitHub (or run: optimux github)."
+    fi
     return 0
   fi
-  install_gh || { note "Then add a token in Dashboard → GitHub."; return 0; }
+  [[ -n "$have_gh" ]] || { note "Then add a token in Dashboard → GitHub."; return 0; }
   note "Create a token at https://github.com/settings/personal-access-tokens/new"
   note "Repository access: All repositories. Permissions: Administration and Contents, Read and write."
   note "A classic token with the 'repo' scope works too."
