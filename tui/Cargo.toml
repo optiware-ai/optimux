@@ -1,0 +1,45 @@
+[package]
+name = "optimux-tui"
+# The version users see is Optimux's own (../VERSION, read by build.rs)
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Optimux in the terminal: a client of the Optimux server"
+license = "AGPL-3.0-only"
+publish = false
+
+[dependencies]
+anyhow = "1.0.105"
+clap = { version = "4.6.10", features = ["derive"] }
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
+rpassword = "7.5.5"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", features = ["rt", "macros", "time", "net"] }
+tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
+
+# Not used directly: pins the domain-name library behind url (reqwest) to its
+# unicode-rs backend. The newer ICU4X backend needs Rust 1.88; this one keeps the
+# client buildable with Rust 1.85+ (what Debian 13 and Ubuntu ship) and
+# drops about ten crates. International domain names still work.
+idna_adapter = "=1.1.0"
+ratatui = "0.29.0"
+crossterm = { version = "0.28", features = ["event-stream"] }
+unicode-width = "=0.2.0"
+
+# Shell panes: a pseudo-terminal for the shell, and a terminal emulator for its screen.
+portable-pty = "0.9"
+vt100 = "0.15"
+
+# Only for SIGPIPE (already in the lock file through other crates): a command piped
+# into `head` ends quietly, as other Unix tools do, instead of panicking.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[profile.release]
+strip = true
+lto = "thin"

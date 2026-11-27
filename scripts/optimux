@@ -16,6 +16,7 @@ help() {
   subhead "Reach it"
   row "open" "the address, or the SSH tunnel command   ${CM}(open --help)${C0}"
   row "port" "the ports in use; move Optimux   ${CM}(port --help)${C0}"
+  row "tui [command]" "Optimux in this terminal: the chat; login, status, logout"
   subhead "Manage"
   row "update" "download the latest version and restart"
   row "version" "the installed version"
@@ -29,6 +30,23 @@ help() {
   printf '\n'
   para "Everything else is in the web interface: Dashboard → Guide."
   printf '\n'
+}
+
+# The terminal client (tui/): on the PATH, or built in the app folder. It gets this
+# install's address; a --server given on the command line still wins.
+cli_tui() {
+  local bin=""
+  if command -v optimux-tui >/dev/null 2>&1; then
+    bin="$(command -v optimux-tui)"
+  elif [[ -x "${M[APP_DIR]}/tui/target/release/optimux-tui" ]]; then
+    bin="${M[APP_DIR]}/tui/target/release/optimux-tui"
+  else
+    err "The terminal client isn't built yet."
+    para "Build it once (needs Rust 1.85 or newer, https://rustup.rs): cd ${M[APP_DIR]}/tui && cargo build --release"
+    return 1
+  fi
+  # exec: Ctrl+C and the terminal belong to the client from here on
+  OPTIMUX_URL="${OPTIMUX_URL:-http://127.0.0.1:${M[PORT]}}" exec "$bin" "$@"
 }
 
 main_cli() {
@@ -48,6 +66,7 @@ main_cli() {
     logs) cli_logs ;;
     open|url|tunnel|browser) shift; cli_open "$@" ;;
     port) shift; cli_port "$@" ;;
+    tui) shift; cli_tui "$@" ;;
     update) cli_update ;;
     password) cli_password ;;
     reset-password) admin reset-password ;;

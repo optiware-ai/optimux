@@ -663,6 +663,10 @@
    "class": "S",
    "note": "stops the user's own run"
   },
+  "detach": {
+   "class": "S",
+   "note": "the user's own run keeps going longer (detach_wait_minutes) after their window leaves; budget and questions still apply"
+  },
   "ping": {
    "class": "S",
    "note": ""

@@ -167,6 +167,9 @@ class SettingsPayload(BaseModel):
     scout: bool = True
     # v0.8: the language of the page (LANGUAGES); saved only through POST /api/language
     language: str = "en"
+    # Minutes a request keeps running after its window left it on purpose (detach:
+    # optimux-tui's "leave it running"); a dropped line waits PAGE_AWAY_GRACE (2 min)
+    detach_wait_minutes: int = 30
 
 
 # v0.8: the page's languages (web/i18n/<code>.json holds the translations; English is the source)
@@ -338,6 +341,8 @@ def save_settings(payload: SettingsPayload):
         raise ValidationError(tr("curator_idle_minutes must be between 1 and 240."))
     if not 0 <= payload.keep_sent_days <= 365:
         raise ValidationError(tr("keep_sent_days must be between 0 and 365."))
+    if not 1 <= payload.detach_wait_minutes <= 1440:
+        raise ValidationError(tr("detach_wait_minutes must be between 1 and 1440 (a day)."))
     payload.git_name, payload.git_email = check_git_identity(payload.git_name, payload.git_email)
     if not re.match(r"^[A-Za-z0-9-]{0,39}$", payload.github_login or ""):
         raise ValidationError(tr("github_login isn't a GitHub user name."))

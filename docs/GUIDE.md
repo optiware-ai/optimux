@@ -54,6 +54,8 @@ On your own computer, the program goes to `~/.local/share/optimux`, your data to
 
 **Options for scripts:** `--local` or `--server`, `--domain NAME` or `--no-domain`, `--yes` (accept every default), `--workspace PATH`, `--port N`, `--no-start`, `--update`, `--uninstall`. `bash install.sh --help` lists them.
 
+**Two packages.** `install.sh` installs **the server**: Optimux itself and its web interface. The **terminal client**, `optimux-tui`, is a separate package with its own one-line installer, for the computer you work from (the same one, or another): see *The terminal client*. You can use either, or both at once.
+
 ### The optimux command
 
 The installer adds an `optimux` command (on a server, run it with `sudo`):
@@ -1051,6 +1053,52 @@ Every page has **?** marks: hover one for an explanation, click to keep it open.
 | Monthly budget | Budgets (per project) | None | USD per calendar month, Block or Warn at 100%. |
 | Warn before "Update memory now" | Budgets | On | Show the estimate and ask first. |
 | Warn before "Escalate ↑" | Budgets | On | Show the estimate and ask first. |
+
+## The terminal client
+
+`optimux-tui` is Optimux in a terminal: the chat, the whole Dashboard, the Studio, and panes and tabs (as in tmux or Herdr) with chats, the Dashboard and shells side by side. It is only a client: the server runs everything, as for the web page, and both can be open at once.
+
+### Installing it
+
+It is a separate package from the server. On the computer you work from:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/optiware-ai/optimux/main/install-tui.sh | bash
+```
+
+It downloads the ready-made build for your computer (Linux or macOS, x86_64 or ARM) from the GitHub release, checks its SHA-256 checksum, and puts `optimux-tui` in `~/.local/bin`; nothing needs sudo. When there is no ready-made build for your computer (another system, or a Linux older than Ubuntu 22.04 or Debian 12), it builds it from the source with Rust, asking first if Rust has to be installed (with rustup, for you only).
+
+**Options:** `--dir PATH` (another folder), `--version v0.8.0` (another release), `--from-source` (always build it here), `--server ADDRESS` (sign in at the end), `--yes`, `--uninstall`. `bash install-tui.sh --help` lists them. Run it again to update.
+
+> **Prefer to read it first?** `curl -fsSL https://raw.githubusercontent.com/optiware-ai/optimux/main/install-tui.sh -o install-tui.sh`, read it, then `bash install-tui.sh`.
+
+### Signing in
+
+```bash
+optimux-tui login --server 127.0.0.1:8000             # Optimux on this computer
+optimux-tui login --server https://optimux.example.com # a server with a domain
+optimux-tui                                           # the chat
+```
+
+It asks for your Optimux password (and the two-step code, when it is on). The session is kept in `~/.config/optimux-tui`, readable only by you; `optimux-tui logout` ends it on the server and forgets it here. Plain `http` to another computer is refused (the password would travel unencrypted): use HTTPS, or an SSH tunnel and `127.0.0.1`. `optimux-tui status` shows the server, whether you are signed in, and its version.
+
+### The chat, the Dashboard and the Studio
+
+The chat works as in the web page: Enter sends, Esc stops a request, Ctrl+N starts a new chat, Ctrl+O opens another, Ctrl+P switches project, and question cards (commands to approve, file changes, plans) are answered with y, n or a. **Ctrl+G** opens the **Dashboard**: every section of the web page (but Team), with a menu on the left; each section shows its keys in cyan under what it shows, and they are clickable. The **Studio** (first in the menu) shows the active project's files: edit a file in your own editor, send lines of it to the chat, and the Git pane (add, diff, commit, push). Charts and the Studio's preview stay in the web page.
+
+### Panes and tabs
+
+**Ctrl+b**, then a key: `v` splits right, `-` splits down, `h j k l` (or the arrows) move between panes, `z` zooms one, `x` closes one, `c` opens a new tab, `n`/`p` and `1`–`9` change tab, `T` names a tab, `r` resizes (or drag a border with the mouse), `q` quits everything. **Ctrl+b ?** opens the keys window: every shortcut, grouped, with a search; a click on one does it.
+
+A new pane asks what it shows: a chat, the Dashboard, or a **shell** (your shell, in the active project's folder when that folder is on this computer). **Ctrl+b o** flips a pane between its shell and a chat; the other keeps running behind it. Tabs are at the bottom right; one turns yellow with **!** when a question waits in it. The layout comes back at the next start (shells start again, fresh, in their folder).
+
+### Commands for scripts
+
+Every section also has commands, for scripts and quick checks: `optimux-tui models list`, `optimux-tui usage`, `optimux-tui projects switch demo`, `optimux-tui studio changes`, `optimux-tui backups snapshots take`… `optimux-tui --help` lists them, and `--help` after any of them explains it. Anything that changes something asks first, or needs `--yes` when no one is at the terminal.
+
+### Updating and removing
+
+Run the installer again to update. `bash install-tui.sh --uninstall` removes the command; your sign-in and layout stay in `~/.config/optimux-tui` until you delete that folder (sign out first to end the session on the server).
 
 ## Keyboard and commands
 

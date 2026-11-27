@@ -1480,7 +1480,7 @@ const optimuxApp = createApp({
                 routingConfig.value = await routingResponse.json();
 
                 const settingsResponse = await fetch('/api/settings');
-                appSettings.value = { language: 'en', max_steps_simple: 8, max_steps_complex: 25, memory_curator: true, curator_idle_minutes: 10, skills_mode: 'auto', keep_sent_days: 14, confirm_update_memory: true, confirm_escalate: true, confirm_auto_escalate: true, sandbox: false, sandbox_network: true, sandbox_ro_paths: [], command_env: [], limit_memory_mb: 0, limit_file_mb: 1024, limit_processes: 0, command_timeout: 120, ...(await settingsResponse.json()) };
+                appSettings.value = { language: 'en', max_steps_simple: 8, max_steps_complex: 25, memory_curator: true, curator_idle_minutes: 10, skills_mode: 'auto', keep_sent_days: 14, confirm_update_memory: true, confirm_escalate: true, confirm_auto_escalate: true, sandbox: false, sandbox_network: true, sandbox_ro_paths: [], command_env: [], limit_memory_mb: 0, limit_file_mb: 1024, limit_processes: 0, command_timeout: 120, detach_wait_minutes: 30, ...(await settingsResponse.json()) };
                 if (appSettings.value.language !== window.OptimuxI18n.lang.value) window.OptimuxI18n.setLanguage(appSettings.value.language);
                 fetchProjectUsage();
                 fetchSkills();   // for /name suggestions in the chat input
@@ -2951,13 +2951,14 @@ const optimuxApp = createApp({
         const teamWhen = (ts) => ts ? stampOf(ts) : '—';
         const teamKind = (k) => k === 'chat' ? tr('A chat') : k === 'sent' ? tr('What was sent to the models') : k === 'usage' ? tr('Usage') : k;
         const teamReads = (u) => u.role === 'admin' || u.status === 'invited' ? '—' : (u.chat_access ? tr('Yes') : tr('No'));
-        // "Firefox on Linux" from a user-agent string (good enough to recognise your own browsers)
+        // "Firefox on Linux" from a user-agent string (good enough to recognise your own browsers).
+        // The terminal client says "optimux-tui/0.8.0 (linux)" (tui/src/api.rs).
         const browserLabel = (ua) => {
             if (!ua) return tr('Unknown browser');
-            const name = /Edg\//.test(ua) ? tr('Edge') : /OPR\//.test(ua) ? tr('Opera') : /Firefox\//.test(ua) ? tr('Firefox')
+            const name = /optimux-tui\//.test(ua) ? tr('Terminal') : /Edg\//.test(ua) ? tr('Edge') : /OPR\//.test(ua) ? tr('Opera') : /Firefox\//.test(ua) ? tr('Firefox')
                 : /Chrome\//.test(ua) ? tr('Chrome') : /Safari\//.test(ua) ? tr('Safari') : /curl\//.test(ua) ? 'curl' : tr('Browser');
             const os = /Android/.test(ua) ? tr('Android') : /iPhone|iPad/.test(ua) ? 'iOS' : /Windows/.test(ua) ? tr('Windows')
-                : /Mac OS X/.test(ua) ? 'macOS' : /Linux/.test(ua) ? tr('Linux') : '';
+                : /Mac OS X|\(macos\)/.test(ua) ? 'macOS' : /Linux|\(linux\)/.test(ua) ? tr('Linux') : '';
             return os ? `${name} on ${os}` : name;
         };
         const signOutOthersFromNotice = async () => {
@@ -6335,6 +6336,20 @@ const optimuxApp = createApp({
                     appSettings.value.active_project = data.project || '';
                     fetchProjectsList();
                     fetchProjectUsage();
+                }
+                else if (data.type === "active_project_changed") {
+                    // Another window switched the active project (the terminal client, another
+                    // tab, the model in another chat): follow it, so the chats shown belong to it.
+                    // The window that switched already has it, so it ignores this.
+                    if (!replay && (data.project || '') !== (appSettings.value.active_project || '')) {
+                        appSettings.value.active_project = data.project || '';
+                        fetchProjectsList();
+                        fetchProjectUsage();
+                        if (!isGenerating.value && !pendingApproval.value && ws.value) {
+                            isGenerating.value = true;
+                            ws.value.send(JSON.stringify({ type: 'open_session', id: 'latest' }));
+                        }
+                    }
                 }
                 else if (data.type === "projects_changed") {
                     // Also sent when a folder appears or goes in the Workspace outside Optimux (Feature 26)

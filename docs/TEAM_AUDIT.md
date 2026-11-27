@@ -67,6 +67,7 @@ The design record from before the team version; the add-on implements each row (
 | `approval_response` | M | approves a command or change: who may approve on a project is a policy decision |
 | `limit_response` | M | answers 'budget reached' |
 | `stop` | S | stops the user's own run |
+| `detach` | S | the user's own run keeps going longer (detach_wait_minutes) after their window leaves; budget and questions still apply |
 | `ping` | S |  |
 
 ## Model tools

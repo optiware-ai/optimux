@@ -381,6 +381,31 @@ def test_switch_via_chat_updates_settings_and_ui(mocker, client, root):
     assert not any(m["type"] == "approval_request" for m in msgs)
 
 
+def test_a_switch_tells_the_other_windows(mocker, client, root):
+    # The web page and the terminal client follow a switch made in another window
+    _, settings = root
+    told = mocker.patch.object(main, "_broadcast", new=mocker.AsyncMock())
+    mocker.patch("litellm.acompletion", side_effect=tool_turn("switch_project", {"name": "alpha"}))
+    Conversation(client).prompt("let's work on alpha")
+    told.assert_awaited_once_with({"type": "active_project_changed", "project": "alpha"})
+
+
+def test_saving_settings_tells_the_other_windows_only_when_the_project_changes(mocker, root):
+    import asyncio
+    _, settings = root
+    settings["active_project"] = "alpha"
+    told = mocker.patch.object(main, "_broadcast", new=mocker.AsyncMock())
+    mocker.patch.object(main, "_read_settings", side_effect=lambda: dict(settings))
+    mocker.patch.object(main, "get_settings", side_effect=lambda: dict(settings))
+    mocker.patch.object(main, "save_settings", side_effect=lambda p: settings.update(active_project=p.active_project))
+    mocker.patch.object(main.onboarding, "note_settings_change")
+    mocker.patch.object(main.config_manager, "language", return_value="en")
+    asyncio.run(main.save_app_settings(main.SettingsPayload(projects_root=settings["projects_root"], active_project="alpha")))
+    told.assert_not_awaited()                                   # same project: nothing to tell
+    asyncio.run(main.save_app_settings(main.SettingsPayload(projects_root=settings["projects_root"], active_project="beta")))
+    told.assert_awaited_once_with({"type": "active_project_changed", "project": "beta"})
+
+
 def test_archive_active_project_returns_to_root(mocker, client, root):
     r, settings = root
     settings["active_project"] = "alpha"

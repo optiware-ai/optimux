@@ -421,6 +421,7 @@
  "Choose your features": "Scegli le funzioni",
  "Chosen by you": "Scelto da te",
  "Chrome": "Chrome",
+ "Terminal": "Terminale",
  "Clear": "Togli",
  "Clear all": "Togli tutte",
  "Clear filters": "Azzera i filtri",
@@ -2782,5 +2783,11 @@
  "{name} is signed out and cannot sign in, is taken off every project and loses their budget. Their chats, usage and history are kept, and you can restore the account later.": "{name} viene scollegato e non può accedere, viene tolto da ogni progetto e perde il budget. Le sue chat, l'uso e la cronologia restano, e puoi ripristinare l'account più avanti.",
  "For someone who has left. They are signed out and cannot sign in, they are taken off every project and their budget is removed, and they disappear from this list. Their chats, usage and history are kept. You can restore them later.": "Per chi se n'è andato. Viene scollegato e non può accedere, viene tolto da ogni progetto, il suo budget viene rimosso e sparisce da questo elenco. Le sue chat, l'uso e la cronologia restano. Puoi ripristinarlo più avanti.",
  "Give {name} the account back. It comes back without projects or budget; you choose those again.": "Restituisci l'account a {name}. Torna senza progetti né budget: li scegli di nuovo tu.",
- "Show dismissed members ({n})": "Mostra i membri congedati ({n})"
+ "Show dismissed members ({n})": "Mostra i membri congedati ({n})",
+ "Leaving a request running": "Lasciare una richiesta in esecuzione",
+ "When the terminal client (optimux-tui) leaves a chat on purpose, its running request goes on for this many minutes, waiting for a window to come back. A line that just drops waits 2 minutes. The budget still applies, and a question waits for your answer: nothing runs without it.": "Quando il client da terminale (optimux-tui) lascia una chat di proposito, la sua richiesta in corso continua per questi minuti, aspettando che una finestra torni. Una connessione che cade e basta aspetta 2 minuti. Il budget vale comunque, e una domanda aspetta la tua risposta: senza, non viene eseguito nulla.",
+ "Keep it running for": "Tienila in esecuzione per",
+ "Minutes a request keeps running after its window left": "Minuti in cui una richiesta continua dopo che la sua finestra l'ha lasciata",
+ "detach_wait_minutes must be between 1 and 1440 (a day).": "detach_wait_minutes deve essere tra 1 e 1440 (un giorno).",
+ "minutes": "minuti"
 }

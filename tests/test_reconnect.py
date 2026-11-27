@@ -214,3 +214,120 @@ async def test_a_silent_model_call_says_whether_the_provider_answers(mocker, rea
                                 "net": net, "host": "api.anthropic.com", "ago": sent[0]["ago"]}
     assert len(sent) == 1 or all(m["net"] == net for m in sent)
 
+
+
+# ---- leaving on purpose (detach): optimux-tui's "leave it running"
+
+def test_a_window_that_leaves_on_purpose_is_waited_for_longer(client, mocker):
+    mocker.patch.object(main, "PAGE_AWAY_GRACE", 0.2)
+    mocker.patch.object(main, "detach_grace", return_value=30)
+    with client:
+        cm, a, q = asking(client)
+        a.send_text(json.dumps({"type": "detach"}))
+        assert until(a, "detached") == {"type": "detached", "running": True, "wait": 30}
+        cm.__exit__(None, None, None)
+        assert wait_for(nobody_serves_it), main.RUNNING
+        time.sleep(0.6)                                         # three times the ordinary wait
+        assert nobody_serves_it(), "still running for the window that left on purpose"
+        cm2, b = page(client)
+        b.send_text(json.dumps({"type": "open_session", "id": "latest"}))
+        assert until(b, "session_loaded")["running"] is True
+        until(b, "approval_request")
+        entry = next(iter(main.RUNNING.values()))
+        assert entry["session"]["detached"] is False            # picked up: the next drop is an ordinary one
+        b.send_text(json.dumps({"type": "approval_response", "approved": False}))
+        collect(b)
+        assert not main.RUNNING
+        cm2.__exit__(None, None, None)
+
+
+def test_a_request_left_on_purpose_still_stops_after_its_wait(client, mocker):
+    mocker.patch.object(main, "PAGE_AWAY_GRACE", 30)
+    mocker.patch.object(main, "detach_grace", return_value=0.3)
+    with client:
+        cm, a, q = asking(client)
+        a.send_text(json.dumps({"type": "detach"}))
+        until(a, "detached")
+        cm.__exit__(None, None, None)
+        assert wait_for(lambda: not main.RUNNING), main.RUNNING     # stopped after detach_grace, not 30 s
+        assert not main.BUSY_PROJECTS
+
+
+def test_leaving_with_nothing_running_keeps_nothing(client):
+    with client:
+        cm, sock = page(client)
+        sock.send_text(json.dumps({"type": "detach"}))
+        assert json.loads(sock.receive_text()) == {"type": "detached", "running": False, "wait": 0}
+        cm.__exit__(None, None, None)
+
+
+def test_the_chat_list_says_which_chats_wait_and_have_no_window(client):
+    with client:
+        cm, a, q = asking(client)
+        sid = chat_store.latest("alpha")
+        auth = {"Authorization": "Bearer test-token"}
+        row = next(r for r in client.get("/api/sessions", headers=auth).json() if r["id"] == sid)
+        assert (row["state"], row["away"]) == ("waiting", False)      # a question is open, this window has it
+        cm.__exit__(None, None, None)
+        assert wait_for(nobody_serves_it)
+        row = next(r for r in client.get("/api/sessions", headers=auth).json() if r["id"] == sid)
+        assert (row["state"], row["away"]) == ("waiting", True)
+        cm2, b = page(client)
+        b.send_text(json.dumps({"type": "open_session", "id": sid}))
+        until(b, "approval_request")
+        b.send_text(json.dumps({"type": "approval_response", "approved": False}))
+        collect(b)
+        row = next(r for r in client.get("/api/sessions", headers=auth).json() if r["id"] == sid)
+        assert "state" not in row and "away" not in row                 # finished: no state
+        cm2.__exit__(None, None, None)
+
+
+def test_the_wait_comes_from_the_setting(mocker):
+    mocker.patch.object(main, "get_settings", return_value={"detach_wait_minutes": 45})
+    assert main.detach_grace() == 45 * 60
+    mocker.patch.object(main, "get_settings", return_value={})
+    assert main.detach_grace() == 30 * 60
+
+
+# ---- a page gets back only the request of the chat it opens
+
+def test_opening_the_newest_chat_does_not_take_another_chats_request(client):
+    # A request left without a window in an older chat (optimux-tui left it running to
+    # open a new chat): a page opening "latest" shows the newest chat, not that one
+    with client:
+        cm, a, q = asking(client)
+        old = chat_store.latest("alpha")
+        cm.__exit__(None, None, None)
+        assert wait_for(nobody_serves_it)
+        newer = chat_store.create("alpha", "a newer chat")
+        cm2, b = page(client)
+        b.send_text(json.dumps({"type": "open_session", "id": "latest"}))
+        loaded = until(b, "session_loaded")
+        assert loaded["session"]["id"] == newer and not loaded.get("running")
+        assert nobody_serves_it(), "the older chat's request is still free, for its own chat"
+        b.send_text(json.dumps({"type": "open_session", "id": old}))
+        assert until(b, "session_loaded")["running"] is True       # opened by its id: it comes back
+        until(b, "approval_request")
+        b.send_text(json.dumps({"type": "approval_response", "approved": False}))
+        collect(b)
+        cm2.__exit__(None, None, None)
+
+
+def test_the_logo_gets_the_last_chats_request_in_its_project(client, mocker):
+    told = mocker.patch.object(main, "announce_active_project", new=mocker.AsyncMock())
+    with client:
+        cm, a, q = asking(client)                                   # running in alpha
+        sid = chat_store.latest("alpha")
+        cm.__exit__(None, None, None)
+        assert wait_for(nobody_serves_it)
+        main.switch_active_project("beta")                           # meanwhile another window moved on
+        cm2, b = page(client)
+        b.send_text(json.dumps({"type": "open_session", "id": "last"}))
+        loaded = until(b, "session_loaded")
+        assert loaded["session"]["id"] == sid and loaded["running"] is True
+        assert main.active_project() == "alpha"                      # the chat's project is active again
+        told.assert_awaited_with("alpha")                            # and the other windows are told
+        until(b, "approval_request")
+        b.send_text(json.dumps({"type": "approval_response", "approved": False}))
+        collect(b)
+        cm2.__exit__(None, None, None)

@@ -105,3 +105,6 @@ commit-msg-*.txt
 
 # Feature notes (kept locally by the maintainer, not published)
 todos/
+
+# The terminal client's build output (tui/, Rust)
+tui/target/

@@ -56,7 +56,7 @@ It sends simple requests to cheap models, hands hard work to stronger models, tr
 ---
 
 > ### Project status
-> **Optimux is in beta. The latest release is v0.8.0 (2026-11-20).** What changed since v0.6.0 is in the [CHANGELOG](CHANGELOG.md).
+> **Optimux is in beta. The latest release is v0.9.0 (2026-11-27).** What changed since v0.6.0 is in the [CHANGELOG](CHANGELOG.md).
 >
 > It is used every day on Linux and has a large automated test suite, but some paths have had little real-world use yet: server installs, macOS, and creating GitHub repositories from the app. The tests use fake models: they check Optimux itself, not how well real models do coding tasks. What has and hasn't been measured with real models is in [docs/evaluations](docs/evaluations/README.md). Expect rough edges, and please [open an issue](https://github.com/optiware-ai/optimux/issues) when something breaks.
 
@@ -128,6 +128,7 @@ Optimux runs on your own machine, works on your own repositories, and treats **c
 **Installing and running**
 - **One-line installer** for your computer or a VPS, with an interactive terminal interface; every question can be skipped and changed later in the web interface. On a VPS it also sets up HTTPS, a dedicated user, the firewall and **server mode**: the sandbox is required, every command needs approval unless you choose an autonomy level, and commands have no network by default.
 - An **`optimux` command**: start, stop, status, logs, open (the SSH tunnel command, with your ports), port, update, password and uninstall.
+- A **terminal client**, `optimux-tui`, as a separate package for the computer you work from: the chat, the whole Dashboard and the Studio in a terminal, with panes and tabs (chats, the Dashboard and shells side by side, as in tmux or Herdr) and a command for every section, for scripts.
 
 | | On your computer | On a server (VPS) |
 |---|---|---|
@@ -258,6 +259,16 @@ Open **http://127.0.0.1:8000**, paste the **access token** the server printed (a
 
 The [Guide](docs/GUIDE.md#getting-started) walks through each step.
 
+**The terminal client** is a separate package, for the computer you work from (the same one or another). It downloads the ready-made `optimux-tui` for Linux or macOS from the GitHub release and checks its SHA-256, or builds it from the source with Rust when there is none for your computer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/optiware-ai/optimux/main/install-tui.sh | bash
+optimux-tui login --server 127.0.0.1:8000     # or https://your-domain
+optimux-tui
+```
+
+See [The terminal client](docs/GUIDE.md#the-terminal-client) in the Guide.
+
 > [!WARNING]
 > Optimux runs commands on your machine. When installing by hand, keep `--host 127.0.0.1`, or put HTTPS (for example an SSH tunnel) in front of it. On a server that others can reach, use the installer's server mode (or `OPTIMUX_SERVER=1`).
 
@@ -345,6 +356,8 @@ optimux/
 ├── web/                     app.js, the sign-in page, styles, pinned libraries (vendor/)
 ├── deploy/                  running on a server: systemd unit, Caddyfile, AppArmor profile
 ├── install.sh               the one-line installer (local or server) and the optimux command's logic
+├── install-tui.sh           the terminal client's own installer (a ready-made build, or built from source)
+├── tui/                     the terminal client, optimux-tui (Rust): chat, Dashboard, Studio, panes and tabs
 ├── scripts/optimux          the optimux command; scripts/build-css.sh rebuilds web/app.css; scripts/build-editor.sh the Studio's editor
 ├── docs/
 │   ├── GUIDE.md             the user guide (also shown in the app)

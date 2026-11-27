@@ -3035,6 +3035,17 @@
                                     <lang-flag :code="l.code"></lang-flag>{{ l.name }}</button>
                             </div>
                         </div>
+                        <!-- optimux-tui's "leave it running": how long a request waits for a window -->
+                        <div v-if="settingsTab === 'system'" data-detach-wait>
+                            <h3 class="font-bold text-gray-200 text-[15px] mb-2 flex items-center">{{ $t('Leaving a request running') }}<help-tip>{{ $t('When the terminal client (optimux-tui) leaves a chat on purpose, its running request goes on for this many minutes, waiting for a window to come back. A line that just drops waits 2 minutes. The budget still applies, and a question waits for your answer: nothing runs without it.') }}</help-tip></h3>
+                            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                                <label class="flex flex-wrap items-center gap-2 text-[15px] text-gray-200">{{ $t('Keep it running for') }}
+                                    <input v-model.number="appSettings.detach_wait_minutes" @change="saveSettings" type="number" min="1" max="1440" :aria-label="$t('Minutes a request keeps running after its window left')" class="w-20 bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-gray-200 outline-none focus:border-blue-500">
+                                    {{ $t('minutes') }}
+                                    <span v-if="showSettingsSaved" class="text-green-400 font-bold text-[13px]">{{ $t('Saved!') }}</span>
+                                </label>
+                            </div>
+                        </div>
                         <div v-if="settingsTab === 'system' && securityChecks.length">
                             <h3 class="font-bold text-gray-200 text-[15px] mb-2 flex items-center">{{ $t('Security checklist') }}<help-tip wide><p><span v-html="$t('What protects this Optimux right now. Items marked <b>!</b> matter most when others can reach the server (a VPS, a shared network). The Guide\'s &quot;Running on a server&quot; chapter explains each one.')"></span></p></help-tip></h3>
                             <div class="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">

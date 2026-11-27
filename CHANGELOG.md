@@ -2,6 +2,19 @@
 
 What each release of Optimux changed. The version rules are in [CONTRIBUTING.md](CONTRIBUTING.md#versions-and-releases); the newest release is at the top.
 
+## v0.9.0 (2026-11-27) — beta
+
+The terminal client: Optimux in a terminal, as a second package next to the server.
+
+- **optimux-tui:** the chat, the whole Dashboard (all but Team) and the Studio in a terminal, for the computer you work from; the server does the work, as for the web page, and both can be open at once.
+- **Panes and tabs**, as in tmux or Herdr: chats, the Dashboard and shells side by side (Ctrl+b, then a key; Ctrl+b ? lists every key, with a search). A pane flips between its shell and a chat (Ctrl+b o), and the layout comes back at the next start.
+- **A command for every section**, for scripts: models, usage, projects, the Studio, backups and the rest (`optimux-tui --help`).
+- **Its own installer:** `install-tui.sh` downloads the ready-made build for Linux or macOS from the GitHub release and checks its SHA-256, or builds it from the source with Rust. `install.sh` (the server) is unchanged.
+- **Release builds:** each version tag builds optimux-tui for Linux and macOS (x86_64 and ARM) and attaches it to the release.
+- The Guide has a chapter on the terminal client.
+
+**Before updating:** nothing to do on the server. The terminal client is optional: install it where you want it with `install-tui.sh`.
+
 ## v0.8.0 (2026-11-20) — beta
 
 The Studio, autonomy levels and an Italian interface, and a cleaner split: the core is complete for one person, and the team version is now a separate add-on.

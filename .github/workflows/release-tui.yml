@@ -1,0 +1,82 @@
+# Builds the terminal client (optimux-tui) for Linux and macOS when a version tag
+# (v0.8.0, v0.9.1, ...) is pushed, and attaches each build and its SHA-256 checksum
+# to that tag's GitHub release. install-tui.sh downloads them from there.
+# No third-party actions: rustup and gh are already on GitHub's runners.
+name: Release optimux-tui
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "An existing tag to build and attach to (like v0.8.0)"
+        required: true
+
+# Writing the release needs this; nothing else does
+permissions:
+  contents: write
+
+concurrency:
+  group: release-tui-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Create the release (when the tag has none yet)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --title "Optimux $TAG" \
+              --notes "Server: install.sh. Terminal client: install-tui.sh (it downloads the optimux-tui builds attached here and checks their SHA-256)."
+          fi
+
+  build:
+    name: optimux-tui (${{ matrix.target }})
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # built on the oldest Ubuntu GitHub offers: the build runs on glibc 2.35 and newer
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, native: true }
+          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, native: true }
+          - { os: macos-15, target: aarch64-apple-darwin, native: true }
+          - { os: macos-15, target: x86_64-apple-darwin, native: false }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --target "${{ matrix.target }}"
+          rustup default stable
+      - name: Build
+        working-directory: tui
+        run: cargo build --release --locked --target "${{ matrix.target }}"
+      - name: It runs
+        if: matrix.native
+        run: tui/target/${{ matrix.target }}/release/optimux-tui --version
+      - name: Pack, checksum and attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          name="optimux-tui-$TAG-${{ matrix.target }}"
+          mkdir "$name"
+          cp "tui/target/${{ matrix.target }}/release/optimux-tui" tui/README.md LICENSE "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+          gh release upload "$TAG" "$name.tar.gz" "$name.tar.gz.sha256" --clobber

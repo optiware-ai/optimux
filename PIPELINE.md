@@ -10,6 +10,7 @@ Optimux relies heavily on decentralized context to feed different LLMs.
 - **`MANIFEST.md`**: Optimux's purpose and design in one page.
 - **`README.md`**: What it is, how to install it, how it works; the roadmap.
 - **`docs/GUIDE.md`**: The user guide (also shown in the app).
+- **`docs/PROTOCOL.md`**: How a client (the web page, the terminal client) talks to the server: sign-in, every `/ws` message, approvals, coming back after a drop. `tests/test_protocol.py` fails when it no longer matches the code.
 - **`docs/TEAM_AUDIT.md`**: The team-version audit (every endpoint, socket message and model tool classified; `tests/team_route_classes.json` is its data).
 - **`docs/evaluations/`**: What each kind of check proves (unit, fake-model integration, install smoke tests) and the real-model evaluations, with a template. A result goes there only with its evidence; planned ones say NOT RUN.
 - **`SECURITY.md`**: How to report a vulnerability.
@@ -20,6 +21,7 @@ Optimux relies heavily on decentralized context to feed different LLMs.
 Optimux pairs every core file with an `_AGENT.md` file containing its context.
 ```text
 ├── .github/workflows/tests.yml  (GitHub Actions: pytest on Python 3.10 and 3.13, shellcheck)
+├── .github/workflows/release-tui.yml  (on v* tags: optimux-tui builds for Linux and macOS, attached to the release with SHA-256)
 ├── .github/ISSUE_TEMPLATE/      (bug report and feature request forms; config.yml links Q&A, Ideas and private security reporting)
 ├── index.html                   (Vue 3 SPA page and templates)
 ├── index.html_AGENT.md
@@ -28,12 +30,15 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 ├── deploy/                      (server kit: systemd unit, Caddyfile, env example, AppArmor profile)
 ├── install.sh                   (one-line installer, local or server; library of the optimux command)
 ├── install.sh_AGENT.md
+├── install-tui.sh               (the terminal client's installer: a checked ready-made build, or built from source)
+├── install-tui.sh_AGENT.md
 ├── scripts/optimux              (the optimux command: start/stop/status/update/uninstall…)
 ├── scripts/build-css.sh         (rebuilds web/app.css with Tailwind)
 ├── scripts/build-editor.sh      (rebuilds the Studio's editor, web/vendor/codemirror-*.min.js, from scripts/editor/entry.js)
 ├── scripts/smoke-test.py        (end-to-end check of an install with a fake model; CI "install" job)
 ├── docs/
 │   ├── GUIDE.md                 (User guide, shown in Dashboard → Guide)
+│   ├── PROTOCOL.md              (The client protocol: sign-in, /ws messages; checked by tests/test_protocol.py)
 │   ├── TEAM_AUDIT.md            (Team version, step 0: who may do what; checked by tests/test_team_route_classes.py)
 │   └── evaluations/             (What has been checked and how: test layers, real-model evaluations, template)
 ├── optimux_backend/
@@ -149,6 +154,14 @@ Optimux pairs every core file with an `_AGENT.md` file containing its context.
 │   ├── team.py_AGENT.md
 │   ├── rules.py                 (What members may do in a project: autonomy level and network)
 │   └── rules.py_AGENT.md
+├── tui/                         (optimux-tui, the terminal client in Rust: a client of /ws like the web page; see tui/_AGENT.md; CI job "tui")
+│   ├── Cargo.toml, Cargo.lock, build.rs (build.rs reads ../VERSION)
+│   ├── src/                     (main.rs commands, server.rs address, api.rs HTTP, socket.rs /ws sign-in, store.rs saved sign-ins)
+│   │   ├── chat/                (the chat window: state.rs messages→chat, app.rs keys, view.rs drawing, text.rs Markdown, editor.rs, link.rs the line)
+│   │   ├── cli/                 (commands for scripts, one file per section; mod.rs the shared client)
+│   │   ├── ui/                  (Dashboard building blocks: form.rs, table.rs, confirm.rs, external.rs your editor)
+│   │   └── dash/                (the Dashboard, Ctrl+G: mod.rs menu and the Section trait; one file per section)
+│   └── _AGENT.md
 ├── tests/                       (pytest suite of the core; it passes with optimux_team/ deleted, CI job "core-only")
 └── requirements.txt
 ```

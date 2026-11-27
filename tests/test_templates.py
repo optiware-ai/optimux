@@ -41,6 +41,18 @@ def test_every_kind_is_offered_to_the_form_and_the_model():
     assert all(t["label"] and t["creates"] for t in listed)
 
 
+def test_the_terminal_offers_the_same_kinds():
+    """tui/src/dash/projects.rs KINDS: the New project form of the terminal client."""
+    import re
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "tui" / "src" / "dash" / "projects.rs").read_text()
+    block = src[src.index("pub const KINDS"):src.index("];", src.index("pub const KINDS"))]
+    kinds = re.findall(r'\("([a-z]+)", "[^"]+", "([^"]*)"\)', block)
+    assert [k for k, _ in kinds] == list(FOLDERS)
+    for kind, folders in kinds:
+        assert folders == ", ".join(d + "/" for d in FOLDERS[kind]), kind
+
+
 @pytest.mark.parametrize("kind", list(FOLDERS))
 def test_a_template_makes_its_folders_and_its_gitignore(root, memory, kind):
     r, _ = root

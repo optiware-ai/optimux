@@ -799,9 +799,14 @@ async def list_sessions(project: str | None = None, all_projects: bool = False,
     if not all_projects and project is None:
         project = active_project()
     owner = _owner(user)
-    return _named(chat_store.list_sessions(None if all_projects else project, archived, q,
+    rows = _named(chat_store.list_sessions(None if all_projects else project, archived, q,
                                            max(1, min(limit, 5000)), owner=owner,
                                            hidden=_hidden_users()))
+    states = chat_states()
+    for row in rows:
+        if row.get("id") in states:
+            row.update(states[row["id"]])
+    return rows
 
 
 @app.post("/api/sessions/{sid}/rename")
@@ -2314,7 +2319,10 @@ async def save_app_settings(payload: SettingsPayload):
     payload.language = config_manager.language()               # set only through /api/language
     asked = payload.active_project
     save_settings(payload)
-    onboarding.note_settings_change(stored, get_settings())     # memory, plan mode, skills chosen
+    now = get_settings()
+    onboarding.note_settings_change(stored, now)                # memory, plan mode, skills chosen
+    if (stored.get("active_project") or "") != (now.get("active_project") or ""):
+        await announce_active_project(now.get("active_project") or "")
     if asked and not payload.active_project:
         # A new Workspace folder without that project: the Workspace itself is now active
         return {"status": "success", "active_project": "",
@@ -3291,18 +3299,44 @@ def chat_summary(data: dict) -> dict:
                                  "calls_without_cost", "archived")}
 
 
+def detach_grace() -> int:
+    """Seconds a request runs on after its window left on purpose (detach_wait_minutes)."""
+    try:
+        return 60 * max(1, int(get_settings().get("detach_wait_minutes") or 30))
+    except (TypeError, ValueError):
+        return 30 * 60
+
+
+def chat_states() -> dict[str, dict]:
+    """The chats with a running request: {"state": "working" | "waiting" (a question is
+    open), "away": no window is on it}. GET /api/sessions adds them, for the terminal
+    client's list of chats."""
+    out = {}
+    for e in RUNNING.values():
+        cid = e["session"].get("chat_id")
+        if not cid or e["task"].done():
+            continue
+        asking = e["session"].get("asking") or e["session"].get("limit_asking")
+        out[cid] = {"state": "waiting" if asking else "working", "away": e["owner"] is None}
+    return out
+
+
 def request_to_resume(want: str) -> dict | None:
-    """The running request a page that opens chat `want` should get back: one with
-    no page (its connection dropped), or whose page went silent. None for most opens."""
+    """The running request a page that opens chat `want` should get back: the one of
+    that very chat, when it has no page (its connection dropped, or it was left running
+    on purpose) or its page went silent. "latest" and "last" stand for the chat they
+    open (the active project's newest; the newest anywhere): never another chat's
+    request, which a page would show under the wrong chat or project. None for most opens."""
     free = [e for e in RUNNING.values() if not e["task"].done() and (e["owner"] is None or e["line"].quiet())]
     if not free:
         return None
     if want == "latest":
-        here = active_project()
-        newest = chat_store.latest(here)
-        free = [e for e in free if e["project"] == here or (newest and e["session"].get("chat_id") == newest)]
-    elif want != "last":
-        free = [e for e in free if e["session"].get("chat_id") == want]
+        want = chat_store.latest(active_project())
+    elif want == "last":
+        want = last_open_chat()
+    if not want:
+        return None
+    free = [e for e in free if e["session"].get("chat_id") == want]
     return max(free, key=lambda e: e["started"], default=None)
 
 
@@ -3321,6 +3355,7 @@ async def hand_over(websocket: WebSocket, entry: dict) -> None:
         entry["timer"].cancel()
         entry["timer"] = None
     entry["owner"] = websocket
+    sess["detached"] = False        # a window has it again: the next drop is an ordinary one
     data = chat_store.get(sess["chat_id"]) if sess.get("chat_id") else None
     now = time.time()
     summary = chat_summary(data) if data else {
@@ -3356,14 +3391,16 @@ async def hand_over(websocket: WebSocket, entry: dict) -> None:
 
 
 def set_aside(key: str, entry: dict) -> None:
-    """The page is gone: the request goes on without one, for PAGE_AWAY_GRACE seconds."""
+    """The page is gone: the request goes on without one, for PAGE_AWAY_GRACE seconds,
+    or detach_grace() when its window left it on purpose (detach)."""
     entry["owner"] = None
     entry["line"].socket = None
+    grace = detach_grace() if entry["session"].get("detached") else PAGE_AWAY_GRACE
 
     async def give_up():
-        await _wait(PAGE_AWAY_GRACE)
+        await _wait(grace)
         if RUNNING.get(key) is entry and entry["owner"] is None and not entry["task"].done():
-            entry["session"]["away_stop"] = max(1, round(PAGE_AWAY_GRACE))
+            entry["session"]["away_stop"] = max(1, round(grace))
             entry["task"].cancel()
 
     entry["timer"] = asyncio.create_task(give_up())
@@ -4197,6 +4234,16 @@ async def set_active_project(websocket: WebSocket, name: str) -> None:
     settings = get_settings()
     save_settings(SettingsPayload(**{**settings, "active_project": name}))
     await send(websocket, "project_switched", project=name)
+    if (settings.get("active_project") or "") != (name or ""):
+        await announce_active_project(name)
+
+
+async def announce_active_project(name: str) -> None:
+    """The active project is one setting for every window: tell the open ones (the web
+    page, the terminal client) when it changes, so their chats follow. The window that
+    switched already shows it and ignores this. Team members' windows are not in
+    LIVE_SOCKETS: their project is their own."""
+    await _broadcast({"type": "active_project_changed", "project": name or ""})
 
 
 async def run_workspace_tool(websocket: WebSocket, session: dict, name: str, args_str: str, tc_id: str) -> dict:
@@ -5119,6 +5166,8 @@ async def handle_open_session(websocket: WebSocket, session: dict, sid: str) -> 
             switched = switch_active_project(target)
         except Exception as e:
             await send(websocket, "error", tr("Can't switch to {v}: {e}", v=target or 'the Workspace', e=e))
+        if switched:
+            await announce_active_project(target)     # the other windows follow
     if sid and (why := chat_read_block(sid)):       # a member's chat, without their agreement
         await send(websocket, "error", why)
         reset_chat(session)
@@ -5280,6 +5329,7 @@ async def websocket_endpoint(websocket: WebSocket):
         LIVE_SOCKETS.setdefault(login_id, set()).add(websocket)
         ensure_workspace_watcher()
     await websocket.send_text(json.dumps({"type": "auth_ok", "build": page_build(), "away": PAGE_AWAY_GRACE,
+                                          "detach_wait": detach_grace(),
                                           "version": await asyncio.to_thread(running_version)}))
     if member:
         await websocket.send_text(json.dumps(_member_state(mine)))
@@ -5448,7 +5498,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     if wanted["project"] is not None:
                         config_manager.bind_project(wanted["project"])
                         await websocket.send_text(json.dumps(_member_state(mine)))
-                elif kind not in ("stop", "approval_response", "limit_response", "new_chat", "escalate", "plan_action") \
+                elif kind not in ("stop", "approval_response", "limit_response", "detach", "new_chat", "escalate",
+                                  "plan_action") \
                         and active_project() not in mine:
                     await send(line, "system", tr("You are no longer on this project. Pick another one."))
                     await websocket.send_text(json.dumps(_member_state(mine)))
@@ -5471,6 +5522,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 if waiting is not None and not waiting.done():
                     waiting.set_result(payload)
                 continue
+            if kind == "detach":
+                # The window leaves on purpose (optimux-tui: "leave it running", or to open
+                # another chat): when its line closes, the request waits detach_grace() for a
+                # window instead of PAGE_AWAY_GRACE. Nothing running: nothing to keep.
+                session["detached"] = busy
+                await websocket.send_text(json.dumps({"type": "detached", "running": busy,
+                                                      "wait": detach_grace() if busy else 0}))
+                continue
             if kind not in ("new_chat", "escalate", "open_session", "plan_action") and not payload.get("prompt", ""):
                 continue
             if kind == "open_session" and not busy:
@@ -5478,6 +5537,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 # this page gets it back instead of a chat that stops halfway.
                 entry = request_to_resume(str(payload.get("id", "latest")))
                 if entry is not None:
+                    if str(payload.get("id")) == "last" and switch_active_project(entry["project"] or ""):
+                        # the logo: back to the last chat, in its project (as without a request)
+                        await announce_active_project(entry["project"] or "")
                     if session.get("idle_task") is not None:
                         session["idle_task"].cancel()
                     session, line, current = entry["session"], entry["line"], entry["task"]

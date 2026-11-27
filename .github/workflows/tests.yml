@@ -85,7 +85,38 @@ jobs:
         with:
           persist-credentials: false
       - name: Check the installer and the optimux command
-        run: shellcheck -x -S warning install.sh scripts/optimux
+        run: shellcheck -x -S warning install.sh install-tui.sh scripts/optimux
+
+  # The terminal client (tui/, Rust): format, lint and unit tests on the newest Rust,
+  # and the tests on the oldest one we promise (rust-version in tui/Cargo.toml).
+  # rustup is already on the runner, so no third-party action is needed.
+  tui:
+    name: tui (Rust ${{ matrix.rust }})
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, "1.85"]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install "${{ matrix.rust }}" --profile minimal --component rustfmt,clippy
+          rustup default "${{ matrix.rust }}"
+      - name: Format
+        if: matrix.rust == 'stable'
+        run: cargo fmt --check
+      - name: Lint
+        if: matrix.rust == 'stable'
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --locked
 
   # IM-11: install.sh on a fresh runner, then a chat with an approved command
   # against a fake model (scripts/smoke-test.py: no API key, no network)
